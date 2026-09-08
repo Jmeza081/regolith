@@ -53,7 +53,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             // SMB2 minimum: SMB1 is off by default on every modern NAS and
             // Windows, and jcifs-ng's SMB1 path is the slow one anyway.
             setProperty("jcifs.smb.client.minVersion", "SMB202")
-            setProperty("jcifs.smb.client.connTimeout", "8000")
+            setProperty("jcifs.smb.client.connTimeout", "5000")
             setProperty("jcifs.smb.client.responseTimeout", "15000")
             setProperty("jcifs.smb.client.soTimeout", "20000")
             // Plain DNS: NetBIOS broadcast lookups add seconds on Wi-Fi and
@@ -113,6 +113,9 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             } catch (e: SmbFailure.AuthFailed) {
                 throw e
             } catch (e: SmbFailure) {
+                // A refused/timed-out TCP connection or a name that does not
+                // resolve is the same on every dialect: stop immediately.
+                if (e.isTcpLevel()) throw e
                 Log.w(TAG, "$d failed for ${host.host}: ${e.detail ?: e.message}")
                 last = e
             }
@@ -215,6 +218,9 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         val msg = root.message?.take(80)
         return listOfNotNull(status ?: root::class.java.simpleName, msg?.takeIf { it != status }, dialect).joinToString(" · ")
     }
+
+    private fun Throwable.isTcpLevel(): Boolean =
+        generateSequence(this) { it.cause }.any { it is UnknownHostException || it is ConnectException || it is SocketTimeoutException }
 
     private fun Throwable.isUnreachable(): Boolean {
         var t: Throwable? = this
