@@ -1,0 +1,24 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "showLineNumbers": true,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "removeComments": false
+  },
+  "ignore": {
+    "useGitignore": true,
+    "customPatterns": [
+      "**/build/**",
+      ".gradle/**",
+      ".idea/**",
+      "**/*.png",
+      "**/*.webp",
+      "**/*.jar",
+      "**/*.keystore",
+      "repomix-output.xml"
+    ]
+  }
+}
