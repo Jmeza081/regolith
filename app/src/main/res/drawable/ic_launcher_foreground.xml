@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Wedge outline: point right, concave back edge -->
+    <group android:name="wedge">
+        <clip-path android:pathData="M36,30 L80,54 L36,78 Q46,54 36,30 Z" />
+        <!-- Strata bands, top to bottom -->
+        <path android:fillColor="#EDEDED" android:pathData="M0,26 H108 V40 H0 Z" />
+        <path android:fillColor="#A0A0A0" android:pathData="M0,40 H108 V50 H0 Z" />
+        <path android:fillColor="#E11B17" android:pathData="M0,50 H108 V58 H0 Z" />
+        <path android:fillColor="#6E6E6E" android:pathData="M0,58 H108 V68 H0 Z" />
+        <path android:fillColor="#2E2E2E" android:pathData="M0,68 H108 V82 H0 Z" />
+    </group>
+</vector>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  XML themes are only needed for the split second before Compose draws:
+  the system splash screen. Everything visible after that comes from
+  ui/theme/Theme.kt. Design: splash is black with the white wordmark only.
+-->
+<resources>
+    <style name="Theme.Regolith" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/regolith_ground</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.Regolith.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/regolith_ground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_wordmark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Regolith</item>
+    </style>
+</resources>

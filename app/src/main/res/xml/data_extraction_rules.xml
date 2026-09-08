@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Android may copy to cloud backup or a new device. DataStore holds the
+  encrypted server credentials (Phase 1), whose Keystore key never leaves this
+  device, so backing those files up would only produce undecryptable junk.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/" />
+    </device-transfer>
+</data-extraction-rules>

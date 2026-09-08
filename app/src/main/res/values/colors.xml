@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only what XML (splash, launcher icon) needs. The real palette is Color.kt. -->
+<resources>
+    <color name="regolith_ground">#0A0A0A</color>
+    <color name="ic_launcher_background">#0A0A0A</color>
+</resources>

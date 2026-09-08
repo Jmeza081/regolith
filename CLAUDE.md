@@ -27,26 +27,35 @@ message, and code comment should assume that background:
 | Language | Kotlin | TypeScript |
 | UI | Jetpack Compose + Material 3 | React + a design system |
 | Architecture | MVVM + unidirectional data flow (UI state as a single `StateFlow<UiState>` per screen) | Redux-ish: state down, events up |
-| Navigation | Navigation Compose (type-safe routes) | React Router |
+| Navigation | Navigation 3 (`androidx.navigation3`; the back stack is a plain list of `@Serializable` keys) | React Router, with the history stack as state you own |
 | DI | Hilt | DI container / context providers |
 | Async | Coroutines + Flow | async/await + observables |
 | Video | Media3 (ExoPlayer) | `<video>` + hls.js |
 | SMB | jcifs-ng (or SMBJ if jcifs-ng can't do what we need) | a fetch client for a file share |
-| Build | Gradle Kotlin DSL + version catalog (`gradle/libs.versions.toml`) | package.json + lockfile |
+| Build | Gradle Kotlin DSL + version catalog (`gradle/libs.versions.toml`); AGP 9 compiles Kotlin itself | package.json + lockfile |
+| Icons | Lucide via `com.composables:icons-lucide-android` (vector drawables, `R.drawable.lucide_ic_*`) | lucide-react |
+| SDK levels | minSdk 34 · targetSdk 37 · compileSdk 37 | browserslist |
 
 Package layout (single module until there's a real reason to split):
 
 ```
-app/src/main/java/.../regolith/
+app/src/main/java/com/regolith/
+  RegolithApp.kt   Application (Hilt root); MainActivity.kt (the one Activity)
+  AppViewModel.kt  app-level state: onboarding gate / start destination
   ui/            screens + shared components
     components/  REUSABLE composables — check here before writing a new one
-    theme/       colors, typography, shapes
+    theme/       Color, Type, Shape, Spacing, Theme (tokens from the design)
+    navigation/  RegolithKey (routes), MainTab, NavGraph (the router)
     <feature>/   one package per screen: XScreen.kt, XViewModel.kt, XUiState.kt
   data/          repositories, SMB client, local persistence (DataStore/Room)
   domain/        pure Kotlin models + use cases (no Android imports)
   di/            Hilt modules
   player/        Media3 setup, custom DataSource for SMB, thumbnail scrubbing
 ```
+
+Design source of truth: `design/docs/SMB Video Player Design/Regolith Video Player.dc.html`
+(12 sections, 37 screens). The phased plan and the architecture guardrails it
+fixes are summarised in `docs/ARCHITECTURE.md`.
 
 Rules of thumb:
 - UI never touches `data/` directly; it goes through a ViewModel.
@@ -115,7 +124,8 @@ To make the app navigable by argent, follow these conventions in Compose:
 - Every interactive element gets a stable `Modifier.testTag("feature_element")`
   (e.g. `player_play_button`, `browser_share_list`) or a meaningful
   `contentDescription` for icons. This is what `describe` reports, like a
-  `data-testid` on the web.
+  `data-testid` on the web. The root Scaffold in `NavGraph.kt` sets
+  `testTagsAsResourceId = true`; without it uiautomator sees no tags at all.
 - Meaningful text labels beat icon-only controls where reasonable.
 - These tags also serve Compose UI tests (`androidTest/`), so they're not
   test-only scaffolding.
@@ -131,7 +141,12 @@ To make the app navigable by argent, follow these conventions in Compose:
 repomix                        # regenerate the full-repo snapshot
 ```
 
-(Update this block when the project is scaffolded or scripts change.)
+There is no system JDK on this machine. Run Gradle with
+`JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` set
+(the `gradlew` launcher needs it before `gradle.properties` is read; the daemon
+then uses `org.gradle.java.home` from there). The debug build signs
+with the committed `app/debug.keystore` so reinstalls keep the on-device
+database (Android refuses to update an app whose signature changed).
 
 ## Git
 

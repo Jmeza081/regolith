@@ -1,2 +1,19 @@
 # Repomix snapshot (regenerate with `repomix`)
 repomix-output.xml
+
+# Android / Gradle build output and per-machine config
+.gradle/
+build/
+.kotlin/
+.cxx/
+captures/
+local.properties
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+
+# macOS
+.DS_Store

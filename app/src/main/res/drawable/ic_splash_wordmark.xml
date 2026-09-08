@@ -1,0 +1,9 @@
+<!-- Splash: monochrome white wedge on black. The wordmark itself is drawn by
+     Compose once the app is up; the system splash only accepts a drawable. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M36,30 L80,54 L36,78 Q46,54 36,30 Z" />
+</vector>
