@@ -45,6 +45,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // No release key yet: sign with the debug key so a shrunk build is
+            // still installable for side-loading. Swap for a real key before
+            // any store upload.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
