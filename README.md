@@ -6,9 +6,11 @@ nothing leaves your network. Kotlin + Jetpack Compose.
 
 ## Status
 
-Phase 0 of 6: project scaffold. The app installs, shows the onboarding gate
-once, then four placeholder tabs under the floating nav pill. See
-`docs/ARCHITECTURE.md` for the phase plan and the decisions already fixed.
+Phase 1 of 6 complete: add an SMB server by address, pick shares, browse
+folders, and play video straight off the share with resume. Verified on a
+Pixel emulator and on a real phone against a NAS. Browse is plain rows and the
+player has minimal controls on purpose; artwork, the full player and the
+design polish are Phases 2, 3 and 6. See `docs/ARCHITECTURE.md` for the plan.
 
 ## Build and run
 
