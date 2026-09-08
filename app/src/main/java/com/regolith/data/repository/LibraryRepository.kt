@@ -129,4 +129,19 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
+
+    /** "TOWER · media": the server and share a file lives on, for the player's meta line. */
+    suspend fun shareLabel(shareId: Long): String {
+        val share = shareDao.byId(shareId) ?: return ""
+        val server = serverDao.byId(share.serverId) ?: return share.name
+        return "${server.name} · ${share.name}"
+    }
+
+    /** "Next in this folder": the files after [fileId] in its folder, in name order. */
+    suspend fun filesAfter(fileId: Long): List<MediaFileEntity> {
+        val file = mediaFileDao.byId(fileId) ?: return emptyList()
+        val siblings = mediaFileDao.inFolder(file.folderId)
+        val index = siblings.indexOfFirst { it.id == fileId }
+        return if (index < 0) emptyList() else siblings.drop(index + 1)
+    }
 }

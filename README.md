@@ -6,11 +6,13 @@ nothing leaves your network. Kotlin + Jetpack Compose.
 
 ## Status
 
-Phase 1 of 6 complete: add an SMB server by address, pick shares, browse
-folders, and play video straight off the share with resume. Verified on a
-Pixel emulator and on a real phone against a NAS. Browse is plain rows and the
-player has minimal controls on purpose; artwork, the full player and the
-design polish are Phases 2, 3 and 6. See `docs/ARCHITECTURE.md` for the plan.
+Phase 2 of 6: the complete player. Landscape and portrait chrome, speed,
+hardware/software decoding, A–B loop with half-second nudges, buffered range,
+next in this folder, the playback side sheet, and the gesture map (double-tap
+seek that stacks, brightness and volume drags, long-press 2×, pinch fit/fill,
+swipe down to leave). Phase 1 (connect, browse, play, resume) is verified on a
+real phone against a NAS. Browse is plain rows on purpose; artwork and scrub
+thumbnails are Phase 3, the design polish Phase 6. See `docs/ARCHITECTURE.md`.
 
 ## Build and run
 

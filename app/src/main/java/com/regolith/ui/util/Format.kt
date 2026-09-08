@@ -29,3 +29,22 @@ fun formatRemaining(positionMs: Long, durationMs: Long): String {
     val m = leftMin % 60
     return if (h > 0) "${h}h ${String.format(Locale.US, "%02d", m)}m left" else "${m}m left"
 }
+
+/** "1h 56m", "11m 04s": runtimes on chips and rows. */
+fun formatDurationShort(ms: Long): String {
+    val totalSec = (ms / 1000).coerceAtLeast(0)
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return when {
+        h > 0 -> "${h}h ${String.format(Locale.US, "%02d", m)}m"
+        m > 0 -> "${m}m ${String.format(Locale.US, "%02d", s)}s"
+        else -> "${s}s"
+    }
+}
+
+/** "1.0×", "1.25×", "2.0×": the speed pill. */
+fun formatSpeed(speed: Float): String {
+    val s = String.format(Locale.US, "%.2f", speed).trimEnd('0')
+    return (if (s.endsWith('.')) s + "0" else s) + "×"
+}

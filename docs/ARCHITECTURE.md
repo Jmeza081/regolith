@@ -79,6 +79,22 @@ ExoPlayer may ONLY be touched on the main thread (`PlaybackSession` runs its
 ticker on `Dispatchers.Main`). `SmbDataSource` runs on ExoPlayer's own loader
 thread and therefore uses the blocking DAO variants.
 
+## Player (Phase 2)
+
+```
+PlayerScreen ── gestures (Modifier.playerGestures) ── SeekStacker (pure)      double-tap seek, stacking taps
+             ── PlayerSystemControls                                        brightness (window override), media volume
+             ── PlayerViewModel ── PlaybackSession ── ExoPlayer (StateFlow: rebuilt on HW/SW switch)
+                                                   ── AbLoop (pure)          A–B span, ±0.5 s nudges, restart at B
+                                                   ── VideoInfo (pure)       "4K · HDR · HEVC" chips from the selected tracks
+                                                   ── ScrubThumbnails        Phase 3; the scrubber already reports the live fraction
+```
+
+Landscape is immersive and follows the phone's rotation (`SCREEN_ORIENTATION_SENSOR`);
+portrait keeps the system bars and puts title, chips, pills and "next in this folder"
+under the picture. Sheets are a side sheet in landscape and a bottom sheet in portrait,
+and they are UI state, not routes.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -95,6 +111,9 @@ thread and therefore uses the blocking DAO variants.
 | 2026-09-08 | Playback stops when the Player screen leaves (Phase 1) | No background audio yet; `PlaybackSession` already owns the player so PiP/background can be added without touching the screen. |
 | 2026-09-08 | Android's "BC" crypto provider is replaced with jcifs-ng's bundled BouncyCastle at gateway init | NTLM needs MD4; Android's trimmed BC lacks it and `addProvider` is a no-op while a "BC" exists. Every password login failed with `NoSuchAlgorithmException: MD4` until this. |
 | 2026-09-08 | `ACCESS_LOCAL_NETWORK` declared and requested on the Add Server screen (not deferred to Phase 6) | Android 17 enforces it for targetSdk 37; without it LAN connects time out and look like an unreachable server. The emulator's virtual gateway is exempt, which hid it. |
+| 2026-09-08 | `PlaybackSession.player` is a `StateFlow<ExoPlayer?>` | Hardware/software decoding is a renderers-factory choice fixed at build time, so switching means a new ExoPlayer at the same position; the surface re-attaches by observing the flow. |
+| 2026-09-08 | Double-tap seek stacking, A–B loop maths and video labels are pure Kotlin in `domain/playback` | Gesture and loop edge cases are unit-tested without an emulator; the screen only wires them. |
+| 2026-09-08 | Vertical drags and pinches use a hand-rolled detector | Compose's transform detector consumes one-finger pans, which would swallow the brightness/volume drags. |
 | 2026-09-08 | Servlet API excluded from jcifs-ng | Only its HTTP filter needs it; keeps the APK lean. R8 `-dontwarn` covers the dangling references. |
 
 ## Phase plan
