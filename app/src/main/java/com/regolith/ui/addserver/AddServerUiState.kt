@@ -11,6 +11,8 @@ data class AddServerUiState(
     val addressError: String? = null,
     /** The message on the red card after a failed connect. */
     val error: String? = null,
+    /** Small print under the message: NT status and dialect, for bug reports. */
+    val errorDetail: String? = null,
     /** Non-null once connected; the screen navigates on and then clears it. */
     val connectedServerId: Long? = null,
 ) {

@@ -20,6 +20,7 @@ import jcifs.smb.SmbFile
 import jcifs.smb.SmbRandomAccessFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Log
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -43,12 +44,15 @@ import javax.inject.Singleton
 @Singleton
 class JcifsGateway @Inject constructor() : SmbGateway {
 
-    private val baseContext: CIFSContext by lazy {
-        val props = Properties().apply {
+    private companion object {
+        const val TAG = "Regolith/SMB"
+    }
+
+    private val baseProps: Properties by lazy {
+        Properties().apply {
             // SMB2 minimum: SMB1 is off by default on every modern NAS and
             // Windows, and jcifs-ng's SMB1 path is the slow one anyway.
             setProperty("jcifs.smb.client.minVersion", "SMB202")
-            setProperty("jcifs.smb.client.maxVersion", "SMB311")
             setProperty("jcifs.smb.client.connTimeout", "8000")
             setProperty("jcifs.smb.client.responseTimeout", "15000")
             setProperty("jcifs.smb.client.soTimeout", "20000")
@@ -59,28 +63,66 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             // Names on the wire are UTF-8 on every server we care about.
             setProperty("jcifs.encoding", "UTF-8")
         }
-        BaseContext(PropertyConfiguration(props))
     }
 
-    private val contexts = ConcurrentHashMap<Pair<SmbHost, SmbCredentials>, CIFSContext>()
+    /**
+     * Highest SMB dialect to offer, tried in order. jcifs-ng's SMB 3.1.1
+     * handshake is rejected by some servers (pre-auth integrity, encryption
+     * requirements it cannot meet); 3.0.2 and 2.1 are near-universal. The
+     * first dialect that gets past negotiation is pinned per host.
+     */
+    private val dialectLadder = listOf("SMB311", "SMB302", "SMB210")
+    private val pinnedDialect = ConcurrentHashMap<SmbHost, String>()
 
-    private fun context(host: SmbHost, credentials: SmbCredentials): CIFSContext =
-        contexts.getOrPut(host to credentials) {
+    private data class ContextKey(val host: SmbHost, val credentials: SmbCredentials, val maxDialect: String)
+
+    private val contexts = ConcurrentHashMap<ContextKey, CIFSContext>()
+
+    private fun context(host: SmbHost, credentials: SmbCredentials, maxDialect: String): CIFSContext =
+        contexts.getOrPut(ContextKey(host, credentials, maxDialect)) {
             val auth = when (credentials) {
                 SmbCredentials.Guest -> NtlmPasswordAuthenticator(NtlmPasswordAuthenticator.AuthenticationType.GUEST)
                 is SmbCredentials.Password -> NtlmPasswordAuthenticator(
-                    credentials.domain,
+                    // Empty, not null: jcifs-ng would otherwise fill in its own default domain.
+                    credentials.domain ?: "",
                     credentials.username,
                     credentials.password,
                 )
             }
-            baseContext.withCredentials(auth)
+            BaseContext(PropertyConfiguration(mergedProps(maxDialect))).withCredentials(auth)
         }
+
+    private fun mergedProps(maxDialect: String): Properties = Properties().apply {
+        putAll(baseProps)
+        setProperty("jcifs.smb.client.maxVersion", maxDialect)
+    }
+
+    /**
+     * Run [block] with the pinned dialect, or walk the ladder until one
+     * negotiates. Only non-auth failures move down the ladder: a wrong
+     * password is wrong on every dialect.
+     */
+    private inline fun <T> withDialect(host: SmbHost, credentials: SmbCredentials, path: String, block: (CIFSContext) -> T): T {
+        pinnedDialect[host]?.let { d -> return wrap(host, path, d) { block(context(host, credentials, d)) } }
+        var last: SmbFailure? = null
+        for (d in dialectLadder) {
+            try {
+                val result = wrap(host, path, d) { block(context(host, credentials, d)) }
+                pinnedDialect[host] = d
+                return result
+            } catch (e: SmbFailure.AuthFailed) {
+                throw e
+            } catch (e: SmbFailure) {
+                Log.w(TAG, "$d failed for ${host.host}: ${e.detail ?: e.message}")
+                last = e
+            }
+        }
+        throw checkNotNull(last)
+    }
 
     override suspend fun listShares(host: SmbHost, credentials: SmbCredentials): List<SmbShareInfo> =
         withContext(Dispatchers.IO) {
-            wrap(host, "/") {
-                val ctx = context(host, credentials)
+            withDialect(host, credentials, "/") { ctx ->
                 val root = SmbFile(urlFor(host, null, ""), ctx)
                 root.listFiles()
                     .filter { it.type == SmbConstants.TYPE_SHARE }
@@ -101,8 +143,8 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         share: String,
         relPath: String,
     ): List<SmbEntry> = withContext(Dispatchers.IO) {
-        wrap(host, "$share/$relPath") {
-            val dir = SmbFile(urlFor(host, share, relPath), context(host, credentials))
+        withDialect(host, credentials, "$share/$relPath") { ctx ->
+            val dir = SmbFile(urlFor(host, share, relPath), ctx)
             dir.listFiles().mapNotNull { f ->
                 val name = f.name.trimEnd('/')
                 if (name.startsWith(".")) return@mapNotNull null // .DS_Store, @eaDir-style junk
@@ -118,8 +160,8 @@ class JcifsGateway @Inject constructor() : SmbGateway {
     }
 
     override fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource =
-        wrap(host, "$share/$relPath") {
-            val file = SmbFile(urlFor(host, share, relPath), context(host, credentials))
+        withDialect(host, credentials, "$share/$relPath") { ctx ->
+            val file = SmbFile(urlFor(host, share, relPath), ctx)
             JcifsByteSource(file.openRandomAccess("r"), file.length())
         }
 
@@ -135,28 +177,43 @@ class JcifsGateway @Inject constructor() : SmbGateway {
     }
 
     /** Translate jcifs failures into the [SmbFailure]s the UI has screens for. */
-    private inline fun <T> wrap(host: SmbHost, path: String, block: () -> T): T = try {
+    private inline fun <T> wrap(host: SmbHost, path: String, dialect: String, block: () -> T): T = try {
         block()
     } catch (e: SmbAuthException) {
-        throw SmbFailure.AuthFailed(e)
+        throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
         throw when (e.ntStatus) {
             NtStatus.NT_STATUS_LOGON_FAILURE,
-            NtStatus.NT_STATUS_ACCESS_DENIED,
             NtStatus.NT_STATUS_ACCOUNT_DISABLED,
             NtStatus.NT_STATUS_WRONG_PASSWORD,
-            -> SmbFailure.AuthFailed(e)
+            NtStatus.NT_STATUS_ACCOUNT_RESTRICTION,
+            NtStatus.NT_STATUS_INVALID_LOGON_HOURS,
+            NtStatus.NT_STATUS_PASSWORD_EXPIRED,
+            -> SmbFailure.AuthFailed(e, detail(e, dialect))
+            // Signed in, but this request was refused: not the same thing as a bad password.
+            NtStatus.NT_STATUS_ACCESS_DENIED -> SmbFailure.Forbidden(path, e, detail(e, dialect))
             NtStatus.NT_STATUS_OBJECT_NAME_NOT_FOUND,
             NtStatus.NT_STATUS_OBJECT_PATH_NOT_FOUND,
             NtStatus.NT_STATUS_BAD_NETWORK_NAME,
             NtStatus.NT_STATUS_NO_SUCH_FILE,
-            -> SmbFailure.NotFound(path, e)
-            else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e) else SmbFailure.Other(e.message ?: "SMB error", e)
+            -> SmbFailure.NotFound(path, e, detail(e, dialect))
+            else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
         }
     } catch (e: CIFSException) {
-        throw if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e) else SmbFailure.Other(e.message ?: "SMB error", e)
+        throw if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
     } catch (e: UnknownHostException) {
-        throw SmbFailure.Unreachable(host.host, e)
+        throw SmbFailure.Unreachable(host.host, e, "DNS lookup failed · $dialect")
+    }
+
+    /** "NT_STATUS_ACCESS_DENIED (0xC0000022) · SMB302": what to read off the error card when debugging. */
+    private fun detail(e: Throwable, dialect: String): String {
+        val status = (e as? SmbException)?.ntStatus?.let { code ->
+            val name = NtStatus.NT_STATUS_CODES.indexOf(code).takeIf { it >= 0 }?.let { NtStatus.NT_STATUS_MESSAGES[it] }
+            String.format("0x%08X", code) + (name?.let { " $it" } ?: "")
+        }
+        val root = generateSequence<Throwable>(e) { it.cause }.last()
+        val msg = root.message?.take(80)
+        return listOfNotNull(status ?: root::class.java.simpleName, msg?.takeIf { it != status }, dialect).joinToString(" · ")
     }
 
     private fun Throwable.isUnreachable(): Boolean {

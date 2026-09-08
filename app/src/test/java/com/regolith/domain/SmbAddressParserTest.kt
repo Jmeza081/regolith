@@ -5,6 +5,7 @@ import com.regolith.domain.smb.SmbHost
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import com.regolith.domain.smb.fromFields
 
 class SmbAddressParserTest {
     @Test fun `bare ip`() =
@@ -30,4 +31,21 @@ class SmbAddressParserTest {
         assertNull(SmbAddressParser.parse("smb://"))
         assertNull(SmbAddressParser.parse("tower:notaport"))
     }
+}
+
+class SmbCredentialsFromFieldsTest {
+    @Test fun `blank username is guest`() =
+        assertEquals(com.regolith.domain.smb.SmbCredentials.Guest, com.regolith.domain.smb.SmbCredentials.fromFields("  ", "x"))
+
+    @Test fun `backslash form carries the domain`() =
+        assertEquals(
+            com.regolith.domain.smb.SmbCredentials.Password("jesse", "pw", domain = "TOWER"),
+            com.regolith.domain.smb.SmbCredentials.fromFields("TOWER\\jesse", "pw"),
+        )
+
+    @Test fun `at form carries the domain`() =
+        assertEquals(
+            com.regolith.domain.smb.SmbCredentials.Password("jesse", "pw", domain = "home.lan"),
+            com.regolith.domain.smb.SmbCredentials.fromFields("jesse@home.lan", "pw"),
+        )
 }

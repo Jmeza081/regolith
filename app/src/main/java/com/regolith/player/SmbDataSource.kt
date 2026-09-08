@@ -101,6 +101,7 @@ class SmbDataSource(
 
     private fun SmbFailure.toErrorCode(): Int = when (this) {
         is SmbFailure.AuthFailed -> PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+        is SmbFailure.Forbidden -> PlaybackException.ERROR_CODE_IO_NO_PERMISSION
         is SmbFailure.Unreachable -> PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
         is SmbFailure.NotFound -> PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
         is SmbFailure.Other -> PlaybackException.ERROR_CODE_IO_UNSPECIFIED

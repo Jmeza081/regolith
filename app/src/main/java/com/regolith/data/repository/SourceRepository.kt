@@ -10,6 +10,8 @@ import com.regolith.domain.model.Server
 import com.regolith.domain.model.Share
 import com.regolith.domain.smb.ParsedSmbAddress
 import com.regolith.domain.smb.SmbCredentials
+import com.regolith.domain.smb.SmbFailure
+import com.regolith.domain.smb.SmbShareInfo
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import kotlinx.coroutines.flow.Flow
@@ -58,7 +60,18 @@ class SourceRepository @Inject constructor(
      * @return the server id to continue the flow with.
      */
     suspend fun connect(address: ParsedSmbAddress, credentials: SmbCredentials, saveCredentials: Boolean): Long {
-        val shares = gateway.listShares(address.host, credentials)
+        val shares = try {
+            gateway.listShares(address.host, credentials)
+        } catch (e: SmbFailure.AuthFailed) {
+            throw e
+        } catch (e: SmbFailure) {
+            // Many NAS boxes let a user in but refuse to enumerate shares for
+            // non-admins. If the address already names the share, prove it
+            // exists by listing its root and carry on with just that one.
+            val named = address.share ?: throw e
+            gateway.list(address.host, credentials, named, "")
+            listOf(SmbShareInfo(name = named, freeBytes = null, totalBytes = null))
+        }
         val now = System.currentTimeMillis()
 
         val existing = serverDao.byHost(address.host.host, address.host.port)

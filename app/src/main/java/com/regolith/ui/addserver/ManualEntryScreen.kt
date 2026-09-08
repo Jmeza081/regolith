@@ -88,7 +88,7 @@ fun ManualEntryScreen(
         Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             val error = state.error
             if (state.phase == AddServerUiState.Phase.Failed && error != null) {
-                ErrorCard(message = error, testTag = "addserver_error_card")
+                ErrorCard(message = error, detail = state.errorDetail, testTag = "addserver_error_card")
             }
 
             RegolithTextField(

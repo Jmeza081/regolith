@@ -6,6 +6,7 @@ import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.smb.SmbAddressParser
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
+import com.regolith.domain.smb.fromFields
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,8 +39,7 @@ class AddServerViewModel @Inject constructor(
     /** Connect with whatever is in the fields; empty username means guest. */
     fun connect() {
         val s = _uiState.value
-        val credentials = if (s.isGuest) SmbCredentials.Guest else SmbCredentials.Password(s.username.trim(), s.password)
-        connect(credentials)
+        connect(SmbCredentials.fromFields(s.username, s.password))
     }
 
     /** "Connect as guest" on the sign-in-failed screen: drop the typed user. */
@@ -64,21 +64,23 @@ class AddServerViewModel @Inject constructor(
             return
         }
         connectJob?.cancel()
-        _uiState.update { it.copy(phase = AddServerUiState.Phase.Connecting, error = null) }
+        _uiState.update { it.copy(phase = AddServerUiState.Phase.Connecting, error = null, errorDetail = null) }
         connectJob = viewModelScope.launch {
             try {
                 val serverId = sources.connect(parsed, credentials, saveCredentials = s.saveCredentials)
                 _uiState.update { it.copy(phase = AddServerUiState.Phase.Editing, connectedServerId = serverId) }
             } catch (e: SmbFailure) {
-                _uiState.update { it.copy(phase = AddServerUiState.Phase.Failed, error = messageFor(e, credentials)) }
+                _uiState.update { it.copy(phase = AddServerUiState.Phase.Failed, error = messageFor(e, credentials, parsed.host.host), errorDetail = e.detail) }
             }
         }
     }
 
-    private fun messageFor(e: SmbFailure, credentials: SmbCredentials): String = when (e) {
+    private fun messageFor(e: SmbFailure, credentials: SmbCredentials, host: String): String = when (e) {
         is SmbFailure.AuthFailed ->
             if (credentials is SmbCredentials.Guest) "This server does not allow guests. Sign in with a username and password."
-            else "That username and password didn't work. Check them and try again."
+            else "That username and password didn't work. Check them and try again. If the server is on a Windows domain or workgroup, use DOMAIN\\user."
+        is SmbFailure.Forbidden ->
+            "Signed in, but the server would not list its shares. Add the share name to the address, like smb://$host/media."
         is SmbFailure.Unreachable -> "${e.message}. Check the server is awake and on the same Wi-Fi as this phone."
         is SmbFailure.NotFound -> "Nothing answered at that address. Check it and try again."
         is SmbFailure.Other -> e.message ?: "Couldn't connect."
