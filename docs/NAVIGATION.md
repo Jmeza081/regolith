@@ -39,16 +39,33 @@ Switching tab resets the stack to `[Home, tab]` (just `[Home]` for Home), so
 system back from any tab returns to Home and back from Home leaves the app.
 `Browse(folderId)` at any depth is still the Browse tab.
 
+## Browse is a tab that nests
+
+`Browse(folderId = null)` is the tab root: the enabled shares. Tapping a
+share creates (or finds) its root folder row and pushes `Browse(folderId)`;
+tapping a folder pushes another `Browse(folderId)`. The pill stays visible at
+every depth and back pops one level. A file pushes `Player(fileId)`.
+
 ## Pushed screens (pill hidden)
 
 | Key | Reached from | Phase |
 |---|---|---|
 | `Onboarding` | first launch only; "Find my server" → `[Home]` | 0 (stub), 6 (full) |
+| `AddServer.Manual` | Home / Browse empty states, Home "Add another" | 1 |
+| `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
+| `Player(fileId, startMs?)` | Browse (Phase 1); TitleDetail, Home resume row later | 1 |
 | `TitleDetail(fileId)` | Library, Home, Search, Browse | 3 |
-| `Player(fileId, startMs?)` | TitleDetail, Home resume row, Browse | 1 |
-| `AddServer.Manual` | Home / Library empty states, Settings | 1 |
-| `AddServer.Connecting(serverId)` → `Shares(serverId)` → `Scanning(serverId)` | Manual entry | 1 (scan: 4) |
+| `AddServer.Scanning(serverId)` | Share picker | 4 |
 | `AddServer.Search` | Home / Library empty states, Onboarding | 6 |
+
+`AddServer.Connecting` exists as a key but is not a route: the Connecting and
+Sign-in-failed screens are states of `ManualEntryScreen` so the typed
+address and credentials survive a failure. "Browse N shares" on the picker
+resets the stack to `[Home, Browse]`, dropping the whole Add Server flow.
+
+The Player is the only screen that changes Activity-level settings
+(landscape, immersive); it applies them in a `DisposableEffect` and undoes
+them on the way out.
 
 Bottom sheets (sort, playback, A–B loop) are not routes; they are state in
 the owning screen's `UiState`.

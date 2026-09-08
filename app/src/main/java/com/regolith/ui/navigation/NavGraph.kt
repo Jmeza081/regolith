@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.media3.common.util.UnstableApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -22,7 +23,13 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.regolith.AppViewModel
+import com.regolith.ui.addserver.ManualEntryScreen
+import com.regolith.ui.addserver.SharePickerScreen
+import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
+import com.regolith.ui.browse.BrowseViewModel
+import com.regolith.ui.player.PlayerScreen
+import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.NavPill
 import com.regolith.ui.home.HomeScreen
 import com.regolith.ui.library.LibraryScreen
@@ -45,6 +52,8 @@ import dev.chrisbanes.haze.hazeSource
  * Web analogy: `<Router>` + `<Routes>` + a persistent bottom nav rendered
  * outside the route outlet.
  */
+// Media3's UnstableApi is a Java opt-in marker; androidx's @OptIn (not Kotlin's) is what lint checks for.
+@androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RegolithNavGraph(appViewModel: AppViewModel) {
@@ -57,8 +66,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val topKey = backStack.lastOrNull() as? RegolithKey
     val currentTab = MainTab.forKey(topKey)
 
-    fun navigateToTab(tab: MainTab) {
-        if (tab == currentTab) return
+    fun navigateToTab(tab: MainTab, force: Boolean = false) {
+        if (tab == currentTab && !force) return
         backStack.clear()
         if (tab != MainTab.HOME) backStack.add(RegolithKey.Home)
         backStack.add(tab.key)
@@ -91,18 +100,60 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             backStack.add(RegolithKey.Home)
                         })
                     }
-                    entry<RegolithKey.Home> { HomeScreen(viewModel = hiltViewModel()) }
+                    entry<RegolithKey.Home> {
+                        HomeScreen(
+                            viewModel = hiltViewModel(),
+                            onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                            onBrowse = { navigateToTab(MainTab.BROWSE) },
+                        )
+                    }
                     entry<RegolithKey.Library> { LibraryScreen(viewModel = hiltViewModel()) }
-                    entry<RegolithKey.Browse> { BrowseScreen(viewModel = hiltViewModel()) }
+                    entry<RegolithKey.Browse> { key ->
+                        BrowseScreen(
+                            viewModel = hiltViewModel<BrowseViewModel, BrowseViewModel.Factory>(
+                                creationCallback = { it.create(key.folderId) },
+                            ),
+                            onBack = if (key.folderId == null) null else ({ backStack.removeLastOrNull() }),
+                            onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
+                            onOpenFile = { backStack.add(RegolithKey.Player(it)) },
+                            onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                        )
+                    }
                     entry<RegolithKey.Settings> { SettingsScreen(viewModel = hiltViewModel()) }
-                    // Phase 1+: TitleDetail, Player, AddServer.*
+
+                    entry<RegolithKey.AddServer.Manual> {
+                        ManualEntryScreen(
+                            viewModel = hiltViewModel(),
+                            onBack = { backStack.removeLastOrNull() },
+                            onConnected = { serverId -> backStack.add(RegolithKey.AddServer.Shares(serverId)) },
+                        )
+                    }
+                    entry<RegolithKey.AddServer.Shares> { key ->
+                        SharePickerScreen(
+                            viewModel = hiltViewModel<SharePickerViewModel, SharePickerViewModel.Factory>(
+                                creationCallback = { it.create(key.serverId) },
+                            ),
+                            onBack = { backStack.removeLastOrNull() },
+                            // Done: drop the whole Add Server flow and land on the Browse tab.
+                            onContinue = { navigateToTab(MainTab.BROWSE, force = true) },
+                        )
+                    }
+                    entry<RegolithKey.Player> { key ->
+                        PlayerScreen(
+                            viewModel = hiltViewModel<PlayerViewModel, PlayerViewModel.Factory>(
+                                creationCallback = { it.create(key) },
+                            ),
+                            onBack = { backStack.removeLastOrNull() },
+                        )
+                    }
+                    // Phase 3: TitleDetail. Phase 6: AddServer.Search.
                 },
             )
 
             if (currentTab != null) {
                 NavPill(
                     selected = currentTab,
-                    onSelect = ::navigateToTab,
+                    onSelect = { navigateToTab(it) },
                     hazeState = hazeState,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

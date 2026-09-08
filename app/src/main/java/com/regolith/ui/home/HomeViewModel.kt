@@ -1,19 +1,21 @@
 package com.regolith.ui.home
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.regolith.data.repository.SourceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
-/**
- * State holder for the Home tab. Survives rotation; cleared when the tab's
- * entry leaves the back stack. Web analogy: a store/hook that outlives
- * re-renders. Screens send events in, state flows out.
- */
+/** Home state: which servers exist. Continue-watching and newly-added rows arrive in Phase 4. */
 @HiltViewModel
-class HomeViewModel @Inject constructor() : ViewModel() {
-    private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+class HomeViewModel @Inject constructor(
+    sources: SourceRepository,
+) : ViewModel() {
+    val uiState: StateFlow<HomeUiState> = sources.observeServers()
+        .map { servers -> HomeUiState(loaded = true, serverNames = servers.map { it.name }) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 }

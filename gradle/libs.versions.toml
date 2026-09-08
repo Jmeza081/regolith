@@ -27,6 +27,7 @@ coil = "3.6.2"
 haze = "1.7.3"
 lucide = "2.2.1"
 jcifsNg = "2.1.10"
+slf4jAndroid = "1.7.36"
 coroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 
@@ -92,6 +93,7 @@ lucide-icons = { group = "com.composables", name = "icons-lucide-android", versi
 
 # --- SMB
 jcifs-ng = { group = "eu.agno3.jcifs", name = "jcifs-ng", version.ref = "jcifsNg" }
+slf4j-android = { group = "org.slf4j", name = "slf4j-android", version.ref = "slf4jAndroid" }
 
 # --- Kotlin
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }

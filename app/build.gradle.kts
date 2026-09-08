@@ -57,6 +57,7 @@ android {
         compose = true
     }
 
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
@@ -67,6 +68,12 @@ android {
         // is noise here, not advice.
         disable += "NewerVersionAvailable"
     }
+}
+
+// Room writes a JSON snapshot of every schema version here; it is what
+// makes migrations testable. Committed on purpose.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -98,6 +105,22 @@ dependencies {
 
     // Persistence
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // Media3 / ExoPlayer
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.datasource)
+    implementation(libs.media3.ui.compose)
+
+    // SMB. jcifs-ng drags in the servlet API for an HTTP filter we never
+    // use; excluding it keeps a few hundred KB out of the APK.
+    implementation(libs.jcifs.ng) {
+        exclude(group = "javax.servlet")
+    }
+    // jcifs-ng logs through slf4j; this binding routes it to logcat.
+    implementation(libs.slf4j.android)
 
     // Async
     implementation(libs.kotlinx.coroutines.android)
@@ -109,6 +132,11 @@ dependencies {
     // Tests
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.media3.test.utils)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(platform(libs.androidx.compose.bom))

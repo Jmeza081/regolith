@@ -1,10 +1,9 @@
 package com.regolith.ui.home
 
-/**
- * Everything the Home screen needs to draw, as one immutable value.
- * The ViewModel owns a single StateFlow<HomeUiState>; the screen only reads.
- * Phase 0 placeholder: real fields arrive with the feature.
- */
+/** Home (design section 04). Phase 1: only the no-source and "has sources" shapes. */
 data class HomeUiState(
-    val title: String = "Home",
-)
+    val loaded: Boolean = false,
+    val serverNames: List<String> = emptyList(),
+) {
+    val hasSource: Boolean get() = serverNames.isNotEmpty()
+}

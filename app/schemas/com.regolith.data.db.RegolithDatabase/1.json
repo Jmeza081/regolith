@@ -1,0 +1,434 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "c2d380e6ff21b79bfe70bd64579c8ce2",
+    "entities": [
+      {
+        "tableName": "servers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `host` TEXT NOT NULL, `port` INTEGER NOT NULL, `authMode` TEXT NOT NULL, `username` TEXT, `lastSeenAtMs` INTEGER, `createdAtMs` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "host",
+            "columnName": "host",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "port",
+            "columnName": "port",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authMode",
+            "columnName": "authMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "username",
+            "columnName": "username",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSeenAtMs",
+            "columnName": "lastSeenAtMs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAtMs",
+            "columnName": "createdAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_servers_host_port",
+            "unique": true,
+            "columnNames": [
+              "host",
+              "port"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_servers_host_port` ON `${TABLE_NAME}` (`host`, `port`)"
+          }
+        ]
+      },
+      {
+        "tableName": "shares",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `serverId` INTEGER NOT NULL, `name` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `freeBytes` INTEGER, `totalBytes` INTEGER, `lastScanAtMs` INTEGER, FOREIGN KEY(`serverId`) REFERENCES `servers`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverId",
+            "columnName": "serverId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "freeBytes",
+            "columnName": "freeBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "totalBytes",
+            "columnName": "totalBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastScanAtMs",
+            "columnName": "lastScanAtMs",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_shares_serverId_name",
+            "unique": true,
+            "columnNames": [
+              "serverId",
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_shares_serverId_name` ON `${TABLE_NAME}` (`serverId`, `name`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "servers",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "serverId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "folders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `shareId` INTEGER NOT NULL, `parentId` INTEGER, `relPath` TEXT NOT NULL, `name` TEXT NOT NULL, `fileCount` INTEGER NOT NULL, `byteCount` INTEGER NOT NULL, `lastListedAtMs` INTEGER, FOREIGN KEY(`shareId`) REFERENCES `shares`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shareId",
+            "columnName": "shareId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parentId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "relPath",
+            "columnName": "relPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileCount",
+            "columnName": "fileCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "byteCount",
+            "columnName": "byteCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastListedAtMs",
+            "columnName": "lastListedAtMs",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_folders_shareId_relPath",
+            "unique": true,
+            "columnNames": [
+              "shareId",
+              "relPath"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_folders_shareId_relPath` ON `${TABLE_NAME}` (`shareId`, `relPath`)"
+          },
+          {
+            "name": "index_folders_parentId",
+            "unique": false,
+            "columnNames": [
+              "parentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_folders_parentId` ON `${TABLE_NAME}` (`parentId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "shares",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "shareId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "media_files",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `shareId` INTEGER NOT NULL, `folderId` INTEGER NOT NULL, `relPath` TEXT NOT NULL, `name` TEXT NOT NULL, `ext` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `modifiedAtMs` INTEGER NOT NULL, `durationMs` INTEGER, `missing` INTEGER NOT NULL, `addedAtMs` INTEGER NOT NULL, `lastSeenAtMs` INTEGER NOT NULL, FOREIGN KEY(`shareId`) REFERENCES `shares`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`folderId`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shareId",
+            "columnName": "shareId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderId",
+            "columnName": "folderId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "relPath",
+            "columnName": "relPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ext",
+            "columnName": "ext",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "sizeBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAtMs",
+            "columnName": "modifiedAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "missing",
+            "columnName": "missing",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addedAtMs",
+            "columnName": "addedAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAtMs",
+            "columnName": "lastSeenAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_media_files_shareId_relPath",
+            "unique": true,
+            "columnNames": [
+              "shareId",
+              "relPath"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_media_files_shareId_relPath` ON `${TABLE_NAME}` (`shareId`, `relPath`)"
+          },
+          {
+            "name": "index_media_files_folderId",
+            "unique": false,
+            "columnNames": [
+              "folderId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_files_folderId` ON `${TABLE_NAME}` (`folderId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "shares",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "shareId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "folders",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "folderId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "playback_progress",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`fileId` INTEGER NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `completed` INTEGER NOT NULL, `updatedAtMs` INTEGER NOT NULL, PRIMARY KEY(`fileId`), FOREIGN KEY(`fileId`) REFERENCES `media_files`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "fileId",
+            "columnName": "fileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionMs",
+            "columnName": "positionMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMs",
+            "columnName": "durationMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtMs",
+            "columnName": "updatedAtMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "fileId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "media_files",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "fileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c2d380e6ff21b79bfe70bd64579c8ce2')"
+    ]
+  }
+}
