@@ -65,9 +65,11 @@ class SourceRepository @Inject constructor(
         } catch (e: SmbFailure.AuthFailed) {
             throw e
         } catch (e: SmbFailure) {
-            // Many NAS boxes let a user in but refuse to enumerate shares for
-            // non-admins. If the address already names the share, prove it
-            // exists by listing its root and carry on with just that one.
+            // Enumeration can fail while the share itself is fine: many NAS
+            // boxes refuse it to non-admins, and jcifs-ng dials port 445 for
+            // the enumeration RPC regardless of the port in the address. If
+            // the address names the share, prove it by listing its root and
+            // carry on with just that one.
             val named = address.share ?: throw e
             gateway.list(address.host, credentials, named, "")
             listOf(SmbShareInfo(name = named, freeBytes = null, totalBytes = null))
@@ -141,8 +143,12 @@ class SourceRepository @Inject constructor(
     /** For ExoPlayer's loader thread, which is not a coroutine. Never call on the main thread. */
     fun credentialsForBlocking(serverId: Long): SmbCredentials = runBlocking { credentialsFor(serverId) }
 
-    private fun displayNameFor(host: SmbHost): String =
-        host.host.substringBefore('.').uppercase().ifBlank { host.host }
+    /** "TOWER" for tower.local, the address itself for an IP. */
+    private fun displayNameFor(host: SmbHost): String {
+        val h = host.host
+        val isIp = h.all { it.isDigit() || it == '.' } || h.contains(':')
+        return if (isIp) h else h.substringBefore('.').uppercase().ifBlank { h }
+    }
 
     private fun ServerEntity.toDomain() = Server(
         id = id,

@@ -114,6 +114,11 @@ and they are UI state, not routes.
 | 2026-09-08 | `PlaybackSession.player` is a `StateFlow<ExoPlayer?>` | Hardware/software decoding is a renderers-factory choice fixed at build time, so switching means a new ExoPlayer at the same position; the surface re-attaches by observing the flow. |
 | 2026-09-08 | Double-tap seek stacking, A–B loop maths and video labels are pure Kotlin in `domain/playback` | Gesture and loop edge cases are unit-tested without an emulator; the screen only wires them. |
 | 2026-09-08 | Vertical drags and pinches use a hand-rolled detector | Compose's transform detector consumes one-finger pans, which would swallow the brightness/volume drags. |
+| 2026-09-08 | 1 MiB read-ahead (`BufferedByteSource`) between the DataSource and the share | ExoPlayer's extractors read headers a few bytes at a time; measured 2,000 SMB round trips averaging 30 bytes at 8 ms each. One block fetch amortises them; the same wrapper serves frame extraction in Phase 3. |
+| 2026-09-08 | `jcifs.smb.client.tcpNoDelay=true` and 1 MB send/receive buffers | Nagle plus delayed ACK stalled each request; bigger buffers let one SMB2 read carry a whole block. |
+| 2026-09-08 | The play/pause button follows `playWhenReady`, not `isPlaying` | `isPlaying` is false during every rebuffer, so a loop restart or a seek looked like a pause. The user's intent is the button's state; buffering is the spinner. |
+| 2026-09-08 | Guest SMB sessions never enforce IPC signing; password sessions relax it only after a signature failure | A guest session has no session key to sign with; some servers produce signatures jcifs-ng cannot validate. |
+| 2026-09-08 | Connect falls back to the share named in the address on any non-auth enumeration failure | jcifs-ng dials port 445 for the enumeration RPC regardless of the address port, and many NAS boxes refuse enumeration to non-admins. |
 | 2026-09-08 | Servlet API excluded from jcifs-ng | Only its HTTP filter needs it; keeps the APK lean. R8 `-dontwarn` covers the dangling references. |
 
 ## Phase plan

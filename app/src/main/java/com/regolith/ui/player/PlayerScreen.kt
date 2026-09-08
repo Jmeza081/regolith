@@ -143,8 +143,8 @@ fun PlayerScreen(
     val stacker = remember { SeekStacker() }
 
     // Controls auto-hide 3 s after the last interaction while playing.
-    LaunchedEffect(controlsVisible, state.isPlaying, sheet) {
-        if (controlsVisible && state.isPlaying && sheet == null) {
+    LaunchedEffect(controlsVisible, state.playWhenReady, sheet) {
+        if (controlsVisible && state.playWhenReady && sheet == null) {
             delay(3_000)
             controlsVisible = false
         }
@@ -331,9 +331,10 @@ private fun VideoChrome(
                     onClick = onTogglePlay,
                     modifier = Modifier.size(if (landscape) 72.dp else 64.dp).clip(CircleShape).background(colors.accent).testTag("player_play_button"),
                 ) {
+                    val showPause = state.playWhenReady && !state.ended
                     Icon(
-                        painterResource(if (state.isPlaying) LucideR.drawable.lucide_ic_pause else LucideR.drawable.lucide_ic_play),
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        painterResource(if (showPause) LucideR.drawable.lucide_ic_pause else LucideR.drawable.lucide_ic_play),
+                        contentDescription = if (showPause) "Pause" else "Play",
                         tint = colors.inkSoft,
                         modifier = Modifier.size(30.dp),
                     )

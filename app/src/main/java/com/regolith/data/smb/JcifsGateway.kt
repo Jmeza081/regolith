@@ -84,6 +84,13 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             setProperty("jcifs.smb.client.dfs.disabled", "true")
             // Names on the wire are UTF-8 on every server we care about.
             setProperty("jcifs.encoding", "UTF-8")
+            // Throughput. jcifs-ng leaves Nagle on by default, so every 64 KB
+            // read request waits for a delayed ACK (~100 ms): measured at
+            // ~640 KB/s over loopback before this. Bigger buffers let each
+            // SMB2 read carry up to 1 MB.
+            setProperty("jcifs.smb.client.tcpNoDelay", "true")
+            setProperty("jcifs.smb.client.rcv_buf_size", "1048576")
+            setProperty("jcifs.smb.client.snd_buf_size", "1048576")
         }
     }
 
@@ -96,12 +103,15 @@ class JcifsGateway @Inject constructor() : SmbGateway {
     private val dialectLadder = listOf("SMB311", "SMB302", "SMB210")
     private val pinnedDialect = ConcurrentHashMap<SmbHost, String>()
 
-    private data class ContextKey(val host: SmbHost, val credentials: SmbCredentials, val maxDialect: String)
+    private data class ContextKey(val host: SmbHost, val credentials: SmbCredentials, val maxDialect: String, val lenientSigning: Boolean = false)
+
+    /** Hosts whose IPC$ signing failed validation and were accepted without enforcement. */
+    private val lenientHosts = java.util.Collections.newSetFromMap(ConcurrentHashMap<SmbHost, Boolean>())
 
     private val contexts = ConcurrentHashMap<ContextKey, CIFSContext>()
 
-    private fun context(host: SmbHost, credentials: SmbCredentials, maxDialect: String): CIFSContext =
-        contexts.getOrPut(ContextKey(host, credentials, maxDialect)) {
+    private fun context(host: SmbHost, credentials: SmbCredentials, maxDialect: String, lenientSigning: Boolean = false): CIFSContext =
+        contexts.getOrPut(ContextKey(host, credentials, maxDialect, lenientSigning)) {
             val auth = when (credentials) {
                 SmbCredentials.Guest -> NtlmPasswordAuthenticator(NtlmPasswordAuthenticator.AuthenticationType.GUEST)
                 is SmbCredentials.Password -> NtlmPasswordAuthenticator(
@@ -111,12 +121,19 @@ class JcifsGateway @Inject constructor() : SmbGateway {
                     credentials.password,
                 )
             }
-            BaseContext(PropertyConfiguration(mergedProps(maxDialect))).withCredentials(auth)
+            BaseContext(PropertyConfiguration(mergedProps(maxDialect, lenientSigning))).withCredentials(auth)
         }
 
-    private fun mergedProps(maxDialect: String): Properties = Properties().apply {
+    private fun mergedProps(maxDialect: String, lenientSigning: Boolean): Properties = Properties().apply {
         putAll(baseProps)
         setProperty("jcifs.smb.client.maxVersion", maxDialect)
+        if (lenientSigning) {
+            // Some servers (old NAS firmware, minimal SMB implementations)
+            // produce signatures jcifs-ng cannot validate. Only after that
+            // exact failure do we stop insisting on a signed IPC$ channel.
+            setProperty("jcifs.smb.client.ipcSigningEnforced", "false")
+            setProperty("jcifs.smb.client.signingEnforced", "false")
+        }
     }
 
     /**
@@ -125,11 +142,21 @@ class JcifsGateway @Inject constructor() : SmbGateway {
      * password is wrong on every dialect.
      */
     private inline fun <T> withDialect(host: SmbHost, credentials: SmbCredentials, path: String, block: (CIFSContext) -> T): T {
-        pinnedDialect[host]?.let { d -> return wrap(host, path, d) { block(context(host, credentials, d)) } }
+        // Guest sessions have no session key and can never sign; insisting on
+        // a signed IPC$ channel would refuse every guest share on the planet.
+        val lenient = credentials is SmbCredentials.Guest || host in lenientHosts
+        pinnedDialect[host]?.let { d -> return wrap(host, path, d) { block(context(host, credentials, d, lenient)) } }
         var last: SmbFailure? = null
         for (d in dialectLadder) {
             try {
-                val result = wrap(host, path, d) { block(context(host, credentials, d)) }
+                val result = try {
+                    wrap(host, path, d) { block(context(host, credentials, d, lenient)) }
+                } catch (e: SmbFailure) {
+                    if (lenient || !e.isSignatureFailure()) throw e
+                    Log.w(TAG, "$d signing failed for ${host.host}; retrying without enforced signing")
+                    wrap(host, path, d) { block(context(host, credentials, d, lenientSigning = true)) }
+                        .also { lenientHosts += host }
+                }
                 pinnedDialect[host] = d
                 return result
             } catch (e: SmbFailure.AuthFailed) {
@@ -145,6 +172,17 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         throw checkNotNull(last)
     }
 
+    private fun Throwable.isSignatureFailure(): Boolean = generateSequence(this) { it.cause }.any { t ->
+        val m = t.message ?: return@any false
+        m.contains("Signature validation failed", ignoreCase = true) || m.contains("signing", ignoreCase = true)
+    }
+
+    /**
+     * Known limit: jcifs-ng enumerates shares over a DCERPC pipe whose
+     * transport is keyed by host name only, so on a non-default port this
+     * dials 445 and fails. `SourceRepository.connect` falls back to the
+     * share named in the address.
+     */
     override suspend fun listShares(host: SmbHost, credentials: SmbCredentials): List<SmbShareInfo> =
         withContext(Dispatchers.IO) {
             withDialect(host, credentials, "/") { ctx ->

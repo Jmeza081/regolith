@@ -1,6 +1,7 @@
 package com.regolith.player
 
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
@@ -46,8 +47,13 @@ data class PlaybackState(
     /** "TOWER · media/Films" */
     val sourceLabel: String = "",
     val fileSizeBytes: Long = 0,
+    /** The player is actually advancing. False while buffering. */
     val isPlaying: Boolean = false,
+    /** The user wants playback (play pressed, not paused). What the play/pause button reflects. */
+    val playWhenReady: Boolean = false,
     val isBuffering: Boolean = false,
+    /** Reached the end; the button offers a replay. */
+    val ended: Boolean = false,
     val positionMs: Long = 0,
     val bufferedMs: Long = 0,
     val durationMs: Long = 0,
@@ -119,13 +125,28 @@ class PlaybackSession @Inject constructor(
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            Log.d(TAG, "isPlaying=$isPlaying pos=${_player.value?.currentPosition}")
             _state.update { it.copy(isPlaying = isPlaying) }
             if (isPlaying) startTicker() else saveProgress()
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            Log.d(TAG, "playWhenReady=$playWhenReady reason=$reason pos=${_player.value?.currentPosition}")
+            _state.update { it.copy(playWhenReady = playWhenReady) }
+        }
+
+        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+            Log.d(TAG, "suppression=$playbackSuppressionReason")
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
+            Log.d(TAG, "playbackState=$playbackState pos=${_player.value?.currentPosition}")
             _state.update {
-                it.copy(isBuffering = playbackState == Player.STATE_BUFFERING, durationMs = current().duration.coerceAtLeast(0))
+                it.copy(
+                    isBuffering = playbackState == Player.STATE_BUFFERING,
+                    ended = playbackState == Player.STATE_ENDED,
+                    durationMs = current().duration.coerceAtLeast(0),
+                )
             }
             if (playbackState == Player.STATE_ENDED) saveProgress()
         }
@@ -163,6 +184,7 @@ class PlaybackSession @Inject constructor(
      * [startMs] says otherwise. Safe to call for the file already loaded.
      */
     fun load(fileId: Long, startMs: Long? = null) {
+        Log.d(TAG, "load($fileId, $startMs) current=${_state.value.fileId}")
         if (_state.value.fileId == fileId && _state.value.error == null) {
             if (!current().isPlaying) current().play()
             return
@@ -214,7 +236,13 @@ class PlaybackSession @Inject constructor(
 
     fun togglePlayPause() {
         val p = current()
-        if (p.isPlaying) p.pause() else p.play()
+        // Decide on intent, not on isPlaying: during a rebuffer isPlaying is
+        // false but the user has not paused, and a tap then must pause.
+        when {
+            p.playbackState == Player.STATE_ENDED -> { p.seekTo(0); p.play() }
+            p.playWhenReady -> p.pause()
+            else -> p.play()
+        }
     }
 
     fun seekTo(positionMs: Long) {
@@ -259,6 +287,7 @@ class PlaybackSession @Inject constructor(
     /** The A–B pill: first tap sets A, second sets B and arms the loop. */
     fun tapLoopPoint() {
         val now = current().currentPosition
+        Log.d(TAG, "tapLoopPoint at $now pendingA=${_state.value.loopPendingAMs} loop=${_state.value.loop}")
         val s = _state.value
         when {
             s.loop != null -> Unit // sheet handles an armed loop
@@ -286,6 +315,7 @@ class PlaybackSession @Inject constructor(
 
     /** Stop and free the decoder. Next [load] creates a fresh player. */
     fun stop() {
+        Log.d(TAG, "stop() file=${_state.value.fileId}")
         saveProgress()
         ticker?.cancel()
         _player.value?.let {
@@ -305,13 +335,19 @@ class PlaybackSession @Inject constructor(
             while (isActive && _player.value?.isPlaying == true) {
                 val p = current()
                 val position = p.currentPosition
-                _state.value.loop?.let { loop -> if (loop.shouldRestart(position)) p.seekTo(loop.aMs) }
+                _state.value.loop?.let { loop ->
+                    if (loop.shouldRestart(position)) {
+                        Log.d(TAG, "loop restart at $position -> ${loop.aMs}")
+                        p.seekTo(loop.aMs)
+                    }
+                }
                 _state.update {
                     it.copy(positionMs = p.currentPosition, bufferedMs = p.bufferedPosition, durationMs = p.duration.coerceAtLeast(0))
                 }
                 if (++sinceSave >= SAVE_EVERY_TICKS) {
                     sinceSave = 0
                     saveProgress()
+                    Log.d(TAG, "tick pos=${p.currentPosition} buffered=${p.bufferedPosition} state=${p.playbackState} loading=${p.isLoading}")
                 }
                 delay(TICK_MS)
             }
@@ -319,6 +355,7 @@ class PlaybackSession @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "Regolith/Playback"
         const val TICK_MS = 250L
         const val SAVE_EVERY_TICKS = 20 // every 5 s while playing
         const val HOLD_SPEED = 2f
