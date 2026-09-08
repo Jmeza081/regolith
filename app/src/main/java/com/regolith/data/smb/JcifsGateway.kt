@@ -22,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.util.Log
 import java.net.ConnectException
+import java.security.Security
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.Properties
@@ -46,6 +48,26 @@ class JcifsGateway @Inject constructor() : SmbGateway {
 
     private companion object {
         const val TAG = "Regolith/SMB"
+    }
+
+    init {
+        installFullBouncyCastle()
+    }
+
+    /**
+     * NTLM authentication hashes the password with MD4. Android ships a
+     * trimmed BouncyCastle registered under the name "BC" that has no MD4,
+     * and `Security.addProvider` ignores jcifs-ng's full BouncyCastle
+     * because the name is taken. So: drop Android's, register the full one.
+     * Without this every password login fails with
+     * "NoSuchAlgorithmException: no such algorithm: MD4 for provider BC".
+     */
+    private fun installFullBouncyCastle() {
+        val existing = Security.getProvider("BC")
+        if (existing != null && existing.javaClass.name == BouncyCastleProvider::class.java.name) return
+        Security.removeProvider("BC")
+        Security.insertProviderAt(BouncyCastleProvider(), 1)
+        Log.i(TAG, "Replaced Android's BC provider with bundled BouncyCastle ${BouncyCastleProvider().version}")
     }
 
     private val baseProps: Properties by lazy {
@@ -215,7 +237,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             String.format("0x%08X", code) + (name?.let { " $it" } ?: "")
         }
         val root = generateSequence<Throwable>(e) { it.cause }.last()
-        val msg = root.message?.take(80)
+        val msg = root.message?.take(200)
         return listOfNotNull(status ?: root::class.java.simpleName, msg?.takeIf { it != status }, dialect).joinToString(" · ")
     }
 

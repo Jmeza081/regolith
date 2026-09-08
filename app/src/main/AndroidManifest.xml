@@ -6,10 +6,12 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- SMB and LAN discovery need the network. Local-network permission
-         (Android 16+/17) is added in Phase 6 with the discovery flow. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 17 gates every connection to a LAN address behind this
+         runtime permission for apps targeting SDK 37. Without it, SMB
+         connects silently time out. Requested on the Add Server screen. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <application
         android:name=".RegolithApp"
