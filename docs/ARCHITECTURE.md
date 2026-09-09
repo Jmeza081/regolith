@@ -16,8 +16,11 @@ domain/    Pure Kotlin: models, use cases, parse rules, the SmbGateway
            interface. No Android imports, so it is trivially unit-testable.
    ↕
 data/      Implementations: jcifs-ng SMB client, Room database, DataStore
-           preferences, credential store. Only place third-party IO lives.
-player/    Media3 (ExoPlayer) session, the SMB DataSource, frame extraction.
+           preferences, credential store, the artwork pipeline (data/artwork:
+           resolver, on-disk store, frame source, Coil fetcher). Only place
+           third-party IO lives.
+player/    Media3 (ExoPlayer) session, the SMB DataSource, the container
+           probe, scrub thumbnails.
 di/        Hilt modules wiring the above together.
 ```
 
@@ -95,6 +98,31 @@ portrait keeps the system bars and puts title, chips, pills and "next in this fo
 under the picture. Sheets are a side sheet in landscape and a bottom sheet in portrait,
 and they are UI state, not routes.
 
+## Artwork and scrub thumbnails (Phase 3)
+
+```
+MediaTile ── AsyncImage(ArtworkRequest(owner, kind)) ── Coil ImageLoader (memory cache only)
+                └─ ArtworkFetcher ── ArtworkRepository.resolve()
+                                        ├─ cached row + file in filesDir/artwork/{owner}/{id}/{kind}.jpg?  → serve
+                                        ├─ 1. sidecar  poster/folder/cover/thumb.{jpg,jpeg,png,webp}   (title folders and folders)
+                                        ├─ 2. basename Arrival.2016.mkv → Arrival.2016.jpg               ArtworkCandidates (pure)
+                                        ├─ 3. embedded MP4 covr                                          ┐ FrameSource
+                                        ├─ 4. frame at 10% of the runtime                                ┘ (MediaMetadataRetriever over SMB)
+                                        └─ 5. placeholder row (wedge + filename; expires after a day)
+                                        → writes BOTH kinds (500×750 poster, 320×180 thumb) + `artwork` rows
+
+TitleDetail ── MediaProbe (Media3 MetadataRetriever through SmbDataSource) ── media_files probe columns
+PlayerScreen ── Scrubber.onScrub(ms) ── PlayerViewModel ── ScrubThumbnails.request(ms)
+                                                             └─ OnDemandScrubThumbnails: one FrameSource, 10 s buckets, LRU of 40 (FrameIndex, pure)
+```
+
+Two things a web developer would not guess: a folder listing is what
+decides steps 1 and 2 (the listing is cached for five minutes so a grid of
+twenty tiles costs one SMB list), and a loose file in a folder with other
+videos does NOT take that folder's `poster.jpg` (the design shows
+`Films/Hard.Boiled.1992.mp4` getting a frame grab beside `Films/poster.jpg`;
+the sidecar belongs to the collection tile).
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -120,6 +148,14 @@ and they are UI state, not routes.
 | 2026-09-08 | Guest SMB sessions never enforce IPC signing; password sessions relax it only after a signature failure | A guest session has no session key to sign with; some servers produce signatures jcifs-ng cannot validate. |
 | 2026-09-08 | Connect falls back to the share named in the address on any non-auth enumeration failure | jcifs-ng dials port 445 for the enumeration RPC regardless of the address port, and many NAS boxes refuse enumeration to non-admins. |
 | 2026-09-08 | Servlet API excluded from jcifs-ng | Only its HTTP filter needs it; keeps the APK lean. R8 `-dontwarn` covers the dangling references. |
+| 2026-09-08 | Frames come from `MediaMetadataRetriever` over a `MediaDataSource`, not Media3's `FrameExtractor` | The retriever takes our byte source directly, returns a Bitmap with no GL pipeline, and `OPTION_CLOSEST_SYNC` decodes one key frame per request. `FrameExtractor` needs `media3-effect` plus an OpenGL context per grab. It sits behind `FrameSource` if the platform extractors ever reject a container the player handles. |
+| 2026-09-08 | One resolution writes both artwork kinds | Opening a video over SMB is the expensive step; poster and thumb are two crops of the same source. |
+| 2026-09-08 | `BufferedByteSource` keeps several blocks for frame extraction (8 × 256 KiB); the player keeps one 1 MiB block | A frame grab alternates between the MP4 sample tables at the end of the file and the frame bytes in the middle; a single block thrashed (23 reads, 62 KB, 4.5 s per frame). Eight small blocks: ~350 ms per frame. |
+| 2026-09-08 | Coil pinned at 3.4.0 | 3.5+ is compiled with Kotlin 2.4, whose metadata the Kotlin 2.2 compiler AGP 9.4 bundles cannot read. Bump with AGP. |
+| 2026-09-08 | Coil's disk cache is off; `filesDir/artwork` + the `artwork` table are the cache | A frame grab is expensive and must survive eviction for the offline state; Settings › Media clears it explicitly (guardrail G5). |
+| 2026-09-08 | Placeholder rows expire after 24 h; unreachable-share failures are not recorded | A file the decoder cannot read stops being retried on every scroll, but a `poster.jpg` added later is picked up; a share that is merely off is retried next time. |
+| 2026-09-08 | Room v2 via `@AutoMigration(1, 2)`; exported schemas are debug assets | Additive change (new table, nullable columns). AGP does not merge assets for the unit-test source set, so the migration test reads the schemas from the debug variant's assets. |
+| 2026-09-08 | Browse tiles open Title Detail, not the player | The design gives every title one red Play on its detail screen; the detail is also where the container probe runs once. |
 
 ## Phase plan
 
@@ -128,7 +164,7 @@ and they are UI state, not routes.
 | 0 | Scaffold: theme, components, nav shell, DI, QA loop | G7, G8, G9 |
 | 1 | Connect → browse → play (manual `smb://`, share picker, raw folders, playback, resume) | G1, G2, G3, G4, G6 |
 | 2 | Player complete: chrome, speed, decoder, A–B loop, gestures, playback sheet | `PlayerUiState`, `ScrubThumbnails` interface |
-| 3 | Artwork pipeline and thumbnail scrubbing | G5 |
+| 3 | Artwork pipeline, Browse grid, Title Detail, scrub previews (v1: on demand) | G5, `FrameSource`, `ScrubThumbnails` |
 | 4 | Library scan, filename parsing, search (FTS), Home, sort, collections | parse rules, progress-in-Room |
 | 5 | Downloads and offline ("On this device") | `TransferScheduler` seam |
 | 6 | LAN discovery, onboarding, settings, polish, saved QA flows | |

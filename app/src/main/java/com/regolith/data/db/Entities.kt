@@ -82,12 +82,52 @@ data class MediaFileEntity(
     val ext: String,
     val sizeBytes: Long,
     val modifiedAtMs: Long,
-    /** Filled by Phase 3/4 probing; null until then. */
+    /** Filled by the artwork pipeline or the container probe; null until then. */
     val durationMs: Long?,
     /** True when the last listing of its folder did not include it. */
     val missing: Boolean,
     val addedAtMs: Long,
     val lastSeenAtMs: Long,
+    // --- Container probe (schema v2). Null until Title Detail or the
+    // artwork pipeline has opened the file. Web analogy: lazily populated
+    // columns, like a materialised `ffprobe`.
+    val width: Int? = null,
+    val height: Int? = null,
+    val frameRate: Float? = null,
+    /** Sample MIME type, e.g. "video/avc". */
+    val videoCodec: String? = null,
+    val hdr: Boolean? = null,
+    val audioCodec: String? = null,
+    val audioChannels: Int? = null,
+    val audioSampleRate: Int? = null,
+    /** When the full probe last ran; null means only what artwork extraction learned. */
+    val probedAtMs: Long? = null,
+)
+
+/**
+ * One cached image (guardrail G5). The bytes live in the app's own
+ * directory at [relPath]; this row says where they came from and whether
+ * the resolver gave up. Keyed by what it belongs to, so a rescan that keeps
+ * the file id keeps its artwork.
+ */
+@Entity(
+    tableName = "artwork",
+    indices = [Index(value = ["ownerType", "ownerId", "kind"], unique = true)],
+)
+data class ArtworkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** "file" or "folder" ([com.regolith.domain.artwork.ArtworkOwner.typeName]). */
+    val ownerType: String,
+    val ownerId: Long,
+    /** [com.regolith.domain.artwork.ArtworkKind] name. */
+    val kind: String,
+    /** [com.regolith.domain.artwork.ArtworkSource] name. PLACEHOLDER means nothing was readable. */
+    val source: String,
+    /** Path under the artwork directory, e.g. "file/12/thumb.jpg". Empty for a placeholder. */
+    val relPath: String,
+    val width: Int,
+    val height: Int,
+    val updatedAtMs: Long,
 )
 
 @Entity(

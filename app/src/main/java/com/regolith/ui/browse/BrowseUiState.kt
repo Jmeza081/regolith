@@ -1,6 +1,10 @@
 package com.regolith.ui.browse
 
-/** One row on the Browse screen. */
+import com.regolith.domain.artwork.ArtworkKind
+import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ArtworkRequest
+
+/** One entry on the Browse screen: a row at the root, a tile inside a folder. */
 sealed interface BrowseRow {
     val testTag: String
 
@@ -11,16 +15,21 @@ sealed interface BrowseRow {
 
     data class FolderRow(val folderId: Long, val name: String, val fileCount: Int, val byteCount: Long) : BrowseRow {
         override val testTag get() = "browse_folder_$folderId"
+        val artwork get() = ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.THUMB)
     }
 
     data class FileRow(
         val fileId: Long,
         val name: String,
+        val ext: String,
         val sizeBytes: Long,
         val progressMs: Long?,
         val durationMs: Long?,
+        /** "4K", "1080p" once the file has been opened; empty until then. */
+        val resolutionLabel: String,
     ) : BrowseRow {
         override val testTag get() = "browse_file_$fileId"
+        val artwork get() = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB)
     }
 }
 

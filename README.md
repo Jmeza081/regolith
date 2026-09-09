@@ -6,13 +6,15 @@ nothing leaves your network. Kotlin + Jetpack Compose.
 
 ## Status
 
-Phase 2 of 6: the complete player. Landscape and portrait chrome, speed,
-hardware/software decoding, A–B loop with half-second nudges, buffered range,
-next in this folder, the playback side sheet, and the gesture map (double-tap
-seek that stacks, brightness and volume drags, long-press 2×, pinch fit/fill,
-swipe down to leave). Phase 1 (connect, browse, play, resume) is verified on a
-real phone against a NAS. Browse is plain rows on purpose; artwork and scrub
-thumbnails are Phase 3, the design polish Phase 6. See `docs/ARCHITECTURE.md`.
+Phase 3 of 6: artwork and thumbnail scrubbing. Browse is the design's
+two-across grid of frames; every tile resolves its image in the design's
+order (sidecar `poster.jpg`, an image with the video's basename, cover art
+inside the container, a frame grabbed at 10%, the wedge placeholder) and
+caches it on the device. Title Detail shows what the container reports
+(codec, size, frame rate, audio) with the one red Play. The player's
+timeline shows a preview frame while you drag. Settings › Media clears the
+cache. Phases 1 and 2 (connect, browse, the complete player) are verified
+on a real phone against a NAS. See `docs/ARCHITECTURE.md`.
 
 ## Build and run
 

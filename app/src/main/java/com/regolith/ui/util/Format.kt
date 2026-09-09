@@ -1,5 +1,7 @@
 package com.regolith.ui.util
 
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /** "8.4 GB", "890 GB", "24.8 GB": the design's chip style, one decimal under 10. */
@@ -48,3 +50,6 @@ fun formatSpeed(speed: Float): String {
     val s = String.format(Locale.US, "%.2f", speed).trimEnd('0')
     return (if (s.endsWith('.')) s + "0" else s) + "×"
 }
+
+/** "2 Feb 2026": the Modified row on Title Detail. */
+fun formatDate(epochMs: Long): String = SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(epochMs))

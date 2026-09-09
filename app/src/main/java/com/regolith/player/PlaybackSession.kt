@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
@@ -92,6 +93,7 @@ class PlaybackSession @Inject constructor(
     private val library: LibraryRepository,
     private val playback: PlaybackRepository,
     private val prefs: AppPreferences,
+    private val frames: FrameSourceFactory,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(PlaybackState())
@@ -100,6 +102,10 @@ class PlaybackSession @Inject constructor(
     private val _player = MutableStateFlow<ExoPlayer?>(null)
     /** The current player for the video surface; null until first use. */
     val player: StateFlow<ExoPlayer?> = _player.asStateFlow()
+
+    private val _scrubThumbnails = MutableStateFlow<ScrubThumbnails>(ScrubThumbnails.None)
+    /** Preview frames for the loaded file; [ScrubThumbnails.None] when off or nothing is loaded. */
+    val scrubThumbnails: StateFlow<ScrubThumbnails> = _scrubThumbnails.asStateFlow()
 
     private var ticker: Job? = null
     private var lastSavedPositionMs = -1L
@@ -211,6 +217,26 @@ class PlaybackSession @Inject constructor(
                 )
             }
             startPlayer(fileId, file, resume)
+            setScrubThumbnails(prefs.scrubThumbnails.first())
+        }
+    }
+
+    /**
+     * Turn preview frames on or off for the loaded file. On means a second
+     * read handle on the share that is only used while the user drags.
+     */
+    fun setScrubThumbnails(enabled: Boolean) {
+        scope.launch { prefs.setScrubThumbnails(enabled) }
+        _scrubThumbnails.value.close()
+        val fileId = _state.value.fileId
+        val file = currentFile
+        _scrubThumbnails.value = if (enabled && fileId != null && file != null) {
+            OnDemandScrubThumbnails(durationMs = file.durationMs ?: _state.value.durationMs) {
+                val media = resolver.resolveBlocking(fileId) ?: error("file $fileId is unknown")
+                frames.open(media.host, media.credentials, media.share, media.relPath)
+            }
+        } else {
+            ScrubThumbnails.None
         }
     }
 
@@ -325,6 +351,8 @@ class PlaybackSession @Inject constructor(
         }
         _player.value = null
         currentFile = null
+        _scrubThumbnails.value.close()
+        _scrubThumbnails.value = ScrubThumbnails.None
         _state.value = PlaybackState(speed = 1f, hardwareDecoding = _state.value.hardwareDecoding)
     }
 

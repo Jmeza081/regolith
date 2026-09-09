@@ -23,7 +23,10 @@ room = "2.8.4"
 datastore = "1.2.1"
 work = "2.11.2"
 media3 = "1.11.0"
-coil = "3.6.2"
+# Coil 3.5+ is compiled with Kotlin 2.4, whose class metadata the Kotlin 2.2
+# compiler AGP bundles cannot read. 3.4.0 is built with Kotlin 2.3 and is the
+# newest that compiles here; bump it together with AGP/Kotlin, not alone.
+coil = "3.4.0"
 haze = "1.7.3"
 lucide = "2.2.1"
 jcifsNg = "2.1.10"

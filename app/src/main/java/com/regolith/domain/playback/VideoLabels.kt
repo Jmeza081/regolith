@@ -10,14 +10,7 @@ data class VideoInfo(
     val audioMimeType: String?,
     val audioChannels: Int?,
 ) {
-    val resolutionLabel: String
-        get() = when {
-            width >= 3800 || height >= 2100 -> "4K"
-            height >= 1080 || width >= 1900 -> "1080p"
-            height >= 720 || width >= 1200 -> "720p"
-            height > 0 -> "${height}p"
-            else -> ""
-        }
+    val resolutionLabel: String get() = resolutionLabelFor(width, height)
 
     val codecLabel: String = codecLabelFor(videoMimeType)
     val audioLabel: String = codecLabelFor(audioMimeType) + (audioChannels?.let { " · " + channelLabel(it) } ?: "")
@@ -27,6 +20,19 @@ data class VideoInfo(
         get() = listOfNotNull(resolutionLabel.ifEmpty { null }, if (hdr) "HDR" else null, codecLabel.ifEmpty { null })
 
     companion object {
+        /** "4K", "1080p", "720p": the chip over a tile and in the player. Empty when unknown. */
+        fun resolutionLabelFor(width: Int?, height: Int?): String {
+            val w = width ?: 0
+            val h = height ?: 0
+            return when {
+                w >= 3800 || h >= 2100 -> "4K"
+                h >= 1080 || w >= 1900 -> "1080p"
+                h >= 720 || w >= 1200 -> "720p"
+                h > 0 -> "${h}p"
+                else -> ""
+            }
+        }
+
         fun codecLabelFor(mime: String?): String = when (mime?.lowercase()) {
             "video/hevc", "video/x-hevc" -> "HEVC"
             "video/avc" -> "H.264"

@@ -124,6 +124,9 @@ interface MediaFileDao {
     suspend fun byId(id: Long): MediaFileEntity?
 
     @Query("SELECT * FROM media_files WHERE id = :id")
+    fun observe(id: Long): Flow<MediaFileEntity?>
+
+    @Query("SELECT * FROM media_files WHERE id = :id")
     fun byIdBlocking(id: Long): MediaFileEntity?
 
     @Query("SELECT * FROM media_files WHERE shareId = :shareId AND relPath = :relPath")
@@ -143,6 +146,31 @@ interface MediaFileDao {
 
     @Query("UPDATE media_files SET missing = 1 WHERE folderId = :folderId AND relPath NOT IN (:seenPaths)")
     suspend fun markMissingNotIn(folderId: Long, seenPaths: List<String>)
+
+    /** What frame extraction learns in passing; never overwrites a value the full probe set. */
+    @Query(
+        "UPDATE media_files SET durationMs = COALESCE(durationMs, :durationMs), width = COALESCE(width, :width), height = COALESCE(height, :height) WHERE id = :id",
+    )
+    suspend fun fillBasics(id: Long, durationMs: Long?, width: Int?, height: Int?)
+
+    /** The full container probe (Title Detail). */
+    @Query(
+        "UPDATE media_files SET durationMs = COALESCE(:durationMs, durationMs), width = :width, height = :height, frameRate = :frameRate, " +
+            "videoCodec = :videoCodec, hdr = :hdr, audioCodec = :audioCodec, audioChannels = :audioChannels, audioSampleRate = :audioSampleRate, probedAtMs = :probedAtMs WHERE id = :id",
+    )
+    suspend fun saveProbe(
+        id: Long,
+        durationMs: Long?,
+        width: Int?,
+        height: Int?,
+        frameRate: Float?,
+        videoCodec: String?,
+        hdr: Boolean?,
+        audioCodec: String?,
+        audioChannels: Int?,
+        audioSampleRate: Int?,
+        probedAtMs: Long,
+    )
 
     /**
      * Insert or refresh by (shareId, relPath). A file that reappears after
@@ -175,4 +203,34 @@ interface PlaybackProgressDao {
 
     @Upsert
     suspend fun upsert(progress: PlaybackProgressEntity)
+}
+
+@Dao
+interface ArtworkDao {
+    @Query("SELECT * FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND kind = :kind")
+    suspend fun get(ownerType: String, ownerId: Long, kind: String): ArtworkEntity?
+
+    @Query("SELECT * FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND kind = :kind")
+    fun observe(ownerType: String, ownerId: Long, kind: String): Flow<ArtworkEntity?>
+
+    @Insert
+    suspend fun insert(artwork: ArtworkEntity): Long
+
+    @Update
+    suspend fun update(artwork: ArtworkEntity)
+
+    /** Replace by (ownerType, ownerId, kind); the row id is not meaningful to anyone. */
+    @Transaction
+    suspend fun upsert(artwork: ArtworkEntity): ArtworkEntity {
+        val existing = get(artwork.ownerType, artwork.ownerId, artwork.kind) ?: return artwork.copy(id = insert(artwork))
+        val merged = artwork.copy(id = existing.id)
+        update(merged)
+        return merged
+    }
+
+    @Query("SELECT COUNT(*) FROM artwork WHERE source != 'PLACEHOLDER'")
+    fun observeCount(): Flow<Int>
+
+    @Query("DELETE FROM artwork")
+    suspend fun deleteAll()
 }

@@ -43,5 +43,8 @@ sealed interface BrowseItem {
         /** Seconds already watched, or null when never started. */
         val progressMs: Long?,
         val durationMs: Long?,
+        /** Picture size once something has opened the file; null until then. */
+        val width: Int? = null,
+        val height: Int? = null,
     ) : BrowseItem
 }

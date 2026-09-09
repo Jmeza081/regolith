@@ -1,5 +1,6 @@
 package com.regolith.ui.browse
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -7,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +25,7 @@ import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.ErrorCard
 import com.regolith.ui.components.ListRow
+import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TertiaryButton
@@ -33,9 +37,14 @@ import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatRemaining
 
 /**
- * Browse tab. Phase 1 draws rows, not the design's two-across thumbnail
- * grid; that arrives with artwork in Phase 3. Navigation shape is final:
- * root -> share -> folder -> folder, and a file opens the player.
+ * Browse tab (design section 07, "Add Media"): the share as it actually is.
+ * The root lists shares as rows; inside a folder everything is a two-across
+ * grid of 16:9 tiles so full filenames stay readable. Folders carry a
+ * corner mark, files show a frame pulled from the file. When the share is
+ * out of reach the cached tiles stay, recessed to 45%, under a banner.
+ *
+ * Navigation shape: root -> share -> folder -> folder; a file opens Title
+ * Detail, which holds the one red Play.
  */
 @Composable
 fun BrowseScreen(
@@ -60,18 +69,27 @@ fun BrowseScreen(
             return
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+        val offline = state.offlineMessage
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize().testTag("browse_grid"),
             contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = 120.dp),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
-            val offline = state.offlineMessage
             if (offline != null) {
-                item {
-                    ErrorCard(message = offline, testTag = "browse_offline_card")
-                    TertiaryButton(text = "Retry", onClick = viewModel::refresh, testTag = "browse_retry_button")
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        ErrorCard(message = offline, testTag = "browse_offline_card")
+                        TertiaryButton(text = "Retry", onClick = viewModel::refresh, testTag = "browse_retry_button")
+                    }
                 }
             }
-            items(state.rows, key = { it.testTag }) { row ->
+            items(
+                state.rows,
+                key = { it.testTag },
+                span = { row -> GridItemSpan(if (row is BrowseRow.ShareRow) maxLineSpan else 1) },
+            ) { row ->
                 when (row) {
                     is BrowseRow.ShareRow -> ListRow(
                         title = row.name,
@@ -80,28 +98,35 @@ fun BrowseScreen(
                         onClick = { viewModel.openShare(row.shareId, onOpenFolder) },
                         testTag = row.testTag,
                     )
-                    is BrowseRow.FolderRow -> ListRow(
+                    is BrowseRow.FolderRow -> MediaTile(
+                        artwork = row.artwork,
                         title = row.name,
                         meta = if (row.fileCount > 0) "${row.fileCount} files · ${formatBytes(row.byteCount)}" else null,
-                        icon = LucideR.drawable.lucide_ic_folder,
+                        folder = true,
+                        dimmed = offline != null,
+                        placeholderLabel = "Folder",
                         onClick = { onOpenFolder(row.folderId) },
                         testTag = row.testTag,
                     )
-                    is BrowseRow.FileRow -> ListRow(
+                    is BrowseRow.FileRow -> MediaTile(
+                        artwork = row.artwork,
                         title = row.name,
                         meta = listOfNotNull(
+                            row.resolutionLabel.ifEmpty { null },
                             formatBytes(row.sizeBytes),
                             if (row.progressMs != null && row.durationMs != null && row.progressMs > 0) formatRemaining(row.progressMs, row.durationMs) else null,
                         ).joinToString(" · "),
-                        icon = LucideR.drawable.lucide_ic_film,
+                        chip = row.resolutionLabel.ifEmpty { null },
+                        dimmed = offline != null,
+                        placeholderLabel = ".${row.ext.uppercase()}",
+                        progress = if (row.progressMs != null && row.durationMs != null && row.durationMs > 0) row.progressMs.toFloat() / row.durationMs else null,
                         onClick = { onOpenFile(row.fileId) },
                         testTag = row.testTag,
                     )
                 }
             }
-            if (state.loaded && state.rows.isEmpty() && state.offlineMessage == null) {
-                item {
-                    Spacer(Modifier.height(Spacing.s18))
+            if (state.loaded && state.rows.isEmpty() && offline == null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth()) {
                         Text("Nothing playable in this folder.", style = TextStyles.body, color = colors.body)
                     }

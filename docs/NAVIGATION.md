@@ -44,7 +44,9 @@ system back from any tab returns to Home and back from Home leaves the app.
 `Browse(folderId = null)` is the tab root: the enabled shares. Tapping a
 share creates (or finds) its root folder row and pushes `Browse(folderId)`;
 tapping a folder pushes another `Browse(folderId)`. The pill stays visible at
-every depth and back pops one level. A file pushes `Player(fileId)`.
+every depth and back pops one level. A file pushes `TitleDetail(fileId)`,
+whose red Play pushes `Player(fileId)` (since Phase 3; in Phases 1–2 a file
+opened the player directly).
 
 ## Pushed screens (pill hidden)
 
@@ -53,8 +55,8 @@ every depth and back pops one level. A file pushes `Player(fileId)`.
 | `Onboarding` | first launch only; "Find my server" → `[Home]` | 0 (stub), 6 (full) |
 | `AddServer.Manual` | Home / Browse empty states, Home "Add another" | 1 |
 | `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
-| `Player(fileId, startMs?)` | Browse (Phase 1); TitleDetail, Home resume row later | 1 |
-| `TitleDetail(fileId)` | Library, Home, Search, Browse | 3 |
+| `Player(fileId, startMs?)` | TitleDetail; Home resume row later | 1 |
+| `TitleDetail(fileId)` | Browse (Phase 3); Library, Home, Search later | 3 |
 | `AddServer.Scanning(serverId)` | Share picker | 4 |
 | `AddServer.Search` | Home / Library empty states, Onboarding | 6 |
 

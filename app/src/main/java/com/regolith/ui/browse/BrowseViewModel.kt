@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
+import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.model.BrowseItem
+import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -97,6 +99,14 @@ class BrowseViewModel @AssistedInject constructor(
 
     private fun BrowseItem.toRow(): BrowseRow = when (this) {
         is BrowseItem.Folder -> BrowseRow.FolderRow(id, name, fileCount, byteCount)
-        is BrowseItem.File -> BrowseRow.FileRow(id, name, sizeBytes, progressMs, durationMs)
+        is BrowseItem.File -> BrowseRow.FileRow(
+            fileId = id,
+            name = name,
+            ext = MediaFileTypes.extensionOf(name),
+            sizeBytes = sizeBytes,
+            progressMs = progressMs,
+            durationMs = durationMs,
+            resolutionLabel = VideoInfo.resolutionLabelFor(width, height),
+        )
     }
 }

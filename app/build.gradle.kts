@@ -66,6 +66,12 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    // The exported Room schemas double as assets of the DEBUG build so the
+    // migration test (which runs against the debug variant under Robolectric)
+    // can open a real version-1 database and upgrade it. AGP does not merge
+    // assets for the unit-test source set itself. Release stays clean.
+    sourceSets.getByName("debug").assets.srcDir("$projectDir/schemas")
+
     lint {
         // The Kotlin compiler plugins (compose, serialization) must match the
         // Kotlin version AGP bundles (2.2.10), so "newer version available"
@@ -113,10 +119,12 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // Media3 / ExoPlayer
+    // Media3 / ExoPlayer. inspector = MetadataRetriever, the container probe
+    // behind Title Detail (codec, size, fps, audio).
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.datasource)
     implementation(libs.media3.ui.compose)
+    implementation(libs.media3.inspector)
 
     // SMB. jcifs-ng drags in the servlet API for an HTTP filter we never
     // use; excluding it keeps a few hundred KB out of the APK.
@@ -129,9 +137,10 @@ dependencies {
     // Async
     implementation(libs.kotlinx.coroutines.android)
 
-    // UI extras
+    // UI extras. Coil draws artwork; it is only the view layer (see ArtworkModule).
     implementation(libs.haze)
     implementation(libs.lucide.icons)
+    implementation(libs.coil.compose)
 
     // Tests
     testImplementation(libs.junit)

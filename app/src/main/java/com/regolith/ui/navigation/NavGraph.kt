@@ -35,6 +35,8 @@ import com.regolith.ui.home.HomeScreen
 import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.onboarding.OnboardingScreen
 import com.regolith.ui.settings.SettingsScreen
+import com.regolith.ui.titledetail.TitleDetailScreen
+import com.regolith.ui.titledetail.TitleDetailViewModel
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import dev.chrisbanes.haze.HazeState
@@ -115,8 +117,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             ),
                             onBack = if (key.folderId == null) null else ({ backStack.removeLastOrNull() }),
                             onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
-                            onOpenFile = { backStack.add(RegolithKey.Player(it)) },
+                            onOpenFile = { backStack.add(RegolithKey.TitleDetail(it)) },
                             onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                        )
+                    }
+                    entry<RegolithKey.TitleDetail> { key ->
+                        TitleDetailScreen(
+                            viewModel = hiltViewModel<TitleDetailViewModel, TitleDetailViewModel.Factory>(
+                                creationCallback = { it.create(key.fileId) },
+                            ),
+                            onBack = { backStack.removeLastOrNull() },
+                            onPlay = { backStack.add(RegolithKey.Player(it)) },
                         )
                     }
                     entry<RegolithKey.Settings> { SettingsScreen(viewModel = hiltViewModel()) }
@@ -146,7 +157,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onBack = { backStack.removeLastOrNull() },
                         )
                     }
-                    // Phase 3: TitleDetail. Phase 6: AddServer.Search.
+                    // Phase 6: AddServer.Search.
                 },
             )
 

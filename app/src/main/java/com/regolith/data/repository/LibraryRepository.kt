@@ -8,6 +8,7 @@ import com.regolith.data.db.PlaybackProgressDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.domain.media.MediaFileTypes
+import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
@@ -55,6 +56,8 @@ class LibraryRepository @Inject constructor(
                             modifiedAtMs = f.modifiedAtMs,
                             progressMs = p?.positionMs,
                             durationMs = p?.durationMs ?: f.durationMs,
+                            width = f.width,
+                            height = f.height,
                         )
                     }
                 }
@@ -129,6 +132,25 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
+
+    fun observeFile(fileId: Long): Flow<MediaFileEntity?> = mediaFileDao.observe(fileId)
+
+    /** Remember what the container probe found, so Title Detail and the chips never probe twice. */
+    suspend fun saveProbe(fileId: Long, info: MediaInfo) {
+        mediaFileDao.saveProbe(
+            id = fileId,
+            durationMs = info.durationMs,
+            width = info.width,
+            height = info.height,
+            frameRate = info.frameRate,
+            videoCodec = info.videoMimeType,
+            hdr = info.hdr,
+            audioCodec = info.audioMimeType,
+            audioChannels = info.audioChannels,
+            audioSampleRate = info.audioSampleRate,
+            probedAtMs = System.currentTimeMillis(),
+        )
+    }
 
     /** "TOWER · media": the server and share a file lives on, for the player's meta line. */
     suspend fun shareLabel(shareId: Long): String {

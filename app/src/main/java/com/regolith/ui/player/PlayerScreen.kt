@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -25,6 +26,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -70,6 +74,7 @@ import com.regolith.ui.components.ListRow
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.Scrubber
+import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -104,6 +109,7 @@ fun PlayerScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val player by viewModel.player.collectAsStateWithLifecycle()
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
+    val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -142,9 +148,9 @@ fun PlayerScreen(
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
     val stacker = remember { SeekStacker() }
 
-    // Controls auto-hide 3 s after the last interaction while playing.
-    LaunchedEffect(controlsVisible, state.playWhenReady, sheet) {
-        if (controlsVisible && state.playWhenReady && sheet == null) {
+    // Controls auto-hide 3 s after the last interaction while playing, never mid-scrub.
+    LaunchedEffect(controlsVisible, state.playWhenReady, sheet, scrubPreviewMs != null) {
+        if (controlsVisible && state.playWhenReady && sheet == null && scrubPreviewMs == null) {
             delay(3_000)
             controlsVisible = false
         }
@@ -218,13 +224,19 @@ fun PlayerScreen(
                 landscape = landscape,
                 visible = controlsVisible && drag == null,
                 scrubPreviewMs = scrubPreviewMs,
+                scrubFrame = scrubFrame,
                 onBack = onBack,
                 onTogglePlay = { viewModel.togglePlayPause(); controlsVisible = true },
                 onSeekBy = { viewModel.seekBy(it); controlsVisible = true },
-                onScrubStart = { scrubPreviewMs = state.positionMs },
-                onScrub = { f -> scrubPreviewMs = (f * state.durationMs).toLong() },
+                onScrubStart = { scrubPreviewMs = state.positionMs; viewModel.onScrub(state.positionMs) },
+                onScrub = { f ->
+                    val ms = (f * state.durationMs).toLong()
+                    scrubPreviewMs = ms
+                    viewModel.onScrub(ms)
+                },
                 onScrubEnd = { f ->
                     scrubPreviewMs = null
+                    viewModel.onScrubEnd()
                     viewModel.seekTo((f * state.durationMs).toLong())
                     controlsVisible = true
                 },
@@ -294,6 +306,7 @@ private fun VideoChrome(
     landscape: Boolean,
     visible: Boolean,
     scrubPreviewMs: Long?,
+    scrubFrame: android.graphics.Bitmap?,
     onBack: () -> Unit,
     onTogglePlay: () -> Unit,
     onSeekBy: (Long) -> Unit,
@@ -344,9 +357,8 @@ private fun VideoChrome(
 
             // Bottom: scrubber + times
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = Spacing.s18, vertical = Spacing.s4)) {
-                scrubPreviewMs?.let {
-                    Text(formatClock(it), style = TextStyles.chip, color = colors.ink,
-                        modifier = Modifier.align(Alignment.CenterHorizontally).background(colors.ground.copy(alpha = 0.7f), PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2))
+                scrubPreviewMs?.let { ms ->
+                    ScrubPreview(ms = ms, frame = scrubFrame, fraction = if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f)
                 }
                 Scrubber(
                     positionMs = state.positionMs,
@@ -365,6 +377,40 @@ private fun VideoChrome(
                     Text(formatClock(state.durationMs), style = TextStyles.chip, color = colors.body, modifier = Modifier.testTag("player_duration"))
                 }
             }
+        }
+    }
+}
+
+/**
+ * The frame under the finger while scrubbing (design section 10, "seek with
+ * thumbnail preview"), riding above the playhead and clamped to the track,
+ * with the time in a pill beneath. With no frame yet (or the setting off)
+ * only the time shows, so the scrubber never waits on the share. The slot
+ * keeps its full height either way so the track does not jump.
+ */
+@Composable
+private fun ScrubPreview(ms: Long, frame: android.graphics.Bitmap?, fraction: Float) {
+    val colors = RegolithTheme.colors
+    val previewW = 160.dp
+    val previewH = 90.dp
+    BoxWithConstraints(Modifier.fillMaxWidth().height(previewH + 28.dp)) {
+        val width = if (frame != null) previewW else 80.dp
+        val left = (maxWidth * fraction - width / 2).coerceIn(0.dp, (maxWidth - width).coerceAtLeast(0.dp))
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.align(Alignment.BottomStart).offset(x = left).width(width),
+        ) {
+            if (frame != null) {
+                Image(
+                    bitmap = frame.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(previewW, previewH).clip(CardShape).border(1.dp, colors.ink.copy(alpha = 0.6f), CardShape).testTag("player_scrub_preview"),
+                )
+                Spacer(Modifier.height(Spacing.s4))
+            }
+            Text(formatClock(ms), style = TextStyles.chip, color = colors.ink,
+                modifier = Modifier.background(colors.ground.copy(alpha = 0.7f), PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2).testTag("player_scrub_time"))
         }
     }
 }

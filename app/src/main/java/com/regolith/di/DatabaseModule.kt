@@ -2,6 +2,7 @@ package com.regolith.di
 
 import android.content.Context
 import androidx.room.Room
+import com.regolith.data.db.ArtworkDao
 import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.PlaybackProgressDao
@@ -32,4 +33,5 @@ object DatabaseModule {
     @Provides fun provideFolderDao(db: RegolithDatabase): FolderDao = db.folderDao()
     @Provides fun provideMediaFileDao(db: RegolithDatabase): MediaFileDao = db.mediaFileDao()
     @Provides fun providePlaybackProgressDao(db: RegolithDatabase): PlaybackProgressDao = db.playbackProgressDao()
+    @Provides fun provideArtworkDao(db: RegolithDatabase): ArtworkDao = db.artworkDao()
 }
