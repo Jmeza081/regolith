@@ -1,6 +1,8 @@
 package com.regolith.ui.titledetail
 
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.transfer.TransferCause
+import com.regolith.domain.transfer.TransferStatus
 
 /** Everything Title Detail draws (design section 09). */
 data class TitleDetailUiState(
@@ -22,4 +24,17 @@ data class TitleDetailUiState(
     val modifiedAtMs: Long = 0,
     val probing: Boolean = false,
     val probeError: String? = null,
+    /** Null when the file is not kept on this device and nothing is in flight. */
+    val transfer: TransferView? = null,
 )
+
+/** The download's state as the detail screen shows it. */
+data class TransferView(
+    val status: TransferStatus,
+    val bytesDone: Long,
+    val totalBytes: Long,
+    val cause: TransferCause?,
+    val causeBytes: Long?,
+) {
+    val fraction: Float get() = if (totalBytes > 0) (bytesDone.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+}

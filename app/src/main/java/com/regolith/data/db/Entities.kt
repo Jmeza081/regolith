@@ -30,6 +30,8 @@ data class ServerEntity(
     val username: String?,
     val lastSeenAtMs: Long?,
     val createdAtMs: Long,
+    /** Schema v4: set when a listing, scan or transfer could not reach the server; cleared on the next success. */
+    val unreachableSinceMs: Long? = null,
 )
 
 @Entity(
@@ -214,4 +216,33 @@ data class PlaybackProgressEntity(
     val durationMs: Long,
     val completed: Boolean,
     val updatedAtMs: Long,
+)
+
+/**
+ * One download (design section 05, "On this device"). One row per file;
+ * the bytes land in the app's own directory at [localPath]. [bytesDone]
+ * is what makes a transfer resumable: the worker reopens the share at
+ * that offset and appends (guardrail G3: progress is a row).
+ */
+@Entity(
+    tableName = "transfers",
+    foreignKeys = [ForeignKey(MediaFileEntity::class, ["id"], ["fileId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["fileId"], unique = true), Index("status")],
+)
+data class TransferEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val fileId: Long,
+    /** [com.regolith.domain.transfer.TransferStatus] name. */
+    val status: String,
+    val bytesDone: Long,
+    val totalBytes: Long,
+    /** Path under the downloads directory, e.g. "12.mkv". */
+    val localPath: String,
+    /** [com.regolith.domain.transfer.TransferCause] name, for PAUSED and FAILED. */
+    val cause: String?,
+    /** "12.1 GB needed": the cause's number, when there is one. */
+    val causeBytes: Long?,
+    val createdAtMs: Long,
+    val updatedAtMs: Long,
+    val finishedAtMs: Long?,
 )

@@ -10,6 +10,14 @@ import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
+import com.regolith.data.transfer.TransferRepository
+import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
+import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
+import com.regolith.domain.transfer.TransferStatus
+import com.regolith.ui.util.formatBytes
+import com.regolith.ui.util.formatRemaining
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -28,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -50,12 +59,15 @@ class LibraryViewModel @AssistedInject constructor(
     private val sources: SourceRepository,
     private val scans: ScanRepository,
     private val prefs: AppPreferences,
+    private val transfers: TransferRepository,
 ) : ViewModel() {
 
     @AssistedFactory
     interface Factory {
         fun create(folderId: Long?): LibraryViewModel
     }
+
+    private var showAllFailed = false
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState
@@ -95,9 +107,54 @@ class LibraryViewModel @AssistedInject constructor(
                 build(shareList, serverList, parentList, childList, fileList, progressList, runs)
             }.collect { state ->
                 unsorted = state.tiles
-                _uiState.update { state.copy(sort = it.sort, sortSheetOpen = it.sortSheetOpen, tiles = sorted(state.tiles, it.sort)) }
+                _uiState.update {
+                    state.copy(sort = it.sort, sortSheetOpen = it.sortSheetOpen, tiles = sorted(state.tiles, it.sort), device = it.device, checkingReachability = it.checkingReachability)
+                }
             }
         }
+        viewModelScope.launch {
+            val rows = transfers.observeAll()
+            val files = rows.flatMapLatest { rs -> library.observeFilesByIds(rs.map { it.fileId }) }
+            val progress = rows.flatMapLatest { rs -> library.observeProgress(rs.map { it.fileId }) }
+            combine(rows, files, progress) { rs, fs, ps -> Triple(rs, fs, ps) }.collect { (rs, fs, ps) ->
+                val storage = withContext(Dispatchers.IO) { transfers.storage() }
+                _uiState.update { it.copy(device = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage)) }
+            }
+        }
+    }
+
+    /** The device tab (design section 05, "On device · transfers"): files that play first, then the failures. */
+    private fun buildDevice(
+        rows: List<com.regolith.data.db.TransferEntity>,
+        files: Map<Long, MediaFileEntity>,
+        progress: Map<Long, PlaybackProgressEntity>,
+        storage: TransferRepository.Storage,
+    ): DeviceUiState {
+        fun row(t: com.regolith.data.db.TransferEntity): DeviceRow? {
+            val file = files[t.fileId] ?: return null
+            val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
+            val p = progress[t.fileId]
+            val meta = listOfNotNull(
+                VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null },
+                formatBytes(t.totalBytes),
+                if (p != null && p.positionMs > 0 && p.durationMs > 0 && !p.completed) formatRemaining(p.positionMs, p.durationMs) else null,
+            ).joinToString(" · ")
+            return DeviceRow(
+                fileId = t.fileId,
+                name = if (parsed.matched) parsed.display else file.name.substringBeforeLast('.'),
+                status = t.statusEnum(), cause = t.causeEnum(), causeBytes = t.causeBytes,
+                bytesDone = t.bytesDone, totalBytes = t.totalBytes, meta = meta,
+            )
+        }
+        val all = rows.mapNotNull(::row)
+        return DeviceUiState(
+            usedBytes = storage.usedBytes,
+            totalBytes = storage.totalBytes,
+            ready = all.filter { it.status == TransferStatus.DONE },
+            inFlight = all.filter { it.status == TransferStatus.QUEUED || it.status == TransferStatus.RUNNING || it.status == TransferStatus.PAUSED },
+            failed = all.filter { it.status == TransferStatus.FAILED },
+            showAllFailed = showAllFailed,
+        )
     }
 
     private fun build(
@@ -170,6 +227,8 @@ class LibraryViewModel @AssistedInject constructor(
             noSource = shares.isEmpty(),
             scanning = runs.any { it.status == ScanRunEntity.RUNNING },
             scannedOnce = shares.any { it.lastScanAtMs != null } || runs.any { it.status == ScanRunEntity.DONE },
+            unreachable = servers.filter { s -> s.unreachableSinceMs != null && shares.any { it.serverId == s.id } }
+                .map { UnreachableServer(it.id, it.name, it.lastSeenAtMs) },
         )
     }
 
@@ -214,5 +273,24 @@ class LibraryViewModel @AssistedInject constructor(
     /** "Scan first" nudge and pull-to-refresh both land here. */
     fun scanAll() {
         viewModelScope.launch { scans.scanAll() }
+    }
+
+    /** "Try again" on the out-of-reach card: one cheap listing per server. */
+    fun tryAgain() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(checkingReachability = true) }
+            _uiState.value.unreachable.forEach { sources.probeReachable(it.serverId) }
+            _uiState.update { it.copy(checkingReachability = false) }
+        }
+    }
+
+    // --- device tab
+    fun retryTransfer(fileId: Long) = viewModelScope.launch { transfers.start(fileId) }.let { }
+    fun cancelTransfer(fileId: Long) = viewModelScope.launch { transfers.cancel(fileId) }.let { }
+    fun removeCopy(fileId: Long) = viewModelScope.launch { transfers.remove(fileId) }.let { }
+    fun clearFailed() = viewModelScope.launch { transfers.clearFailed() }.let { }
+    fun toggleShowAllFailed() {
+        showAllFailed = !showAllFailed
+        _uiState.update { it.copy(device = it.device.copy(showAllFailed = showAllFailed)) }
     }
 }

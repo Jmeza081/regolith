@@ -2,6 +2,8 @@ package com.regolith.ui.library
 
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.transfer.TransferCause
+import com.regolith.domain.transfer.TransferStatus
 
 /** One poster on the wall. */
 sealed interface LibraryTile {
@@ -64,4 +66,37 @@ data class LibraryUiState(
     val scanning: Boolean = false,
     /** True when at least one share has completed a scan; false shows the "scan first" nudge. */
     val scannedOnce: Boolean = true,
+    /** Servers that cannot be reached right now (design: "TOWER is out of reach"). */
+    val unreachable: List<UnreachableServer> = emptyList(),
+    val checkingReachability: Boolean = false,
+    /** "On this device" tab. */
+    val device: DeviceUiState = DeviceUiState(),
+)
+
+data class UnreachableServer(val serverId: Long, val name: String, val lastSeenAtMs: Long?)
+
+/** One row on the device tab. */
+data class DeviceRow(
+    val fileId: Long,
+    val name: String,
+    val status: TransferStatus,
+    val cause: TransferCause?,
+    val causeBytes: Long?,
+    val bytesDone: Long,
+    val totalBytes: Long,
+    /** "1080p · 4.0 GB · 15m left" for a finished copy. */
+    val meta: String,
+) {
+    val testTag get() = "device_row_$fileId"
+    val fraction: Float get() = if (totalBytes > 0) (bytesDone.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+}
+
+data class DeviceUiState(
+    val usedBytes: Long = 0,
+    val totalBytes: Long = 0,
+    val ready: List<DeviceRow> = emptyList(),
+    val inFlight: List<DeviceRow> = emptyList(),
+    val failed: List<DeviceRow> = emptyList(),
+    /** "Show all 30" expands the failed list past its three-row preview. */
+    val showAllFailed: Boolean = false,
 )

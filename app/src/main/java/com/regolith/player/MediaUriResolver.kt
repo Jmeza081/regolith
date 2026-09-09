@@ -5,6 +5,7 @@ import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.transfer.TransferRepository
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
 import javax.inject.Inject
@@ -37,10 +38,23 @@ class MediaUriResolver @Inject constructor(
     private val shareDao: ShareDao,
     private val serverDao: ServerDao,
     private val sources: SourceRepository,
+    private val transfers: TransferRepository,
 ) : MediaResolver {
     override fun resolve(uri: Uri): ResolvedMedia? = fileIdOf(uri)?.let { resolveBlocking(it) }
 
+    /** The app URI the player and the probe address a file by; the data source resolves it to the share. */
     fun uriFor(fileId: Long): Uri = Uri.parse("$SCHEME://$AUTHORITY/$fileId")
+
+    /**
+     * What to hand the player: the finished copy on this device as a
+     * `file://` URI when there is one (DefaultDataSource reads it
+     * directly), else the app URI. This is the whole of "plays with no
+     * network"; the player never knows which it got.
+     */
+    suspend fun playableUriFor(fileId: Long): Uri = transfers.localFile(fileId)?.let { Uri.fromFile(it) } ?: uriFor(fileId)
+
+    /** True when [uri] is a copy on this device rather than the share. */
+    fun isLocal(uri: Uri): Boolean = uri.scheme == "file"
 
     fun fileIdOf(uri: Uri): Long? =
         if (SCHEME.equals(uri.scheme, ignoreCase = true) && AUTHORITY.equals(uri.host, ignoreCase = true)) uri.lastPathSegment?.toLongOrNull() else null

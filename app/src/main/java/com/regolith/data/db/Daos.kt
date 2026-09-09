@@ -40,6 +40,14 @@ interface ServerDao {
 
     @Query("DELETE FROM servers WHERE id = :id")
     suspend fun delete(id: Long)
+
+    /** A listing, scan or transfer got through: the server is back. Also stamps lastSeenAtMs. */
+    @Query("UPDATE servers SET unreachableSinceMs = NULL, lastSeenAtMs = :now WHERE id = :id")
+    suspend fun markReachable(id: Long, now: Long)
+
+    /** Only the first failure sets the timestamp, so "out of reach since" stays honest. */
+    @Query("UPDATE servers SET unreachableSinceMs = COALESCE(unreachableSinceMs, :now) WHERE id = :id")
+    suspend fun markUnreachable(id: Long, now: Long)
 }
 
 @Dao
@@ -217,6 +225,9 @@ interface MediaFileDao {
     @Query("SELECT * FROM media_files WHERE folderId IN (:folderIds) AND missing = 0 ORDER BY name COLLATE NOCASE")
     fun observeInFolders(folderIds: List<Long>): Flow<List<MediaFileEntity>>
 
+    @Query("SELECT * FROM media_files WHERE id IN (:ids)")
+    fun observeByIds(ids: List<Long>): Flow<List<MediaFileEntity>>
+
     /** Everything under a share, for Library counts and "files under this collection". */
     @Query("SELECT * FROM media_files WHERE shareId IN (:shareIds) AND missing = 0")
     fun observeInShares(shareIds: List<Long>): Flow<List<MediaFileEntity>>
@@ -315,4 +326,41 @@ interface ArtworkDao {
 
     @Query("DELETE FROM artwork")
     suspend fun deleteAll()
+}
+
+@Dao
+interface TransferDao {
+    @Query("SELECT * FROM transfers ORDER BY createdAtMs DESC")
+    fun observeAll(): Flow<List<TransferEntity>>
+
+    @Query("SELECT * FROM transfers WHERE fileId = :fileId")
+    fun observeForFile(fileId: Long): Flow<TransferEntity?>
+
+    @Query("SELECT * FROM transfers WHERE fileId = :fileId")
+    suspend fun byFile(fileId: Long): TransferEntity?
+
+    @Query("SELECT * FROM transfers WHERE fileId = :fileId AND status = 'DONE'")
+    fun doneForFileBlocking(fileId: Long): TransferEntity?
+
+    @Query("SELECT * FROM transfers WHERE fileId = :fileId AND status = 'DONE'")
+    suspend fun doneForFile(fileId: Long): TransferEntity?
+
+    @Query("SELECT * FROM transfers WHERE status = :status")
+    suspend fun allWith(status: String): List<TransferEntity>
+
+    @Insert
+    suspend fun insert(transfer: TransferEntity): Long
+
+    @Update
+    suspend fun update(transfer: TransferEntity)
+
+    @Query("DELETE FROM transfers WHERE fileId = :fileId")
+    suspend fun deleteForFile(fileId: Long)
+
+    @Query("DELETE FROM transfers WHERE status = 'FAILED'")
+    suspend fun deleteFailed()
+
+    /** Rows a dead process left RUNNING; WorkManager re-runs the work, so they become QUEUED. */
+    @Query("UPDATE transfers SET status = 'QUEUED' WHERE status = 'RUNNING'")
+    suspend fun requeueRunning()
 }

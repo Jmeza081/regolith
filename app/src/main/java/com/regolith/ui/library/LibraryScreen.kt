@@ -45,6 +45,16 @@ import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.TertiaryButton
+import com.regolith.ui.util.formatWhen
+import com.regolith.ui.util.formatBytes
+import com.regolith.domain.transfer.TransferCause
+import com.regolith.domain.transfer.TransferStatus
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as listItems
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import com.regolith.ui.components.Skeleton
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
@@ -75,10 +85,12 @@ fun LibraryScreen(
     onSearch: () -> Unit,
     onAddServer: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Land on the device tab (Home's "On this device" summary). */
+    startOnDevice: Boolean = false,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
-    var tab by remember { mutableStateOf(LibraryTab.NETWORK) }
+    var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
 
     Column(modifier.fillMaxSize().testTag("library_screen")) {
         Row(Modifier.fillMaxWidth().statusBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
@@ -104,15 +116,40 @@ fun LibraryScreen(
         }
 
         if (tab == LibraryTab.ON_DEVICE) {
-            Column(Modifier.padding(horizontal = Spacing.s18)) {
-                Spacer(Modifier.height(Spacing.s18))
-                SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_device_empty")) {
-                    DisplayText("Nothing on this device")
-                    Spacer(Modifier.height(Spacing.s8))
-                    Text("Downloads for playing with no network arrive in a later phase.", style = TextStyles.body, color = colors.body)
-                }
-            }
+            DeviceTab(
+                state = state.device,
+                onOpenTitle = onOpenTitle,
+                onRetry = viewModel::retryTransfer,
+                onCancel = viewModel::cancelTransfer,
+                onClearFailed = viewModel::clearFailed,
+                onToggleShowAll = viewModel::toggleShowAllFailed,
+            )
             return
+        }
+
+        // Only the Network tab is affected by a share going away (design:
+        // "the message lives there rather than over files that play fine").
+        val unreachable = state.unreachable
+        if (unreachable.isNotEmpty() && onBack == null) {
+            Column(Modifier.padding(horizontal = Spacing.s18)) {
+                SurfaceCard(style = CardStyle.Error, modifier = Modifier.fillMaxWidth().testTag("library_unreachable_card")) {
+                    val first = unreachable.first()
+                    DisplayText("${first.name} is out of reach", maxLines = 2)
+                    Spacer(Modifier.height(Spacing.s8))
+                    Text(
+                        (first.lastSeenAtMs?.let { "Last seen ${formatWhen(it)}. " } ?: "") + "Nothing on the share can be listed until the phone is back on that network.",
+                        style = TextStyles.body, color = colors.body,
+                    )
+                    Spacer(Modifier.height(Spacing.s12))
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        SecondaryButton(text = if (state.checkingReachability) "Checking…" else "Try again", enabled = !state.checkingReachability, onClick = viewModel::tryAgain, testTag = "library_try_again_button")
+                        if (state.device.ready.isNotEmpty()) {
+                            PrimaryButton(text = "Play the ${state.device.ready.size} on this device", onClick = { tab = LibraryTab.ON_DEVICE }, testTag = "library_go_device_button")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(Spacing.s12))
+            }
         }
 
         LazyVerticalGrid(
@@ -157,6 +194,7 @@ fun LibraryScreen(
                         meta = "${tile.fileCount} files",
                         count = tile.fileCount,
                         folder = true,
+                        dimmed = unreachable.isNotEmpty(),
                         placeholderLabel = tile.name,
                         onClick = { onOpenCollection(tile.folderId) },
                         testTag = tile.testTag,
@@ -168,6 +206,7 @@ fun LibraryScreen(
                         meta = tile.meta,
                         chip = tile.resolutionLabel.ifEmpty { null },
                         unwatched = tile.unwatched,
+                        dimmed = unreachable.isNotEmpty(),
                         placeholderLabel = tile.name,
                         onClick = { onOpenTitle(tile.fileId) },
                         testTag = tile.testTag,
@@ -230,5 +269,109 @@ private fun NoSource(onAddServer: () -> Unit) {
             Spacer(Modifier.height(Spacing.s18))
             PrimaryButton(text = "Add source server", onClick = onAddServer, testTag = "library_add_server_button", modifier = Modifier.fillMaxWidth())
         }
+    }
+}
+
+/**
+ * "On this device" (design section 05): the storage line, files that
+ * play first, then what is arriving, then the failures with the cause
+ * named per row, three at a time with Show all at the foot so thirty
+ * stalled transfers never push the working ones off screen.
+ */
+@Composable
+private fun DeviceTab(
+    state: DeviceUiState,
+    onOpenTitle: (Long) -> Unit,
+    onRetry: (Long) -> Unit,
+    onCancel: (Long) -> Unit,
+    onClearFailed: () -> Unit,
+    onToggleShowAll: () -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    LazyColumn(Modifier.fillMaxSize().testTag("library_device_list"), contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = 120.dp)) {
+        item {
+            Text(
+                "${formatBytes(state.usedBytes)} of ${formatBytes(state.totalBytes)} · plays with no network",
+                style = TextStyles.metadata, color = colors.metadata, modifier = Modifier.padding(vertical = Spacing.s8).testTag("device_storage_line"),
+            )
+        }
+        if (state.ready.isEmpty() && state.inFlight.isEmpty() && state.failed.isEmpty()) {
+            item {
+                Spacer(Modifier.height(Spacing.s12))
+                SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_device_empty")) {
+                    DisplayText("Nothing on this device")
+                    Spacer(Modifier.height(Spacing.s8))
+                    Text("Open a title and choose \"Keep on this device\" to play it with no network.", style = TextStyles.body, color = colors.body)
+                }
+            }
+            return@LazyColumn
+        }
+        if (state.ready.isNotEmpty()) {
+            item { Eyebrow("Ready offline", Modifier.padding(top = Spacing.s12, bottom = Spacing.s4)) }
+            listItems(state.ready, key = { "ready_${it.fileId}" }) { row ->
+                DeviceRowView(row, onClick = { onOpenTitle(row.fileId) }, action = null, onAction = {})
+            }
+        }
+        if (state.inFlight.isNotEmpty()) {
+            item { Eyebrow("Arriving", Modifier.padding(top = Spacing.s18, bottom = Spacing.s4)) }
+            listItems(state.inFlight, key = { "flight_${it.fileId}" }) { row ->
+                DeviceRowView(row, onClick = { onOpenTitle(row.fileId) }, action = "Cancel", onAction = { onCancel(row.fileId) })
+            }
+        }
+        if (state.failed.isNotEmpty()) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = Spacing.s18)) {
+                    Eyebrow("Failed · ${state.failed.size}", Modifier.weight(1f))
+                    TertiaryButton(text = "Clear all", onClick = onClearFailed, testTag = "device_clear_failed_button")
+                }
+            }
+            val shown = if (state.showAllFailed) state.failed else state.failed.take(3)
+            listItems(shown, key = { "failed_${it.fileId}" }) { row ->
+                DeviceRowView(row, onClick = { onOpenTitle(row.fileId) }, action = "Try again", onAction = { onRetry(row.fileId) })
+            }
+            if (state.failed.size > 3) {
+                item {
+                    TertiaryButton(
+                        text = if (state.showAllFailed) "Show fewer" else "Show all ${state.failed.size}",
+                        onClick = onToggleShowAll, testTag = "device_show_all_button", modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One transfer row: name, the cause or the meta, an optional action, a thin bar while arriving. */
+@Composable
+private fun DeviceRowView(row: DeviceRow, onClick: () -> Unit, action: String?, onAction: () -> Unit) {
+    val colors = RegolithTheme.colors
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(row.testTag)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = Spacing.s12)) {
+            Column(Modifier.weight(1f)) {
+                Text(row.name, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1)
+                Text(
+                    when (row.status) {
+                        TransferStatus.DONE -> row.meta
+                        TransferStatus.QUEUED -> "Queued · ${formatBytes(row.totalBytes)}"
+                        TransferStatus.RUNNING -> "${formatBytes(row.bytesDone)} of ${formatBytes(row.totalBytes)}"
+                        TransferStatus.PAUSED -> "Waiting for the share · paused at ${formatBytes(row.bytesDone)} of ${formatBytes(row.totalBytes)}, resumes on its own"
+                        TransferStatus.FAILED -> when (row.cause) {
+                            TransferCause.NO_ROOM -> "No room · ${formatBytes(row.causeBytes ?: 0)} needed"
+                            TransferCause.SHARE_DROPPED -> "The share dropped · ${formatBytes(row.bytesDone)}/${formatBytes(row.totalBytes)}"
+                            else -> "The copy failed"
+                        }
+                    },
+                    style = TextStyles.metadata, color = colors.metadata, maxLines = 2,
+                )
+            }
+            if (action != null) {
+                Spacer(Modifier.width(Spacing.s8))
+                SecondaryButton(text = action, onClick = onAction, testTag = "${row.testTag}_action")
+            }
+        }
+        if (row.status == TransferStatus.RUNNING || row.status == TransferStatus.PAUSED) {
+            LinearProgressIndicator(progress = { row.fraction }, color = colors.ink, trackColor = colors.hairline, modifier = Modifier.fillMaxWidth())
+        }
+        HorizontalDivider(color = colors.hairline, thickness = 1.dp)
     }
 }

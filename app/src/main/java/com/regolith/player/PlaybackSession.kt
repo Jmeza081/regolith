@@ -110,6 +110,8 @@ class PlaybackSession @Inject constructor(
     private var ticker: Job? = null
     private var lastSavedPositionMs = -1L
     private var currentFile: MediaFileEntity? = null
+    /** file:// for a copy on this device, regolith:// for the share. */
+    private var currentUri: android.net.Uri? = null
 
     private fun current(): ExoPlayer = _player.value ?: createPlayer(_state.value.hardwareDecoding).also { _player.value = it }
 
@@ -208,14 +210,16 @@ class PlaybackSession @Inject constructor(
             currentFile = file
             val resume = startMs ?: playback.progress(fileId)?.takeUnless { it.completed }?.positionMs ?: 0L
             val next = library.filesAfter(fileId).map { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
+            val uri = resolver.playableUriFor(fileId)
             _state.update {
                 it.copy(
                     title = file?.name?.substringBeforeLast('.') ?: "",
-                    sourceLabel = file?.let { f -> sourceLabelFor(f) } ?: "",
+                    sourceLabel = if (resolver.isLocal(uri)) "On this device" else file?.let { f -> sourceLabelFor(f) } ?: "",
                     fileSizeBytes = file?.sizeBytes ?: 0,
                     next = next,
                 )
             }
+            currentUri = uri
             startPlayer(fileId, file, resume)
             setScrubThumbnails(prefs.scrubThumbnails.first())
         }
@@ -242,7 +246,7 @@ class PlaybackSession @Inject constructor(
 
     private fun startPlayer(fileId: Long, file: MediaFileEntity?, positionMs: Long) {
         val item = MediaItem.Builder()
-            .setUri(resolver.uriFor(fileId))
+            .setUri(currentUri ?: resolver.uriFor(fileId))
             .setMediaId(fileId.toString())
             .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.name).build())
             .build()
@@ -351,6 +355,7 @@ class PlaybackSession @Inject constructor(
         }
         _player.value = null
         currentFile = null
+        currentUri = null
         _scrubThumbnails.value.close()
         _scrubThumbnails.value = ScrubThumbnails.None
         _state.value = PlaybackState(speed = 1f, hardwareDecoding = _state.value.hardwareDecoding)

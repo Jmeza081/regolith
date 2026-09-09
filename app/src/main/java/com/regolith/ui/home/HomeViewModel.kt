@@ -7,6 +7,8 @@ import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
+import com.regolith.data.transfer.TransferRepository
+import com.regolith.domain.transfer.TransferStatus
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -31,6 +33,7 @@ class HomeViewModel @Inject constructor(
     private val sources: SourceRepository,
     private val library: LibraryRepository,
     private val scans: ScanRepository,
+    transfers: TransferRepository,
 ) : ViewModel() {
 
     private val resume = library.observeContinueWatching(RESUME_LIMIT)
@@ -38,11 +41,16 @@ class HomeViewModel @Inject constructor(
     private val shares = sources.observeEnabledShares()
     private val runs = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
 
+    private val downloads = transfers.observeAll()
+
     val uiState: StateFlow<HomeUiState> = combine(
-        sources.observeServers(), shares, resume, library.observeNewest(NEW_LIMIT), runs,
-    ) { servers, shareList, resumeItems, newest, runList ->
+        combine(sources.observeServers(), shares, ::Pair), resume, library.observeNewest(NEW_LIMIT), runs, downloads,
+    ) { (servers, shareList), resumeItems, newest, runList, downloadRows ->
         val running = runList.filter { it.status == ScanRunEntity.RUNNING }
+        val ready = downloadRows.filter { it.status == TransferStatus.DONE.name }
         HomeUiState(
+            downloadsReady = ready.size,
+            downloadsBytes = ready.sumOf { it.totalBytes },
             loaded = true,
             serverNames = servers.map { it.name },
             resume = resumeItems,

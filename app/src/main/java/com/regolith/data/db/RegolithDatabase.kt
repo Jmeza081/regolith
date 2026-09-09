@@ -19,6 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *     writes the migrations itself from the exported schemas in
  *     `app/schemas/` (an "auto migration"); v3 adds one step by hand to
  *     fill the new indexes from rows that already exist.
+ *  4. Phase 5: `transfers` table; `servers.unreachableSinceMs`.
  */
 @Database(
     entities = [
@@ -32,12 +33,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FolderFtsEntity::class,
         ScanRunEntity::class,
         RecentSearchEntity::class,
+        TransferEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = RegolithDatabase.RebuildFts::class),
+        AutoMigration(from = 3, to = 4),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -49,6 +52,7 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun artworkDao(): ArtworkDao
     abstract fun scanRunDao(): ScanRunDao
     abstract fun recentSearchDao(): RecentSearchDao
+    abstract fun transferDao(): TransferDao
 
     /** An external-content FTS table starts empty; `rebuild` indexes what the content table already holds. */
     class RebuildFts : AutoMigrationSpec {

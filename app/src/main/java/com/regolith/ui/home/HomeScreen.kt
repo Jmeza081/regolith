@@ -52,6 +52,7 @@ fun HomeScreen(
     onBrowse: () -> Unit,
     onOpenTitle: (fileId: Long) -> Unit,
     onPlay: (fileId: Long, startMs: Long) -> Unit,
+    onOpenDevice: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -141,6 +142,21 @@ fun HomeScreen(
                     Text("Nothing yet. Scan the share and what it holds shows up here.", style = TextStyles.body, color = colors.body)
                     Spacer(Modifier.height(Spacing.s12))
                     PrimaryButton(text = "Scan now", onClick = viewModel::refresh, testTag = "home_scan_button")
+                    Spacer(Modifier.height(Spacing.s30))
+                }
+            }
+
+            if (state.downloadsReady > 0) {
+                Column(Modifier.padding(horizontal = Spacing.s18)) {
+                    Eyebrow("On this device")
+                    Spacer(Modifier.height(Spacing.s8))
+                    ListRow(
+                        title = "${state.downloadsReady} download" + (if (state.downloadsReady == 1) " ready" else "s ready"),
+                        meta = com.regolith.ui.util.formatBytes(state.downloadsBytes),
+                        icon = LucideR.drawable.lucide_ic_hard_drive,
+                        onClick = onOpenDevice,
+                        testTag = "home_on_device_row",
+                    )
                     Spacer(Modifier.height(Spacing.s30))
                 }
             }

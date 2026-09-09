@@ -28,6 +28,12 @@ import com.regolith.ui.components.ChipStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.TertiaryButton
+import com.regolith.domain.transfer.TransferCause
+import com.regolith.domain.transfer.TransferStatus
+import com.regolith.ui.util.formatBytes
+import androidx.compose.material3.LinearProgressIndicator
 import com.regolith.ui.components.Skeleton
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
@@ -52,7 +58,7 @@ fun TitleDetailScreen(
     onPlay: (fileId: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    TitleDetailContent(viewModel.uiState, onBack, onPlay, modifier)
+    TitleDetailContent(viewModel.uiState, onBack, onPlay, viewModel::keepOnDevice, viewModel::removeFromDevice, modifier)
 }
 
 @Composable
@@ -60,6 +66,8 @@ private fun TitleDetailContent(
     stateFlow: StateFlow<TitleDetailUiState>,
     onBack: () -> Unit,
     onPlay: (fileId: Long) -> Unit,
+    onKeep: () -> Unit,
+    onRemove: () -> Unit,
     modifier: Modifier,
 ) {
     val state by stateFlow.collectAsStateWithLifecycle()
@@ -101,6 +109,8 @@ private fun TitleDetailContent(
                     modifier = Modifier.fillMaxWidth().padding(top = Spacing.s8),
                 )
             }
+            Spacer(Modifier.height(Spacing.s12))
+            KeepOnDevice(state.transfer, onKeep, onRemove)
             Spacer(Modifier.height(Spacing.s30))
 
             SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Spacing.s18)) {
@@ -131,6 +141,48 @@ private fun FactRow(label: String, value: String?, loading: Boolean = false) {
             value != null && value.isNotEmpty() -> Text(value, style = TextStyles.body, color = colors.ink, textAlign = TextAlign.End)
             loading || value == null -> Skeleton(Modifier.height(14.dp).fillMaxWidth(0.4f))
             else -> Text("Unknown", style = TextStyles.body, color = colors.metadata)
+        }
+    }
+}
+
+/**
+ * The secondary action under Play (design section 05, "On this device"):
+ * keep a copy for playing with no network, watch it arrive, or remove it.
+ * Never red: the one red on this screen is Play.
+ */
+@Composable
+private fun KeepOnDevice(transfer: TransferView?, onKeep: () -> Unit, onRemove: () -> Unit) {
+    val colors = RegolithTheme.colors
+    when (transfer?.status) {
+        null -> SecondaryButton(text = "Keep on this device", onClick = onKeep, testTag = "detail_keep_button", modifier = Modifier.fillMaxWidth())
+        TransferStatus.DONE -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("On this device · plays with no network", style = TextStyles.metadata, color = colors.metadata, modifier = Modifier.weight(1f).testTag("detail_on_device"))
+            TertiaryButton(text = "Remove", onClick = onRemove, testTag = "detail_remove_button")
+        }
+        TransferStatus.QUEUED, TransferStatus.RUNNING, TransferStatus.PAUSED -> Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when (transfer.status) {
+                        TransferStatus.PAUSED -> "Waiting for the share · paused at ${formatBytes(transfer.bytesDone)} of ${formatBytes(transfer.totalBytes)}, resumes on its own"
+                        TransferStatus.QUEUED -> "Queued · ${formatBytes(transfer.totalBytes)}"
+                        else -> "Downloading · ${(transfer.fraction * 100).toInt()}% · ${formatBytes(transfer.bytesDone)} of ${formatBytes(transfer.totalBytes)}"
+                    },
+                    style = TextStyles.metadata, color = colors.metadata, modifier = Modifier.weight(1f).testTag("detail_transfer_line"),
+                )
+                TertiaryButton(text = "Cancel", onClick = onRemove, testTag = "detail_cancel_button")
+            }
+            LinearProgressIndicator(progress = { transfer.fraction }, color = colors.ink, trackColor = colors.hairline, modifier = Modifier.fillMaxWidth().testTag("detail_transfer_progress"))
+        }
+        TransferStatus.FAILED -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                when (transfer.cause) {
+                    TransferCause.NO_ROOM -> "No room · ${formatBytes(transfer.causeBytes ?: 0)} needed"
+                    TransferCause.SHARE_DROPPED -> "The share dropped · ${formatBytes(transfer.bytesDone)} of ${formatBytes(transfer.totalBytes)}"
+                    else -> "The copy failed"
+                },
+                style = TextStyles.metadata, color = colors.metadata, modifier = Modifier.weight(1f).testTag("detail_transfer_line"),
+            )
+            SecondaryButton(text = "Try again", onClick = onKeep, testTag = "detail_retry_button")
         }
     }
 }

@@ -8,6 +8,8 @@ import com.regolith.data.artwork.ArtworkFetcher
 import com.regolith.data.artwork.ArtworkKeyer
 import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.artwork.RetrieverFrameSource
+import com.regolith.data.transfer.TransferScheduler
+import com.regolith.data.transfer.WorkManagerTransferScheduler
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -16,11 +18,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/** Artwork pipeline wiring: which frame source, and the one Coil ImageLoader. */
+/** Artwork and transfer wiring: which frame source, which transfer scheduler, and the one Coil ImageLoader. */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class ArtworkModule {
     @Binds abstract fun bindFrameSourceFactory(impl: RetrieverFrameSource.Factory): FrameSourceFactory
+    @Binds abstract fun bindTransferScheduler(impl: WorkManagerTransferScheduler): TransferScheduler
 
     companion object {
         /**

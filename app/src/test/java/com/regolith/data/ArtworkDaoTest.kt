@@ -46,7 +46,7 @@ class ArtworkDaoTest {
     }
 
     @Test
-    fun `version 1 database migrates to 3 with its files intact and indexed`() {
+    fun `version 1 database migrates to 4 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->
             v1.execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
@@ -57,12 +57,16 @@ class ArtworkDaoTest {
                     "VALUES (1, 1, 1, 'a.mkv', 'a.mkv', 'mkv', 10, 0, NULL, 0, 0, 0)",
             )
         }
-        val v3 = migrations.runMigrationsAndValidate(name, 3, true)
+        val v3 = migrations.runMigrationsAndValidate(name, 4, true)
         v3.query("SELECT name, width, probedAtMs, titleParsed FROM media_files").use { c ->
             assertEquals(true, c.moveToFirst())
             assertEquals("a.mkv", c.getString(0))
             assertEquals(true, c.isNull(1))
             assertEquals(true, c.isNull(3))
+        }
+        v3.query("SELECT COUNT(*) FROM transfers").use { c ->
+            c.moveToFirst()
+            assertEquals(0, c.getInt(0))
         }
         v3.query("SELECT COUNT(*) FROM artwork").use { c ->
             c.moveToFirst()

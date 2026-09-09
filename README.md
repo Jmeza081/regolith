@@ -6,17 +6,15 @@ nothing leaves your network. Kotlin + Jetpack Compose.
 
 ## Status
 
-Phase 4 of 6: the app understands the share. A background scan walks each
-share (it keeps going if you leave the app), parses `Title (Year)` and
-`SxxEyy` from filenames locally, and classifies folders into collections,
-titles, shows and seasons. Home has Continue watching, Newly added and
-pull-to-refresh; Library is the three-across poster wall with collections,
-a sort sheet and the unwatched mark; Search matches titles, raw filenames
-and folders as you type, with results still arriving while a scan runs;
-Settings lists shares, scans all, disconnects with a confirm, and holds
-the playback preferences. Phases 1 to 3 (connect, browse, the complete
-player, artwork and scrub previews) are verified on a real phone against a
-NAS. See `docs/ARCHITECTURE.md`.
+Phase 5 of 6: downloads and offline. "Keep on this device" on any title
+copies it into the app's own storage in the background, resuming from
+where it stopped if the share drops out and naming the cause when it
+cannot finish (share gone vs. no room). Library's "On this device" tab
+lists what plays with no network, what is arriving and what failed; Home
+summarises it. When a share is out of reach the Network wall says so with
+Try again and a way across to the device tab, and the player reads the
+local copy through the same path as the share. Phases 1 to 4 are verified
+on a real phone against a NAS. See `docs/ARCHITECTURE.md`.
 
 ## Build and run
 

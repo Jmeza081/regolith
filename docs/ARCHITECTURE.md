@@ -18,7 +18,8 @@ domain/    Pure Kotlin: models, use cases, parse rules, the SmbGateway
 data/      Implementations: jcifs-ng SMB client, Room database, DataStore
            preferences, credential store, the artwork pipeline (data/artwork:
            resolver, on-disk store, frame source, Coil fetcher), the library
-           scan (data/scan: WorkManager worker + repository). Only place
+           scan (data/scan) and the downloads (data/transfer: worker,
+           scheduler seam, repository, on-disk store). Only place
            third-party IO lives.
 player/    Media3 (ExoPlayer) session, the SMB DataSource, the container
            probe, scrub thumbnails.
@@ -148,6 +149,25 @@ Parsing is local only ("nothing leaves the network"): a year or an
 filename with the design's "No match" chip. Kinds are decided from one
 listing as the walk goes, so there is no second pass.
 
+## Downloads and offline (Phase 5)
+
+```
+TitleDetail "Keep on this device" ── TransferRepository.start(fileId)
+     └─ transfers row (QUEUED, bytesDone = 0, localPath = "{id}.{ext}")
+     └─ TransferScheduler.enqueue(fileId)          interface; WorkManagerTransferScheduler today
+          └─ TransferWorker (foreground, dataSync, unique per file, network constraint, exponential backoff)
+               ├─ StorageCheck.hasRoom(free, total, done)?  no → FAILED · NO_ROOM · shortfall in the row
+               ├─ gateway.open(...).readAt(bytesDone …) → append to "{localPath}.part"; row updated every 500 ms
+               ├─ SmbFailure → PAUSED · SHARE_DROPPED, Result.retry() ("resumes on its own"), server marked unreachable
+               └─ done → rename .part → DONE
+
+PlaybackSession.load ── MediaUriResolver.playableUriFor(fileId)
+     └─ finished copy?  file:// (DefaultDataSource reads it)  :  regolith://file/{id} (SmbDataSource)
+
+Reachability: every SMB caller (listing, scan, transfer) marks the server reachable or not on `servers`;
+Library's Network tab shows the out-of-reach card from that column, and "Try again" is one root listing.
+```
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -188,6 +208,11 @@ listing as the walk goes, so there is no second pass.
 | 2026-09-09 | Search is Room FTS4 with `unicode61` over filename, parsed title and path, prefix-matched per word | Accent folding gives "samourai" → "Samouraï"; external-content tables cost no duplicate text. The index is rebuilt once in the 2→3 migration. |
 | 2026-09-09 | The Library walks the share's folder tree in memory | Two queries (all folders, all files of the enabled shares) instead of one per collection; a 1,284-file share is a few hundred KB. Revisit if a share reaches tens of thousands of rows. |
 | 2026-09-09 | The Scanning screen shows an indeterminate bar and the live count, not a percentage | The share's size is unknown until it has been walked; the design's "64%" would have been invented. |
+| 2026-09-09 | Downloads are foreground WorkManager jobs behind a `TransferScheduler` interface | Android's user-initiated data transfer jobs are the better fit for long copies but change the enqueue/permission model; the interface keeps that swap to one class. Unique-per-file `KEEP` policy makes "Try again" idempotent. |
+| 2026-09-09 | Resume trusts the `.part` file's length over the row's `bytesDone` | A crash between a write and the row update leaves the file slightly ahead, never behind; re-reading a few bytes is harmless, skipping them is not. |
+| 2026-09-09 | A dropped share pauses a transfer (retry with backoff); no room fails it | The design names the two causes separately because they need different fixes: waiting vs. freeing space. |
+| 2026-09-09 | Local playback is a `file://` URI from the same resolver | DefaultDataSource already reads files; the player never learns which it got, and progress, scrub previews and Title Detail keep working on the same file id. |
+| 2026-09-09 | "Out of reach" is a column on `servers` set by whichever SMB call failed last | One source of truth for Library, Home and the transfers instead of each screen probing; cleared by the next successful call or by "Try again". |
 | 2026-09-09 | Notification permission is declared but not yet requested | The scan runs either way; the notification only tells the user why the app is busy. The runtime request joins the Add Source flow's permission UX in Phase 6. |
 
 ## Phase plan
@@ -199,7 +224,7 @@ listing as the walk goes, so there is no second pass.
 | 2 | Player complete: chrome, speed, decoder, A–B loop, gestures, playback sheet | `PlayerUiState`, `ScrubThumbnails` interface |
 | 3 | Artwork pipeline, Browse grid, Title Detail, scrub previews (v1: on demand) | G5, `FrameSource`, `ScrubThumbnails` |
 | 4 | Library scan, filename parsing, search (FTS), Home, sort, collections, Settings shares | parse rules, progress-in-Room, `FolderKind` |
-| 5 | Downloads and offline ("On this device") | `TransferScheduler` seam |
+| 5 | Downloads and offline ("On this device"), out-of-reach states, local playback | `TransferScheduler` seam, `transfers` rows |
 | 6 | LAN discovery, onboarding, settings, polish, saved QA flows | |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth

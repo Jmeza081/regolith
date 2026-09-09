@@ -15,6 +15,7 @@ import com.regolith.domain.smb.SmbShareInfo
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
@@ -143,6 +144,27 @@ class SourceRepository @Inject constructor(
     /** For ExoPlayer's loader thread, which is not a coroutine. Never call on the main thread. */
     fun credentialsForBlocking(serverId: Long): SmbCredentials = runBlocking { credentialsFor(serverId) }
 
+    // --- Reachability. Every SMB caller reports here so Library, Home and
+    // the transfers agree on "out of reach", and "Try again" has one thing to do.
+
+    suspend fun markReachable(serverId: Long) = serverDao.markReachable(serverId, System.currentTimeMillis())
+
+    suspend fun markUnreachable(serverId: Long) = serverDao.markUnreachable(serverId, System.currentTimeMillis())
+
+    /** "Try again": one cheap listing of the first enabled share's root. Returns true when the server answered. */
+    suspend fun probeReachable(serverId: Long): Boolean {
+        val server = serverDao.byId(serverId) ?: return false
+        val share = shareDao.observeForServer(serverId).first().firstOrNull { it.enabled } ?: return false
+        return try {
+            gateway.list(SmbHost(server.host, server.port), credentialsFor(serverId), share.name, "")
+            markReachable(serverId)
+            true
+        } catch (e: SmbFailure) {
+            markUnreachable(serverId)
+            false
+        }
+    }
+
     /** "TOWER" for tower.local, the address itself for an IP. */
     private fun displayNameFor(host: SmbHost): String {
         val h = host.host
@@ -157,6 +179,7 @@ class SourceRepository @Inject constructor(
         authMode = AuthMode.valueOf(authMode),
         username = username,
         lastSeenAtMs = lastSeenAtMs,
+        unreachableSinceMs = unreachableSinceMs,
     )
 
     private fun ShareEntity.toDomain() = Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs)

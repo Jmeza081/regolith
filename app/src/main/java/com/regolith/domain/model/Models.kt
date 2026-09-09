@@ -13,6 +13,8 @@ data class Server(
     val authMode: AuthMode,
     val username: String?,
     val lastSeenAtMs: Long?,
+    /** Non-null while the server cannot be reached (design: "TOWER is out of reach · Last seen Tuesday"). */
+    val unreachableSinceMs: Long? = null,
 )
 
 /** A share on a server. Only enabled shares are browsed and scanned. */

@@ -31,7 +31,7 @@ over the `NavDisplay`, and only when the top key belongs to a tab.
 | Tab | Key | Screen | testTag |
 |---|---|---|---|
 | Home | `Home` | `HomeScreen` | `nav_home` |
-| Library | `Library(folderId?)` | `LibraryScreen` | `nav_library` |
+| Library | `Library(folderId?, onDevice)` | `LibraryScreen` | `nav_library` |
 | Browse | `Browse(folderId?)` | `BrowseScreen` | `nav_browse` |
 | Settings | `Settings` | `SettingsScreen` | `nav_settings` |
 
@@ -44,6 +44,8 @@ system back from any tab returns to Home and back from Home leaves the app.
 `Library(folderId = null)` is the poster wall of every enabled share's root:
 collections and loose titles. Tapping a collection pushes `Library(folderId)`,
 that folder's wall. Titles push `TitleDetail`. The search icon pushes `Search`.
+`Library(onDevice = true)` lands on the "On this device" tab; Home's
+"N downloads ready" row resets the stack to `[Home, Library(onDevice)]`.
 
 ## Browse is a tab that nests
 

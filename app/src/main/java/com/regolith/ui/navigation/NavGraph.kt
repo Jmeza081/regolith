@@ -113,6 +113,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onBrowse = { navigateToTab(MainTab.BROWSE) },
                             onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
                             onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
+                            onOpenDevice = { backStack.clear(); backStack.add(RegolithKey.Home); backStack.add(RegolithKey.Library(onDevice = true)) },
                         )
                     }
                     entry<RegolithKey.Library> { key ->
@@ -125,6 +126,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
                             onSearch = { backStack.add(RegolithKey.Search) },
                             onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                            startOnDevice = key.onDevice,
                         )
                     }
                     entry<RegolithKey.Search> {

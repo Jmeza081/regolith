@@ -6,6 +6,9 @@ import androidx.media3.common.util.UnstableApi
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.PlaybackRepository
+import com.regolith.data.transfer.TransferRepository
+import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
+import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -37,6 +40,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val library: LibraryRepository,
     private val playback: PlaybackRepository,
     private val probe: MediaProbe,
+    private val transfers: TransferRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -50,6 +54,11 @@ class TitleDetailViewModel @AssistedInject constructor(
     private var probed = false
 
     init {
+        viewModelScope.launch {
+            transfers.observeForFile(fileId).collect { row ->
+                _uiState.update { it.copy(transfer = row?.let { r -> TransferView(r.statusEnum(), r.bytesDone, r.totalBytes, r.causeEnum(), r.causeBytes) }) }
+            }
+        }
         viewModelScope.launch {
             library.observeFile(fileId).collect { file ->
                 if (file == null) return@collect
@@ -73,6 +82,12 @@ class TitleDetailViewModel @AssistedInject constructor(
             }
         }
     }
+
+    /** "Keep on this device" and "Try again". */
+    fun keepOnDevice() = viewModelScope.launch { transfers.start(fileId) }.let { }
+
+    /** Cancel a transfer in flight, or remove the finished copy. The share is untouched either way. */
+    fun removeFromDevice() = viewModelScope.launch { transfers.remove(fileId) }.let { }
 
     private fun runProbe() {
         probed = true

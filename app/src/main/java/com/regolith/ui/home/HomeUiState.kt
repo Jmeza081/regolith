@@ -39,6 +39,9 @@ data class HomeUiState(
     val refreshLine: String? = null,
     /** True until the first scan has finished on at least one share. */
     val neverScanned: Boolean = false,
+    /** Finished copies on this device, for the "On this device" summary. */
+    val downloadsReady: Int = 0,
+    val downloadsBytes: Long = 0,
 ) {
     val hasSource: Boolean get() = serverNames.isNotEmpty()
 }

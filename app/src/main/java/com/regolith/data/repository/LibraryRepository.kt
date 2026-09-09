@@ -16,6 +16,7 @@ import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
+import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import kotlinx.coroutines.flow.Flow
@@ -99,7 +100,13 @@ class LibraryRepository @Inject constructor(
         val host = SmbHost(server.host, server.port)
         val credentials = sources.credentialsFor(server.id)
 
-        val entries = gateway.list(host, credentials, share.name, folder.relPath)
+        val entries = try {
+            gateway.list(host, credentials, share.name, folder.relPath)
+        } catch (e: SmbFailure.Unreachable) {
+            sources.markUnreachable(server.id)
+            throw e
+        }
+        sources.markReachable(server.id)
         val now = System.currentTimeMillis()
         val prefix = if (folder.relPath.isEmpty()) "" else "${folder.relPath}/"
 
@@ -177,6 +184,9 @@ class LibraryRepository @Inject constructor(
 
     fun observeFilesIn(folderIds: List<Long>): Flow<List<MediaFileEntity>> =
         if (folderIds.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeInFolders(folderIds)
+
+    fun observeFilesByIds(ids: List<Long>): Flow<List<MediaFileEntity>> =
+        if (ids.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeByIds(ids)
 
     fun observeFilesInShares(shareIds: List<Long>): Flow<List<MediaFileEntity>> =
         if (shareIds.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeInShares(shareIds)

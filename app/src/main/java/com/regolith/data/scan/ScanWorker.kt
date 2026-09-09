@@ -77,6 +77,7 @@ class ScanWorker @AssistedInject constructor(
             scanRunDao.update(run.copy(status = ScanRunEntity.CANCELLED, finishedAtMs = System.currentTimeMillis()))
             throw e
         } catch (e: SmbFailure) {
+            // refreshFolder already marked the server unreachable when that was the cause.
             Log.w(TAG, "scan of share $shareId failed: ${e.message}")
             scanRunDao.update(run.copy(status = ScanRunEntity.FAILED, finishedAtMs = System.currentTimeMillis(), error = e.message))
             Result.failure()
