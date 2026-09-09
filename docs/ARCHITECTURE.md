@@ -179,9 +179,13 @@ each an HTML tree with exact `font:` / `color:` / `padding:` values. Phase
   holds one `TextStyle` per `font:` pair the frames use (screen title
   Michroma 15/1.3, eyebrow 600 11px tracked .14em, tile name 600 12/14,
   body 400 14/21, …) and `Color.kt` the exact tokens (`#8A8A8A` idle nav,
-  `rgba(255,255,255,.06)` frost, `rgba(0,0,0,.52)` pill, …). Design pixels
+  `rgba(255,255,255,.06)` frost, `rgba(0,0,0,.52)` pill, …). Layout pixels
   are used as dp, so a 411dp-wide phone shows the frame's layout with a
-  little more room, at the frame's type sizes.
+  little more room; type is the exception — every size and line height in
+  `Type.kt` is the frame's px multiplied by `TYPE_SCALE` (1.28 = 411/320)
+  so text keeps the same share of the screen it has in the frames. Tracking
+  stays in `em`, which is already relative, and the sizes stay written as
+  the design's raw px so a style can still be diffed against the export.
 - **Icons and photographs come from the export.** The design's SVG paths
   were converted to `res/drawable/rg_ic_*.xml` (36 vectors) and its four
   photographs extracted into `res/drawable-nodpi/rg_*.webp`, replacing the
@@ -264,6 +268,7 @@ each an HTML tree with exact `font:` / `color:` / `padding:` values. Phase
 | 2026-09-09 | Design px = dp, type at the frames' stated sizes | The frames are 320px wide; a 411dp phone gets the same sizes with more room. Scaling everything ~1.28× to match proportions is the alternative, left as a question for the owner. |
 | 2026-09-09 | No mDNS in the LAN finder | Android 17 routes `NsdManager` discovery through a system device picker for targetSdk 37; the port-445 sweep finds every host the picker would and more. |
 | 2026-09-09 | BouncyCastle installed off the main thread, joined before the first SMB handshake | The provider load cost ~3.7 s of the cold start on the emulator, all on the main thread under the splash. |
+| 2026-09-09 | **Reverses the row above**: type is scaled 1.28× (`TYPE_SCALE` in `Type.kt`), layout is not | Reading the 320px frames' type as sp on a 411dp phone made every label ~28% smaller relative to the screen than the mock, because layouts stretch to the real width but type did not. 411/320 = 1.284. Layout stays at design px = dp (the frames' padding at the real width is the intended "more room"); only type is multiplied. Still `sp`, so the user's font-size setting applies on top. |
 | 2026-09-09 | A parent listing never overwrites a child folder's counts | `FolderDao.upsert` keeps `fileCount`/`byteCount` unless the incoming row was itself listed; before, browsing into a share zeroed every subfolder's counts. |
 
 ## Phase plan

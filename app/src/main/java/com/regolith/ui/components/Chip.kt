@@ -17,12 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.regolith.R
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 
 /** Where a chip sits decides how it is drawn (design section 01, "Badges & chips"). */
 enum class ChipStyle {
@@ -75,7 +75,7 @@ fun CollectionBadge(count: Int, modifier: Modifier = Modifier) {
     ) {
         Icon(painterResource(R.drawable.rg_ic_browse), contentDescription = null, tint = colors.ink, modifier = Modifier.size(10.dp))
         Spacer(Modifier.width(Spacing.s4))
-        Text(count.toString(), style = TextStyles.badge.copy(lineHeight = 12.sp), color = colors.ink)
+        Text(count.toString(), style = TextStyles.badge.copy(lineHeight = 12.designSp()), color = colors.ink)
     }
 }
 

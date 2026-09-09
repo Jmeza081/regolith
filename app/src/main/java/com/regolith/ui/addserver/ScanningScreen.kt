@@ -19,7 +19,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.em
-import androidx.compose.ui.unit.sp
 import com.regolith.ui.components.MichromaLabel
 import com.regolith.ui.components.ProgressBar
 import com.regolith.ui.components.SecondaryButton
@@ -51,6 +50,7 @@ import com.regolith.ui.components.TertiaryButton
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -147,8 +147,8 @@ fun ScanningScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.s30),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            DisplayText("%,d".format(state.filesFound), style = TextStyles.heroFigure.copy(lineHeight = 44.sp, letterSpacing = (-0.02).em), modifier = Modifier.testTag("scanning_count"))
-            Text("files found on ${state.serverName}", style = TextStyles.body.copy(lineHeight = 20.sp), color = colors.metadata)
+            DisplayText("%,d".format(state.filesFound), style = TextStyles.heroFigure.copy(lineHeight = 44.designSp(), letterSpacing = (-0.02).em), modifier = Modifier.testTag("scanning_count"))
+            Text("files found on ${state.serverName}", style = TextStyles.body.copy(lineHeight = 20.designSp()), color = colors.metadata)
         }
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
             if (state.running) SweepBar(modifier = Modifier.testTag("scanning_progress")) else ProgressBar(fraction = if (state.failed == null) 1f else 0f)
@@ -181,7 +181,7 @@ fun ScanningScreen(
                 SecondaryButton(text = "Run in the background", onClick = onBackground, testTag = "scanning_background_button", modifier = Modifier.fillMaxWidth())
                 Text(
                     "Regolith keeps the list on this device. Nothing is copied off the share.",
-                    style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.metadata, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+                    style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.metadata, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
                 )
             } else {
                 PrimaryButton(text = "Open the library", onClick = onDone, testTag = "scanning_done_button", modifier = Modifier.fillMaxWidth())

@@ -37,7 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.regolith.R
 import com.regolith.domain.playback.AbLoop
 import com.regolith.ui.components.DisplayText
@@ -49,6 +48,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.SheetShape
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
 import com.regolith.ui.util.formatSpeed
@@ -108,7 +108,7 @@ fun PlaybackSheetContent(
 ) {
     val colors = RegolithTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically) {
-        DisplayText("Playback", style = TextStyles.dialogTitle.copy(fontSize = 14.sp, lineHeight = 19.6.sp), modifier = Modifier.weight(1f))
+        DisplayText("Playback", style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()), modifier = Modifier.weight(1f))
         Box(Modifier.size(36.dp).clickable(interactionSource = null, indication = null, onClick = onClose).testTag("player_sheet_close"), contentAlignment = Alignment.Center) {
             Icon(painterResource(R.drawable.rg_ic_close), contentDescription = "Close", tint = colors.body, modifier = Modifier.size(20.dp))
         }
@@ -141,7 +141,7 @@ fun PlaybackSheetContent(
 
     Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text("Scrub thumbnails", style = TextStyles.settingLabel.copy(lineHeight = 20.sp), color = colors.inkSoft)
+            Text("Scrub thumbnails", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
             Text("Shows a preview frame while you drag the timeline. Pulls extra data from the share.", style = TextStyles.settingMeta, color = colors.metadata)
         }
         Spacer(Modifier.width(Spacing.s12))
@@ -166,7 +166,7 @@ private fun DecoderRow(title: String, meta: String, selected: Boolean, onClick: 
             .testTag(testTag),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text(title, style = TextStyles.buttonPrimary.copy(lineHeight = 18.sp), color = if (selected) colors.ink else colors.inkSoft)
+            Text(title, style = TextStyles.buttonPrimary.copy(lineHeight = 18.designSp()), color = if (selected) colors.ink else colors.inkSoft)
             if (selected) Text(meta, style = TextStyles.settingMeta, color = colors.metadata)
         }
         if (selected) {
@@ -213,9 +213,9 @@ fun AbLoopSheetContent(
                         // Labels sit under their points; a short loop would stack them, so B never starts before A ends.
                         val aX = (at(loop.aMs) - 16.dp).coerceAtLeast(0.dp)
                         val bX = (at(loop.bMs) - 16.dp).coerceIn(aX + 40.dp, (w - 40.dp).coerceAtLeast(aX + 40.dp))
-                        Text(formatClock(loop.aMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.sp), color = colors.body, modifier = Modifier.offset(x = aX))
-                        Text(formatClock(loop.bMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.sp), color = colors.body, modifier = Modifier.offset(x = bX))
-                        Text(formatClock(durationMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.sp), color = colors.metadata, modifier = Modifier.align(Alignment.CenterEnd))
+                        Text(formatClock(loop.aMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.designSp()), color = colors.body, modifier = Modifier.offset(x = aX))
+                        Text(formatClock(loop.bMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.designSp()), color = colors.body, modifier = Modifier.offset(x = bX))
+                        Text(formatClock(durationMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.designSp()), color = colors.metadata, modifier = Modifier.align(Alignment.CenterEnd))
                     }
                 }
             }
@@ -244,12 +244,12 @@ private fun NudgeRow(label: String, value: String, onMinus: () -> Unit, onPlus: 
                 Modifier.size(44.dp, 36.dp).clip(RoundedCornerShape(topStart = 9.dp, bottomStart = 9.dp, topEnd = 3.dp, bottomEnd = 3.dp)).background(colors.disabledBg)
                     .clickable(interactionSource = null, indication = null, onClick = onMinus).testTag("player_loop_${tag}_minus"),
                 contentAlignment = Alignment.Center,
-            ) { Text("−0.5s", style = TextStyles.buttonSmall.copy(fontSize = 12.sp), color = colors.inkSoft) }
+            ) { Text("−0.5s", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.inkSoft) }
             Box(
                 Modifier.size(44.dp, 36.dp).clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 9.dp, bottomEnd = 9.dp)).background(colors.disabledBg)
                     .clickable(interactionSource = null, indication = null, onClick = onPlus).testTag("player_loop_${tag}_plus"),
                 contentAlignment = Alignment.Center,
-            ) { Text("+0.5s", style = TextStyles.buttonSmall.copy(fontSize = 12.sp), color = colors.inkSoft) }
+            ) { Text("+0.5s", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.inkSoft) }
         }
     }
 }

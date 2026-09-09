@@ -50,7 +50,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.R as LucideR
@@ -67,6 +66,7 @@ import com.regolith.ui.components.TopBar
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 
 /**
  * "Enter an address" (design section 03): three fields with the label
@@ -180,7 +180,7 @@ fun ManualEntryScreen(
             )
             if (!failed) {
                 Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Save credentials", style = TextStyles.settingLabel.copy(lineHeight = 20.sp), color = colors.inkSoft, modifier = Modifier.weight(1f))
+                    Text("Save credentials", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft, modifier = Modifier.weight(1f))
                     SwitchControl(checked = state.saveCredentials, onCheckedChange = viewModel::onSaveCredentialsChange, testTag = "addserver_save_credentials_switch")
                 }
             }
@@ -224,8 +224,8 @@ private fun ConnectingContent(address: String, onCancel: () -> Unit, modifier: M
                 Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.dp))
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                DisplayText("Connecting", style = TextStyles.dialogTitle.copy(fontSize = 16.sp, lineHeight = 22.4.sp))
-                Text(address, style = TextStyles.body.copy(fontSize = 13.sp, lineHeight = 13.sp), color = colors.metadata)
+                DisplayText("Connecting", style = TextStyles.dialogTitle.copy(fontSize = 16.designSp(), lineHeight = 22.4.designSp()))
+                Text(address, style = TextStyles.body.copy(fontSize = 13.designSp(), lineHeight = 13.designSp()), color = colors.metadata)
             }
             TertiaryButton(text = "Cancel", onClick = onCancel, testTag = "addserver_cancel_button")
         }

@@ -46,7 +46,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
@@ -59,6 +58,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 
 /**
  * Search (design section 06). A 44dp pill field with the glyph, a red
@@ -93,13 +93,13 @@ fun SearchScreen(
                     value = state.query,
                     onValueChange = viewModel::setQuery,
                     singleLine = true,
-                    textStyle = TextStyles.body.copy(fontSize = 14.sp, lineHeight = 14.sp, color = colors.ink),
+                    textStyle = TextStyles.body.copy(fontSize = 14.designSp(), lineHeight = 14.designSp(), color = colors.ink),
                     cursorBrush = SolidColor(colors.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { viewModel.remember() }),
                     decorationBox = { inner ->
                         Box {
-                            if (state.query.isEmpty()) Text("Titles, filenames, folders", style = TextStyles.body.copy(fontSize = 14.sp, lineHeight = 14.sp), color = colors.metadata)
+                            if (state.query.isEmpty()) Text("Titles, filenames, folders", style = TextStyles.body.copy(fontSize = 14.designSp(), lineHeight = 14.designSp()), color = colors.metadata)
                             inner()
                         }
                     },
@@ -141,7 +141,7 @@ fun SearchScreen(
                                 .testTag("search_filter_${f.name.lowercase()}"),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(f.label, style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.sp) else TextStyles.buttonSmall.copy(fontSize = 12.sp), color = if (selected) Color.White else colors.inkSoft)
+                            Text(f.label, style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = if (selected) Color.White else colors.inkSoft)
                         }
                     }
                 }
@@ -162,8 +162,8 @@ fun SearchScreen(
                         Modifier.fillMaxWidth().background(colors.surface, RoundedCornerShape(18.dp)).border(1.dp, colors.hairline, RoundedCornerShape(18.dp)).padding(Spacing.s18).testTag("search_empty_card"),
                         verticalArrangement = Arrangement.spacedBy(Spacing.s12),
                     ) {
-                        Text("No file or folder matches that.", style = TextStyles.rowLabelMedium.copy(lineHeight = 21.sp), color = colors.ink)
-                        Text("Search reads filenames as they are on the share, so spelling counts. Try fewer words, or drop the year.", style = TextStyles.settingMeta.copy(lineHeight = 18.sp), color = colors.body)
+                        Text("No file or folder matches that.", style = TextStyles.rowLabelMedium.copy(lineHeight = 21.designSp()), color = colors.ink)
+                        Text("Search reads filenames as they are on the share, so spelling counts. Try fewer words, or drop the year.", style = TextStyles.settingMeta.copy(lineHeight = 18.designSp()), color = colors.body)
                     }
                 }
             }
@@ -173,7 +173,7 @@ fun SearchScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(14.dp).border(1.5.dp, colors.raised, PillShape))
                             Spacer(Modifier.width(Spacing.s12))
-                            Text("Still reading $path — matches will keep arriving.", style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.body)
+                            Text("Still reading $path — matches will keep arriving.", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body)
                         }
                     }
                 }
@@ -184,7 +184,7 @@ fun SearchScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Eyebrow("Recent", Modifier.weight(1f), muted = true)
                             Text(
-                                "Clear", style = TextStyles.buttonSmall.copy(fontSize = 12.sp), color = colors.accent,
+                                "Clear", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
                                 modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = viewModel::clearRecent).testTag("search_clear_recent_button"),
                             )
                         }
@@ -198,7 +198,7 @@ fun SearchScreen(
                                 ) {
                                     Icon(painterResource(R.drawable.rg_ic_clock), contentDescription = null, tint = colors.body, modifier = Modifier.size(15.dp))
                                     Spacer(Modifier.width(Spacing.s12))
-                                    Text(q, style = TextStyles.body.copy(lineHeight = 18.sp), color = colors.inkSoft)
+                                    Text(q, style = TextStyles.body.copy(lineHeight = 18.designSp()), color = colors.inkSoft)
                                 }
                             }
                         }

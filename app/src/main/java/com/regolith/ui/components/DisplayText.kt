@@ -10,6 +10,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.regolith.ui.theme.RegolithTheme
+import com.regolith.ui.theme.TYPE_SCALE
 import com.regolith.ui.theme.TextStyles
 
 /**
@@ -19,7 +20,9 @@ import com.regolith.ui.theme.TextStyles
  * 1. Michroma is uppercase only. The text is uppercased on the way in.
  * 2. Michroma is stroked 0.55px for weight (`.dh` in the design). Compose
  *    has no `paint-order`, so this draws the text twice: a thin stroke
- *    pass under a fill pass.
+ *    pass under a fill pass. The stroke is scaled with the type
+ *    ([com.regolith.ui.theme.TYPE_SCALE]) so the glyphs keep the design's
+ *    optical weight at the larger size.
  */
 @Composable
 fun DisplayText(
@@ -33,7 +36,7 @@ fun DisplayText(
 ) {
     val upper = text.uppercase()
     Box(modifier) {
-        Text(text = upper, style = style.copy(drawStyle = Stroke(width = 0.55f)), color = color, maxLines = maxLines, textAlign = textAlign, overflow = overflow)
+        Text(text = upper, style = style.copy(drawStyle = Stroke(width = 0.55f * TYPE_SCALE)), color = color, maxLines = maxLines, textAlign = textAlign, overflow = overflow)
         Text(text = upper, style = style, color = color, maxLines = maxLines, textAlign = textAlign, overflow = overflow)
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.regolith.R
@@ -18,10 +19,34 @@ import com.regolith.R
  *  - Space Grotesk: everything a person actually reads, including the
  *    tracked uppercase eyebrows and nav labels.
  *
- * Every style below is a `font:` declaration copied from the design export,
- * with the design's CSS px read as sp/dp (the frames are 320 px wide; the
- * app stretches layouts, never type). Both faces are bundled in res/font.
+ * Every style below is a `font:` declaration copied verbatim from the design
+ * export, in the design's own CSS px, then multiplied by [TYPE_SCALE] on the
+ * way to sp. Keeping the raw numbers means a style can still be diffed
+ * against the export. Both faces are bundled in res/font.
  */
+
+/**
+ * Design px -> sp multiplier.
+ *
+ * The design frames are 320 px wide; the phone this targets is 411 dp. Reading
+ * the export's px straight as sp made every label ~28% smaller *relative to the
+ * screen* than the mock shows, because layouts stretch to the real width but
+ * type did not. 411/320 = 1.284, so type now occupies the same fraction of the
+ * screen width as it does in the frames.
+ *
+ * sp (not dp) so the user's font-size accessibility setting still applies on
+ * top; this factor only fixes the design-to-device mismatch.
+ */
+const val TYPE_SCALE = 1.28f
+
+/**
+ * A design-export px value as a scaled [TextUnit], for the few call sites that
+ * override a style's `fontSize`/`lineHeight` with `style.copy(...)`. Pass the
+ * number straight from the design (`13`, `19.6`) — never a pre-scaled one.
+ */
+fun Number.designSp(): TextUnit = (toFloat() * TYPE_SCALE).sp
+
+/** Michroma: display face. */
 val Michroma = FontFamily(Font(R.font.michroma, FontWeight.Normal))
 
 /** Space Grotesk ships as one variable font; each weight is an axis setting. */
@@ -32,12 +57,14 @@ val SpaceGrotesk = FontFamily(
     Font(R.font.space_grotesk, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
 )
 
+// `size`/`lineHeight` are the design's px; `tracking` is in em, so it is already
+// relative to the font size and must NOT be scaled.
 private fun sg(weight: FontWeight, size: Int, lineHeight: Float, tracking: Float = 0f) = TextStyle(
-    fontFamily = SpaceGrotesk, fontWeight = weight, fontSize = size.sp, lineHeight = lineHeight.sp, letterSpacing = tracking.em,
+    fontFamily = SpaceGrotesk, fontWeight = weight, fontSize = size.designSp(), lineHeight = lineHeight.designSp(), letterSpacing = tracking.em,
 )
 
 private fun michroma(size: Int, lineHeight: Float, tracking: Float = 0f) = TextStyle(
-    fontFamily = Michroma, fontSize = size.sp, lineHeight = lineHeight.sp, letterSpacing = tracking.em,
+    fontFamily = Michroma, fontSize = size.designSp(), lineHeight = lineHeight.designSp(), letterSpacing = tracking.em,
 )
 
 object TextStyles {

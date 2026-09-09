@@ -83,6 +83,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
@@ -377,7 +378,7 @@ private fun BoxScope.LandscapeChrome(state: PlaybackState, visible: Boolean, scr
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-                            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 16.sp, lineHeight = 20.8.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 16.designSp(), lineHeight = 20.8.designSp()), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
                             Text(meta.filter { it.isNotEmpty() }.joinToString(" · "), style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -465,7 +466,7 @@ private fun LoopingPill(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(painterResource(R.drawable.rg_ic_loop), contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-        Text("LOOPING A–B", style = TextStyles.buttonSmall.copy(fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = Color.White)
+        Text("LOOPING A–B", style = TextStyles.buttonSmall.copy(fontSize = 11.designSp(), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = Color.White)
     }
 }
 
@@ -495,7 +496,7 @@ private fun PortraitDetails(
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 17.sp, lineHeight = 22.1.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 17.designSp(), lineHeight = 22.1.designSp()), maxLines = 2, overflow = TextOverflow.Ellipsis)
             val meta = (state.video?.chips ?: emptyList()) + listOfNotNull(
                 state.durationMs.takeIf { it > 0 }?.let { formatDurationShort(it) },
                 state.fileSizeBytes.takeIf { it > 0 }?.let { formatBytes(it) },
@@ -520,7 +521,7 @@ private fun PortraitDetails(
                             Text(item.name, style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 listOfNotNull(item.durationMs?.let { formatDurationShort(it) }, formatBytes(item.sizeBytes)).joinToString(" · "),
-                                style = TextStyles.meta.copy(lineHeight = 11.sp), color = colors.metadata, maxLines = 1,
+                                style = TextStyles.meta.copy(lineHeight = 11.designSp()), color = colors.metadata, maxLines = 1,
                             )
                         }
                     }
@@ -621,12 +622,12 @@ private fun GestureMap(onDismiss: () -> Unit) {
             GestureZone(R.drawable.rg_ic_seek_forward, "Double-tap", "Forward 10s, stacking the same way.", "Drag up or down here for volume", Modifier.weight(1f))
         }
         Row(Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            Text("GESTURES", style = TextStyles.tag.copy(fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 13.sp), color = Color.White, modifier = Modifier.background(colors.accent, PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s4))
+            Text("GESTURES", style = TextStyles.tag.copy(fontSize = 10.designSp(), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 13.designSp()), color = Color.White, modifier = Modifier.background(colors.accent, PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s4))
             Text("Zones are invisible in use — shown here only", style = TextStyles.meta12, color = colors.body)
         }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 26.dp, vertical = 18.dp)) {
-            Text("Swipe down anywhere · leave the player", style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.body, modifier = Modifier.weight(1f))
-            Text("Drag the scrub bar · thumbnails follow the finger", style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.body, textAlign = TextAlign.End)
+            Text("Swipe down anywhere · leave the player", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body, modifier = Modifier.weight(1f))
+            Text("Drag the scrub bar · thumbnails follow the finger", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body, textAlign = TextAlign.End)
         }
     }
 }
@@ -638,8 +639,8 @@ private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, 
         Box(Modifier.size(56.dp).clip(PillShape).background(colors.onMediaCircleBg).border(1.dp, colors.onMediaCircleBorder, PillShape), contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(26.dp))
         }
-        Text(gesture, style = TextStyles.buttonPrimary.copy(lineHeight = 18.sp), color = colors.ink, textAlign = TextAlign.Center)
-        Text(does, style = TextStyles.body.copy(fontSize = 13.sp, lineHeight = 18.sp), color = colors.body, textAlign = TextAlign.Center)
-        Text(hint, style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.metadata, textAlign = TextAlign.Center)
+        Text(gesture, style = TextStyles.buttonPrimary.copy(lineHeight = 18.designSp()), color = colors.ink, textAlign = TextAlign.Center)
+        Text(does, style = TextStyles.body.copy(fontSize = 13.designSp(), lineHeight = 18.designSp()), color = colors.body, textAlign = TextAlign.Center)
+        Text(hint, style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.metadata, textAlign = TextAlign.Center)
     }
 }

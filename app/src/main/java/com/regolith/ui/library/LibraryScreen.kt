@@ -44,7 +44,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
@@ -69,6 +68,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.SheetShape
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import com.regolith.ui.theme.TileShape
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatWhen
@@ -252,7 +252,7 @@ private fun SortSheet(selected: LibrarySort, onSelect: (LibrarySort) -> Unit, on
         Column(Modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12).navigationBarsPadding().testTag("library_sort_sheet")) {
             Box(Modifier.align(Alignment.CenterHorizontally).size(38.dp, 4.dp).background(colors.raised, RoundedCornerShape(2.dp)))
             Spacer(Modifier.height(Spacing.s12))
-            DisplayText("Sort by", style = TextStyles.dialogTitle.copy(fontSize = 14.sp, lineHeight = 19.6.sp))
+            DisplayText("Sort by", style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()))
             Spacer(Modifier.height(Spacing.s4))
             LibrarySort.entries.forEach { sort ->
                 Row(
@@ -261,7 +261,7 @@ private fun SortSheet(selected: LibrarySort, onSelect: (LibrarySort) -> Unit, on
                         .clickable(interactionSource = null, indication = null) { onSelect(sort) }
                         .testTag("library_sort_${sort.name.lowercase()}"),
                 ) {
-                    Text(sort.label, style = TextStyles.settingLabel.copy(lineHeight = 20.sp), color = if (sort == selected) colors.ink else colors.inkSoft, modifier = Modifier.weight(1f))
+                    Text(sort.label, style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = if (sort == selected) colors.ink else colors.inkSoft, modifier = Modifier.weight(1f))
                     if (sort == selected) {
                         Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.dp))
                     }
@@ -312,10 +312,10 @@ private fun OutOfReach(
                 Icon(painterResource(R.drawable.rg_ic_wifi_off), contentDescription = null, tint = colors.body, modifier = Modifier.size(19.dp))
                 Spacer(Modifier.width(Spacing.s12))
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Text("${server.name} is out of reach", style = TextStyles.rowLabelMedium.copy(lineHeight = 20.sp), color = colors.inkSoft)
+                    Text("${server.name} is out of reach", style = TextStyles.rowLabelMedium.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
                     Text(
                         (server.lastSeenAtMs?.let { "Last seen ${formatWhen(it)}. " } ?: "") + "Nothing on the share can be listed until the phone is back on that network.",
-                        style = TextStyles.settingMeta.copy(lineHeight = 18.sp), color = colors.body,
+                        style = TextStyles.settingMeta.copy(lineHeight = 18.designSp()), color = colors.body,
                     )
                     Text(
                         if (checking) "Checking…" else "Try again", style = TextStyles.buttonTertiary, color = colors.ink,
@@ -347,7 +347,7 @@ private fun OutOfReach(
                         Spacer(Modifier.width(Spacing.s12))
                         Text(
                             "${row.name} · paused at ${formatBytes(row.bytesDone)} of ${formatBytes(row.totalBytes)}, resumes on its own",
-                            style = TextStyles.settingMeta.copy(lineHeight = 18.sp), color = colors.body,
+                            style = TextStyles.settingMeta.copy(lineHeight = 18.designSp()), color = colors.body,
                         )
                     }
                 }
@@ -449,7 +449,7 @@ private fun DeviceTab(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Eyebrow("Failed · ${state.failed.size}", Modifier.weight(1f), muted = true)
                         Text(
-                            "Clear all", style = TextStyles.buttonSmall.copy(fontSize = 12.sp), color = colors.accent,
+                            "Clear all", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
                             modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = onClearFailed).testTag("device_clear_failed_button"),
                         )
                     }
@@ -505,7 +505,7 @@ private fun DeviceRowView(row: DeviceRow, minHeight: androidx.compose.ui.unit.Dp
         if (action != null) {
             Spacer(Modifier.width(Spacing.s12))
             Text(
-                action, style = TextStyles.buttonSmall.copy(fontSize = 12.sp), color = colors.ink,
+                action, style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.ink,
                 modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = onAction).testTag("${row.testTag}_action"),
             )
         }

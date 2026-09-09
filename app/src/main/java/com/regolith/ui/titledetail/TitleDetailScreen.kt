@@ -47,6 +47,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDate
 import com.regolith.ui.util.formatRemaining
@@ -187,7 +188,7 @@ private fun TransferLine(transfer: TransferView?, onKeep: () -> Unit, onRemove: 
     }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(line, style = TextStyles.meta12.copy(lineHeight = 16.sp()), color = colors.metadata, modifier = Modifier.weight(1f).testTag(if (transfer.status == TransferStatus.DONE) "detail_on_device" else "detail_transfer_line"))
+            Text(line, style = TextStyles.meta12.copy(lineHeight = 16.designSp()), color = colors.metadata, modifier = Modifier.weight(1f).testTag(if (transfer.status == TransferStatus.DONE) "detail_on_device" else "detail_transfer_line"))
             if (transfer.status == TransferStatus.FAILED) SecondaryButton(text = "Try again", onClick = onKeep, compact = true, testTag = "detail_retry_button")
             if (transfer.status == TransferStatus.DONE) TertiaryButton(text = "Remove", onClick = onRemove, testTag = "detail_remove_text_button")
         }
@@ -198,8 +199,6 @@ private fun TransferLine(transfer: TransferView?, onKeep: () -> Unit, onRemove: 
         }
     }
 }
-
-private fun Int.sp() = androidx.compose.ui.unit.TextUnit(this.toFloat(), androidx.compose.ui.unit.TextUnitType.Sp)
 
 /** Label left at 400 13/18 in #6E6E6E, value right-aligned at 500 12/16 in #EDEDED, 46dp minimum. */
 @Composable

@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import com.regolith.R
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
@@ -38,6 +39,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import kotlinx.coroutines.launch
 
 private data class Page(val image: Int, val eyebrow: String, val title: String, val body: String)
@@ -79,7 +81,7 @@ fun OnboardingScreen(
                 Column(Modifier.fillMaxSize().padding(horizontal = Spacing.s18).navigationBarsPadding(), verticalArrangement = Arrangement.Bottom) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                         Eyebrow(page.eyebrow, muted = index > 0)
-                        DisplayText(page.title, style = TextStyles.detailTitle.copy(lineHeight = 26.6.sp(), letterSpacing = 0.sp()))
+                        DisplayText(page.title, style = TextStyles.detailTitle.copy(lineHeight = 26.6.designSp(), letterSpacing = 0.em))
                         Text(page.body, style = TextStyles.body, color = colors.body)
                     }
                     // Room for the dots and buttons, which sit outside the pager.
@@ -120,8 +122,6 @@ fun OnboardingScreen(
     }
 }
 
-private fun Double.sp() = androidx.compose.ui.unit.TextUnit(this.toFloat(), androidx.compose.ui.unit.TextUnitType.Sp)
-private fun Int.sp() = androidx.compose.ui.unit.TextUnit(this.toFloat(), androidx.compose.ui.unit.TextUnitType.Sp)
 
 /**
  * Splash (design section 02): the moon plate under a radial darkening,
@@ -135,9 +135,7 @@ fun SplashContent(modifier: Modifier = Modifier) {
         Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x8C000000), Color(0xCC000000), Color.Black), radius = 900f)))
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             Image(painterResource(R.drawable.rg_wedge_white), contentDescription = null, modifier = Modifier.size(58.dp, 78.dp))
-            DisplayText("Regolith", style = TextStyles.wordmark.copy(letterSpacing = 0.04.em()))
+            DisplayText("Regolith", style = TextStyles.wordmark.copy(letterSpacing = 0.04.em))
         }
     }
 }
-
-private fun Double.em() = androidx.compose.ui.unit.TextUnit(this.toFloat(), androidx.compose.ui.unit.TextUnitType.Em)

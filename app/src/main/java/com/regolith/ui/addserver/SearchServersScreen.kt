@@ -38,7 +38,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -58,6 +57,7 @@ import com.regolith.ui.components.TopBar
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -152,7 +152,7 @@ fun SearchServersScreen(
                 DisplayText(if (state.searching) "Searching" else "Search stopped", style = TextStyles.dialogTitle, textAlign = TextAlign.Center)
                 Text(
                     if (state.subnet.isEmpty()) "Looking for SMB shares on Wi-Fi" else "Looking for SMB shares on Wi-Fi · ${state.subnet}",
-                    style = TextStyles.body.copy(fontSize = 13.sp, lineHeight = 19.sp), color = colors.metadata, textAlign = TextAlign.Center,
+                    style = TextStyles.body.copy(fontSize = 13.designSp(), lineHeight = 19.designSp()), color = colors.metadata, textAlign = TextAlign.Center,
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
