@@ -1,6 +1,8 @@
 package com.regolith
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -13,14 +15,18 @@ import javax.inject.Inject
  * graph: every `@Inject` in the app is resolved from here.
  *
  * It also hands Coil the app's one [ImageLoader] (the one with the artwork
- * fetcher), so `AsyncImage` anywhere in the tree finds it without a
- * parameter. Web analogy: the module that builds the DI container / root
- * context provider before rendering the app.
+ * fetcher), and hands WorkManager a factory that can build workers with
+ * injected dependencies. Web analogy: the module that builds the DI
+ * container / root context provider before rendering the app.
  */
 @HiltAndroidApp
-class RegolithApp : Application(), SingletonImageLoader.Factory {
+class RegolithApp : Application(), SingletonImageLoader.Factory, Configuration.Provider {
 
     @Inject lateinit var imageLoader: ImageLoader
+    @Inject lateinit var workerFactory: HiltWorkerFactory
 
     override fun newImageLoader(context: PlatformContext): ImageLoader = imageLoader
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
 }

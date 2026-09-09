@@ -26,10 +26,15 @@ fun formatClock(ms: Long): String {
 }
 
 fun formatRemaining(positionMs: Long, durationMs: Long): String {
-    val leftMin = ((durationMs - positionMs) / 60_000).coerceAtLeast(0)
+    val leftMs = (durationMs - positionMs).coerceAtLeast(0)
+    val leftMin = leftMs / 60_000
     val h = leftMin / 60
     val m = leftMin % 60
-    return if (h > 0) "${h}h ${String.format(Locale.US, "%02d", m)}m left" else "${m}m left"
+    return when {
+        h > 0 -> "${h}h ${String.format(Locale.US, "%02d", m)}m left"
+        leftMin == 0L -> "Under a minute left"
+        else -> "${m}m left"
+    }
 }
 
 /** "1h 56m", "11m 04s": runtimes on chips and rows. */
@@ -53,3 +58,21 @@ fun formatSpeed(speed: Float): String {
 
 /** "2 Feb 2026": the Modified row on Title Detail. */
 fun formatDate(epochMs: Long): String = SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(epochMs))
+
+/**
+ * "last night", "Tuesday", "2 Feb": when something was watched, the way
+ * the design's resume row says it. [nowMs] is a parameter so it is testable.
+ */
+fun formatWhen(thenMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+    val cal = java.util.Calendar.getInstance()
+    cal.timeInMillis = nowMs
+    cal.set(java.util.Calendar.HOUR_OF_DAY, 0); cal.set(java.util.Calendar.MINUTE, 0); cal.set(java.util.Calendar.SECOND, 0); cal.set(java.util.Calendar.MILLISECOND, 0)
+    val startOfToday = cal.timeInMillis
+    val day = 24 * 3_600_000L
+    return when {
+        thenMs >= startOfToday -> "today"
+        thenMs >= startOfToday - day -> "last night"
+        thenMs >= startOfToday - 6 * day -> SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(thenMs))
+        else -> SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(thenMs))
+    }
+}

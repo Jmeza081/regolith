@@ -112,10 +112,28 @@ interface FolderDao {
             fileCount = folder.fileCount,
             byteCount = folder.byteCount,
             lastListedAtMs = folder.lastListedAtMs ?: existing.lastListedAtMs,
+            kind = folder.kind ?: existing.kind,
+            titleParsed = folder.titleParsed ?: existing.titleParsed,
+            year = folder.year ?: existing.year,
         )
         update(merged)
         return merged
     }
+
+    @Query("UPDATE folders SET kind = :kind, titleParsed = :titleParsed, year = :year WHERE id = :id")
+    suspend fun setKind(id: Long, kind: String, titleParsed: String?, year: Int?)
+
+    @Query("SELECT * FROM folders WHERE shareId IN (:shareIds) AND parentId IS NULL")
+    fun observeRoots(shareIds: List<Long>): Flow<List<FolderEntity>>
+
+    @Query("SELECT * FROM folders WHERE shareId IN (:shareIds) ORDER BY name COLLATE NOCASE")
+    fun observeInShares(shareIds: List<Long>): Flow<List<FolderEntity>>
+
+    @Query("SELECT * FROM folders WHERE parentId = :parentId")
+    suspend fun children(parentId: Long): List<FolderEntity>
+
+    @Query("SELECT folders.* FROM folders JOIN folder_fts ON folders.id = folder_fts.rowid WHERE folder_fts MATCH :match AND folders.parentId IS NOT NULL LIMIT :limit")
+    fun searchFolders(match: String, limit: Int): Flow<List<FolderEntity>>
 }
 
 @Dao
@@ -187,10 +205,74 @@ interface MediaFileDao {
             modifiedAtMs = file.modifiedAtMs,
             missing = false,
             lastSeenAtMs = file.lastSeenAtMs,
+            titleParsed = file.titleParsed ?: existing.titleParsed,
+            year = file.year ?: existing.year,
+            season = file.season ?: existing.season,
+            episode = file.episode ?: existing.episode,
         )
         update(merged)
         return merged
     }
+
+    @Query("SELECT * FROM media_files WHERE folderId IN (:folderIds) AND missing = 0 ORDER BY name COLLATE NOCASE")
+    fun observeInFolders(folderIds: List<Long>): Flow<List<MediaFileEntity>>
+
+    /** Everything under a share, for Library counts and "files under this collection". */
+    @Query("SELECT * FROM media_files WHERE shareId IN (:shareIds) AND missing = 0")
+    fun observeInShares(shareIds: List<Long>): Flow<List<MediaFileEntity>>
+
+    @Query("SELECT COUNT(*) FROM media_files WHERE shareId IN (:shareIds) AND missing = 0")
+    fun observeCountInShares(shareIds: List<Long>): Flow<Int>
+
+    /** Newest files first (Home's "Newly added"). */
+    @Query("SELECT * FROM media_files WHERE missing = 0 ORDER BY addedAtMs DESC, id DESC LIMIT :limit")
+    fun observeNewest(limit: Int): Flow<List<MediaFileEntity>>
+
+    /** Files with unfinished progress, most recently watched first (Home's "Continue watching"). */
+    @Query(
+        "SELECT media_files.* FROM media_files JOIN playback_progress ON playback_progress.fileId = media_files.id " +
+            "WHERE media_files.missing = 0 AND playback_progress.completed = 0 AND playback_progress.positionMs > 0 " +
+            "ORDER BY playback_progress.updatedAtMs DESC LIMIT :limit",
+    )
+    fun observeContinueWatching(limit: Int): Flow<List<MediaFileEntity>>
+
+    @Query("SELECT media_files.* FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid WHERE media_fts MATCH :match AND media_files.missing = 0 LIMIT :limit")
+    fun search(match: String, limit: Int): Flow<List<MediaFileEntity>>
+}
+
+@Dao
+interface ScanRunDao {
+    @Insert
+    suspend fun insert(run: ScanRunEntity): Long
+
+    @Update
+    suspend fun update(run: ScanRunEntity)
+
+    @Query("SELECT * FROM scan_runs WHERE id = :id")
+    suspend fun byId(id: Long): ScanRunEntity?
+
+    /** The latest run per share, for every share given. */
+    @Query("SELECT * FROM scan_runs WHERE id IN (SELECT MAX(id) FROM scan_runs WHERE shareId IN (:shareIds) GROUP BY shareId)")
+    fun observeLatest(shareIds: List<Long>): Flow<List<ScanRunEntity>>
+
+    @Query("SELECT * FROM scan_runs WHERE status = 'RUNNING'")
+    fun observeRunning(): Flow<List<ScanRunEntity>>
+
+    /** A process that died mid-scan leaves RUNNING rows behind; WorkManager restarts the work, so mark them. */
+    @Query("UPDATE scan_runs SET status = 'CANCELLED', finishedAtMs = :now WHERE status = 'RUNNING'")
+    suspend fun cancelAllRunning(now: Long)
+}
+
+@Dao
+interface RecentSearchDao {
+    @Query("SELECT * FROM recent_searches ORDER BY searchedAtMs DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<RecentSearchEntity>>
+
+    @Upsert
+    suspend fun upsert(entry: RecentSearchEntity)
+
+    @Query("DELETE FROM recent_searches")
+    suspend fun clear()
 }
 
 @Dao

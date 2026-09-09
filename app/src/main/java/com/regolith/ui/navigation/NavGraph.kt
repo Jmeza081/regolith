@@ -24,6 +24,8 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.regolith.AppViewModel
 import com.regolith.ui.addserver.ManualEntryScreen
+import com.regolith.ui.addserver.ScanningScreen
+import com.regolith.ui.addserver.ScanningViewModel
 import com.regolith.ui.addserver.SharePickerScreen
 import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
@@ -33,6 +35,8 @@ import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.NavPill
 import com.regolith.ui.home.HomeScreen
 import com.regolith.ui.library.LibraryScreen
+import com.regolith.ui.library.LibraryViewModel
+import com.regolith.ui.search.SearchScreen
 import com.regolith.ui.onboarding.OnboardingScreen
 import com.regolith.ui.settings.SettingsScreen
 import com.regolith.ui.titledetail.TitleDetailScreen
@@ -107,9 +111,30 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             viewModel = hiltViewModel(),
                             onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
                             onBrowse = { navigateToTab(MainTab.BROWSE) },
+                            onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
+                            onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
                         )
                     }
-                    entry<RegolithKey.Library> { LibraryScreen(viewModel = hiltViewModel()) }
+                    entry<RegolithKey.Library> { key ->
+                        LibraryScreen(
+                            viewModel = hiltViewModel<LibraryViewModel, LibraryViewModel.Factory>(
+                                creationCallback = { it.create(key.folderId) },
+                            ),
+                            onBack = if (key.folderId == null) null else ({ backStack.removeLastOrNull() }),
+                            onOpenCollection = { backStack.add(RegolithKey.Library(it)) },
+                            onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
+                            onSearch = { backStack.add(RegolithKey.Search) },
+                            onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                        )
+                    }
+                    entry<RegolithKey.Search> {
+                        SearchScreen(
+                            viewModel = hiltViewModel(),
+                            onCancel = { backStack.removeLastOrNull() },
+                            onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
+                            onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
+                        )
+                    }
                     entry<RegolithKey.Browse> { key ->
                         BrowseScreen(
                             viewModel = hiltViewModel<BrowseViewModel, BrowseViewModel.Factory>(
@@ -130,7 +155,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onPlay = { backStack.add(RegolithKey.Player(it)) },
                         )
                     }
-                    entry<RegolithKey.Settings> { SettingsScreen(viewModel = hiltViewModel()) }
+                    entry<RegolithKey.Settings> {
+                        SettingsScreen(viewModel = hiltViewModel(), onAddServer = { backStack.add(RegolithKey.AddServer.Manual) })
+                    }
 
                     entry<RegolithKey.AddServer.Manual> {
                         ManualEntryScreen(
@@ -145,8 +172,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 creationCallback = { it.create(key.serverId) },
                             ),
                             onBack = { backStack.removeLastOrNull() },
-                            // Done: drop the whole Add Server flow and land on the Browse tab.
-                            onContinue = { navigateToTab(MainTab.BROWSE, force = true) },
+                            onContinue = { backStack.add(RegolithKey.AddServer.Scanning(key.serverId)) },
+                        )
+                    }
+                    entry<RegolithKey.AddServer.Scanning> { key ->
+                        ScanningScreen(
+                            viewModel = hiltViewModel<ScanningViewModel, ScanningViewModel.Factory>(
+                                creationCallback = { it.create(key.serverId) },
+                            ),
+                            // Either way the Add Server flow is over: drop it from the stack.
+                            onBackground = { navigateToTab(MainTab.HOME, force = true) },
+                            onDone = { navigateToTab(MainTab.LIBRARY, force = true) },
                         )
                     }
                     entry<RegolithKey.Player> { key ->

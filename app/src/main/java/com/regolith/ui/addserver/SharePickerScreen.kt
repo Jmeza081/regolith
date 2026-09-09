@@ -52,8 +52,8 @@ fun SharePickerScreen(
         PrimaryButton(
             text = when (state.selectedCount) {
                 0 -> "Choose at least one share"
-                1 -> "Browse 1 share"
-                else -> "Browse ${state.selectedCount} shares"
+                1 -> "Scan 1 share"
+                else -> "Scan ${state.selectedCount} shares"
             },
             onClick = onContinue,
             enabled = state.selectedCount > 0,

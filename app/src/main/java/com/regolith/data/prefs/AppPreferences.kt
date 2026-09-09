@@ -3,6 +3,8 @@ package com.regolith.data.prefs
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.regolith.domain.library.LibrarySort
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -24,6 +26,7 @@ class AppPreferences @Inject constructor(
         val onboardingDone = booleanPreferencesKey("onboarding_done")
         val hardwareDecoding = booleanPreferencesKey("hardware_decoding")
         val scrubThumbnails = booleanPreferencesKey("scrub_thumbnails")
+        val librarySort = stringPreferencesKey("library_sort")
     }
 
     val onboardingDone: Flow<Boolean> = store.data.map { it[Keys.onboardingDone] ?: false }
@@ -44,5 +47,12 @@ class AppPreferences @Inject constructor(
 
     suspend fun setScrubThumbnails(enabled: Boolean) {
         store.edit { it[Keys.scrubThumbnails] = enabled }
+    }
+
+    /** Library › Sort by. Remembered, like a column sort in a web table. */
+    val librarySort: Flow<LibrarySort> = store.data.map { p -> p[Keys.librarySort]?.let { runCatching { LibrarySort.valueOf(it) }.getOrNull() } ?: LibrarySort.NAME }
+
+    suspend fun setLibrarySort(sort: LibrarySort) {
+        store.edit { it[Keys.librarySort] = sort.name }
     }
 }

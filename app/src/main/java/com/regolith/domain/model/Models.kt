@@ -22,6 +22,8 @@ data class Share(
     val name: String,
     val enabled: Boolean,
     val freeBytes: Long?,
+    /** When a full scan last finished; null means never. */
+    val lastScanAtMs: Long? = null,
 )
 
 /** A row on the Browse screen: a folder or a playable file. */

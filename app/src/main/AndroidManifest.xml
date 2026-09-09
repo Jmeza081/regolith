@@ -4,7 +4,8 @@
   (Activities) exist, which one is the entry point, and what the app is
   allowed to do. Compose apps have one Activity and draw every screen in it.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -12,6 +13,13 @@
          runtime permission for apps targeting SDK 37. Without it, SMB
          connects silently time out. Requested on the Add Server screen. -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <!-- The library scan runs as a foreground job of type dataSync so the
+         OS keeps it alive when the app is backgrounded ("Run in the
+         background"). The notification needs POST_NOTIFICATIONS on 13+;
+         without it the job still runs, the notification is just hidden. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RegolithApp"
@@ -20,6 +28,24 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Regolith.Splash">
+
+        <!-- WorkManager normally initialises itself through this provider.
+             Removing it lets RegolithApp supply a Hilt-aware configuration
+             so workers can @Inject repositories. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <activity
             android:name=".MainActivity"

@@ -159,5 +159,5 @@ class SourceRepository @Inject constructor(
         lastSeenAtMs = lastSeenAtMs,
     )
 
-    private fun ShareEntity.toDomain() = Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes)
+    private fun ShareEntity.toDomain() = Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs)
 }

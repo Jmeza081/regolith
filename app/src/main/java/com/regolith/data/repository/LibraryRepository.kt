@@ -5,8 +5,14 @@ import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.PlaybackProgressDao
+import com.regolith.data.db.PlaybackProgressEntity
+import com.regolith.data.db.RecentSearchDao
+import com.regolith.data.db.RecentSearchEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.domain.library.FolderClassifier
+import com.regolith.domain.library.FolderKind
+import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
@@ -34,7 +40,11 @@ class LibraryRepository @Inject constructor(
     private val folderDao: FolderDao,
     private val mediaFileDao: MediaFileDao,
     private val progressDao: PlaybackProgressDao,
+    private val recentSearchDao: RecentSearchDao,
 ) {
+    /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
+    data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
+
     fun observeFolder(folderId: Long): Flow<FolderEntity?> = folderDao.observe(folderId)
 
     /** Live contents of one folder: subfolders first, then files with their progress. */
@@ -82,7 +92,7 @@ class LibraryRepository @Inject constructor(
      * progress); subfolders that vanished are removed.
      * Throws [com.regolith.domain.smb.SmbFailure] if the share cannot be reached.
      */
-    suspend fun refreshFolder(folderId: Long) {
+    suspend fun refreshFolder(folderId: Long): FolderOutcome {
         val folder = checkNotNull(folderDao.byId(folderId)) { "folder $folderId" }
         val share = checkNotNull(shareDao.byId(folder.shareId)) { "share ${folder.shareId}" }
         val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
@@ -94,6 +104,7 @@ class LibraryRepository @Inject constructor(
         val prefix = if (folder.relPath.isEmpty()) "" else "${folder.relPath}/"
 
         val dirPaths = mutableListOf<String>()
+        val subfolders = mutableListOf<FolderEntity>()
         val filePaths = mutableListOf<String>()
         var fileCount = 0
         var byteCount = 0L
@@ -101,13 +112,19 @@ class LibraryRepository @Inject constructor(
             val relPath = prefix + e.name
             if (e.isDirectory) {
                 dirPaths += relPath
-                folderDao.upsert(
-                    FolderEntity(shareId = share.id, parentId = folder.id, relPath = relPath, name = e.name, fileCount = 0, byteCount = 0, lastListedAtMs = null),
+                val parsed = TitleParser.parseFolderName(e.name)
+                subfolders += folderDao.upsert(
+                    FolderEntity(
+                        shareId = share.id, parentId = folder.id, relPath = relPath, name = e.name,
+                        fileCount = 0, byteCount = 0, lastListedAtMs = null,
+                        titleParsed = parsed.title, year = parsed.year,
+                    ),
                 )
             } else if (MediaFileTypes.isVideo(e.name)) {
                 filePaths += relPath
                 fileCount++
                 byteCount += e.sizeBytes
+                val parsed = TitleParser.parseVideoName(e.name)
                 mediaFileDao.upsert(
                     MediaFileEntity(
                         shareId = share.id,
@@ -121,6 +138,10 @@ class LibraryRepository @Inject constructor(
                         missing = false,
                         addedAtMs = now,
                         lastSeenAtMs = now,
+                        titleParsed = parsed.title,
+                        year = parsed.year,
+                        season = parsed.season,
+                        episode = parsed.episode,
                     ),
                 )
             }
@@ -128,7 +149,86 @@ class LibraryRepository @Inject constructor(
         // SQLite's NOT IN () with an empty list is fine in Room; it removes everything.
         folderDao.deleteChildrenNotIn(folder.id, dirPaths)
         mediaFileDao.markMissingNotIn(folder.id, filePaths)
-        folderDao.update(folder.copy(fileCount = fileCount, byteCount = byteCount, lastListedAtMs = now))
+        val kind = FolderClassifier.classify(folder.name, isRoot = folder.parentId == null, entryNames = entries.map { it.name }) { n ->
+            entries.first { it.name == n }.isDirectory
+        }
+        val parsed = TitleParser.parseFolderName(folder.name)
+        folderDao.update(
+            folder.copy(
+                fileCount = fileCount, byteCount = byteCount, lastListedAtMs = now,
+                kind = kind.name, titleParsed = parsed.title, year = parsed.year,
+            ),
+        )
+        return FolderOutcome(subfolders, fileCount)
+    }
+
+    suspend fun markScanned(shareId: Long) {
+        shareDao.byId(shareId)?.let { shareDao.update(it.copy(lastScanAtMs = System.currentTimeMillis())) }
+    }
+
+    // --- Library / Home / Search reads (design sections 04, 05, 06)
+
+    /** Root folders of the enabled shares, once each has been visited. */
+    fun observeRoots(shareIds: List<Long>): Flow<List<FolderEntity>> = folderDao.observeRoots(shareIds)
+
+    /** Every folder row of the given shares; the Library walks the tree in memory. */
+    fun observeFoldersInShares(shareIds: List<Long>): Flow<List<FolderEntity>> =
+        if (shareIds.isEmpty()) flowOf(emptyList()) else folderDao.observeInShares(shareIds)
+
+    fun observeFilesIn(folderIds: List<Long>): Flow<List<MediaFileEntity>> =
+        if (folderIds.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeInFolders(folderIds)
+
+    fun observeFilesInShares(shareIds: List<Long>): Flow<List<MediaFileEntity>> =
+        if (shareIds.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeInShares(shareIds)
+
+    fun observeFileCount(shareIds: List<Long>): Flow<Int> = if (shareIds.isEmpty()) flowOf(0) else mediaFileDao.observeCountInShares(shareIds)
+
+    fun observeNewest(limit: Int): Flow<List<MediaFileEntity>> = mediaFileDao.observeNewest(limit)
+
+    fun observeContinueWatching(limit: Int): Flow<List<MediaFileEntity>> = mediaFileDao.observeContinueWatching(limit)
+
+    fun observeProgress(fileIds: List<Long>): Flow<List<PlaybackProgressEntity>> =
+        if (fileIds.isEmpty()) flowOf(emptyList()) else progressDao.observeForFiles(fileIds)
+
+    /** Every folder in the subtree of [folderId], itself included (the folder kinds tell what they are). */
+    suspend fun descendants(folderId: Long): List<FolderEntity> {
+        val out = mutableListOf<FolderEntity>()
+        val queue = ArrayDeque<Long>().apply { add(folderId) }
+        folderDao.byId(folderId)?.let { out += it }
+        while (queue.isNotEmpty()) {
+            val children = folderDao.children(queue.removeFirst())
+            out += children
+            queue.addAll(children.map { it.id })
+        }
+        return out
+    }
+
+    /**
+     * Prefix search over filenames, parsed titles and paths. The query is
+     * turned into an FTS MATCH expression: every word must match as a
+     * prefix, so "samou" finds "Le.Samourai.1967" and "Samouraï cuts".
+     */
+    fun searchFiles(query: String, limit: Int): Flow<List<MediaFileEntity>> {
+        val match = ftsMatch(query) ?: return flowOf(emptyList())
+        return mediaFileDao.search(match, limit)
+    }
+
+    fun searchFolders(query: String, limit: Int): Flow<List<FolderEntity>> {
+        val match = ftsMatch(query) ?: return flowOf(emptyList())
+        return folderDao.searchFolders(match, limit)
+    }
+
+    fun observeRecentSearches(limit: Int): Flow<List<RecentSearchEntity>> = recentSearchDao.observeRecent(limit)
+    suspend fun rememberSearch(query: String) = recentSearchDao.upsert(RecentSearchEntity(query.trim(), System.currentTimeMillis()))
+    suspend fun clearRecentSearches() = recentSearchDao.clear()
+
+    companion object {
+        /** `samou rai` -> `"samou"* "rai"*`; null when there is nothing to search for. */
+        fun ftsMatch(query: String): String? {
+            val words = query.split(Regex("""[\s.\-_/]+""")).map { it.trim().replace("\"", "").lowercase() }.filter { it.isNotEmpty() }
+            if (words.isEmpty()) return null
+            return words.joinToString(" ") { "\"$it\"*" }
+        }
     }
 
     suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)

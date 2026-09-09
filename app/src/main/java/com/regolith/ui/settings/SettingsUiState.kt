@@ -1,12 +1,27 @@
 package com.regolith.ui.settings
 
+/** One server row under SHARES: "TOWER · SHOWING · 2.4 TB free", "STUDIO · out of reach". */
+data class ServerRow(
+    val serverId: Long,
+    val name: String,
+    /** "Scanning · 312 files", "2.4 TB free", "out of reach", "idle". */
+    val status: String,
+    val scanning: Boolean,
+) {
+    val testTag get() = "settings_server_$serverId"
+}
+
 /**
  * Everything the Settings screen needs to draw, as one immutable value.
  * The ViewModel owns a single StateFlow<SettingsUiState>; the screen only reads.
- * Phase 3 adds the media cache; shares and playback preferences arrive in Phase 6.
  */
 data class SettingsUiState(
     val title: String = "Settings",
+    val servers: List<ServerRow> = emptyList(),
+    /** Server the "Disconnect X?" confirm is open for. */
+    val confirmDisconnect: ServerRow? = null,
+    val hardwareDecoding: Boolean = true,
+    val scrubThumbnails: Boolean = true,
     /** Images cached on the device, excluding placeholders. */
     val artworkCount: Int = 0,
     val artworkBytes: Long = 0,

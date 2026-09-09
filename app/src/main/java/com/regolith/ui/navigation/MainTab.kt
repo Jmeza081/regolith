@@ -16,7 +16,7 @@ enum class MainTab(
     val testTag: String,
 ) {
     HOME("Home", LucideR.drawable.lucide_ic_house, RegolithKey.Home, "nav_home"),
-    LIBRARY("Library", LucideR.drawable.lucide_ic_library_big, RegolithKey.Library, "nav_library"),
+    LIBRARY("Library", LucideR.drawable.lucide_ic_library_big, RegolithKey.Library(), "nav_library"),
     BROWSE("Browse", LucideR.drawable.lucide_ic_folder_open, RegolithKey.Browse(), "nav_browse"),
     SETTINGS("Settings", LucideR.drawable.lucide_ic_settings, RegolithKey.Settings, "nav_settings");
 
@@ -24,11 +24,11 @@ enum class MainTab(
         /**
          * Which tab a key belongs to, or null for pushed screens (Player,
          * TitleDetail, Add Server) where the pill is hidden.
-         * `Browse(folderId)` at any depth is still the Browse tab.
+         * `Browse(folderId)` and `Library(folderId)` at any depth are still their tabs.
          */
         fun forKey(key: RegolithKey?): MainTab? = when (key) {
             RegolithKey.Home -> HOME
-            RegolithKey.Library -> LIBRARY
+            is RegolithKey.Library -> LIBRARY
             is RegolithKey.Browse -> BROWSE
             RegolithKey.Settings -> SETTINGS
             else -> null

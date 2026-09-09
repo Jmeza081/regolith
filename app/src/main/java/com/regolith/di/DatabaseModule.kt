@@ -6,6 +6,8 @@ import com.regolith.data.db.ArtworkDao
 import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.PlaybackProgressDao
+import com.regolith.data.db.RecentSearchDao
+import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
@@ -34,4 +36,6 @@ object DatabaseModule {
     @Provides fun provideMediaFileDao(db: RegolithDatabase): MediaFileDao = db.mediaFileDao()
     @Provides fun providePlaybackProgressDao(db: RegolithDatabase): PlaybackProgressDao = db.playbackProgressDao()
     @Provides fun provideArtworkDao(db: RegolithDatabase): ArtworkDao = db.artworkDao()
+    @Provides fun provideScanRunDao(db: RegolithDatabase): ScanRunDao = db.scanRunDao()
+    @Provides fun provideRecentSearchDao(db: RegolithDatabase): RecentSearchDao = db.recentSearchDao()
 }

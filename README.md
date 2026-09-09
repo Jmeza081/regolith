@@ -6,15 +6,17 @@ nothing leaves your network. Kotlin + Jetpack Compose.
 
 ## Status
 
-Phase 3 of 6: artwork and thumbnail scrubbing. Browse is the design's
-two-across grid of frames; every tile resolves its image in the design's
-order (sidecar `poster.jpg`, an image with the video's basename, cover art
-inside the container, a frame grabbed at 10%, the wedge placeholder) and
-caches it on the device. Title Detail shows what the container reports
-(codec, size, frame rate, audio) with the one red Play. The player's
-timeline shows a preview frame while you drag. Settings › Media clears the
-cache. Phases 1 and 2 (connect, browse, the complete player) are verified
-on a real phone against a NAS. See `docs/ARCHITECTURE.md`.
+Phase 4 of 6: the app understands the share. A background scan walks each
+share (it keeps going if you leave the app), parses `Title (Year)` and
+`SxxEyy` from filenames locally, and classifies folders into collections,
+titles, shows and seasons. Home has Continue watching, Newly added and
+pull-to-refresh; Library is the three-across poster wall with collections,
+a sort sheet and the unwatched mark; Search matches titles, raw filenames
+and folders as you type, with results still arriving while a scan runs;
+Settings lists shares, scans all, disconnects with a confirm, and holds
+the playback preferences. Phases 1 to 3 (connect, browse, the complete
+player, artwork and scrub previews) are verified on a real phone against a
+NAS. See `docs/ARCHITECTURE.md`.
 
 ## Build and run
 

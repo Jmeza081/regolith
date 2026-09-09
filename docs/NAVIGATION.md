@@ -31,13 +31,19 @@ over the `NavDisplay`, and only when the top key belongs to a tab.
 | Tab | Key | Screen | testTag |
 |---|---|---|---|
 | Home | `Home` | `HomeScreen` | `nav_home` |
-| Library | `Library` | `LibraryScreen` | `nav_library` |
+| Library | `Library(folderId?)` | `LibraryScreen` | `nav_library` |
 | Browse | `Browse(folderId?)` | `BrowseScreen` | `nav_browse` |
 | Settings | `Settings` | `SettingsScreen` | `nav_settings` |
 
 Switching tab resets the stack to `[Home, tab]` (just `[Home]` for Home), so
 system back from any tab returns to Home and back from Home leaves the app.
-`Browse(folderId)` at any depth is still the Browse tab.
+`Browse(folderId)` and `Library(folderId)` at any depth are still their tabs.
+
+## Library nests too
+
+`Library(folderId = null)` is the poster wall of every enabled share's root:
+collections and loose titles. Tapping a collection pushes `Library(folderId)`,
+that folder's wall. Titles push `TitleDetail`. The search icon pushes `Search`.
 
 ## Browse is a tab that nests
 
@@ -56,18 +62,21 @@ opened the player directly).
 | `AddServer.Manual` | Home / Browse empty states, Home "Add another" | 1 |
 | `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
 | `Player(fileId, startMs?)` | TitleDetail; Home resume row later | 1 |
-| `TitleDetail(fileId)` | Browse (Phase 3); Library, Home, Search later | 3 |
-| `AddServer.Scanning(serverId)` | Share picker | 4 |
+| `TitleDetail(fileId)` | Browse, Library, Home "Newly added", Search | 3 |
+| `Search` | Library's search icon; a hit opens `TitleDetail` or `Browse(folderId)` | 4 |
+| `AddServer.Scanning(serverId)` | Share picker "Scan N shares"; "Run in the background" → `[Home]`, "Open the library" → `[Home, Library]` | 4 |
 | `AddServer.Search` | Home / Library empty states, Onboarding | 6 |
 
 `AddServer.Connecting` exists as a key but is not a route: the Connecting and
 Sign-in-failed screens are states of `ManualEntryScreen` so the typed
-address and credentials survive a failure. "Browse N shares" on the picker
-resets the stack to `[Home, Browse]`, dropping the whole Add Server flow.
+address and credentials survive a failure. "Scan N shares" on the picker
+pushes `Scanning`; leaving it (either button) resets the stack to a tab,
+dropping the whole Add Server flow. Home's resume row pushes `Player(fileId,
+startMs)` directly.
 
 The Player is the only screen that changes Activity-level settings
 (landscape, immersive); it applies them in a `DisposableEffect` and undoes
 them on the way out.
 
-Bottom sheets (sort, playback, A–B loop) are not routes; they are state in
-the owning screen's `UiState`.
+Bottom sheets (sort, playback, A–B loop) and the disconnect confirm are not
+routes; they are state in the owning screen's `UiState`.

@@ -17,7 +17,8 @@ domain/    Pure Kotlin: models, use cases, parse rules, the SmbGateway
    ↕
 data/      Implementations: jcifs-ng SMB client, Room database, DataStore
            preferences, credential store, the artwork pipeline (data/artwork:
-           resolver, on-disk store, frame source, Coil fetcher). Only place
+           resolver, on-disk store, frame source, Coil fetcher), the library
+           scan (data/scan: WorkManager worker + repository). Only place
            third-party IO lives.
 player/    Media3 (ExoPlayer) session, the SMB DataSource, the container
            probe, scrub thumbnails.
@@ -123,6 +124,30 @@ videos does NOT take that folder's `poster.jpg` (the design shows
 `Films/Hard.Boiled.1992.mp4` getting a frame grab beside `Films/poster.jpg`;
 the sidecar belongs to the collection tile).
 
+## Library scan, parsing, search (Phase 4)
+
+```
+Share picker "Scan N shares" / Settings "Scan all" / Home pull-to-refresh
+   └─ ScanRepository.enqueue(shareId)   unique WorkManager job per share
+        └─ ScanWorker (foreground, dataSync)  breadth-first walk of the share
+             └─ LibraryRepository.refreshFolder(folderId) per folder
+                  ├─ upsert folders + files by (shareId, relPath); mark missing, never delete   (G3)
+                  ├─ TitleParser.parseVideoName / parseFolderName  → titleParsed, year, season, episode
+                  ├─ FolderClassifier.classify(name, children)      → ROOT / COLLECTION / TITLE / SHOW / SEASON / PLAIN
+                  └─ scan_runs row updated every 400 ms              (foldersDone, filesFound, currentPath)
+Room triggers keep media_fts / folder_fts (FTS4, unicode61) in step with the tables.
+
+Home     ← observeContinueWatching (progress JOIN), observeNewest (addedAtMs), scan_runs
+Library  ← all folders + files of the enabled shares, walked in memory: TITLE folder → one title tile
+           for its largest video; other folders with files beneath → collection tile; loose files → title tiles
+Search   ← media_fts MATCH '"word"* …' ∪ folder_fts, progress for the Unwatched filter, scan_runs for the footer
+```
+
+Parsing is local only ("nothing leaves the network"): a year or an
+`SxxEyy` is what makes a title "matched"; anything else is shown by its
+filename with the design's "No match" chip. Kinds are decided from one
+listing as the walk goes, so there is no second pass.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -156,6 +181,14 @@ the sidecar belongs to the collection tile).
 | 2026-09-08 | Placeholder rows expire after 24 h; unreachable-share failures are not recorded | A file the decoder cannot read stops being retried on every scroll, but a `poster.jpg` added later is picked up; a share that is merely off is retried next time. |
 | 2026-09-08 | Room v2 via `@AutoMigration(1, 2)`; exported schemas are debug assets | Additive change (new table, nullable columns). AGP does not merge assets for the unit-test source set, so the migration test reads the schemas from the debug variant's assets. |
 | 2026-09-08 | Browse tiles open Title Detail, not the player | The design gives every title one red Play on its detail screen; the detail is also where the container probe runs once. |
+| 2026-09-09 | The scan is a foreground WorkManager job of type `dataSync`, unique per share | It must survive the user leaving the Scanning screen ("Run in the background") and the app being backgrounded; WorkManager also restarts it after a process death. `KEEP` policy means a second tap does not walk the share twice. |
+| 2026-09-09 | Scan progress lives in `scan_runs` rows, not WorkManager progress | Guardrail G3: Home, Library, Search, Settings and the Scanning screen all read the same Flow, and it survives the process dying. |
+| 2026-09-09 | Folder kinds are decided from a single listing | `Season NN` names, `SxxEyy` files and `Title (Year)` names are enough; a second bottom-up pass would have doubled the walk for the SHOW/SEASON edge only. |
+| 2026-09-09 | A folder with exactly one video is a TITLE folder even without a year | `The Thing/The.Thing.1982.mkv` is the common layout; the cost is that a one-file `Home videos/` reads as a title. |
+| 2026-09-09 | Search is Room FTS4 with `unicode61` over filename, parsed title and path, prefix-matched per word | Accent folding gives "samourai" → "Samouraï"; external-content tables cost no duplicate text. The index is rebuilt once in the 2→3 migration. |
+| 2026-09-09 | The Library walks the share's folder tree in memory | Two queries (all folders, all files of the enabled shares) instead of one per collection; a 1,284-file share is a few hundred KB. Revisit if a share reaches tens of thousands of rows. |
+| 2026-09-09 | The Scanning screen shows an indeterminate bar and the live count, not a percentage | The share's size is unknown until it has been walked; the design's "64%" would have been invented. |
+| 2026-09-09 | Notification permission is declared but not yet requested | The scan runs either way; the notification only tells the user why the app is busy. The runtime request joins the Add Source flow's permission UX in Phase 6. |
 
 ## Phase plan
 
@@ -165,7 +198,7 @@ the sidecar belongs to the collection tile).
 | 1 | Connect → browse → play (manual `smb://`, share picker, raw folders, playback, resume) | G1, G2, G3, G4, G6 |
 | 2 | Player complete: chrome, speed, decoder, A–B loop, gestures, playback sheet | `PlayerUiState`, `ScrubThumbnails` interface |
 | 3 | Artwork pipeline, Browse grid, Title Detail, scrub previews (v1: on demand) | G5, `FrameSource`, `ScrubThumbnails` |
-| 4 | Library scan, filename parsing, search (FTS), Home, sort, collections | parse rules, progress-in-Room |
+| 4 | Library scan, filename parsing, search (FTS), Home, sort, collections, Settings shares | parse rules, progress-in-Room, `FolderKind` |
 | 5 | Downloads and offline ("On this device") | `TransferScheduler` seam |
 | 6 | LAN discovery, onboarding, settings, polish, saved QA flows | |
 

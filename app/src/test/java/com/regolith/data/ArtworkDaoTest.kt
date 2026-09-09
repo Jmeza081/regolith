@@ -46,7 +46,7 @@ class ArtworkDaoTest {
     }
 
     @Test
-    fun `version 1 database migrates to 2 with its files intact`() {
+    fun `version 1 database migrates to 3 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->
             v1.execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
@@ -57,16 +57,22 @@ class ArtworkDaoTest {
                     "VALUES (1, 1, 1, 'a.mkv', 'a.mkv', 'mkv', 10, 0, NULL, 0, 0, 0)",
             )
         }
-        val v2 = migrations.runMigrationsAndValidate(name, 2, true)
-        v2.query("SELECT name, width, probedAtMs FROM media_files").use { c ->
+        val v3 = migrations.runMigrationsAndValidate(name, 3, true)
+        v3.query("SELECT name, width, probedAtMs, titleParsed FROM media_files").use { c ->
             assertEquals(true, c.moveToFirst())
             assertEquals("a.mkv", c.getString(0))
             assertEquals(true, c.isNull(1))
+            assertEquals(true, c.isNull(3))
         }
-        v2.query("SELECT COUNT(*) FROM artwork").use { c ->
+        v3.query("SELECT COUNT(*) FROM artwork").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
-        v2.close()
+        // The full-text index was rebuilt from the rows that already existed.
+        v3.query("SELECT COUNT(*) FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid WHERE media_fts MATCH '\"a\"*'").use { c ->
+            c.moveToFirst()
+            assertEquals(1, c.getInt(0))
+        }
+        v3.close()
     }
 }

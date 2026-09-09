@@ -2,6 +2,8 @@ package com.regolith.data.db
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Fts4
+import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -63,6 +65,12 @@ data class FolderEntity(
     val fileCount: Int,
     val byteCount: Long,
     val lastListedAtMs: Long?,
+    // --- Schema v3: what the scan understood (design section 08).
+    /** [com.regolith.domain.library.FolderKind] name; null until listed by a v3 build. */
+    val kind: String? = null,
+    /** "Arrival" for `Arrival (2016)`; the name itself when nothing parsed. */
+    val titleParsed: String? = null,
+    val year: Int? = null,
 )
 
 @Entity(
@@ -102,6 +110,72 @@ data class MediaFileEntity(
     val audioSampleRate: Int? = null,
     /** When the full probe last ran; null means only what artwork extraction learned. */
     val probedAtMs: Long? = null,
+    // --- Schema v3: filename parsing (local only, never looked up online).
+    val titleParsed: String? = null,
+    val year: Int? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+)
+
+/**
+ * Full-text index over files, kept in sync with `media_files` by triggers
+ * Room generates (an "external content" FTS table: the text lives in the
+ * content table, this holds only the index). unicode61 folds accents, so
+ * "samourai" finds "Samouraï".
+ */
+@Fts4(contentEntity = MediaFileEntity::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
+@Entity(tableName = "media_fts")
+data class MediaFtsEntity(
+    val name: String,
+    val titleParsed: String?,
+    val relPath: String,
+)
+
+@Fts4(contentEntity = FolderEntity::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
+@Entity(tableName = "folder_fts")
+data class FolderFtsEntity(
+    val name: String,
+    val titleParsed: String?,
+    val relPath: String,
+)
+
+/**
+ * One walk of one share (guardrail G3: progress is a row, not a callback).
+ * Written by the scan worker a couple of times a second and observed as a
+ * Flow by every screen that shows scan state, so they all agree and it
+ * survives the process dying.
+ */
+@Entity(
+    tableName = "scan_runs",
+    foreignKeys = [ForeignKey(ShareEntity::class, ["id"], ["shareId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("shareId")],
+)
+data class ScanRunEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val shareId: Long,
+    /** RUNNING, DONE, FAILED or CANCELLED. */
+    val status: String,
+    val foldersDone: Int,
+    val filesFound: Int,
+    /** The path being read right now, for the Scanning screen's "READING" line. */
+    val currentPath: String,
+    val startedAtMs: Long,
+    val finishedAtMs: Long?,
+    val error: String?,
+) {
+    companion object {
+        const val RUNNING = "RUNNING"
+        const val DONE = "DONE"
+        const val FAILED = "FAILED"
+        const val CANCELLED = "CANCELLED"
+    }
+}
+
+/** Queries the user typed, newest first, for the Search screen's "Recent". */
+@Entity(tableName = "recent_searches")
+data class RecentSearchEntity(
+    @PrimaryKey val query: String,
+    val searchedAtMs: Long,
 )
 
 /**

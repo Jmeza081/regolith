@@ -20,11 +20,13 @@ sealed interface RegolithKey : NavKey {
     // --- The four tabs. Exactly one is at the top of the stack when the
     // nav pill is visible.
     @Serializable data object Home : RegolithKey
-    @Serializable data object Library : RegolithKey
+    /** The poster wall; [folderId] opens one collection's wall (still the Library tab). */
+    @Serializable data class Library(val folderId: Long? = null) : RegolithKey
     @Serializable data class Browse(val folderId: Long? = null) : RegolithKey
     @Serializable data object Settings : RegolithKey
 
     // --- Pushed screens.
+    @Serializable data object Search : RegolithKey
     @Serializable data class TitleDetail(val fileId: Long) : RegolithKey
     @Serializable data class Player(val fileId: Long, val startMs: Long? = null) : RegolithKey
 

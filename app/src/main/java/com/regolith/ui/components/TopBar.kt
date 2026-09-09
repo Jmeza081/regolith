@@ -31,12 +31,14 @@ fun TopBar(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     meta: String? = null,
+    /** False when the caller already padded for the status bar (e.g. a row with trailing icons). */
+    statusBarPadding: Boolean = true,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .statusBarsPadding()
+            .then(if (statusBarPadding) Modifier.statusBarsPadding() else Modifier)
             .padding(horizontal = if (onBack != null) Spacing.s8 else Spacing.s18, vertical = Spacing.s12),
     ) {
         if (onBack != null) {

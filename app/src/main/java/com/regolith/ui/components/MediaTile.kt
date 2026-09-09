@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,8 +46,9 @@ import com.regolith.ui.theme.TextStyles
  *  - image:       the artwork, with [chip] ("4K") over it
  *  - placeholder: the wedge on a surface with the filename, when nothing was readable
  *
- * Folders carry a corner mark; [count] draws a collection's file count.
- * [dimmed] is the share-unreachable state (cached art at 45%).
+ * Folders carry a corner mark; [count] draws a collection's file count;
+ * [unwatched] the white dot. [dimmed] is the share-unreachable state
+ * (cached art at 45%).
  *
  * @param artwork what to draw, or null for a tile that has no artwork at all (draws the placeholder).
  * @param placeholderLabel text on the wedge placeholder, usually the file extension.
@@ -67,6 +69,8 @@ fun MediaTile(
     placeholderLabel: String? = null,
     /** 0..1 watched fraction; draws a thin red bar along the bottom edge. */
     progress: Float? = null,
+    /** The design's unwatched mark: a white dot with a dark halo, top-right, "never a recording light". */
+    unwatched: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     Column(modifier.clickable(onClick = onClick).testTag(testTag)) {
@@ -95,6 +99,10 @@ fun MediaTile(
             }
             if (count != null) {
                 Chip(count.toString(), ChipStyle.OverArt, Modifier.align(Alignment.TopEnd).padding(Spacing.s8))
+            } else if (unwatched) {
+                Box(Modifier.align(Alignment.TopEnd).padding(Spacing.s8).size(14.dp).background(colors.ground.copy(alpha = 0.6f), CircleShape)) {
+                    Box(Modifier.align(Alignment.Center).size(8.dp).background(colors.ink, CircleShape))
+                }
             }
             if (folder) {
                 Icon(
