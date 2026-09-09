@@ -22,6 +22,7 @@ data class NewItem(
     val name: String,
     val artwork: ArtworkRequest,
     val meta: String,
+    val unwatched: Boolean = true,
 ) {
     val testTag get() = "home_new_$fileId"
 }

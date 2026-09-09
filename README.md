@@ -6,15 +6,15 @@ nothing leaves your network. Kotlin + Jetpack Compose.
 
 ## Status
 
-Phase 5 of 6: downloads and offline. "Keep on this device" on any title
-copies it into the app's own storage in the background, resuming from
-where it stopped if the share drops out and naming the cause when it
-cannot finish (share gone vs. no room). Library's "On this device" tab
-lists what plays with no network, what is arriving and what failed; Home
-summarises it. When a share is out of reach the Network wall says so with
-Try again and a way across to the device tab, and the player reads the
-local copy through the same path as the share. Phases 1 to 4 are verified
-on a real phone against a NAS. See `docs/ARCHITECTURE.md`.
+Phase 6 of 6: the design audit. Every screen was rebuilt against the
+design export frame by frame: the exact type pairs (Michroma titles, Space
+Grotesk everything else), the colour tokens, the frosted pill nav, the
+design's own icon set and photographs, the splash and the three-page
+onboarding, the LAN finder (a TCP sweep of the Wi-Fi subnet), the A–B loop
+panel under the picture, the drag rails and the one-time gesture map.
+Phases 1 to 4 are verified on a real phone against a NAS; Phases 5 and 6
+on the Pixel 10 emulator against a local Samba share. See
+`docs/ARCHITECTURE.md`.
 
 ## Build and run
 

@@ -20,6 +20,23 @@ val Ink = Color(0xFFFFFFFF)         // titles, labels, primary ink
 val InkSoft = Color(0xFFEDEDED)     // ink on red / on media
 val Red = Color(0xFFE11B17)         // THE accent. One filled red per screen.
 val RedTint = Color(0x14E11B17)     // 8% red: error card tint, never a fill
+val NavIdle = Color(0xFF8A8A8A)     // unselected nav labels and segmented tabs
+val NavDimmed = Color(0x38FFFFFF)   // rgba(255,255,255,.22): tabs with nothing behind them
+val BadgeBg = Color(0xFF1A1A1A)     // count badge in a segmented tab, folder icon box
+val DisabledBg = Color(0xFF161616)  // disabled button fill, off switch (disabled)
+val DisabledInk = Color(0xFF4A4A4A)
+val NoticeBg = Color(0xFF141414)    // "Couldn't reach media" notice card
+val OverArt = Color(0xB8000000)     // rgba(0,0,0,.72): chips over posters
+val PillBg = Color(0x85000000)      // rgba(0,0,0,.52): the nav pill's own ground under the blur
+val PillBorder = Color(0x29FFFFFF)  // rgba(255,255,255,.16)
+val FrostBg = Color(0x0FFFFFFF)     // rgba(255,255,255,.06): secondary buttons, on-surface chips
+val FrostBorder = Color(0x2EFFFFFF) // rgba(255,255,255,.18)
+val OnMediaBg = Color(0x59000000)   // rgba(0,0,0,.35): pills over the picture
+val OnMediaBorder = Color(0x38FFFFFF) // rgba(255,255,255,.22)
+val OnMediaCircleBg = Color(0x6B000000) // rgba(0,0,0,.42): round icon buttons over the picture
+val OnMediaCircleBorder = Color(0x57FFFFFF) // rgba(255,255,255,.34)
+val TrackWhite = Color(0x38FFFFFF)  // rgba(255,255,255,.22): scrubber track
+val BarWhite = Color(0x40FFFFFF)    // rgba(255,255,255,.25): progress bar track on tiles
 
 /**
  * Tokens Material 3 has no slot for. Read them with `RegolithTheme.colors`.
@@ -42,6 +59,23 @@ data class RegolithColors(
     val inkSoft: Color = InkSoft,
     val accent: Color = Red,
     val accentTint: Color = RedTint,
+    val navIdle: Color = NavIdle,
+    val navDimmed: Color = NavDimmed,
+    val badgeBg: Color = BadgeBg,
+    val disabledBg: Color = DisabledBg,
+    val disabledInk: Color = DisabledInk,
+    val noticeBg: Color = NoticeBg,
+    val overArt: Color = OverArt,
+    val pillBg: Color = PillBg,
+    val pillBorder: Color = PillBorder,
+    val frostBg: Color = FrostBg,
+    val frostBorder: Color = FrostBorder,
+    val onMediaBg: Color = OnMediaBg,
+    val onMediaBorder: Color = OnMediaBorder,
+    val onMediaCircleBg: Color = OnMediaCircleBg,
+    val onMediaCircleBorder: Color = OnMediaCircleBorder,
+    val trackWhite: Color = TrackWhite,
+    val barWhite: Color = BarWhite,
 )
 
 internal val LocalRegolithColors = staticCompositionLocalOf { RegolithColors() }

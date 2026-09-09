@@ -81,6 +81,29 @@ class TitleDetailViewModel @AssistedInject constructor(
                 if (file.probedAtMs == null && !probed) runProbe()
             }
         }
+        viewModelScope.launch {
+            library.observeFile(fileId).collect { file ->
+                if (file == null) return@collect
+                val folder = library.folder(file.folderId)
+                val siblings = if (folder?.kind == com.regolith.domain.library.FolderKind.TITLE.name) {
+                    library.filesInFolder(file.folderId).filter { it.id != fileId }
+                } else {
+                    emptyList()
+                }
+                _uiState.update {
+                    it.copy(
+                        siblings = siblings.map { s ->
+                            SiblingFile(
+                                fileId = s.id, name = s.name,
+                                meta = listOfNotNull(s.durationMs?.let { d -> formatDurationShort(d) }, formatBytes(s.sizeBytes)).joinToString(" · "),
+                                resolutionLabel = VideoInfo.resolutionLabelFor(s.width, s.height),
+                                artwork = ArtworkRequest(ArtworkOwner.File(s.id), ArtworkKind.THUMB),
+                            )
+                        },
+                    )
+                }
+            }
+        }
     }
 
     /** "Keep on this device" and "Try again". */

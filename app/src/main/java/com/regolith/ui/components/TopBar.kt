@@ -1,62 +1,90 @@
 package com.regolith.ui.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.composables.icons.lucide.R as LucideR
+import com.regolith.R
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 
+/** One trailing icon in the top bar: a 44dp hit area around a 19dp glyph in #A0A0A0. */
+data class TopBarAction(val icon: Int, val contentDescription: String, val testTag: String, val onClick: () -> Unit)
+
 /**
- * Screen header: back arrow (when the screen was pushed) and a Michroma
- * title, with an optional metadata line underneath. Tabs use it without a
- * back arrow; pushed screens with one.
+ * Screen header (design: every tab and pushed screen). Michroma title at
+ * 15px, an optional subtitle at 12px underneath, an optional back arrow
+ * (20dp, white) and up to two trailing 19dp icons at 44dp hit size.
+ *
+ * Padding follows the design: `12 18 18` with a title alone, `8 18 8`
+ * with a subtitle, and the back-arrow variant keeps 18dp side padding
+ * with a 12dp gap to the title.
  */
 @Composable
 fun TopBar(
     title: String,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
-    meta: String? = null,
-    /** False when the caller already padded for the status bar (e.g. a row with trailing icons). */
+    subtitle: String? = null,
+    subtitleMuted: Boolean = false,
+    actions: List<TopBarAction> = emptyList(),
     statusBarPadding: Boolean = true,
 ) {
+    val colors = RegolithTheme.colors
+    val hasSubtitle = subtitle != null
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = if (hasSubtitle) Alignment.Top else Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
             .then(if (statusBarPadding) Modifier.statusBarsPadding() else Modifier)
-            .padding(horizontal = if (onBack != null) Spacing.s8 else Spacing.s18, vertical = Spacing.s12),
+            .padding(start = Spacing.s18, end = if (actions.isEmpty()) Spacing.s18 else Spacing.s8, top = if (hasSubtitle) Spacing.s8 else Spacing.s12, bottom = if (hasSubtitle) Spacing.s8 else Spacing.s18),
     ) {
         if (onBack != null) {
-            IconButton(onClick = onBack, modifier = Modifier.testTag("topbar_back_button")) {
-                Icon(
-                    painterResource(LucideR.drawable.lucide_ic_arrow_left),
-                    contentDescription = "Back",
-                    tint = RegolithTheme.colors.ink,
-                    modifier = Modifier.size(22.dp),
-                )
+            Box(
+                Modifier.size(44.dp).offsetForBack().clickable(interactionSource = null, indication = null, onClick = onBack).testTag("topbar_back_button"),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Icon(painterResource(R.drawable.rg_ic_back), contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(20.dp))
             }
-            Spacer(Modifier.width(Spacing.s4))
+            Spacer(Modifier.width(Spacing.s12))
         }
-        androidx.compose.foundation.layout.Column {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
             DisplayText(title, maxLines = 1)
-            if (meta != null) {
-                androidx.compose.material3.Text(meta, style = TextStyles.metadata, color = RegolithTheme.colors.metadata, maxLines = 1)
+            if (subtitle != null) {
+                Text(subtitle, style = TextStyles.subtitle, color = if (subtitleMuted) colors.metadata else colors.body, maxLines = 1)
+            }
+        }
+        actions.forEach { action ->
+            Box(
+                Modifier.size(44.dp).clickable(interactionSource = null, indication = null, onClick = action.onClick).testTag(action.testTag),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(action.icon), contentDescription = action.contentDescription, tint = colors.body, modifier = Modifier.size(19.dp))
             }
         }
     }
 }
+
+/** The back glyph sits flush with the 18dp gutter; the 44dp hit area extends to the right of it. */
+private fun Modifier.offsetForBack(): Modifier = this.width(32.dp)
+
+/** Filler so a bar without actions keeps the title's baseline where a bar with actions has it. */
+@Composable
+fun TopBarActionSpace() = Spacer(Modifier.size(44.dp))

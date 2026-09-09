@@ -50,9 +50,14 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         const val TAG = "Regolith/SMB"
     }
 
-    init {
-        installFullBouncyCastle()
-    }
+    /**
+     * Loading the full BouncyCastle provider takes seconds on a cold start
+     * (thousands of classes), and this singleton is built while the app is
+     * still starting. So the install runs on its own thread and every
+     * network entry point joins it before the first handshake, which keeps
+     * the splash short without ever letting NTLM run before MD4 exists.
+     */
+    private val bouncyCastleInstall: Thread = Thread({ installFullBouncyCastle() }, "regolith-bc-install").apply { start() }
 
     /**
      * NTLM authentication hashes the password with MD4. Android ships a
@@ -110,8 +115,9 @@ class JcifsGateway @Inject constructor() : SmbGateway {
 
     private val contexts = ConcurrentHashMap<ContextKey, CIFSContext>()
 
-    private fun context(host: SmbHost, credentials: SmbCredentials, maxDialect: String, lenientSigning: Boolean = false): CIFSContext =
-        contexts.getOrPut(ContextKey(host, credentials, maxDialect, lenientSigning)) {
+    private fun context(host: SmbHost, credentials: SmbCredentials, maxDialect: String, lenientSigning: Boolean = false): CIFSContext {
+        bouncyCastleInstall.join()
+        return contexts.getOrPut(ContextKey(host, credentials, maxDialect, lenientSigning)) {
             val auth = when (credentials) {
                 SmbCredentials.Guest -> NtlmPasswordAuthenticator(NtlmPasswordAuthenticator.AuthenticationType.GUEST)
                 is SmbCredentials.Password -> NtlmPasswordAuthenticator(
@@ -123,6 +129,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             }
             BaseContext(PropertyConfiguration(mergedProps(maxDialect, lenientSigning))).withCredentials(auth)
         }
+    }
 
     private fun mergedProps(maxDialect: String, lenientSigning: Boolean): Properties = Properties().apply {
         putAll(baseProps)
@@ -245,6 +252,8 @@ class JcifsGateway @Inject constructor() : SmbGateway {
     } catch (e: SmbAuthException) {
         throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
+        // The full cause chain: jcifs folds transport-thread failures into one status code.
+        Log.w(TAG, "SMB failure on $dialect for ${host.host}$path", e)
         throw when (e.ntStatus) {
             NtStatus.NT_STATUS_LOGON_FAILURE,
             NtStatus.NT_STATUS_ACCOUNT_DISABLED,
@@ -263,6 +272,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
         }
     } catch (e: CIFSException) {
+        Log.w(TAG, "CIFS failure on $dialect for ${host.host}$path", e)
         throw if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
     } catch (e: UnknownHostException) {
         throw SmbFailure.Unreachable(host.host, e, "DNS lookup failed · $dialect")

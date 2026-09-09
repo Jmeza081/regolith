@@ -26,8 +26,10 @@ import com.regolith.ui.theme.TextStyles
 
 /**
  * A tappable pill: "1.0×", "A–B", "HW", "Chapters" (design section 10).
- * Outlined on media by default; [selected] fills it red, the one place a
- * pill may carry the accent. Optional leading Lucide icon.
+ * Over the picture it is 34dp with a 22% white hairline on 35% black;
+ * off the picture (portrait, under the video) it is the 40dp frosted
+ * pill. [selected] fills it red, the one place a pill may carry the
+ * accent. Optional leading glyph.
  */
 @Composable
 fun PillButton(
@@ -38,31 +40,35 @@ fun PillButton(
     selected: Boolean = false,
     icon: Int? = null,
     onLongClick: (() -> Unit)? = null,
-    /** On media: white outline over the picture. Off media: hairline on a surface. */
     onMedia: Boolean = true,
 ) {
     val colors = RegolithTheme.colors
+    val background = when {
+        selected -> colors.accent
+        onMedia -> colors.onMediaBg
+        else -> colors.frostBg
+    }
     val border = when {
         selected -> Color.Transparent
-        onMedia -> colors.ink.copy(alpha = 0.55f)
-        else -> colors.raised
+        onMedia -> colors.onMediaBorder
+        else -> colors.frostBorder
     }
-    val ink = if (selected) colors.inkSoft else colors.ink
+    val ink = if (selected || onMedia) colors.ink else colors.inkSoft
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
+            .height(if (onMedia) 34.dp else 40.dp)
             .clip(PillShape)
-            .background(if (selected) colors.accent else if (onMedia) colors.ground.copy(alpha = 0.35f) else Color.Transparent)
+            .background(background)
             .border(1.dp, border, PillShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .height(32.dp)
             .padding(horizontal = Spacing.s12)
             .testTag(testTag),
     ) {
         if (icon != null) {
-            Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(Spacing.s4))
+            Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(Spacing.s8))
         }
-        Text(text, style = TextStyles.chip, color = ink)
+        Text(text, style = TextStyles.buttonSmall, color = ink)
     }
 }

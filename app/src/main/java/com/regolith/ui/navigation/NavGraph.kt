@@ -23,9 +23,11 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.regolith.AppViewModel
+import com.regolith.ui.addserver.AddServerViewModel
 import com.regolith.ui.addserver.ManualEntryScreen
 import com.regolith.ui.addserver.ScanningScreen
 import com.regolith.ui.addserver.ScanningViewModel
+import com.regolith.ui.addserver.SearchServersScreen
 import com.regolith.ui.addserver.SharePickerScreen
 import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
@@ -38,6 +40,13 @@ import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.library.LibraryViewModel
 import com.regolith.ui.search.SearchScreen
 import com.regolith.ui.onboarding.OnboardingScreen
+import com.regolith.ui.onboarding.SplashContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeOut
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import com.regolith.ui.settings.SettingsScreen
 import com.regolith.ui.titledetail.TitleDetailScreen
 import com.regolith.ui.titledetail.TitleDetailViewModel
@@ -64,11 +73,15 @@ import dev.chrisbanes.haze.hazeSource
 @Composable
 fun RegolithNavGraph(appViewModel: AppViewModel) {
     val start by appViewModel.startDestination.collectAsStateWithLifecycle()
+    val dimmedTabs by appViewModel.dimmedTabs.collectAsStateWithLifecycle()
     // null = preferences still loading; the system splash is covering us.
     val startKey = start ?: return
 
     val backStack = rememberNavBackStack(startKey)
     val hazeState = remember { HazeState() }
+    // The design's splash: the moon plate for "two seconds at most" on a cold start, then it fades.
+    var splash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) { delay(SPLASH_MS); splash = false }
     val topKey = backStack.lastOrNull() as? RegolithKey
     val currentTab = MainTab.forKey(topKey)
 
@@ -100,17 +113,33 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 modifier = Modifier.fillMaxSize().hazeSource(hazeState),
                 entryProvider = entryProvider {
                     entry<RegolithKey.Onboarding> {
-                        OnboardingScreen(onFinish = {
-                            appViewModel.completeOnboarding()
-                            backStack.clear()
-                            backStack.add(RegolithKey.Home)
-                        })
+                        OnboardingScreen(
+                            onFinish = {
+                                appViewModel.completeOnboarding()
+                                backStack.clear()
+                                backStack.add(RegolithKey.Home)
+                            },
+                            onFindServer = {
+                                appViewModel.completeOnboarding()
+                                backStack.clear()
+                                backStack.add(RegolithKey.Home)
+                                backStack.add(RegolithKey.AddServer.Search)
+                            },
+                        )
+                    }
+                    entry<RegolithKey.AddServer.Search> {
+                        SearchServersScreen(
+                            viewModel = hiltViewModel(),
+                            onBack = { backStack.removeLastOrNull() },
+                            onPick = { host -> backStack.add(RegolithKey.AddServer.Manual(prefill = "smb://${host.host.host}" + (if (host.host.port != 445) ":${host.host.port}" else ""))) },
+                            onManual = { backStack.add(RegolithKey.AddServer.Manual()) },
+                        )
                     }
                     entry<RegolithKey.Home> {
                         HomeScreen(
                             viewModel = hiltViewModel(),
-                            onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
-                            onBrowse = { navigateToTab(MainTab.BROWSE) },
+                            onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                            onSearch = { backStack.add(RegolithKey.Search) },
                             onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
                             onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
                             onOpenDevice = { backStack.clear(); backStack.add(RegolithKey.Home); backStack.add(RegolithKey.Library(onDevice = true)) },
@@ -125,7 +154,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onOpenCollection = { backStack.add(RegolithKey.Library(it)) },
                             onOpenTitle = { backStack.add(RegolithKey.TitleDetail(it)) },
                             onSearch = { backStack.add(RegolithKey.Search) },
-                            onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                            onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                             startOnDevice = key.onDevice,
                         )
                     }
@@ -145,7 +174,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onBack = if (key.folderId == null) null else ({ backStack.removeLastOrNull() }),
                             onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
                             onOpenFile = { backStack.add(RegolithKey.TitleDetail(it)) },
-                            onAddServer = { backStack.add(RegolithKey.AddServer.Manual) },
+                            onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                         )
                     }
                     entry<RegolithKey.TitleDetail> { key ->
@@ -158,12 +187,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         )
                     }
                     entry<RegolithKey.Settings> {
-                        SettingsScreen(viewModel = hiltViewModel(), onAddServer = { backStack.add(RegolithKey.AddServer.Manual) })
+                        SettingsScreen(viewModel = hiltViewModel(), onAddServer = { backStack.add(RegolithKey.AddServer.Search) })
                     }
 
-                    entry<RegolithKey.AddServer.Manual> {
+                    entry<RegolithKey.AddServer.Manual> { key ->
                         ManualEntryScreen(
-                            viewModel = hiltViewModel(),
+                            viewModel = hiltViewModel<AddServerViewModel, AddServerViewModel.Factory>(creationCallback = { it.create(key.prefill) }),
                             onBack = { backStack.removeLastOrNull() },
                             onConnected = { serverId -> backStack.add(RegolithKey.AddServer.Shares(serverId)) },
                         )
@@ -199,17 +228,22 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 },
             )
 
-            if (currentTab != null) {
+            AnimatedVisibility(visible = splash, exit = fadeOut(), modifier = Modifier.fillMaxSize()) { SplashContent() }
+
+            if (currentTab != null && !splash) {
                 NavPill(
                     selected = currentTab,
                     onSelect = { navigateToTab(it) },
                     hazeState = hazeState,
+                    dimmed = dimmedTabs,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(bottom = Spacing.s12),
+                        .padding(bottom = Spacing.s8),
                 )
             }
         }
     }
 }
+
+private const val SPLASH_MS = 1_400L

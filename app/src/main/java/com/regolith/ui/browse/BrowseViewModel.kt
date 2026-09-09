@@ -63,10 +63,11 @@ class BrowseViewModel @AssistedInject constructor(
                 folder to items
             }.collect { (folder, items) ->
                 if (folder == null) return@collect
+                val shareName = library.shareLabel(folder.shareId).substringAfter(" · ")
                 _uiState.update {
                     it.copy(
                         title = folder.name,
-                        breadcrumb = folder.relPath.takeIf { p -> p.isNotEmpty() }?.replace("/", " / "),
+                        breadcrumb = (listOf(shareName) + folder.relPath.split('/').filter { p -> p.isNotEmpty() }).joinToString(" / "),
                         rows = items.map { item -> item.toRow() },
                         loaded = true,
                     )

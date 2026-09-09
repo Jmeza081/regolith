@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -43,24 +44,30 @@ class HomeViewModel @Inject constructor(
 
     private val downloads = transfers.observeAll()
 
+    private val newest = library.observeNewest(NEW_LIMIT)
+        .flatMapLatest { files -> library.observeProgress(files.map { it.id }).map { p -> files to p } }
+
     val uiState: StateFlow<HomeUiState> = combine(
-        combine(sources.observeServers(), shares, ::Pair), resume, library.observeNewest(NEW_LIMIT), runs, downloads,
-    ) { (servers, shareList), resumeItems, newest, runList, downloadRows ->
+        combine(sources.observeServers(), shares, ::Pair), resume, newest, runs, downloads,
+    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, downloadRows ->
         val running = runList.filter { it.status == ScanRunEntity.RUNNING }
         val ready = downloadRows.filter { it.status == TransferStatus.DONE.name }
+        val progressById = newestProgress.associateBy { it.fileId }
         HomeUiState(
             downloadsReady = ready.size,
             downloadsBytes = ready.sumOf { it.totalBytes },
             loaded = true,
             serverNames = servers.map { it.name },
             resume = resumeItems,
-            newlyAdded = newest.map { f ->
+            newlyAdded = newestFiles.map { f ->
                 val parsed = ParsedName(f.titleParsed ?: f.name.substringBeforeLast('.'), f.year, f.season, f.episode)
+                val p = progressById[f.id]
                 NewItem(
                     fileId = f.id,
                     name = if (parsed.matched) parsed.display else f.name.substringBeforeLast('.'),
                     artwork = ArtworkRequest(ArtworkOwner.File(f.id), ArtworkKind.POSTER),
                     meta = listOfNotNull(VideoInfo.resolutionLabelFor(f.width, f.height).ifEmpty { null }, formatWhen(f.addedAtMs)).joinToString(" · "),
+                    unwatched = p == null || (p.positionMs == 0L && !p.completed),
                 )
             },
             refreshLine = running.takeIf { it.isNotEmpty() }?.let { "Reading the share · ${"%,d".format(it.sumOf { r -> r.filesFound })} files so far" },

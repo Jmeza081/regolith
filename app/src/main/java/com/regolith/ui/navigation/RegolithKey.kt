@@ -33,7 +33,8 @@ sealed interface RegolithKey : NavKey {
     /** Add Source Server flow (design section 03). Phase 1 fills these in. */
     @Serializable sealed interface AddServer : RegolithKey {
         @Serializable data object Search : AddServer
-        @Serializable data object Manual : AddServer
+        /** [prefill] is the address the finder picked, so the field starts filled. */
+        @Serializable data class Manual(val prefill: String? = null) : AddServer
         @Serializable data class Connecting(val serverId: Long) : AddServer
         @Serializable data class Shares(val serverId: Long) : AddServer
         @Serializable data class Scanning(val serverId: Long) : AddServer

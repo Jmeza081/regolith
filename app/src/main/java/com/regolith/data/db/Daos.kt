@@ -115,10 +115,13 @@ interface FolderDao {
     @Transaction
     suspend fun upsert(folder: FolderEntity): FolderEntity {
         val existing = byPath(folder.shareId, folder.relPath) ?: return folder.copy(id = insert(folder))
+        // A parent's listing re-upserts its children before they are walked (lastListedAtMs null):
+        // that must not wipe the counts the child's own listing wrote earlier.
+        val listed = folder.lastListedAtMs != null
         val merged = existing.copy(
             name = folder.name,
-            fileCount = folder.fileCount,
-            byteCount = folder.byteCount,
+            fileCount = if (listed) folder.fileCount else existing.fileCount,
+            byteCount = if (listed) folder.byteCount else existing.byteCount,
             lastListedAtMs = folder.lastListedAtMs ?: existing.lastListedAtMs,
             kind = folder.kind ?: existing.kind,
             titleParsed = folder.titleParsed ?: existing.titleParsed,

@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.stateIn
 
 /**
@@ -34,7 +36,7 @@ import kotlinx.coroutines.flow.stateIn
 class PlayerViewModel @AssistedInject constructor(
     @Assisted private val key: RegolithKey.Player,
     private val session: PlaybackSession,
-    prefs: AppPreferences,
+    private val prefs: AppPreferences,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -45,6 +47,11 @@ class PlayerViewModel @AssistedInject constructor(
     val state: StateFlow<PlaybackState> = session.state
     val player: StateFlow<ExoPlayer?> = session.player
     val scrubThumbnails: StateFlow<Boolean> = prefs.scrubThumbnails.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** Null until read; false shows the gesture map once. */
+    val gesturesSeen: StateFlow<Boolean?> = prefs.gesturesSeen.map<Boolean, Boolean?> { it }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun dismissGestureMap() = viewModelScope.launch { prefs.setGesturesSeen() }.let { }
 
     /** Where the finger is on the timeline, or null when not scrubbing. */
     private val scrubMs = MutableStateFlow<Long?>(null)

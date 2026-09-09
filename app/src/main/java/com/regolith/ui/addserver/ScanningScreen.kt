@@ -1,6 +1,29 @@
 package com.regolith.ui.addserver
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.ProgressBar
+import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.theme.PillShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,7 +31,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,7 +46,6 @@ import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.ErrorCard
-import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.TertiaryButton
 import com.regolith.ui.theme.RegolithTheme
@@ -95,10 +116,13 @@ class ScanningViewModel @AssistedInject constructor(
 }
 
 /**
- * Scanning (design section 03): the hero figure in Michroma at 40px, the
- * one place a number gets display type; the path being read; "Run in the
- * background". The share's size is unknown until it has been walked, so
- * the bar is indeterminate rather than a made-up percentage.
+ * Scanning (design section 03): the hero figure in Michroma 40 with
+ * `-.02em` tracking, the one place a number gets display type; a 6dp red
+ * bar; READING with the path at 500 13/19; "Run in the background" as a
+ * frosted secondary with the promise underneath. The share's size is
+ * unknown until it has been walked, so the bar sweeps rather than
+ * reporting a made-up percentage, and the two 12px lines carry the live
+ * folder and file counts.
  */
 @Composable
 fun ScanningScreen(
@@ -109,34 +133,76 @@ fun ScanningScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
-    Column(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = Spacing.s18).testTag("scanning_screen")) {
-        Spacer(Modifier.height(Spacing.s56))
-        DisplayText("%,d".format(state.filesFound), style = TextStyles.heroFigure, modifier = Modifier.testTag("scanning_count"))
-        Spacer(Modifier.height(Spacing.s4))
-        Text("files found on ${state.serverName}", style = TextStyles.body, color = colors.body)
-        Spacer(Modifier.height(Spacing.s30))
+    // The scan runs as a foreground job with a notification; Android 13+ only shows it once the
+    // user allows notifications. Ask here, where the reason is on screen, and carry on either way.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    Column(
+        modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s30).testTag("scanning_screen"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s30),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            DisplayText("%,d".format(state.filesFound), style = TextStyles.heroFigure.copy(lineHeight = 44.sp, letterSpacing = (-0.02).em), modifier = Modifier.testTag("scanning_count"))
+            Text("files found on ${state.serverName}", style = TextStyles.body.copy(lineHeight = 20.sp), color = colors.metadata)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            if (state.running) SweepBar(modifier = Modifier.testTag("scanning_progress")) else ProgressBar(fraction = if (state.failed == null) 1f else 0f)
+            Row(Modifier.fillMaxWidth()) {
+                Text("${state.foldersDone} folder" + (if (state.foldersDone == 1) "" else "s") + " read", style = TextStyles.meta12.copy(fontWeight = FontWeight.Medium), color = colors.metadata)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    when {
+                        state.running -> "still reading"
+                        state.failed != null -> "stopped"
+                        else -> "done"
+                    },
+                    style = TextStyles.meta12.copy(fontWeight = FontWeight.Medium), color = colors.metadata,
+                )
+            }
+        }
         if (state.running) {
-            LinearProgressIndicator(color = colors.accent, trackColor = colors.hairline, modifier = Modifier.fillMaxWidth().testTag("scanning_progress"))
-            Spacer(Modifier.height(Spacing.s8))
-            Text("${state.foldersDone} folders read", style = TextStyles.metadata, color = colors.metadata)
-            Spacer(Modifier.height(Spacing.s30))
-            Eyebrow("Reading")
-            Spacer(Modifier.height(Spacing.s4))
-            Text("/" + state.currentPath, style = TextStyles.body, color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("scanning_path"))
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                MichromaLabel("Reading")
+                Text("/" + state.currentPath, style = TextStyles.notice, color = colors.inkSoft, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("scanning_path"))
+            }
         } else if (state.failed != null) {
             ErrorCard(message = "The scan stopped: ${state.failed}", testTag = "scanning_error_card")
         } else if (state.loaded) {
-            Text("Done. Everything the share holds is listed on this device.", style = TextStyles.body, color = colors.ink, modifier = Modifier.testTag("scanning_done"))
+            Text("Done. Everything the share holds is listed on this device.", style = TextStyles.body, color = colors.inkSoft, modifier = Modifier.testTag("scanning_done"))
         }
         Spacer(Modifier.weight(1f))
-        if (state.running) {
-            PrimaryButton(text = "Run in the background", onClick = onBackground, testTag = "scanning_background_button", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(Spacing.s8))
-            Text("Regolith keeps the list on this device. Nothing is copied off the share.", style = TextStyles.metadata, color = colors.metadata)
-        } else {
-            PrimaryButton(text = "Open the library", onClick = onDone, testTag = "scanning_done_button", modifier = Modifier.fillMaxWidth())
-            TertiaryButton(text = "Back to Home", onClick = onBackground, testTag = "scanning_home_button", modifier = Modifier.fillMaxWidth())
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            if (state.running) {
+                SecondaryButton(text = "Run in the background", onClick = onBackground, testTag = "scanning_background_button", modifier = Modifier.fillMaxWidth())
+                Text(
+                    "Regolith keeps the list on this device. Nothing is copied off the share.",
+                    style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.metadata, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                PrimaryButton(text = "Open the library", onClick = onDone, testTag = "scanning_done_button", modifier = Modifier.fillMaxWidth())
+                TertiaryButton(text = "Back to Home", onClick = onBackground, testTag = "scanning_home_button", modifier = Modifier.fillMaxWidth())
+            }
         }
-        Spacer(Modifier.height(Spacing.s18))
+        Spacer(Modifier.height(Spacing.s8))
+    }
+}
+
+/** The design's 6dp red bar with a sheen sweeping along it while the total is unknown. */
+@Composable
+private fun SweepBar(modifier: Modifier = Modifier) {
+    val colors = RegolithTheme.colors
+    val transition = rememberInfiniteTransition(label = "sweep")
+    val x by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "x")
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().height(6.dp).clip(PillShape).background(colors.accent)) {
+        val sheen = maxWidth * 0.22f
+        Box(
+            Modifier.width(sheen).fillMaxHeight().offset(x = (maxWidth + sheen) * x - sheen)
+                .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0x8CFFFFFF), Color.Transparent))),
+        )
     }
 }

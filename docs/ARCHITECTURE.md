@@ -168,6 +168,52 @@ Reachability: every SMB caller (listing, scan, transfer) marks the server reacha
 Library's Network tab shows the out-of-reach card from that column, and "Try again" is one root listing.
 ```
 
+## Design fidelity, discovery, onboarding (Phase 6)
+
+The design export (`design/docs/.../Regolith Video Player.dc.html`) is a
+set of 320×692 phone frames plus three 780×360 landscape player frames,
+each an HTML tree with exact `font:` / `color:` / `padding:` values. Phase
+6 treated those values as the spec and rebuilt every screen against them:
+
+- **Type and colour are copied, not approximated.** `ui/theme/Type.kt`
+  holds one `TextStyle` per `font:` pair the frames use (screen title
+  Michroma 15/1.3, eyebrow 600 11px tracked .14em, tile name 600 12/14,
+  body 400 14/21, …) and `Color.kt` the exact tokens (`#8A8A8A` idle nav,
+  `rgba(255,255,255,.06)` frost, `rgba(0,0,0,.52)` pill, …). Design pixels
+  are used as dp, so a 411dp-wide phone shows the frame's layout with a
+  little more room, at the frame's type sizes.
+- **Icons and photographs come from the export.** The design's SVG paths
+  were converted to `res/drawable/rg_ic_*.xml` (36 vectors) and its four
+  photographs extracted into `res/drawable-nodpi/rg_*.webp`, replacing the
+  Lucide set for anything the design draws. Lucide stays as a dependency
+  only for glyphs the design does not draw.
+- **Components carry the design's states.** `ui/components/` gained the
+  frosted `PillButton`, `IconCircleButton`, `SwitchControl` (44×26),
+  `CollectionBadge` / `UnwatchedDot` / `CountBadge`, `NoticeCard`,
+  `SkeletonTile`, `ProgressEdge`, `ResumeCard` and the `NavPill` with its
+  dimmed cells (no source → Library/Browse/Settings dim; every server out of
+  reach → Home/Browse dim; `AppViewModel.dimmedTabs`).
+- **Splash and onboarding.** The system splash (black + wedge) covers the
+  cold start; `SplashContent` (moon photograph, wedge, wordmark) then shows
+  for 1.4 s over the first screen. `OnboardingScreen` is a `HorizontalPager`
+  of the three photographed pages with dots, Skip and Next; the last page
+  has only "Find my server", which pushes `AddServer.Search`.
+- **LAN finder.** `data/discovery/HostDiscovery` sweeps port 445 across the
+  phone's Wi-Fi subnet (48 sockets in flight, 300 ms each) and names hosts
+  by reverse DNS. No mDNS: from Android 17 (targetSdk 37)
+  `NsdManager.discoverServices` opens a system "Choose a device to connect"
+  picker instead of returning results, which would put a foreign list on
+  top of the design's own. Picking a host prefills `AddServer.Manual`.
+- **Player.** The A–B loop, when set, replaces the portrait details panel
+  under the picture (design frame 29) and stays in the side sheet in
+  landscape; brightness and volume drags draw the design's rails; the
+  gesture map shows once, on the first landscape session
+  (`AppPreferences.gesturesSeen`).
+- **Startup.** Installing jcifs-ng's full BouncyCastle takes seconds on a
+  cold start, so `JcifsGateway` does it on its own thread and joins it
+  before the first handshake. The debug build still cold-starts in ~5 s on
+  the emulator, the same as other debug apps there.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -213,7 +259,12 @@ Library's Network tab shows the out-of-reach card from that column, and "Try aga
 | 2026-09-09 | A dropped share pauses a transfer (retry with backoff); no room fails it | The design names the two causes separately because they need different fixes: waiting vs. freeing space. |
 | 2026-09-09 | Local playback is a `file://` URI from the same resolver | DefaultDataSource already reads files; the player never learns which it got, and progress, scrub previews and Title Detail keep working on the same file id. |
 | 2026-09-09 | "Out of reach" is a column on `servers` set by whichever SMB call failed last | One source of truth for Library, Home and the transfers instead of each screen probing; cleared by the next successful call or by "Try again". |
-| 2026-09-09 | Notification permission is declared but not yet requested | The scan runs either way; the notification only tells the user why the app is busy. The runtime request joins the Add Source flow's permission UX in Phase 6. |
+| 2026-09-09 | Notification permission is requested on the Scanning screen (Phase 6) | The scan runs either way; the notification only tells the user why the app is busy. Asked where the reason is on screen; the scan proceeds whatever the answer. |
+| 2026-09-09 | Design SVGs converted to `rg_ic_*` vector drawables; Lucide kept only as a fallback | The frames draw their own glyphs (wedge, server, pills); a near-match icon set is exactly the "minute details" the audit was about. |
+| 2026-09-09 | Design px = dp, type at the frames' stated sizes | The frames are 320px wide; a 411dp phone gets the same sizes with more room. Scaling everything ~1.28× to match proportions is the alternative, left as a question for the owner. |
+| 2026-09-09 | No mDNS in the LAN finder | Android 17 routes `NsdManager` discovery through a system device picker for targetSdk 37; the port-445 sweep finds every host the picker would and more. |
+| 2026-09-09 | BouncyCastle installed off the main thread, joined before the first SMB handshake | The provider load cost ~3.7 s of the cold start on the emulator, all on the main thread under the splash. |
+| 2026-09-09 | A parent listing never overwrites a child folder's counts | `FolderDao.upsert` keeps `fileCount`/`byteCount` unless the incoming row was itself listed; before, browsing into a share zeroed every subfolder's counts. |
 
 ## Phase plan
 
@@ -225,7 +276,7 @@ Library's Network tab shows the out-of-reach card from that column, and "Try aga
 | 3 | Artwork pipeline, Browse grid, Title Detail, scrub previews (v1: on demand) | G5, `FrameSource`, `ScrubThumbnails` |
 | 4 | Library scan, filename parsing, search (FTS), Home, sort, collections, Settings shares | parse rules, progress-in-Room, `FolderKind` |
 | 5 | Downloads and offline ("On this device"), out-of-reach states, local playback | `TransferScheduler` seam, `transfers` rows |
-| 6 | LAN discovery, onboarding, settings, polish, saved QA flows | |
+| 6 | Design audit (1:1 against the frames), LAN discovery, splash + onboarding, gesture map | design tokens in `ui/theme`, `rg_ic_*` icons |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

@@ -27,6 +27,14 @@ class AppPreferences @Inject constructor(
         val hardwareDecoding = booleanPreferencesKey("hardware_decoding")
         val scrubThumbnails = booleanPreferencesKey("scrub_thumbnails")
         val librarySort = stringPreferencesKey("library_sort")
+        val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
+    }
+
+    /** The player's gesture map is shown once, the first time the player opens. */
+    val gesturesSeen: Flow<Boolean> = store.data.map { it[Keys.gesturesSeen] ?: false }
+
+    suspend fun setGesturesSeen() {
+        store.edit { it[Keys.gesturesSeen] = true }
     }
 
     val onboardingDone: Flow<Boolean> = store.data.map { it[Keys.onboardingDone] ?: false }

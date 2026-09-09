@@ -1,12 +1,12 @@
 package com.regolith.ui.navigation
 
 import androidx.annotation.DrawableRes
-import com.composables.icons.lucide.R as LucideR
+import com.regolith.R
 
 /**
  * The four destinations in the floating nav pill (design section 01,
- * "Type & nav"). Order here is display order. Icons are Lucide vector
- * drawables from the `icons-lucide-android` artifact.
+ * "Type & nav"). Order here is display order. Icons are the design's own
+ * glyphs (`res/drawable/rg_ic_*`, generated from its SVG paths).
  */
 enum class MainTab(
     val label: String,
@@ -15,10 +15,10 @@ enum class MainTab(
     /** Stable id for tests and argent, like a data-testid. */
     val testTag: String,
 ) {
-    HOME("Home", LucideR.drawable.lucide_ic_house, RegolithKey.Home, "nav_home"),
-    LIBRARY("Library", LucideR.drawable.lucide_ic_library_big, RegolithKey.Library(), "nav_library"),
-    BROWSE("Browse", LucideR.drawable.lucide_ic_folder_open, RegolithKey.Browse(), "nav_browse"),
-    SETTINGS("Settings", LucideR.drawable.lucide_ic_settings, RegolithKey.Settings, "nav_settings");
+    HOME("Home", R.drawable.rg_ic_home, RegolithKey.Home, "nav_home"),
+    LIBRARY("Library", R.drawable.rg_ic_library, RegolithKey.Library(), "nav_library"),
+    BROWSE("Browse", R.drawable.rg_ic_browse, RegolithKey.Browse(), "nav_browse"),
+    SETTINGS("Settings", R.drawable.rg_ic_settings, RegolithKey.Settings, "nav_settings");
 
     companion object {
         /**

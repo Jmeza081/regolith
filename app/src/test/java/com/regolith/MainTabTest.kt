@@ -21,7 +21,7 @@ class MainTabTest {
     fun `pushed screens hide the pill`() {
         assertNull(MainTab.forKey(RegolithKey.Player(fileId = 1)))
         assertNull(MainTab.forKey(RegolithKey.TitleDetail(fileId = 1)))
-        assertNull(MainTab.forKey(RegolithKey.AddServer.Manual))
+        assertNull(MainTab.forKey(RegolithKey.AddServer.Manual()))
         assertNull(MainTab.forKey(null))
     }
 }

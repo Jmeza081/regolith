@@ -50,13 +50,14 @@ class SettingsViewModel @Inject constructor(
                     val ownRuns = runList.filter { r -> own.any { it.id == r.shareId } }
                     val running = ownRuns.filter { it.status == ScanRunEntity.RUNNING }
                     val free = own.mapNotNull { it.freeBytes }.maxOrNull()
+                    val reachable = server.unreachableSinceMs == null
                     val status = when {
                         running.isNotEmpty() -> "Scanning · ${"%,d".format(running.sumOf { it.filesFound })} files"
-                        ownRuns.any { it.status == ScanRunEntity.FAILED } -> "out of reach"
+                        !reachable -> "out of reach"
                         free != null -> "${formatBytes(free)} free"
                         else -> "${own.size} share" + if (own.size == 1) "" else "s"
                     }
-                    ServerRow(server.id, server.name, status, running.isNotEmpty())
+                    ServerRow(server.id, server.name, status, running.isNotEmpty(), reachable = reachable, showing = reachable && own.isNotEmpty())
                 }
             }.collect { rows -> _uiState.update { it.copy(servers = rows) } }
         }

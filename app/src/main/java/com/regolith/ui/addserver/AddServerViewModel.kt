@@ -7,6 +7,9 @@ import com.regolith.domain.smb.SmbAddressParser
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.fromFields
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,19 +17,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
  * Manual entry -> connecting -> share picker (design section 03).
  * Nothing is written until the server answers; a failed attempt leaves no
  * half-added server behind.
  */
-@HiltViewModel
-class AddServerViewModel @Inject constructor(
+@HiltViewModel(assistedFactory = AddServerViewModel.Factory::class)
+class AddServerViewModel @AssistedInject constructor(
+    /** The address the finder picked, or null when the user types one. */
+    @Assisted private val prefill: String?,
     private val sources: SourceRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(AddServerUiState())
+    @AssistedFactory
+    interface Factory {
+        fun create(prefill: String?): AddServerViewModel
+    }
+
+    private val _uiState = MutableStateFlow(AddServerUiState(address = prefill ?: ""))
     val uiState: StateFlow<AddServerUiState> = _uiState.asStateFlow()
 
     private var connectJob: Job? = null

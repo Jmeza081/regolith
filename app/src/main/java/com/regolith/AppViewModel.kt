@@ -3,6 +3,8 @@ package com.regolith
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.prefs.AppPreferences
+import com.regolith.data.repository.SourceRepository
+import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.navigation.RegolithKey
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,7 +24,24 @@ import javax.inject.Inject
 @HiltViewModel
 class AppViewModel @Inject constructor(
     private val prefs: AppPreferences,
+    sources: SourceRepository,
 ) : ViewModel() {
+
+    /**
+     * Tabs drawn at 22% in the pill (design: "Library and Browse dim in
+     * the pill rather than vanishing, so the app never changes shape").
+     * No source server: Library, Browse and Settings dim. A server out of
+     * reach: Home and Browse dim, since only the device tab can do anything.
+     */
+    val dimmedTabs: StateFlow<Set<MainTab>> = sources.observeServers()
+        .map { servers ->
+            when {
+                servers.isEmpty() -> setOf(MainTab.LIBRARY, MainTab.BROWSE, MainTab.SETTINGS)
+                servers.all { it.unreachableSinceMs != null } -> setOf(MainTab.HOME, MainTab.BROWSE)
+                else -> emptySet()
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     val startDestination: StateFlow<RegolithKey?> = prefs.onboardingDone
         .map<Boolean, RegolithKey?> { done -> if (done) RegolithKey.Home else RegolithKey.Onboarding }

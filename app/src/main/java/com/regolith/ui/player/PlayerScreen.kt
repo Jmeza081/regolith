@@ -6,15 +6,19 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,13 +30,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -44,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -51,8 +53,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -62,17 +66,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
-import com.composables.icons.lucide.R as LucideR
+import com.regolith.R
+import com.regolith.domain.artwork.ArtworkKind
+import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.playback.SeekStacker
 import com.regolith.player.PlaybackState
-import com.regolith.ui.components.Chip
-import com.regolith.ui.components.ChipStyle
+import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.ErrorCard
-import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.components.ListRow
+import com.regolith.ui.components.MichromaLabel
 import com.regolith.ui.components.PillButton
-import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.Scrubber
 import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.PillShape
@@ -92,9 +96,9 @@ private data class DragOverlay(val kind: DragKind, val fraction: Float, val xFra
 
 /**
  * The player (design section 10). Landscape is the engine: immersive,
- * every control on the picture. Portrait is the same engine with fewer
- * controls on the picture and the title, chips, pills and "next in this
- * folder" underneath.
+ * every control on the picture, 18/30/12 padding. Portrait is the same
+ * engine in a 16:9 strip with fewer controls on the picture and the
+ * title, meta line, pills and "Next in this folder" underneath.
  *
  * Immersive mode and orientation are Activity-level settings, applied in
  * a DisposableEffect and undone when the screen leaves.
@@ -110,6 +114,7 @@ fun PlayerScreen(
     val player by viewModel.player.collectAsStateWithLifecycle()
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
+    val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -147,6 +152,7 @@ fun PlayerScreen(
     var seekLabel by remember { mutableStateOf<String?>(null) }
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
     val stacker = remember { SeekStacker() }
+    val showGestureMap = gesturesSeen == false
 
     // Controls auto-hide 3 s after the last interaction while playing, never mid-scrub.
     LaunchedEffect(controlsVisible, state.playWhenReady, sheet, scrubPreviewMs != null) {
@@ -206,6 +212,19 @@ fun PlayerScreen(
         }
     }
 
+    val chromeCallbacks = ChromeCallbacks(
+        onBack = onBack,
+        onTogglePlay = { viewModel.togglePlayPause(); controlsVisible = true },
+        onSeekBy = { viewModel.seekBy(it); controlsVisible = true },
+        onScrubStart = { scrubPreviewMs = state.positionMs; viewModel.onScrub(state.positionMs) },
+        onScrub = { f -> val ms = (f * state.durationMs).toLong(); scrubPreviewMs = ms; viewModel.onScrub(ms) },
+        onScrubEnd = { f -> scrubPreviewMs = null; viewModel.onScrubEnd(); viewModel.seekTo((f * state.durationMs).toLong()); controlsVisible = true },
+        onOpenPlayback = { sheet = Sheet.Playback },
+        onLoopTap = { if (state.loop != null) sheet = Sheet.AbLoop else viewModel.tapLoopPoint() },
+        onLoopClear = viewModel::clearLoop,
+        onFullscreen = { activity?.requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE },
+    )
+
     val video = @Composable {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             player?.let { p ->
@@ -213,44 +232,18 @@ fun PlayerScreen(
             }
             Box(Modifier.fillMaxSize().playerGestures(gestures).testTag("player_gesture_layer"))
             if (state.isBuffering) {
-                CircularProgressIndicator(
-                    color = RegolithTheme.colors.accent,
-                    trackColor = Color.Transparent,
-                    modifier = Modifier.align(Alignment.Center).size(48.dp).testTag("player_buffering"),
-                )
+                CircularProgressIndicator(color = RegolithTheme.colors.accent, trackColor = Color.Transparent, strokeWidth = 2.dp, modifier = Modifier.align(Alignment.Center).size(48.dp).testTag("player_buffering"))
             }
-            VideoChrome(
-                state = state,
-                landscape = landscape,
-                visible = controlsVisible && drag == null,
-                scrubPreviewMs = scrubPreviewMs,
-                scrubFrame = scrubFrame,
-                onBack = onBack,
-                onTogglePlay = { viewModel.togglePlayPause(); controlsVisible = true },
-                onSeekBy = { viewModel.seekBy(it); controlsVisible = true },
-                onScrubStart = { scrubPreviewMs = state.positionMs; viewModel.onScrub(state.positionMs) },
-                onScrub = { f ->
-                    val ms = (f * state.durationMs).toLong()
-                    scrubPreviewMs = ms
-                    viewModel.onScrub(ms)
-                },
-                onScrubEnd = { f ->
-                    scrubPreviewMs = null
-                    viewModel.onScrubEnd()
-                    viewModel.seekTo((f * state.durationMs).toLong())
-                    controlsVisible = true
-                },
-                onOpenPlayback = { sheet = Sheet.Playback },
-                onLoopTap = { if (state.loop != null) sheet = Sheet.AbLoop else viewModel.tapLoopPoint() },
-                onLoopClear = viewModel::clearLoop,
-            )
+            if (landscape) {
+                LandscapeChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
+            } else {
+                PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
+            }
+            if (state.loop != null && !landscape) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
             drag?.let { DragRail(it) }
             seekLabel?.let { SeekPill(it, left = it.startsWith("−")) }
             if (state.holdingFast) {
-                Text("2× while held", style = TextStyles.chip, color = RegolithTheme.colors.ink,
-                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = Spacing.s12)
-                        .background(RegolithTheme.colors.ground.copy(alpha = 0.7f), PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s4)
-                        .testTag("player_hold_pill"))
+                OnMediaLabel("2× while held", Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 78.dp).testTag("player_hold_pill"))
             }
             state.error?.let { error ->
                 ErrorCard(message = error, testTag = "player_error_card", modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding())
@@ -259,15 +252,20 @@ fun PlayerScreen(
     }
 
     if (landscape) {
-        Box(modifier.fillMaxSize().testTag("player_screen")) { video() }
+        Box(modifier.fillMaxSize().testTag("player_screen")) {
+            video()
+            if (showGestureMap) GestureMap(onDismiss = viewModel::dismissGestureMap)
+        }
     } else {
         Column(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
             Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f)) { video() }
             PortraitDetails(
                 state = state,
                 onOpenPlayback = { sheet = Sheet.Playback },
-                onLoopTap = { if (state.loop != null) sheet = Sheet.AbLoop else viewModel.tapLoopPoint() },
+                onLoopTap = viewModel::tapLoopPoint,
                 onLoopClear = viewModel::clearLoop,
+                onNudgeA = viewModel::nudgeLoopA,
+                onNudgeB = viewModel::nudgeLoopB,
                 onPlayNext = viewModel::playNext,
             )
         }
@@ -282,12 +280,14 @@ fun PlayerScreen(
                 onSpeed = viewModel::setSpeed,
                 onHardwareDecoding = viewModel::setHardwareDecoding,
                 onScrubThumbnails = viewModel::setScrubThumbnails,
+                onClose = { sheet = null },
             )
         }
         Sheet.AbLoop -> state.loop?.let { loop ->
             PlayerSheetHost(landscape, onDismiss = { sheet = null }, testTag = "player_loop_sheet") {
                 AbLoopSheetContent(
                     loop = loop,
+                    positionMs = state.positionMs,
                     durationMs = state.durationMs,
                     onNudgeA = viewModel::nudgeLoopA,
                     onNudgeB = viewModel::nudgeLoopB,
@@ -299,82 +299,60 @@ fun PlayerScreen(
     }
 }
 
-/** Everything drawn over the picture: top bar, transport, scrubber. */
+private class ChromeCallbacks(
+    val onBack: () -> Unit,
+    val onTogglePlay: () -> Unit,
+    val onSeekBy: (Long) -> Unit,
+    val onScrubStart: () -> Unit,
+    val onScrub: (Float) -> Unit,
+    val onScrubEnd: (Float) -> Unit,
+    val onOpenPlayback: () -> Unit,
+    val onLoopTap: () -> Unit,
+    val onLoopClear: () -> Unit,
+    val onFullscreen: () -> Unit,
+)
+
+/** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
 @Composable
-private fun VideoChrome(
-    state: PlaybackState,
-    landscape: Boolean,
-    visible: Boolean,
-    scrubPreviewMs: Long?,
-    scrubFrame: android.graphics.Bitmap?,
-    onBack: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onSeekBy: (Long) -> Unit,
-    onScrubStart: () -> Unit,
-    onScrub: (Float) -> Unit,
-    onScrubEnd: (Float) -> Unit,
-    onOpenPlayback: () -> Unit,
-    onLoopTap: () -> Unit,
-    onLoopClear: () -> Unit,
-) {
+private fun ChromeScrim(landscape: Boolean) {
+    Box(
+        Modifier.fillMaxSize().background(
+            if (landscape) Brush.verticalGradient(0f to Color(0xBD000000), 0.30f to Color(0x29000000), 0.52f to Color(0x33000000), 1f to Color(0xE6000000))
+            else Brush.verticalGradient(0f to Color(0x80000000), 0.40f to Color.Transparent, 1f to Color(0xD1000000)),
+        ),
+    )
+}
+
+/**
+ * Portrait chrome (design "Player · portrait"): back (22dp) top-left and
+ * fullscreen (18dp) top-right in 44dp cells, seek/play/seek in the middle
+ * (44 · 48 circle · 44), and the 3dp bar with the two clocks at 600 11px
+ * along the bottom with 14dp side padding.
+ */
+@Composable
+private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).then(if (landscape) Modifier.systemBarsPadding() else Modifier)) {
-            // Top: back + title + meta; pills on the right in landscape
-            Row(Modifier.fillMaxWidth().padding(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.testTag("player_back_button")) {
-                    Icon(painterResource(LucideR.drawable.lucide_ic_arrow_left), contentDescription = "Back", tint = colors.ink)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(state.title.uppercase(), style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (landscape) {
-                        val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
-                        Text(meta.filter { it.isNotEmpty() }.joinToString(" · "), style = TextStyles.metadata, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                if (landscape) {
-                    PillRow(state, onOpenPlayback, onLoopTap, onLoopClear)
-                }
-            }
-
-            // Centre: skip back · play · skip forward
+        Box(Modifier.fillMaxSize()) {
+            ChromeScrim(landscape = false)
+            IconCell(R.drawable.rg_ic_arrow_down, "Leave the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
+            IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(Spacing.s30), verticalAlignment = Alignment.CenterVertically) {
-                FrostedIcon(LucideR.drawable.lucide_ic_rewind, "Back 10 seconds", 48.dp, onClick = { onSeekBy(-10_000) }, testTag = "player_seek_back_button")
-                IconButton(
-                    onClick = onTogglePlay,
-                    modifier = Modifier.size(if (landscape) 72.dp else 64.dp).clip(CircleShape).background(colors.accent).testTag("player_play_button"),
-                ) {
-                    val showPause = state.playWhenReady && !state.ended
-                    Icon(
-                        painterResource(if (showPause) LucideR.drawable.lucide_ic_pause else LucideR.drawable.lucide_ic_play),
-                        contentDescription = if (showPause) "Pause" else "Play",
-                        tint = colors.inkSoft,
-                        modifier = Modifier.size(30.dp),
-                    )
-                }
-                FrostedIcon(LucideR.drawable.lucide_ic_fast_forward, "Forward 10 seconds", 48.dp, onClick = { onSeekBy(10_000) }, testTag = "player_seek_forward_button")
+                IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", 26.dp, { cb.onSeekBy(-10_000) }, "player_seek_back_button")
+                PlayCircle(state, 48.dp, 20.dp, cb.onTogglePlay)
+                IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", 26.dp, { cb.onSeekBy(10_000) }, "player_seek_forward_button")
             }
-
-            // Bottom: scrubber + times
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = Spacing.s18, vertical = Spacing.s4)) {
-                scrubPreviewMs?.let { ms ->
-                    ScrubPreview(ms = ms, frame = scrubFrame, fraction = if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f)
-                }
-                Scrubber(
-                    positionMs = state.positionMs,
-                    durationMs = state.durationMs,
-                    bufferedMs = state.bufferedMs,
-                    loop = state.loop,
-                    pendingAMs = state.loopPendingAMs,
-                    chaptersMs = state.chaptersMs,
-                    onScrubStart = onScrubStart,
-                    onScrub = onScrub,
-                    onScrubEnd = onScrubEnd,
-                )
-                Row(Modifier.fillMaxWidth()) {
-                    Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.chip, color = colors.ink, modifier = Modifier.testTag("player_position"))
-                    Spacer(Modifier.weight(1f))
-                    Text(formatClock(state.durationMs), style = TextStyles.chip, color = colors.body, modifier = Modifier.testTag("player_duration"))
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
+                scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.ink, modifier = Modifier.testTag("player_position"))
+                    Scrubber(
+                        positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
+                        loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chaptersMs,
+                        onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
+                        trackHeight = 3.dp, showKnob = false, modifier = Modifier.weight(1f),
+                    )
+                    Text(formatClock(state.durationMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.body, modifier = Modifier.testTag("player_duration"))
                 }
             }
         }
@@ -382,11 +360,181 @@ private fun VideoChrome(
 }
 
 /**
- * The frame under the finger while scrubbing (design section 10, "seek with
- * thumbnail preview"), riding above the playhead and clamped to the track,
- * with the time in a pill beneath. With no frame yet (or the setting off)
- * only the time shows, so the scrubber never waits on the share. The slot
- * keeps its full height either way so the track does not jump.
+ * Landscape chrome (design "Player · landscape"): 18/30/12 padding; back
+ * with the title (Michroma 16) and meta line top-left; speed, A–B, HW
+ * pills and the playback-sheet glyph top-right; 52 · 74 circle · 52 in
+ * the middle at 40dp gaps; the clocks at 600 13px around the 4dp track
+ * with the red knob, and the fullscreen glyph at the end.
+ */
+@Composable
+private fun BoxScope.LandscapeChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks) {
+    val colors = RegolithTheme.colors
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
+            ChromeScrim(landscape = true)
+            Column(Modifier.fillMaxSize().padding(start = 30.dp, end = 30.dp, top = 18.dp, bottom = 12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+                            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 16.sp, lineHeight = 20.8.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
+                            Text(meta.filter { it.isNotEmpty() }.joinToString(" · "), style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        PillRow(state, cb.onOpenPlayback, cb.onLoopTap, cb.onLoopClear, onMedia = true)
+                        IconCell(R.drawable.rg_ic_sliders, "Playback", 19.dp, cb.onOpenPlayback, "player_playback_button", size = 40.dp)
+                    }
+                }
+                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                    IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", 27.dp, { cb.onSeekBy(-10_000) }, "player_seek_back_button", size = 52.dp)
+                    PlayCircle(state, 74.dp, 26.dp, cb.onTogglePlay)
+                    IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", 27.dp, { cb.onSeekBy(10_000) }, "player_seek_forward_button", size = 52.dp)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                        Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
+                        Scrubber(
+                            positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
+                            loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chaptersMs,
+                            onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
+                            trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
+                        )
+                        Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
+                        IconCell(R.drawable.rg_ic_fullscreen, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A glyph in a hit cell, white on the picture. */
+@Composable
+private fun IconCell(icon: Int, description: String, iconSize: androidx.compose.ui.unit.Dp, onClick: () -> Unit, testTag: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 44.dp) {
+    Box(
+        modifier.size(size).clickable(interactionSource = null, indication = null, onClick = onClick).testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painterResource(icon), contentDescription = description, tint = RegolithTheme.colors.ink, modifier = Modifier.size(iconSize))
+    }
+}
+
+/** The play / pause circle: 42% black with a 34% white hairline (design "On media"). */
+@Composable
+private fun PlayCircle(state: PlaybackState, size: androidx.compose.ui.unit.Dp, iconSize: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    val colors = RegolithTheme.colors
+    val showPause = state.playWhenReady && !state.ended
+    Box(
+        Modifier.size(size).clip(PillShape).background(colors.onMediaCircleBg).border(1.dp, colors.onMediaCircleBorder, PillShape)
+            .clickable(interactionSource = null, indication = null, onClick = onClick).testTag("player_play_button"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painterResource(if (showPause) R.drawable.rg_ic_pause else R.drawable.rg_ic_play),
+            contentDescription = if (showPause) "Pause" else "Play", tint = colors.ink, modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+@Composable
+private fun PillRow(state: PlaybackState, onOpenPlayback: () -> Unit, onLoopTap: () -> Unit, onLoopClear: () -> Unit, onMedia: Boolean) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
+        PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
+        if (onMedia || state.loop != null || state.loopPendingAMs != null) {
+            PillButton(
+                text = if (state.loopPendingAMs != null && state.loop == null) "A ·" else "A–B",
+                selected = state.loop != null, onClick = onLoopTap, onLongClick = onLoopClear, onMedia = onMedia,
+                icon = R.drawable.rg_ic_loop, testTag = "player_loop_pill",
+            )
+        }
+        PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_decoder, testTag = "player_decoder_pill")
+        if (!onMedia) {
+            PillButton(text = "Chapters", onClick = {}, onMedia = false, icon = R.drawable.rg_ic_chapters, testTag = "player_chapters_pill")
+        }
+    }
+}
+
+/** "LOOPING A–B": a 28dp red pill with the loop glyph, top-left of the picture while armed. */
+@Composable
+private fun LoopingPill(modifier: Modifier = Modifier) {
+    Row(
+        modifier.height(28.dp).background(RegolithTheme.colors.accent, PillShape).padding(horizontal = 10.dp).testTag("player_looping_pill"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(painterResource(R.drawable.rg_ic_loop), contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+        Text("LOOPING A–B", style = TextStyles.buttonSmall.copy(fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = Color.White)
+    }
+}
+
+/**
+ * Under the picture in portrait (design "Player · portrait"): title in
+ * Michroma 17, the meta line, the three 40dp frosted pills, and NEXT IN
+ * THIS FOLDER as 56dp rows with an 84×47 thumb at 10dp corners.
+ */
+@Composable
+private fun PortraitDetails(
+    state: PlaybackState,
+    onOpenPlayback: () -> Unit,
+    onLoopTap: () -> Unit,
+    onLoopClear: () -> Unit,
+    onNudgeA: (Long) -> Unit,
+    onNudgeB: (Long) -> Unit,
+    onPlayNext: (Long) -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    // With a loop set, the panel below the picture IS the loop (design frame 29): span, points, clear.
+    // Landscape keeps it in the side sheet, since there is no room under the picture.
+    state.loop?.let { loop ->
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18).testTag("player_loop_panel"), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
+            AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
+        }
+        return
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 17.sp, lineHeight = 22.1.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val meta = (state.video?.chips ?: emptyList()) + listOfNotNull(
+                state.durationMs.takeIf { it > 0 }?.let { formatDurationShort(it) },
+                state.fileSizeBytes.takeIf { it > 0 }?.let { formatBytes(it) },
+            )
+            Text(meta.joinToString(" · "), style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false)
+        if (state.next.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                MichromaLabel("Next in this folder")
+                state.next.take(10).forEach { item ->
+                    Row(
+                        Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
+                            .clickable(interactionSource = null, indication = null) { onPlayNext(item.fileId) }
+                            .testTag("player_next_${item.fileId}"),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
+                    ) {
+                        Box(Modifier.size(84.dp, 47.dp).clip(RoundedCornerShape(10.dp))) {
+                            ArtworkImage(ArtworkRequest(ArtworkOwner.File(item.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = item.name)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                            Text(item.name, style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                listOfNotNull(item.durationMs?.let { formatDurationShort(it) }, formatBytes(item.sizeBytes)).joinToString(" · "),
+                                style = TextStyles.meta.copy(lineHeight = 11.sp), color = colors.metadata, maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(Spacing.s30))
+    }
+}
+
+/**
+ * The frame under the finger while scrubbing, riding above the playhead
+ * and clamped to the track, with the time in a pill beneath. The slot
+ * keeps its height either way so the track does not jump.
  */
 @Composable
 private fun ScrubPreview(ms: Long, frame: android.graphics.Bitmap?, fraction: Float) {
@@ -396,100 +544,33 @@ private fun ScrubPreview(ms: Long, frame: android.graphics.Bitmap?, fraction: Fl
     BoxWithConstraints(Modifier.fillMaxWidth().height(previewH + 28.dp)) {
         val width = if (frame != null) previewW else 80.dp
         val left = (maxWidth * fraction - width / 2).coerceIn(0.dp, (maxWidth - width).coerceAtLeast(0.dp))
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.align(Alignment.BottomStart).offset(x = left).width(width),
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.BottomStart).offset(x = left).width(width)) {
             if (frame != null) {
                 Image(
-                    bitmap = frame.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(previewW, previewH).clip(CardShape).border(1.dp, colors.ink.copy(alpha = 0.6f), CardShape).testTag("player_scrub_preview"),
+                    bitmap = frame.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(previewW, previewH).clip(CardShape).border(1.dp, colors.onMediaCircleBorder, CardShape).testTag("player_scrub_preview"),
                 )
                 Spacer(Modifier.height(Spacing.s4))
             }
-            Text(formatClock(ms), style = TextStyles.chip, color = colors.ink,
-                modifier = Modifier.background(colors.ground.copy(alpha = 0.7f), PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2).testTag("player_scrub_time"))
+            Text(formatClock(ms), style = TextStyles.chipOverArt, color = colors.ink, modifier = Modifier.background(colors.overArt, PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2).testTag("player_scrub_time"))
         }
     }
 }
 
+/** A frosted label over the picture: 700 15px white, white 14% fill, 28% hairline, 8/18 padding. */
 @Composable
-private fun PillRow(state: PlaybackState, onOpenPlayback: () -> Unit, onLoopTap: () -> Unit, onLoopClear: () -> Unit, onMedia: Boolean = true) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-        PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
-        PillButton(
-            text = if (state.loopPendingAMs != null && state.loop == null) "A ·" else "A–B",
-            selected = state.loop != null,
-            onClick = onLoopTap,
-            onLongClick = onLoopClear,
-            onMedia = onMedia,
-            icon = LucideR.drawable.lucide_ic_repeat,
-            testTag = "player_loop_pill",
-        )
-        PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_decoder_pill")
-        if (state.chaptersMs.isNotEmpty()) {
-            PillButton(text = "Chapters", onClick = {}, onMedia = onMedia, testTag = "player_chapters_pill")
-        }
-    }
+private fun OnMediaLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text, style = TextStyles.buttonPrimary, color = Color.White,
+        modifier = modifier.background(Color(0x24FFFFFF), PillShape).border(1.dp, Color(0x47FFFFFF), PillShape).padding(horizontal = Spacing.s18, vertical = Spacing.s8),
+    )
 }
 
-/** Title, chips, pills and "Next in this folder" under the picture in portrait. */
-@Composable
-private fun PortraitDetails(
-    state: PlaybackState,
-    onOpenPlayback: () -> Unit,
-    onLoopTap: () -> Unit,
-    onLoopClear: () -> Unit,
-    onPlayNext: (Long) -> Unit,
-) {
-    val colors = RegolithTheme.colors
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.s18)) {
-        Spacer(Modifier.height(Spacing.s18))
-        DisplayText(state.title, maxLines = 2)
-        Spacer(Modifier.height(Spacing.s8))
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            (state.video?.chips ?: emptyList()).forEach { Chip(it, ChipStyle.OnSurface) }
-            if (state.durationMs > 0) Chip(formatDurationShort(state.durationMs), ChipStyle.OnSurface)
-            if (state.fileSizeBytes > 0) Chip(formatBytes(state.fileSizeBytes), ChipStyle.OnSurface)
-        }
-        Spacer(Modifier.height(Spacing.s4))
-        Text(state.sourceLabel, style = TextStyles.metadata, color = colors.metadata)
-        Spacer(Modifier.height(Spacing.s18))
-        PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false)
-
-        if (state.next.isNotEmpty()) {
-            Spacer(Modifier.height(Spacing.s30))
-            Eyebrow("Next in this folder")
-            Spacer(Modifier.height(Spacing.s8))
-            state.next.take(10).forEach { item ->
-                ListRow(
-                    title = item.name,
-                    meta = listOfNotNull(item.durationMs?.let { formatDurationShort(it) }, formatBytes(item.sizeBytes)).joinToString(" · "),
-                    icon = LucideR.drawable.lucide_ic_film,
-                    trailing = RowTrailing.None,
-                    onClick = { onPlayNext(item.fileId) },
-                    testTag = "player_next_${item.fileId}",
-                )
-            }
-        }
-        Spacer(Modifier.height(Spacing.s56))
-    }
-}
-
-@Composable
-private fun FrostedIcon(icon: Int, description: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit, testTag: String) {
-    val colors = RegolithTheme.colors
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(size).clip(CircleShape).background(colors.surface.copy(alpha = 0.72f)).testTag(testTag),
-    ) {
-        Icon(painterResource(icon), contentDescription = description, tint = colors.ink, modifier = Modifier.size(22.dp))
-    }
-}
-
-/** Brightness / volume mid-drag: a white rail where the thumb is, the value in words at the top. No red. */
+/**
+ * Brightness / volume mid-drag (design "Player · brightness drag"): the
+ * picture under a 34% scrim, an 8×210 rail at 18% white filling to the
+ * value, the glyph beneath it, and the value in words 78dp from the top.
+ */
 @Composable
 private fun BoxScope.DragRail(drag: DragOverlay) {
     val colors = RegolithTheme.colors
@@ -499,36 +580,66 @@ private fun BoxScope.DragRail(drag: DragOverlay) {
         drag.kind == DragKind.Brightness -> "Brightness ${(drag.fraction * 100).roundToInt()}%"
         else -> "Volume ${(drag.fraction * 100).roundToInt()}%"
     }
-    Text(
-        label, style = TextStyles.chip, color = colors.ground,
-        modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = Spacing.s12)
-            .background(colors.ink, PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s4).testTag("player_drag_pill"),
-    )
+    Box(Modifier.fillMaxSize().background(Color(0x57000000)))
+    OnMediaLabel(label, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 78.dp).testTag("player_drag_pill"))
     val icon = when {
-        muted -> LucideR.drawable.lucide_ic_volume_x
-        drag.kind == DragKind.Volume -> LucideR.drawable.lucide_ic_volume_2
-        else -> LucideR.drawable.lucide_ic_sun
+        muted -> R.drawable.rg_ic_volume
+        drag.kind == DragKind.Volume -> R.drawable.rg_ic_volume
+        else -> R.drawable.rg_ic_brightness
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.align(if (drag.kind == DragKind.Brightness) Alignment.CenterStart else Alignment.CenterEnd)
-            .padding(horizontal = Spacing.s40).fillMaxHeight(0.5f),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s12),
+        modifier = Modifier.align(if (drag.kind == DragKind.Brightness) Alignment.CenterStart else Alignment.CenterEnd).padding(horizontal = 26.dp),
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.height(Spacing.s8))
-        Box(Modifier.weight(1f).width(4.dp).clip(PillShape).background(colors.ink.copy(alpha = 0.25f))) {
+        Box(Modifier.width(8.dp).height(210.dp).clip(PillShape).background(Color(0x2EFFFFFF))) {
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(drag.fraction.coerceIn(0f, 1f)).background(colors.ink))
         }
+        Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(20.dp))
     }
 }
 
 /** "+20s" / "−10s" over the half that was tapped. */
 @Composable
 private fun BoxScope.SeekPill(label: String, left: Boolean) {
+    OnMediaLabel(label, Modifier.align(if (left) Alignment.CenterStart else Alignment.CenterEnd).padding(horizontal = Spacing.s56).testTag("player_seek_pill"))
+}
+
+/**
+ * The gesture map (design "Player · gesture map"), shown once the first
+ * time the player opens: three zones with a 56dp glyph circle, the
+ * gesture at 700 15, what it does at 13/18 and the drag hint at 12/17,
+ * a red GESTURES tag top-left and the two footers. Tap anywhere to dismiss.
+ */
+@Composable
+private fun GestureMap(onDismiss: () -> Unit) {
     val colors = RegolithTheme.colors
-    Text(
-        label, style = TextStyles.rowLabel, color = colors.ink,
-        modifier = Modifier.align(if (left) Alignment.CenterStart else Alignment.CenterEnd).padding(horizontal = Spacing.s56)
-            .background(colors.ground.copy(alpha = 0.7f), PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s8).testTag("player_seek_pill"),
-    )
+    Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(interactionSource = null, indication = null, onClick = onDismiss).testTag("player_gesture_map")) {
+        Row(Modifier.fillMaxSize()) {
+            GestureZone(R.drawable.rg_ic_seek_back, "Double-tap", "Back 10s. Keep tapping to stack it — 20s, 30s.", "Drag up or down here for brightness", Modifier.weight(1f))
+            GestureZone(R.drawable.rg_ic_pause, "Tap", "Show the controls. Tap again to hide, or wait 3 seconds.", "Long-press for 2× while held · pinch to fill or fit", Modifier.weight(1f))
+            GestureZone(R.drawable.rg_ic_seek_forward, "Double-tap", "Forward 10s, stacking the same way.", "Drag up or down here for volume", Modifier.weight(1f))
+        }
+        Row(Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            Text("GESTURES", style = TextStyles.tag.copy(fontSize = 10.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 13.sp), color = Color.White, modifier = Modifier.background(colors.accent, PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s4))
+            Text("Zones are invisible in use — shown here only", style = TextStyles.meta12, color = colors.body)
+        }
+        Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 26.dp, vertical = 18.dp)) {
+            Text("Swipe down anywhere · leave the player", style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.body, modifier = Modifier.weight(1f))
+            Text("Drag the scrub bar · thumbnails follow the finger", style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.body, textAlign = TextAlign.End)
+        }
+    }
+}
+
+@Composable
+private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, modifier: Modifier) {
+    val colors = RegolithTheme.colors
+    Column(modifier.fillMaxHeight().padding(Spacing.s18), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12, Alignment.CenterVertically)) {
+        Box(Modifier.size(56.dp).clip(PillShape).background(colors.onMediaCircleBg).border(1.dp, colors.onMediaCircleBorder, PillShape), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(26.dp))
+        }
+        Text(gesture, style = TextStyles.buttonPrimary.copy(lineHeight = 18.sp), color = colors.ink, textAlign = TextAlign.Center)
+        Text(does, style = TextStyles.body.copy(fontSize = 13.sp, lineHeight = 18.sp), color = colors.body, textAlign = TextAlign.Center)
+        Text(hint, style = TextStyles.settingMeta.copy(lineHeight = 17.sp), color = colors.metadata, textAlign = TextAlign.Center)
+    }
 }

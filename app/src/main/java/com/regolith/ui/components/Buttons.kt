@@ -1,22 +1,26 @@
 package com.regolith.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -24,19 +28,60 @@ import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 
 /*
- * Buttons (design section 01). The rule that matters: red fills the ONE
- * action a screen wants. Secondary is an outlined pill, tertiary is plain
- * white text with no underline. Never a second red fill on a screen.
+ * Buttons (design section 01, "Buttons"), each a `font:`/`height:` pair
+ * copied from the specimen:
+ *  - Primary      48dp · #E11B17 · 700 15px · optional 16dp leading icon, gap 8
+ *  - Secondary    48dp · frosted (rgba(255,255,255,.06) + .18 hairline) · 600 15px, #EDEDED
+ *  - Tertiary     44dp · no fill · 600 14px, white
+ *  - Destructive  44dp · #E11B17 · 600 14px
+ *  - Disabled     #161616 fill, #4A4A4A ink
+ *  - Compact      42dp · 600 13px (Settings' "Scan all" / "Disconnect")
+ *  - Icon         48dp circle, frosted, 18dp glyph
+ * Red fills the ONE action a screen wants; never a second red fill.
  *
  * Every button takes a `testTag` so argent/uiautomator can find it by a
- * stable id (like `data-testid`). Convention: `feature_element`,
- * e.g. "addserver_connect_button".
+ * stable id (like `data-testid`). Convention: `feature_element`.
  */
 
-private val ButtonHeight = 48.dp
-private val ButtonPadding = PaddingValues(horizontal = Spacing.s18)
+@Composable
+private fun BasePill(
+    text: String,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier,
+    enabled: Boolean,
+    height: Dp,
+    background: Color,
+    border: Color?,
+    ink: Color,
+    style: TextStyle,
+    leadingIcon: Painter?,
+    horizontalPadding: Dp = Spacing.s18,
+) {
+    val colors = RegolithTheme.colors
+    val bg = if (enabled) background else colors.disabledBg
+    val fg = if (enabled) ink else colors.disabledInk
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(height)
+            .clip(PillShape)
+            .background(bg)
+            .then(if (border != null && enabled) Modifier.border(1.dp, border, PillShape) else Modifier)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = horizontalPadding)
+            .testTag(testTag),
+    ) {
+        if (leadingIcon != null) {
+            Icon(leadingIcon, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp).padding(end = 0.dp))
+            Box(Modifier.size(Spacing.s8))
+        }
+        Text(text, style = style, color = fg, maxLines = 1)
+    }
+}
 
-/** Red fill. One per screen. Optional leading icon (e.g. play for "Resume"). */
+/** Red fill. One per screen. */
 @Composable
 fun PrimaryButton(
     text: String,
@@ -45,26 +90,18 @@ fun PrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     leadingIcon: Painter? = null,
+    /** 42dp, 600 13px: the Settings row buttons. */
+    compact: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        shape = PillShape,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = colors.accent,
-            contentColor = colors.inkSoft,
-            disabledContainerColor = colors.hairline,
-            disabledContentColor = colors.metadata,
-        ),
-        contentPadding = ButtonPadding,
-        modifier = modifier.height(ButtonHeight).testTag(testTag),
-    ) {
-        ButtonContent(text, leadingIcon)
-    }
+    BasePill(
+        text, onClick, testTag, modifier, enabled,
+        height = if (compact) 42.dp else 48.dp, background = colors.accent, border = null, ink = Color.White,
+        style = if (compact) TextStyles.buttonSmall else TextStyles.buttonPrimary, leadingIcon = leadingIcon,
+    )
 }
 
-/** Outlined pill, white ink on a hairline border. */
+/** Frosted pill: `rgba(255,255,255,.06)` fill, `.18` hairline, #EDEDED ink. */
 @Composable
 fun SecondaryButton(
     text: String,
@@ -73,25 +110,17 @@ fun SecondaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     leadingIcon: Painter? = null,
+    compact: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        shape = PillShape,
-        border = BorderStroke(1.dp, if (enabled) colors.raised else colors.hairline),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = colors.ink,
-            disabledContentColor = colors.metadata,
-        ),
-        contentPadding = ButtonPadding,
-        modifier = modifier.height(ButtonHeight).testTag(testTag),
-    ) {
-        ButtonContent(text, leadingIcon)
-    }
+    BasePill(
+        text, onClick, testTag, modifier, enabled,
+        height = if (compact) 42.dp else 48.dp, background = colors.frostBg, border = colors.frostBorder, ink = colors.inkSoft,
+        style = if (compact) TextStyles.buttonSmall else TextStyles.buttonSecondary, leadingIcon = leadingIcon,
+    )
 }
 
-/** Plain white text, no underline, no border. */
+/** Plain white text, no fill, no underline. 44dp. */
 @Composable
 fun TertiaryButton(
     text: String,
@@ -101,25 +130,16 @@ fun TertiaryButton(
     enabled: Boolean = true,
 ) {
     val colors = RegolithTheme.colors
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
-        shape = PillShape,
-        colors = ButtonDefaults.textButtonColors(
-            contentColor = colors.ink,
-            disabledContentColor = colors.metadata,
-        ),
-        contentPadding = ButtonPadding,
-        modifier = modifier.height(ButtonHeight).testTag(testTag),
-    ) {
-        Text(text, style = TextStyles.label)
-    }
+    BasePill(
+        text, onClick, testTag, modifier, enabled,
+        height = 44.dp, background = Color.Transparent, border = null, ink = colors.ink,
+        style = TextStyles.buttonTertiary, leadingIcon = null,
+    )
 }
 
 /**
- * Destructive: red text inside the outlined pill. Used for "Disconnect".
- * It is the same red as primary, which the design flags as the one cost of
- * this direction; keep it rare.
+ * Destructive: the same red, 44dp, 600 14px ("Disconnect"). The design
+ * accepts that red reads as both "on" and "destructive"; keep it rare.
  */
 @Composable
 fun DestructiveButton(
@@ -128,31 +148,40 @@ fun DestructiveButton(
     testTag: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    compact: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        shape = PillShape,
-        border = BorderStroke(1.dp, colors.raised),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = colors.accent,
-            disabledContentColor = colors.metadata,
-        ),
-        contentPadding = ButtonPadding,
-        modifier = modifier.height(ButtonHeight).testTag(testTag),
-    ) {
-        Text(text, style = TextStyles.label)
-    }
+    BasePill(
+        text, onClick, testTag, modifier, enabled,
+        height = if (compact) 42.dp else 44.dp, background = colors.accent, border = null, ink = Color.White,
+        style = if (compact) TextStyles.buttonSmall else TextStyles.buttonTertiary, leadingIcon = null,
+    )
 }
 
+/** 48dp frosted circle with an 18dp glyph (Title Detail's secondary action). */
 @Composable
-private fun ButtonContent(text: String, leadingIcon: Painter?) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (leadingIcon != null) {
-            Icon(leadingIcon, contentDescription = null, modifier = Modifier.width(18.dp).height(18.dp))
-            Spacer(Modifier.width(Spacing.s8))
-        }
-        Text(text, style = TextStyles.label)
+fun IconCircleButton(
+    icon: Painter,
+    contentDescription: String,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    /** Over the picture: `rgba(0,0,0,.42)` fill and a `.34` hairline instead of the frost. */
+    onMedia: Boolean = false,
+    size: Dp = 48.dp,
+    iconSize: Dp = 18.dp,
+) {
+    val colors = RegolithTheme.colors
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(size)
+            .clip(PillShape)
+            .background(if (onMedia) colors.onMediaCircleBg else colors.frostBg)
+            .border(1.dp, if (onMedia) colors.onMediaCircleBorder else colors.frostBorder, PillShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .testTag(testTag),
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = if (onMedia) colors.ink else colors.inkSoft, modifier = Modifier.size(iconSize))
     }
 }

@@ -6,6 +6,14 @@ import androidx.compose.ui.unit.dp
 
 /** Cards are 14dp, sheets 22dp (top corners), everything tappable is a pill. */
 val CardShape = RoundedCornerShape(14.dp)
+/** Posters in a grid. */
+val TileShape = RoundedCornerShape(12.dp)
+/** Small thumbnails in list rows. */
+val ThumbShape = RoundedCornerShape(7.dp)
+/** Icon boxes in list rows. */
+val BoxShape = RoundedCornerShape(10.dp)
+/** Dialogs. */
+val DialogShape = RoundedCornerShape(20.dp)
 val SheetShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 val PillShape = RoundedCornerShape(percent = 50)
 

@@ -22,6 +22,8 @@ sealed interface LibraryTile {
         val folderId: Long,
         override val name: String,
         val fileCount: Int,
+        /** Best resolution beneath it, for the chip ("4K"). */
+        val resolutionLabel: String,
         override val artwork: ArtworkRequest,
         override val addedAtMs: Long,
         override val sizeBytes: Long,
@@ -39,7 +41,11 @@ sealed interface LibraryTile {
         val resolutionLabel: String,
         val matched: Boolean,
         val unwatched: Boolean,
-        /** "1h 56m", or the extension for an unmatched file. */
+        /** The raw filename, drawn inside the art when unmatched. */
+        val fileName: String,
+        /** 0..1 watched, or null when never started. */
+        val progress: Float?,
+        /** "1h 56m", or "11m 04s" for an unmatched file. */
         val meta: String,
         override val artwork: ArtworkRequest,
         override val addedAtMs: Long,

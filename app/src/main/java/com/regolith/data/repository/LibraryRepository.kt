@@ -245,6 +245,10 @@ class LibraryRepository @Inject constructor(
 
     fun observeFile(fileId: Long): Flow<MediaFileEntity?> = mediaFileDao.observe(fileId)
 
+    suspend fun folder(folderId: Long): FolderEntity? = folderDao.byId(folderId)
+
+    suspend fun filesInFolder(folderId: Long): List<MediaFileEntity> = mediaFileDao.inFolder(folderId)
+
     /** Remember what the container probe found, so Title Detail and the chips never probe twice. */
     suspend fun saveProbe(fileId: Long, info: MediaInfo) {
         mediaFileDao.saveProbe(

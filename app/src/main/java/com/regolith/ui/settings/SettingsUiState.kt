@@ -7,6 +7,10 @@ data class ServerRow(
     /** "Scanning · 312 files", "2.4 TB free", "out of reach", "idle". */
     val status: String,
     val scanning: Boolean,
+    /** White dot when reachable, grey when out of reach. */
+    val reachable: Boolean = true,
+    /** "SHOWING": its media is what Library lists. */
+    val showing: Boolean = false,
 ) {
     val testTag get() = "settings_server_$serverId"
 }

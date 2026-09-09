@@ -7,19 +7,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.TextStyles
 
 /**
- * Michroma display text: screen titles, eyebrows, the wordmark.
+ * Michroma display text: screen titles, the wordmark, dialog titles.
  *
  * Two design rules are enforced here so no screen has to remember them:
  * 1. Michroma is uppercase only. The text is uppercased on the way in.
- * 2. Michroma is stroked 0.55px for weight. Compose has no `paint-order`, so
- *    this draws the text twice: a thin stroke pass under a fill pass.
- *
- * Long titles break Michroma's rhythm (the design notes "Chungking Express");
- * callers with unbounded strings should prefer [TextStyles.rowLabel].
+ * 2. Michroma is stroked 0.55px for weight (`.dh` in the design). Compose
+ *    has no `paint-order`, so this draws the text twice: a thin stroke
+ *    pass under a fill pass.
  */
 @Composable
 fun DisplayText(
@@ -28,26 +28,29 @@ fun DisplayText(
     style: TextStyle = TextStyles.screenTitle,
     color: Color = RegolithTheme.colors.ink,
     maxLines: Int = Int.MAX_VALUE,
+    textAlign: TextAlign? = null,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val upper = text.uppercase()
     Box(modifier) {
-        Text(
-            text = upper,
-            style = style.copy(drawStyle = Stroke(width = 0.55f)),
-            color = color,
-            maxLines = maxLines,
-        )
-        Text(
-            text = upper,
-            style = style,
-            color = color,
-            maxLines = maxLines,
-        )
+        Text(text = upper, style = style.copy(drawStyle = Stroke(width = 0.55f)), color = color, maxLines = maxLines, textAlign = textAlign, overflow = overflow)
+        Text(text = upper, style = style, color = color, maxLines = maxLines, textAlign = textAlign, overflow = overflow)
     }
 }
 
-/** Section eyebrow, e.g. "ON THIS NETWORK". */
+/**
+ * Section eyebrow ("CONTINUE WATCHING", "3 FOLDERS"): Space Grotesk 600
+ * 11px, tracked .14em, uppercase. #A0A0A0 by default; Browse and Search
+ * use #6E6E6E ([muted]).
+ */
 @Composable
-fun Eyebrow(text: String, modifier: Modifier = Modifier) {
-    DisplayText(text, modifier, style = TextStyles.eyebrow, color = RegolithTheme.colors.metadata, maxLines = 1)
+fun Eyebrow(text: String, modifier: Modifier = Modifier, muted: Boolean = false) {
+    val colors = RegolithTheme.colors
+    Text(text.uppercase(), style = TextStyles.eyebrow, color = if (muted) colors.metadata else colors.body, modifier = modifier, maxLines = 1)
+}
+
+/** Settings' section labels ("SHARES · 3", "PLAYBACK"): Michroma 10px, #6E6E6E, no stroke. */
+@Composable
+fun MichromaLabel(text: String, modifier: Modifier = Modifier) {
+    Text(text.uppercase(), style = TextStyles.michromaLabel, color = RegolithTheme.colors.metadata, modifier = modifier, maxLines = 1)
 }

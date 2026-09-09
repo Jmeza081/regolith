@@ -26,7 +26,12 @@ data class TitleDetailUiState(
     val probeError: String? = null,
     /** Null when the file is not kept on this device and nothing is in flight. */
     val transfer: TransferView? = null,
+    /** Other files in the same title folder (design: "IN THIS COLLECTION"). */
+    val siblings: List<SiblingFile> = emptyList(),
 )
+
+/** A sibling file in a title folder: its thumb, filename, "1h 56m · 8.4 GB". */
+data class SiblingFile(val fileId: Long, val name: String, val meta: String, val resolutionLabel: String, val artwork: ArtworkRequest)
 
 /** The download's state as the detail screen shows it. */
 data class TransferView(

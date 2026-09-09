@@ -60,14 +60,14 @@ opened the player directly).
 
 | Key | Reached from | Phase |
 |---|---|---|
-| `Onboarding` | first launch only; "Find my server" → `[Home]` | 0 (stub), 6 (full) |
-| `AddServer.Manual` | Home / Browse empty states, Home "Add another" | 1 |
+| `Onboarding` | first launch only; Skip → `[Home]`, "Find my server" → `[Home, AddServer.Search]` | 6 |
+| `AddServer.Manual(prefill?)` | "Enter an address" on the finder and Home; a found host arrives as `prefill` | 1, 6 |
 | `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
 | `Player(fileId, startMs?)` | TitleDetail; Home resume row later | 1 |
 | `TitleDetail(fileId)` | Browse, Library, Home "Newly added", Search | 3 |
-| `Search` | Library's search icon; a hit opens `TitleDetail` or `Browse(folderId)` | 4 |
+| `Search` | Home's and Library's search icon; a hit opens `TitleDetail` or `Browse(folderId)` | 4 |
 | `AddServer.Scanning(serverId)` | Share picker "Scan N shares"; "Run in the background" → `[Home]`, "Open the library" → `[Home, Library]` | 4 |
-| `AddServer.Search` | Home / Library empty states, Onboarding | 6 |
+| `AddServer.Search` | "Add source server" on Home / Library / Settings, Onboarding; a tapped host → `AddServer.Manual(prefill)` | 6 |
 
 `AddServer.Connecting` exists as a key but is not a route: the Connecting and
 Sign-in-failed screens are states of `ManualEntryScreen` so the typed
