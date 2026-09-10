@@ -87,6 +87,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { scans.scanAll() }
     }
 
+    /** One share's own Scan button. [ScanRepository.scanAll] already filters by server. */
+    fun scan(serverId: Long) {
+        viewModelScope.launch { scans.scanAll(serverId) }
+    }
+
     fun askDisconnect(row: ServerRow?) = _uiState.update { it.copy(confirmDisconnect = row) }
 
     /** "The media list is removed from this device. Nothing on the share is touched." */

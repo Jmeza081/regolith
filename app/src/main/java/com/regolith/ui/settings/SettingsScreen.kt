@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +41,7 @@ import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.adaptive.LocalWindowShape
+import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RegolithSwitch
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SurfaceCard
@@ -73,41 +76,57 @@ fun SettingsScreen(
         Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("Shares · ${state.servers.size}", muted = true)
+                // Every share carries its own scan and disconnect. They used
+                // to be one pair of buttons under the whole card, which meant
+                // Disconnect always took the first server in the list — with
+                // two NAS boxes connected there was no way to remove the
+                // second one at all.
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     state.servers.forEach { row ->
-                        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(8.dp).background(if (row.reachable) colors.ink else colors.metadata, PillShape))
                             Spacer(Modifier.width(Spacing.s12))
-                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                Text(row.name, style = TextStyles.settingLabel, overflow = TextOverflow.Ellipsis, color = if (row.reachable) colors.ink else colors.body, maxLines = 1)
-                                if (row.showing) Tag("Showing")
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                    Text(row.name, style = TextStyles.settingLabel, overflow = TextOverflow.Ellipsis, color = if (row.reachable) colors.ink else colors.body, maxLines = 1)
+                                    if (row.showing) Tag("Showing")
+                                }
+                                Text(row.status, style = TextStyles.settingMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            Text(row.status, style = TextStyles.meta, color = colors.metadata, maxLines = 1)
+                            Spacer(Modifier.width(Spacing.s8))
+                            RowAction(
+                                icon = R.drawable.rg_ic_refresh,
+                                // The status line already says "Scanning · N files",
+                                // so a running scan greys its own button rather than
+                                // needing a spinner of its own.
+                                contentDescription = "Scan ${row.name}",
+                                enabled = !row.scanning,
+                                onClick = { viewModel.scan(row.serverId) },
+                                testTag = "settings_scan_${row.serverId}",
+                            )
+                            RowAction(
+                                icon = R.drawable.rg_ic_trash,
+                                contentDescription = "Disconnect ${row.name}",
+                                tint = colors.accent,
+                                onClick = { viewModel.askDisconnect(row) },
+                                testTag = "settings_disconnect_${row.serverId}",
+                            )
                         }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
-                            .clickable(interactionSource = null, indication = null, onClick = onAddServer)
-                            .testTag("settings_add_share_button"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Spacer(Modifier.width(8.dp + Spacing.s12))
-                        Text("Add a share", style = TextStyles.rowLabelSmall, color = colors.ink, modifier = Modifier.weight(1f))
-                        Icon(painterResource(R.drawable.rg_ic_chevron_right), contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.dp))
-                    }
                 }
-                if (state.servers.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        SecondaryButton(
-                            text = "Scan all", onClick = viewModel::scanAll, compact = true,
-                            enabled = state.servers.none { it.scanning }, testTag = "settings_scan_all_button", modifier = Modifier.weight(1f),
-                        )
-                        DestructiveButton(
-                            text = "Disconnect", onClick = { viewModel.askDisconnect(state.servers.first()) }, compact = true,
-                            testTag = "settings_disconnect_button", modifier = Modifier.weight(1f),
-                        )
-                    }
+                if (state.servers.size > 1) {
+                    SecondaryButton(
+                        text = "Scan all", onClick = viewModel::scanAll, compact = true,
+                        enabled = state.servers.none { it.scanning }, testTag = "settings_scan_all_button",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
+                // Adding a share is what this screen is FOR when nothing is
+                // connected, and the only constructive action here otherwise.
+                PrimaryButton(
+                    text = "Add a share", onClick = onAddServer, compact = true,
+                    testTag = "settings_add_share_button", modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
@@ -250,5 +269,35 @@ private fun NestedRow(content: @Composable () -> Unit) {
     Row(Modifier.height(IntrinsicSize.Min)) {
         Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = Spacing.s8).background(colors.hairline))
         Box(Modifier.padding(start = Spacing.s12).weight(1f)) { content() }
+    }
+}
+
+/**
+ * A 40dp icon button at the end of a settings row. Smaller and quieter than
+ * [IconCircleButton]: a row can carry two of these without the card turning
+ * into a button bar.
+ */
+@Composable
+private fun RowAction(
+    icon: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    testTag: String,
+    enabled: Boolean = true,
+    tint: Color? = null,
+) {
+    val colors = RegolithTheme.colors
+    Box(
+        Modifier.size(40.dp).clip(PillShape)
+            .clickable(interactionSource = null, indication = null, enabled = enabled, onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painterResource(icon),
+            contentDescription = contentDescription,
+            tint = if (!enabled) colors.disabledInk else tint ?: colors.body,
+            modifier = Modifier.size(17.scaledDp()),
+        )
     }
 }

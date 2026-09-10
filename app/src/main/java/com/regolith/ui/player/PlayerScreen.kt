@@ -88,6 +88,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.playback.SeekStacker
 import com.regolith.player.PlaybackState
+import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.NextItem
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.DisplayText
@@ -156,6 +157,7 @@ fun PlayerScreen(
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
+    val orientation by viewModel.orientation.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -172,10 +174,18 @@ fun PlayerScreen(
     val immersive = !flex && (landscape || fullscreen)
 
     // Follow the phone's rotation; hide the system bars whenever the picture fills the screen.
-    DisposableEffect(activity, immersive, flex) {
+    DisposableEffect(activity, immersive, flex, orientation) {
         val window = activity?.window ?: return@DisposableEffect onDispose {}
         val controller = WindowCompat.getInsetsController(window, window.decorView)
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        // The rotation lock. AUTO is what the player has always done; the two
+        // locks pin the Activity, which is why `landscape` below (and so the
+        // immersive layout) simply follows — a locked landscape player is
+        // full-bleed for the same reason a turned phone is.
+        activity.requestedOrientation = when (orientation) {
+            PlayerOrientation.AUTO -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            PlayerOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            PlayerOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         if (immersive || flex) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -512,7 +522,9 @@ fun PlayerScreen(
                             scrubThumbnails = scrubThumbnails,
                             autoplayNext = autoplayNext,
                             autoplayImmediately = autoplayImmediately,
+                            orientation = orientation,
                             onSpeed = viewModel::setSpeed,
+                            onOrientation = viewModel::setOrientation,
                             onHardwareDecoding = viewModel::setHardwareDecoding,
                             onScrubThumbnails = viewModel::setScrubThumbnails,
                             onAutoplayNext = viewModel::setAutoplayNext,
@@ -535,7 +547,9 @@ fun PlayerScreen(
                 scrubThumbnails = scrubThumbnails,
                 autoplayNext = autoplayNext,
                 autoplayImmediately = autoplayImmediately,
+                orientation = orientation,
                 onSpeed = viewModel::setSpeed,
+                onOrientation = viewModel::setOrientation,
                 onHardwareDecoding = viewModel::setHardwareDecoding,
                 onScrubThumbnails = viewModel::setScrubThumbnails,
                 onAutoplayNext = viewModel::setAutoplayNext,
@@ -1015,10 +1029,14 @@ private fun BoxScope.SeekPill(label: String, left: Boolean) {
 private fun GestureMap(onDismiss: () -> Unit) {
     val colors = RegolithTheme.colors
     Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(interactionSource = null, indication = null, onClick = onDismiss).testTag("player_gesture_map")) {
+        // Weighted from SIDE_ZONE itself, so the map is drawn to the same
+        // proportions the gestures actually use. The edge columns are narrow
+        // on purpose and their copy is cut to fit rather than wrapped to
+        // death.
         Row(Modifier.fillMaxSize()) {
-            GestureZone(R.drawable.rg_ic_seek_back, "Double-tap", "Back 10s. Keep tapping to stack it — 20s, 30s.", "Drag up or down here for brightness", Modifier.weight(1f))
-            GestureZone(R.drawable.rg_ic_pause, "Double-tap", "Play or pause. A single tap shows the controls.", "Drag up for full screen, down to leave it · long-press for 2×", Modifier.weight(1f))
-            GestureZone(R.drawable.rg_ic_seek_forward, "Double-tap", "Forward 10s, stacking the same way.", "Drag up or down here for volume", Modifier.weight(1f))
+            GestureZone(R.drawable.rg_ic_seek_back, "Double-tap", "Back 10s, stacking.", "Drag for brightness", Modifier.weight(SIDE_ZONE), compact = true)
+            GestureZone(R.drawable.rg_ic_pause, "Double-tap", "Play or pause. A single tap shows the controls.", "Drag up for full screen, down to leave it · long-press for 2×", Modifier.weight(1f - SIDE_ZONE * 2))
+            GestureZone(R.drawable.rg_ic_seek_forward, "Double-tap", "Forward 10s, stacking.", "Drag for volume", Modifier.weight(SIDE_ZONE), compact = true)
         }
         Row(Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
             Text("GESTURES", style = TextStyles.tag.copy(fontSize = 10.designSp(), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 13.designSp()), color = Color.White, modifier = Modifier.background(colors.accent, PillShape).padding(horizontal = Spacing.s12, vertical = Spacing.s4))
@@ -1032,9 +1050,9 @@ private fun GestureMap(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, modifier: Modifier) {
+private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, modifier: Modifier, compact: Boolean = false) {
     val colors = RegolithTheme.colors
-    Column(modifier.fillMaxHeight().padding(Spacing.s18), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12, Alignment.CenterVertically)) {
+    Column(modifier.fillMaxHeight().padding(if (compact) Spacing.s8 else Spacing.s18), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12, Alignment.CenterVertically)) {
         Box(Modifier.size(56.dp).clip(PillShape).background(colors.onMediaCircleBg).border(1.dp, colors.onMediaCircleBorder, PillShape), contentAlignment = Alignment.Center) {
             Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(26.dp))
         }

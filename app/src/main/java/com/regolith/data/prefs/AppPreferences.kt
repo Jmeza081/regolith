@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
@@ -36,6 +37,7 @@ class AppPreferences @Inject constructor(
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val movingTiles = booleanPreferencesKey("moving_tiles")
+        val playerOrientation = stringPreferencesKey("player_orientation")
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */
@@ -120,6 +122,19 @@ class AppPreferences @Inject constructor(
 
     suspend fun setMovingTiles(enabled: Boolean) {
         store.edit { it[Keys.movingTiles] = enabled }
+    }
+
+    /**
+     * The player's rotation lock. Remembered: a lock you have to set for
+     * every film is not a lock. An unknown stored name falls back to AUTO
+     * rather than throwing, as the other enums here do.
+     */
+    val playerOrientation: Flow<PlayerOrientation> = store.data.map { p ->
+        p[Keys.playerOrientation]?.let { runCatching { PlayerOrientation.valueOf(it) }.getOrNull() } ?: PlayerOrientation.AUTO
+    }
+
+    suspend fun setPlayerOrientation(orientation: PlayerOrientation) {
+        store.edit { it[Keys.playerOrientation] = orientation.name }
     }
 
     /** Library › Sort by. Remembered, like a column sort in a web table. */

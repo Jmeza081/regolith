@@ -350,3 +350,56 @@ Library wall (queue of 7) and a Browse folder (queue of 4), shuffle, and
 twelve-frame sheets generated one at a time with a `moving_tile_*` canvas
 per tile. The cover screen is unchanged apart from the Play all button,
 which it gets too.
+
+---
+
+## F8 — Round four (shipped 2026-09-10)
+
+Three pieces of feedback from using the player and Settings for real. None
+of them is foldable-specific; two of them behave differently on the inner
+display, which is why they are recorded here.
+
+### The picture's zones are 15/70/15
+
+Brightness and volume were being changed by accident. A third of the picture
+each is a lot of picture for two gestures you rarely want and cannot undo,
+so they now take 15% down each edge and the middle 70% keeps the full-screen
+drag, the dismiss and play/pause.
+
+`SIDE_ZONE` is a single constant in `PlayerGestures.kt`, and the gesture map
+is laid out with `Modifier.weight(SIDE_ZONE)` from the same number — the
+picture you are shown once is the map you are actually using. The edge
+columns' copy was cut to fit ("Back 10s, stacking." / "Drag for brightness")
+rather than left to wrap to death.
+
+**The cost, taken deliberately:** double-tap-to-seek shares those zones, so
+the seek targets narrowed with them. Splitting taps from drags was rejected
+— a map where a tap and a drag at the same point belong to different zones
+cannot be drawn, let alone learned.
+
+### A rotation lock on the player
+
+`PlayerOrientation` (Auto / Portrait / Landscape) sits with Speed in the
+playback sheet — you decide it about the film in front of you, not about the
+app — and is remembered, because a lock you set every time is not a lock.
+
+**It cannot work on the inner display, and says so.** Android 16 stopped
+honouring an app's `requestedOrientation` on large screens: a device whose
+*smallest* width is 600dp or more decides for itself. Verified on the Fold:
+locking Landscape rotates the cover screen and does nothing at all on the
+inner display. So the control greys out there with a line saying why, rather
+than pretending to work. The test is `smallestScreenWidthDp`, not the
+current width — a phone turned sideways is a wide window and obeys fine.
+
+### Every share carries its own Scan and Disconnect
+
+A real bug: the Shares card had one pair of buttons underneath it, and
+Disconnect took `servers.first()`. With two NAS boxes connected there was no
+way to remove the second one at all.
+
+Each row now ends in its own 40dp scan and disconnect actions (`RowAction`);
+the confirm dialog was always per-row, only the button that opened it was
+wrong. A running scan greys its own button, since the status line already
+says "Scanning · N files". **Add a share** is promoted out of the card into
+the section's red CTA. **Scan all** survives only when there are two or more
+shares, where it saves taps rather than repeating the row above it.

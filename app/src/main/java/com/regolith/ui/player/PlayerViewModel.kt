@@ -7,6 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.PlaybackSession
 import com.regolith.player.PlaybackState
 import com.regolith.ui.navigation.RegolithKey
@@ -53,6 +54,11 @@ class PlayerViewModel @AssistedInject constructor(
     val autoplayNext: StateFlow<Boolean> = prefs.autoplayNext.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
+
+    /** The player's rotation lock, from the playback sheet. */
+    val orientation: StateFlow<PlayerOrientation> = prefs.playerOrientation.stateIn(viewModelScope, SharingStarted.Eagerly, PlayerOrientation.AUTO)
+
+    fun setOrientation(orientation: PlayerOrientation) = viewModelScope.launch { prefs.setPlayerOrientation(orientation) }.let { }
 
     /** Settings › Playback › Don't ask first: no card, no countdown, the next file simply starts. */
     val autoplayImmediately: StateFlow<Boolean> = prefs.autoplayImmediately.stateIn(viewModelScope, SharingStarted.Eagerly, false)

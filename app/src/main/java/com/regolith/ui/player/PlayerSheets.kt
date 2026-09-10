@@ -39,6 +39,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.domain.playback.AbLoop
+import androidx.compose.ui.platform.LocalConfiguration
+import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SwitchControl
@@ -104,7 +106,9 @@ fun PlaybackSheetContent(
     scrubThumbnails: Boolean,
     autoplayNext: Boolean,
     autoplayImmediately: Boolean,
+    orientation: PlayerOrientation,
     onSpeed: (Float) -> Unit,
+    onOrientation: (PlayerOrientation) -> Unit,
     onHardwareDecoding: (Boolean) -> Unit,
     onScrubThumbnails: (Boolean) -> Unit,
     onAutoplayNext: (Boolean) -> Unit,
@@ -143,6 +147,52 @@ fun PlaybackSheetContent(
                     Text(formatSpeed(s).dropLast(1), style = if (selected) TextStyles.chipSelected else TextStyles.buttonSmall, color = if (selected) Color.White else colors.inkSoft)
                 }
             }
+        }
+    }
+
+    // Rotation sits with Speed: both are "how it plays", both are one choice
+    // from a short row, and neither belongs in app Settings — you decide them
+    // about the film in front of you, not about the app.
+    //
+    // Android 16 stopped honouring an app's orientation request on large
+    // screens: a device whose SMALLEST width is 600dp or more decides for
+    // itself, and `requestedOrientation` is quietly a no-op. Verified on the
+    // Fold — locking Landscape rotates the cover screen and does nothing at
+    // all on the inner display. Smallest width, not the current width: a
+    // phone turned sideways is a wide window and still obeys perfectly well.
+    val lockable = LocalConfiguration.current.smallestScreenWidthDp < LARGE_SCREEN_DP
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        Eyebrow("Rotation", muted = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+            PlayerOrientation.entries.forEach { option ->
+                val selected = option == orientation
+                Box(
+                    Modifier.weight(1f).height(36.scaledDp()).clip(PillShape)
+                        .background(if (selected && lockable) colors.accent else colors.frostBg)
+                        .then(if (selected && lockable) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
+                        .clickable(interactionSource = null, indication = null, enabled = lockable) { onOrientation(option) }
+                        .testTag("player_rotation_${option.name.lowercase()}"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        option.label,
+                        style = if (selected && lockable) TextStyles.chipSelected else TextStyles.buttonSmall,
+                        color = when {
+                            !lockable -> colors.metadata
+                            selected -> Color.White
+                            else -> colors.inkSoft
+                        },
+                    )
+                }
+            }
+        }
+        if (!lockable) {
+            Text(
+                "This screen is large enough that Android does the deciding. The lock works on the cover screen and on a phone.",
+                style = TextStyles.settingMeta,
+                color = colors.metadata,
+                modifier = Modifier.testTag("player_rotation_note"),
+            )
         }
     }
 
@@ -294,3 +344,12 @@ private fun NudgeRow(label: String, value: String, onMinus: () -> Unit, onPlus: 
         }
     }
 }
+
+/**
+ * Where Android stops honouring an app's orientation request: a device
+ * whose smallest width is at least this decides rotation for itself
+ * (Android 16's removal of orientation restrictions on large screens).
+ * The same 600dp threshold `WindowShape.wide` uses, measured differently —
+ * smallest width, not current width.
+ */
+private const val LARGE_SCREEN_DP = 600

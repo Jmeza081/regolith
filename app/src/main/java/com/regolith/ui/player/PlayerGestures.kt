@@ -11,12 +11,14 @@ import androidx.compose.ui.unit.IntSize
 import kotlin.math.abs
 
 /**
- * Which third of the picture a gesture landed on (design section 10, whose
+ * Which zone of the picture a gesture landed on (design section 10, whose
  * gesture map has always been drawn in three columns).
  *
- * Thirds, not halves: the middle needs a zone of its own for the full-screen
- * drag, and it also keeps a fast downward flick — the one that leaves the
- * player — away from the brightness and volume drags at the edges.
+ * [SIDE_ZONE] down each edge and the rest in the middle, rather than even
+ * thirds. Brightness and volume are the two gestures you least want by
+ * accident — they change something the film cannot undo — so reaching them
+ * should take aim. The middle keeps the full-screen drag, the dismiss and
+ * play/pause, which are the ones worth having under any thumb.
  */
 enum class Zone { LEFT, MIDDLE, RIGHT }
 
@@ -104,9 +106,16 @@ fun Modifier.playerGestures(callbacks: PlayerGestureCallbacks): Modifier = this
     }
 
 private fun zoneOf(offset: Offset, size: IntSize): Zone = when {
-    offset.x < size.width / 3f -> Zone.LEFT
-    offset.x > size.width * 2f / 3f -> Zone.RIGHT
+    offset.x < size.width * SIDE_ZONE -> Zone.LEFT
+    offset.x > size.width * (1f - SIDE_ZONE) -> Zone.RIGHT
     else -> Zone.MIDDLE
 }
+
+/**
+ * How much of the width each edge zone takes: 15% a side, 70% in the middle.
+ * The gesture map is laid out from this same number, so the picture you are
+ * shown once is the map you are actually using.
+ */
+const val SIDE_ZONE = 0.15f
 
 private const val FLING_DOWN_PX_PER_S = 4_000f
