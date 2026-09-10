@@ -61,6 +61,7 @@ class ArtworkRepository @Inject constructor(
     private val frames: FrameSourceFactory,
     private val store: ArtworkStore,
     private val local: com.regolith.player.LocalMedia,
+    private val durations: DurationProbe,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -152,6 +153,11 @@ class ArtworkRepository @Inject constructor(
     suspend fun clearAll() {
         artworkDao.deleteAll()
         store.clear()
+        // The marker lives inside the directory that was just deleted. Without
+        // this, the next launch reads generation 0, decides the cache is stale
+        // and throws away everything the clear made you regenerate.
+        store.setGeneration(ArtworkStore.GENERATION)
+        generationChecked = true
         listingsLock.withLock { listings.clear() }
     }
 
@@ -183,17 +189,7 @@ class ArtworkRepository @Inject constructor(
         // that works with the network off.
         local.file(owner.id)?.let { copy ->
             frames.openLocal(copy).use { source ->
-                mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height)
-                source.embeddedPicture()?.let { if (saveEncoded(it, owner, ArtworkSource.EMBEDDED)) return }
-                val duration = source.durationMs ?: 0L
-                val frame = source.frameAt(ArtworkCandidates.framePositionMs(duration), FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)
-                if (frame != null) {
-                    try {
-                        if (saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB)) return
-                    } finally {
-                        frame.recycle()
-                    }
-                }
+                if (grabFrame(file, owner, source)) return
             }
             placeholder(owner)
             return
@@ -209,22 +205,73 @@ class ArtworkRepository @Inject constructor(
             if (saveEncoded(bytes, owner, candidate.source)) return
         }
 
-        // 3 + 4: open the file once for cover art, then a frame at 10%.
+        // 3 + 4: open the file once for cover art, then a frame at the midpoint.
         frames.open(location.host, location.credentials, location.share, file.relPath).use { source ->
-            mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height)
-            source.embeddedPicture()?.let { if (saveEncoded(it, owner, ArtworkSource.EMBEDDED)) return }
-            val duration = source.durationMs ?: 0L
-            val frame = source.frameAt(ArtworkCandidates.framePositionMs(duration), FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)
-            if (frame != null) {
-                try {
-                    if (saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB)) return
-                } finally {
-                    frame.recycle()
-                }
-            }
+            if (grabFrame(file, owner, source)) return
         }
         // 5
         placeholder(owner)
+    }
+
+    /**
+     * Steps 3 and 4 on an already-open file: embedded cover art, else a
+     * frame from the midpoint. True when something was written.
+     *
+     * The log line here is the one to read when a tile looks wrong — it
+     * says where the frame was taken from and how the runtime behind that
+     * decision was arrived at (`adb logcat -s Regolith/Artwork`).
+     */
+    private suspend fun grabFrame(file: MediaFileEntity, owner: ArtworkOwner.File, source: FrameSource): Boolean {
+        mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height)
+        source.embeddedPicture()?.let {
+            if (saveEncoded(it, owner, ArtworkSource.EMBEDDED)) {
+                Log.i(TAG, "${file.name}: cover art embedded in the container (no frame grabbed)")
+                return true
+            }
+        }
+        val duration = runtimeOf(file, source)
+        val at = ArtworkCandidates.framePositionMs(duration)
+        Log.i(TAG, "${file.name}: frame at ${at}ms of ${duration}ms")
+        val frame = source.frameAt(at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
+        return try {
+            saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB)
+        } finally {
+            frame.recycle()
+        }
+    }
+
+    /**
+     * How long the file is, and therefore where the midpoint is. Three
+     * answers, cheapest first — and the third one is the whole point:
+     *
+     *  1. what the open [FrameSource] says (free, it is already open);
+     *  2. what a previous probe wrote to the row (free);
+     *  3. Media3's extractors, the same ones the player uses (one more
+     *     open of the file).
+     *
+     * Without step 3 a container the platform retriever cannot time gets
+     * `duration = 0`, and 0 means a frame from the first second — a black
+     * title card or a studio ident, which is exactly the tile the midpoint
+     * grab exists to avoid. The step costs an extra open, but only for the
+     * files that would otherwise be wrong.
+     *
+     * The result is written back to the row, so a rescan or a second kind
+     * never pays for it twice.
+     */
+    private suspend fun runtimeOf(file: MediaFileEntity, source: FrameSource): Long {
+        source.durationMs?.let { return it }
+        file.durationMs?.let { known ->
+            Log.d(TAG, "no runtime from the container for ${file.name}; using the ${known}ms already on the row")
+            return known
+        }
+        val probed = durations.durationMs(file.id)
+        if (probed == null || probed <= 0) {
+            Log.w(TAG, "no runtime for ${file.name} from the container, the row or the probe: grabbing at 0")
+            return 0L
+        }
+        Log.i(TAG, "no runtime from the container for ${file.name}; the probe says ${probed}ms")
+        mediaFileDao.fillBasics(file.id, probed, null, null)
+        return probed
     }
 
     private suspend fun resolveFolder(owner: ArtworkOwner.Folder) {
@@ -275,7 +322,7 @@ class ArtworkRepository @Inject constructor(
         try {
             for ((index, file) in files.withIndex()) {
                 openFrames(file)?.use { source ->
-                    val duration = source.durationMs ?: file.durationMs ?: 0L
+                    val duration = runtimeOf(file, source)
                     for (position in ArtworkCandidates.mosaicPositionsMs(duration, slots[index])) {
                         cells += source.frameAt(position, MOSAIC_FRAME_MAX, MOSAIC_FRAME_MAX) ?: return false
                     }

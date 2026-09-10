@@ -438,3 +438,61 @@ wrong. A running scan greys its own button, since the status line already
 says "Scanning · N files". **Add a share** is promoted out of the card into
 the section's red CTA. **Scan all** survives only when there are two or more
 shares, where it saves taps rather than repeating the row above it.
+
+## F10 — round six
+
+### The settings moved under the picture, and the folder moved beside it
+
+F9 put the whole right-hand pane in one column: title, A–B, the folder, then
+speed / rotation / decoder. In use the folder ended up level with the
+settings, which made the settings look like the reason the pane existed.
+
+So the landscape player is now two columns level at the top: the film with
+its own controls under it on the left — the same order the portrait player
+reads in — and the folder alone on the right, beside the picture.
+
+**Wide portrait is one column**, in the order you use it: the film, what
+follows it, then the controls for the film. The two-column wide portrait
+layout from F4 is gone; `PortraitDetails` is a single `Column` for every
+width, and `wide` now only decides whether the settings panel is inline
+(it is) and whether the speed and decoder pills are drawn (they are not,
+because the panel below them is the control).
+
+### Chapters
+
+The pill has been drawn since Phase 2 with `onClick = {}`. It now opens a
+bottom sheet listing the file's chapters — name, how long each runs, its
+start time, and a red bar against the one the playhead is inside. Tapping
+one seeks and closes; a chapter list is a way to get somewhere.
+
+`ChapterParser` reads the container by hand (see `ARCHITECTURE.md` for why
+nothing on the platform will). **A file with no chapters gets no pill** —
+absent beats a control that promises something it cannot do.
+
+The sheet closes when the file changes: autoplay can swap the film out from
+under it, and the last film's chapters over the next one is worse than none.
+
+### One sheet shape
+
+`PlayerSheetHost` lost its `landscape` branch and its 344dp side panel.
+Everything the player opens is a bottom sheet now, in every orientation.
+
+### Ambient letterbox bars
+
+The spike answer, worth writing down: **media3 sizes the video surface to
+the content**, so the bands a 16:9 film leaves in the Fold's near-square
+window are window pixels, not surface pixels, and can be painted. They now
+carry the film's own colour. Bars *burned into* the frames cannot be, and
+never will be — those pixels are the picture.
+
+### A frame grab that knows how long the film is
+
+`framePositionMs` is only right if the runtime is. `ArtworkRepository.
+runtimeOf` tries the open FrameSource, then the `media_files` row, then
+Media3's extractors through the `DurationProbe` seam, and writes the answer
+back. Before this, a container the platform retriever could not time got
+`duration = 0` — and 0 is the first frame, the title card, the exact tile
+the midpoint change exists to avoid.
+
+`adb logcat -s Regolith/Artwork` now says, per file, where the frame came
+from and how the runtime behind it was arrived at.

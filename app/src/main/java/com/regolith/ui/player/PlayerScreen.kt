@@ -124,7 +124,7 @@ import com.regolith.ui.util.formatSpeed
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
-private enum class Sheet { Playback, AbLoop }
+private enum class Sheet { Playback, AbLoop, Chapters }
 private enum class DragKind { Brightness, Volume }
 private data class DragOverlay(val kind: DragKind, val fraction: Float, val xFraction: Float)
 
@@ -291,6 +291,10 @@ fun PlayerScreen(
 
     var controlsVisible by remember { mutableStateOf(true) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    // A chapter list belongs to one file. Autoplay can change the file while
+    // the sheet is open, and a list of the last film's chapters over the next
+    // one is worse than no list.
+    LaunchedEffect(state.fileId) { if (sheet == Sheet.Chapters) sheet = null }
     var fill by remember { mutableStateOf(false) }
     var drag by remember { mutableStateOf<DragOverlay?>(null) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
@@ -419,10 +423,32 @@ fun PlayerScreen(
         onFullscreen = { fullscreen = !fullscreen },
     )
 
+    // The playback sheet's own content, inline rather than behind a pill.
+    // Wide layouts have the room; the phone never composes this.
+    val playbackSettings = @Composable {
+        PlaybackSheetContent(
+            speed = state.speed,
+            hardwareDecoding = state.hardwareDecoding,
+            scrubThumbnails = scrubThumbnails,
+            autoplayNext = autoplayNext,
+            autoplayImmediately = autoplayImmediately,
+            orientation = orientation,
+            onSpeed = viewModel::setSpeed,
+            onOrientation = viewModel::setOrientation,
+            onHardwareDecoding = viewModel::setHardwareDecoding,
+            onScrubThumbnails = viewModel::setScrubThumbnails,
+            onAutoplayNext = viewModel::setAutoplayNext,
+            onAutoplayImmediately = viewModel::setAutoplayImmediately,
+            onClose = {},
+            header = false,
+        )
+    }
+
     val video = @Composable {
-        // Black only where the picture is the whole screen. Elsewhere the
-        // letterbox bars are left clear so the glow behind shows through them.
-        Box(Modifier.fillMaxSize().background(if (immersive) Color.Black else Color.Transparent)) {
+        // Never its own ground: whatever the picture does not cover is the
+        // layout's to fill, which is how the letterbox bars pick up the glow
+        // instead of being black.
+        Box(Modifier.fillMaxSize()) {
             player?.let { p ->
                 ContentFrame(p, Modifier.fillMaxSize(), SURFACE_TYPE_SURFACE_VIEW, if (fill) ContentScale.Crop else ContentScale.Fit)
             }
@@ -493,6 +519,15 @@ fun PlayerScreen(
         }
     } else if (immersive) {
         Box(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
+            // Ambient bars (F10). A 2.39:1 film in a 16:9 window, or any film
+            // on the near-square inner display, leaves bands the picture does
+            // not reach; media3 sizes the video surface to the CONTENT, so
+            // those bands belong to us and can carry the film's own colour
+            // instead of black. Bars burned into the frames themselves are a
+            // different thing and stay exactly as they are — those pixels are
+            // the picture. Black stays underneath, so a film whose poster
+            // never loaded looks the way it always did.
+            AmbientGlow(state.fileId, Modifier.fillMaxSize(), spill = true)
             Box(Modifier.fillMaxSize().graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
             // A SurfaceView ignores alpha from a parent layer, so "dimming"
             // is a scrim drawn over it rather than a fade applied to it.
@@ -501,52 +536,57 @@ fun PlayerScreen(
             if (showGestureMap && landscape) GestureMap(onDismiss = viewModel::dismissGestureMap)
         }
     } else if (sideBySide) {
-        // The picture keeps its 16:9 and sits centred in the left pane; the
-        // right one is a single scrolling column, so what is up next is
-        // beside the film rather than under it.
+        // Two columns, level at the top. The left one is the film with its
+        // own controls under it — the same order the portrait player reads
+        // in — and the right one is the folder, so what plays next sits
+        // beside the picture rather than below a screenful of settings.
         val sideWidth = (windowShape.width * SIDE_COLUMN_FRACTION).coerceIn(300.dp, 460.dp)
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
             AmbientGlow(state.fileId, Modifier.fillMaxSize())
             Row(Modifier.fillMaxSize().systemBarsPadding()) {
-                Box(
-                    Modifier.weight(1f).fillMaxHeight().padding(Spacing.s12),
-                    contentAlignment = Alignment.Center,
-                ) {
+                Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.s12)) {
                     Box(
                         Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                             .graphicsLayer { scaleX = pictureScale; scaleY = pictureScale },
                     ) { video() }
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState())
+                            .padding(top = Spacing.s18, start = Spacing.s8, end = Spacing.s8)
+                            .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) }
+                            .testTag(if (state.loop != null) "player_loop_panel" else "player_details"),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+                    ) {
+                        val loop = state.loop
+                        if (loop != null) {
+                            AbLoopSheetContent(
+                                loop = loop, positionMs = state.positionMs, durationMs = state.durationMs,
+                                onNudgeA = viewModel::nudgeLoopA, onNudgeB = viewModel::nudgeLoopB,
+                                onClear = viewModel::clearLoop,
+                            )
+                        } else {
+                            TitleBlock(state)
+                            // Speed and decoder are the panel below; a pill that
+                            // opened a sheet saying the same thing would be a
+                            // second control for one setting. A–B and Chapters
+                            // stay: neither has another entry.
+                            PillRow(
+                                state, { sheet = Sheet.Playback }, viewModel::tapLoopPoint, viewModel::clearLoop,
+                                onMedia = false, settingsPills = false, onChapters = { sheet = Sheet.Chapters },
+                            )
+                            playbackSettings()
+                        }
+                        Spacer(Modifier.height(Spacing.s30))
+                    }
                 }
-                SideColumn(
-                    modifier = Modifier.width(sideWidth).fillMaxHeight()
-                        .padding(end = Spacing.s18, top = Spacing.s18, bottom = Spacing.s12)
-                        .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) },
-                    state = state,
-                    onOpenPlayback = { sheet = Sheet.Playback },
-                    onLoopTap = viewModel::tapLoopPoint,
-                    onLoopClear = viewModel::clearLoop,
-                    onNudgeA = viewModel::nudgeLoopA,
-                    onNudgeB = viewModel::nudgeLoopB,
-                    onPlayNext = viewModel::playNext,
-                    settings = {
-                        PlaybackSheetContent(
-                            speed = state.speed,
-                            hardwareDecoding = state.hardwareDecoding,
-                            scrubThumbnails = scrubThumbnails,
-                            autoplayNext = autoplayNext,
-                            autoplayImmediately = autoplayImmediately,
-                            orientation = orientation,
-                            onSpeed = viewModel::setSpeed,
-                            onOrientation = viewModel::setOrientation,
-                            onHardwareDecoding = viewModel::setHardwareDecoding,
-                            onScrubThumbnails = viewModel::setScrubThumbnails,
-                            onAutoplayNext = viewModel::setAutoplayNext,
-                            onAutoplayImmediately = viewModel::setAutoplayImmediately,
-                            onClose = {},
-                            header = false,
-                        )
-                    },
-                )
+                Column(
+                    Modifier.width(sideWidth).fillMaxHeight().verticalScroll(rememberScrollState())
+                        .padding(end = Spacing.s18, top = Spacing.s12, bottom = Spacing.s12)
+                        .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) }
+                        .testTag("player_up_next_column"),
+                ) {
+                    NextInFolder(state, viewModel::playNext)
+                    Spacer(Modifier.height(Spacing.s30))
+                }
             }
         }
     } else {
@@ -571,35 +611,15 @@ fun PlayerScreen(
                 onNudgeA = viewModel::nudgeLoopA,
                 onNudgeB = viewModel::nudgeLoopB,
                 onPlayNext = viewModel::playNext,
-                // The playback sheet's own content, inline in the left column on
-                // a wide window. The phone never composes it here.
-                settings = {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
-                        PlaybackSheetContent(
-                            speed = state.speed,
-                            hardwareDecoding = state.hardwareDecoding,
-                            scrubThumbnails = scrubThumbnails,
-                            autoplayNext = autoplayNext,
-                            autoplayImmediately = autoplayImmediately,
-                            orientation = orientation,
-                            onSpeed = viewModel::setSpeed,
-                            onOrientation = viewModel::setOrientation,
-                            onHardwareDecoding = viewModel::setHardwareDecoding,
-                            onScrubThumbnails = viewModel::setScrubThumbnails,
-                            onAutoplayNext = viewModel::setAutoplayNext,
-                            onAutoplayImmediately = viewModel::setAutoplayImmediately,
-                            onClose = {},
-                            header = false,
-                        )
-                    }
-                },
+                onChapters = { sheet = Sheet.Chapters },
+                settings = playbackSettings,
             )
         }
         }
     }
 
     when (sheet) {
-        Sheet.Playback -> PlayerSheetHost(immersive, onDismiss = { sheet = null }, testTag = "player_playback_sheet") {
+        Sheet.Playback -> PlayerSheetHost(onDismiss = { sheet = null }, testTag = "player_playback_sheet") {
             PlaybackSheetContent(
                 speed = state.speed,
                 hardwareDecoding = state.hardwareDecoding,
@@ -616,8 +636,16 @@ fun PlayerScreen(
                 onClose = { sheet = null },
             )
         }
+        Sheet.Chapters -> PlayerSheetHost(onDismiss = { sheet = null }, testTag = "player_chapters_sheet") {
+            ChaptersSheetContent(
+                chapters = state.chapters,
+                positionMs = state.positionMs,
+                durationMs = state.durationMs,
+                onSeek = { ms -> viewModel.seekTo(ms); sheet = null },
+            )
+        }
         Sheet.AbLoop -> state.loop?.let { loop ->
-            PlayerSheetHost(immersive, onDismiss = { sheet = null }, testTag = "player_loop_sheet") {
+            PlayerSheetHost(onDismiss = { sheet = null }, testTag = "player_loop_sheet") {
                 AbLoopSheetContent(
                     loop = loop,
                     positionMs = state.positionMs,
@@ -681,7 +709,7 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
                     Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.ink, modifier = Modifier.testTag("player_position"))
                     Scrubber(
                         positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                        loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chaptersMs,
+                        loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chapterTicks,
                         onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                         trackHeight = 3.dp, showKnob = false, modifier = Modifier.weight(1f),
                     )
@@ -742,7 +770,7 @@ private fun BoxScope.FullChrome(
                         Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
                         Scrubber(
                             positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                            loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chaptersMs,
+                            loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chapterTicks,
                             onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                             trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
                         )
@@ -794,6 +822,7 @@ private fun PillRow(
     onMedia: Boolean,
     /** False where the speed and decoder panel is already on screen (the wide player). */
     settingsPills: Boolean = true,
+    onChapters: () -> Unit = {},
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
         if (settingsPills) PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
@@ -805,8 +834,11 @@ private fun PillRow(
             )
         }
         if (settingsPills) PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_decoder, testTag = "player_decoder_pill")
-        if (!onMedia) {
-            PillButton(text = "Chapters", onClick = {}, onMedia = false, icon = R.drawable.rg_ic_chapters, testTag = "player_chapters_pill")
+        // Only when the file actually has them. The pill used to be drawn
+        // unconditionally and did nothing at all, which is worse than absent:
+        // a control that promises something it cannot do.
+        if (!onMedia && state.chapters.isNotEmpty()) {
+            PillButton(text = "Chapters", onClick = onChapters, onMedia = false, icon = R.drawable.rg_ic_chapters, testTag = "player_chapters_pill")
         }
     }
 }
@@ -843,96 +875,35 @@ private fun PortraitDetails(
     onNudgeA: (Long) -> Unit,
     onNudgeB: (Long) -> Unit,
     onPlayNext: (Long) -> Unit,
+    onChapters: () -> Unit,
     settings: @Composable () -> Unit,
 ) {
     val wide = LocalWindowShape.current.wide
     val loop = state.loop
-    if (wide) {
-        Row(
-            modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s30),
-        ) {
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState())
-                    .testTag(if (loop != null) "player_loop_panel" else "player_details"),
-                verticalArrangement = Arrangement.spacedBy(Spacing.s18),
-            ) {
-                if (loop != null) {
-                    AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
-                } else {
-                    TitleBlock(state)
-                    // Speed and decoder are the panel below; a pill that opened a
-                    // sheet saying the same thing would be a second control for
-                    // one setting. A-B stays: arming a loop has no other entry.
-                    PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, settingsPills = false)
-                    settings()
-                }
-                Spacer(Modifier.height(Spacing.s30))
-            }
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(Spacing.s12),
-            ) {
-                NextInFolder(state, onPlayNext)
-                Spacer(Modifier.height(Spacing.s30))
-            }
-        }
-        return
-    }
-    // With a loop set, the panel below the picture IS the loop (design frame 29): span, points, clear.
-    // Landscape keeps it in the side sheet, since there is no room under the picture.
-    if (loop != null) {
-        Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18).testTag("player_loop_panel"), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
-            AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
-        }
-        return
-    }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-        TitleBlock(state)
-        PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false)
-        NextInFolder(state, onPlayNext)
-        Spacer(Modifier.height(Spacing.s30))
-    }
-}
-
-/**
- * The right-hand pane of the landscape two-pane player (F9): one scrolling
- * column holding what the wide portrait layout spreads over two.
- *
- * The order is what you reach for, not what the design draws first: the
- * title, the A–B pill, then the folder — the reason the pane exists — and
- * the playback settings under it. Same components as every other layout;
- * only the arrangement is new.
- */
-@Composable
-private fun SideColumn(
-    modifier: Modifier,
-    state: PlaybackState,
-    onOpenPlayback: () -> Unit,
-    onLoopTap: () -> Unit,
-    onLoopClear: () -> Unit,
-    onNudgeA: (Long) -> Unit,
-    onNudgeB: (Long) -> Unit,
-    onPlayNext: (Long) -> Unit,
-    settings: @Composable () -> Unit,
-) {
-    val loop = state.loop
+    // With a loop set, the panel below the picture IS the loop (design frame 29):
+    // span, points, clear. The folder still follows it — the loop is about this
+    // film, not about what comes after it.
     Column(
-        modifier.verticalScroll(rememberScrollState())
-            .testTag(if (loop != null) "player_loop_panel" else "player_details"),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18)
+            .then(if (loop != null) Modifier.testTag("player_loop_panel") else if (wide) Modifier.testTag("player_details") else Modifier),
+        verticalArrangement = Arrangement.spacedBy(if (wide) Spacing.s18 else Spacing.s12),
     ) {
         if (loop != null) {
             AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
         } else {
             TitleBlock(state)
-            // Speed and decoder are the panel below; a pill that opened a
-            // sheet saying the same thing would be a second control for one
-            // setting. A–B stays: arming a loop has no other entry.
-            PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, settingsPills = false)
+            // A wide window shows the speed and decoder panel further down, so
+            // the pills that only open it would be a second control for one
+            // setting. A–B and Chapters stay: neither has another entry.
+            PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, settingsPills = !wide, onChapters = onChapters)
         }
         NextInFolder(state, onPlayNext)
-        if (loop == null) settings()
+        // One column, in the order you use it: the film, then what follows it,
+        // then the controls for the film. Two columns were tried first and put
+        // the folder level with the settings, which made the settings look like
+        // the reason the pane existed.
+        if (wide && loop == null) settings()
         Spacer(Modifier.height(Spacing.s30))
     }
 }
@@ -1241,7 +1212,7 @@ private fun FlexDeck(
             Text(formatClock(here), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
             Scrubber(
                 positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chaptersMs,
+                loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chapterTicks,
                 onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                 trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
             )
@@ -1312,7 +1283,7 @@ private fun StripCell(frame: StripFrame, current: Boolean, onSeek: () -> Unit, m
  * keeps the black it has now rather than gaining a blurred placeholder.
  */
 @Composable
-private fun AmbientGlow(fileId: Long?, modifier: Modifier = Modifier) {
+private fun AmbientGlow(fileId: Long?, modifier: Modifier = Modifier, spill: Boolean = false) {
     if (fileId == null) return
     val request = remember(fileId) { ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.POSTER) }
     Box(modifier.clipToBounds()) {
@@ -1329,12 +1300,16 @@ private fun AmbientGlow(fileId: Long?, modifier: Modifier = Modifier) {
                 .alpha(GLOW_ALPHA)
                 .testTag("player_ambient_glow"),
         )
-        // Keeps the glow under the picture rather than beside it, and lets it
-        // fall off downward the way spill light actually does: strongest around
-        // the picture, back to the app's own ground by the bottom of the screen.
+        // Two jobs, two scrims. Behind the windowed player the glow has to
+        // fall off downward the way spill light does — strongest around the
+        // picture, back to the app's own ground by the bottom of the screen.
+        // Filling the letterbox bars it has to be even, because the bars are
+        // above AND below the picture and a gradient would make the top one a
+        // different colour from the bottom one.
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(0f to Color(0x4D000000), 0.62f to Color(0xA6000000), 1f to RegolithTheme.colors.ground),
+                if (spill) Brush.verticalGradient(0f to SPILL_SCRIM, 1f to SPILL_SCRIM)
+                else Brush.verticalGradient(0f to Color(0x4D000000), 0.62f to Color(0xA6000000), 1f to RegolithTheme.colors.ground),
             ),
         )
     }
@@ -1370,3 +1345,10 @@ private const val AUTOPLAY_SECONDS = 10
  * a list of 84×47 thumbs and a filename stops improving past ~460dp.
  */
 private const val SIDE_COLUMN_FRACTION = 0.34f
+
+/**
+ * How far the ambient bars are knocked back from the poster they are made
+ * of. Dark enough that the eye reads them as spill from the picture rather
+ * than as a second, blurrier picture competing with it.
+ */
+private val SPILL_SCRIM = Color(0xB8000000)

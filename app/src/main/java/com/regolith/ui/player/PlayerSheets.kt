@@ -39,12 +39,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.Chapter
 import androidx.compose.ui.platform.LocalConfiguration
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.theme.CardShape
+import androidx.compose.ui.text.style.TextOverflow
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.SheetShape
@@ -57,42 +59,37 @@ import com.regolith.ui.util.formatSpeed
 import com.regolith.ui.theme.scaledDp
 
 /**
- * Sheet container for the player (design section 10). Landscape gets a
- * 344dp side panel at #0A0A0A over a 70% scrim so the picture stays
- * visible while a setting changes; portrait a bottom sheet.
+ * Sheet container for the player. One shape in every orientation: a bottom
+ * sheet.
+ *
+ * The design (section 10) put a 344dp side panel on the landscape player.
+ * It was built and then rejected in use: a control you reach for while
+ * holding a phone sideways belongs under your thumbs, not against the far
+ * edge, and having the same settings arrive from two different directions
+ * depending on how you were holding the device made them feel like two
+ * different sheets. Scrolls internally when the content is taller than the
+ * window, which a short landscape window makes likely.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSheetHost(
-    landscape: Boolean,
     onDismiss: () -> Unit,
     testTag: String,
     content: @Composable () -> Unit,
 ) {
     val colors = RegolithTheme.colors
-    if (landscape) {
-        Box(
-            Modifier.fillMaxSize().background(Color(0xB3000000))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
-        ) {
-            Column(
-                Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(344.dp).background(colors.ground)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                    .verticalScroll(rememberScrollState()).padding(Spacing.s18).testTag(testTag),
-                verticalArrangement = Arrangement.spacedBy(Spacing.s18),
-            ) { content() }
-        }
-    } else {
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            shape = SheetShape,
-            containerColor = colors.surface,
-            contentColor = colors.ink,
-            dragHandle = null,
-        ) {
-            Column(Modifier.padding(Spacing.s18).navigationBarsPadding().testTag(testTag), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) { content() }
-        }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = SheetShape,
+        containerColor = colors.surface,
+        contentColor = colors.ink,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(Spacing.s18).navigationBarsPadding().testTag(testTag),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+        ) { content() }
     }
 }
 
@@ -271,6 +268,76 @@ private fun DecoderRow(title: String, meta: String, selected: Boolean, onClick: 
  * #161616 strip with the playhead as a 2dp white line, Point A and B
  * rows with joined −0.5s / +0.5s buttons, and Clear loop in red text.
  */
+/**
+ * The chapter list (the Chapters pill). Every marker the container carries,
+ * with the one the playhead is inside marked and the rest reading as a
+ * table of contents: name on the left, start time on the right.
+ *
+ * Tapping one seeks and closes — a chapter list is a way to get somewhere,
+ * so leaving it open over the picture would be a second tap to do nothing.
+ * The list is never empty here: the pill that opens it is only drawn when
+ * the file has chapters.
+ */
+@Composable
+fun ChaptersSheetContent(
+    chapters: List<Chapter>,
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    val currentIndex = chapters.indexOfLast { it.startMs <= positionMs }
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+        DisplayText("Chapters")
+        Text(
+            "${chapters.size} in this file",
+            style = TextStyles.meta12, color = colors.metadata,
+        )
+    }
+    Column(Modifier.testTag("player_chapters_list")) {
+        chapters.forEachIndexed { index, chapter ->
+            val playing = index == currentIndex
+            // The end of a chapter is the start of the next one; the last runs
+            // to the end of the film, which the container never states.
+            val endMs = chapters.getOrNull(index + 1)?.startMs ?: durationMs
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable(interactionSource = null, indication = null) { onSeek(chapter.startMs) }
+                    .padding(vertical = Spacing.s12)
+                    .testTag("player_chapter_$index"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
+            ) {
+                // A bar rather than a dot: it reads as "you are in here", which
+                // is what a chapter is, where a dot reads as a single instant.
+                Box(
+                    Modifier.width(3.dp).height(28.dp).clip(PillShape)
+                        .background(if (playing) colors.accent else Color.Transparent),
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                    Text(
+                        chapter.label(index),
+                        style = TextStyles.rowLabelMedium,
+                        color = if (playing) colors.ink else colors.body,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                    if (endMs > chapter.startMs) {
+                        Text(formatDurationShort(endMs - chapter.startMs), style = TextStyles.meta, color = colors.metadata, maxLines = 1)
+                    }
+                }
+                Text(
+                    formatClock(chapter.startMs),
+                    style = TextStyles.meta12,
+                    color = if (playing) colors.ink else colors.metadata,
+                )
+            }
+            if (index < chapters.lastIndex) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+            }
+        }
+    }
+}
+
 @Composable
 fun AbLoopSheetContent(
     loop: AbLoop,

@@ -42,3 +42,21 @@ interface FrameSourceFactory {
      */
     fun openLocal(file: File): FrameSource
 }
+
+/**
+ * "How long is this file, really?"
+ *
+ * The platform's `MediaMetadataRetriever` does not always say — some
+ * containers, some muxers, and the answer comes back null. That used to
+ * mean a frame grabbed at position 0, which is a black title card or a
+ * studio ident: the exact tile the midpoint grab exists to avoid. So the
+ * pipeline falls back to Media3's extractors, the same ones the player
+ * uses, through this seam.
+ *
+ * An interface rather than a direct call so `data/artwork` does not have
+ * to depend on Media3, and so a test can hand it a number.
+ */
+fun interface DurationProbe {
+    /** Milliseconds, or null when even the full probe cannot say. Blocks on the share. */
+    suspend fun durationMs(fileId: Long): Long?
+}

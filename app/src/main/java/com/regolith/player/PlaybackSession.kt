@@ -20,7 +20,9 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.PlaybackRepository
+import com.regolith.data.media.ChapterRepository
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -74,10 +76,20 @@ data class PlaybackState(
      * for all of them.
      */
     val queued: Boolean = false,
-    /** Chapter start positions. Empty until the container probe (Phase 4). */
-    val chaptersMs: List<Long> = emptyList(),
+    /**
+     * The file's chapter markers, read out of the container. Empty when it
+     * has none, which is most files; the Chapters pill and the ticks on the
+     * scrubber both appear only when this does not.
+     */
+    val chapters: List<Chapter> = emptyList(),
     val error: String? = null,
-)
+) {
+    /** Just the starts, for the ticks [com.regolith.ui.components.Scrubber] draws. */
+    val chapterTicks: List<Long> get() = chapters.map { it.startMs }
+
+    /** The chapter the playhead is inside, or null when the file has none. */
+    fun chapterAt(ms: Long): Chapter? = chapters.lastOrNull { it.startMs <= ms }
+}
 
 /**
  * The one ExoPlayer, owned by the app rather than by a screen (guardrail
@@ -102,6 +114,7 @@ class PlaybackSession @Inject constructor(
     private val prefs: AppPreferences,
     private val frames: FrameSourceFactory,
     private val local: LocalMedia,
+    private val chapterSource: ChapterRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(PlaybackState())
@@ -253,6 +266,13 @@ class PlaybackSession @Inject constructor(
             }
             currentUri = uri
             startPlayer(fileId, file, resume)
+            // After the player is started: the header read is worth a second
+            // of latency on a sheet nobody has opened yet, and never worth
+            // delaying the picture.
+            val marks = chapterSource.chapters(fileId)
+            if (marks.isNotEmpty() && _state.value.fileId == fileId) {
+                _state.update { it.copy(chapters = marks) }
+            }
             setScrubThumbnails(prefs.scrubThumbnails.first())
         }
     }
