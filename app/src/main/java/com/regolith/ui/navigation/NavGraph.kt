@@ -73,7 +73,6 @@ import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
-import com.regolith.ui.components.LocalMovingTiles
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
@@ -293,11 +292,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
 
     // Root container. testTagsAsResourceId: without this, uiautomator (and
     // therefore argent's `describe`) cannot see any Compose testTag at all.
-    val movingTiles by appViewModel.movingTiles.collectAsStateWithLifecycle()
     CompositionLocalProvider(
         LocalWindowShape provides windowShape,
         LocalNavPillInsets provides pillInsets,
-        LocalMovingTiles provides movingTiles,
     ) {
         Box(
             Modifier

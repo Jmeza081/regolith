@@ -55,8 +55,20 @@ class ArtworkCandidatesTest {
         assertTrue(ArtworkCandidates.forFolder(listOf(dir("A"), file("GH010423.MP4"))).isEmpty())
     }
 
-    @Test fun `frame grab position is ten percent of the runtime`() {
-        assertEquals(6_000L, ArtworkCandidates.framePositionMs(60_000))
+    @Test fun `frame grab position is the midpoint of the runtime`() {
+        assertEquals(30_000L, ArtworkCandidates.framePositionMs(60_000))
         assertEquals(0L, ArtworkCandidates.framePositionMs(0))
+    }
+
+    @Test fun `mosaic positions spread across the middle, one file or four`() {
+        // Four videos: one frame each, all from the midpoint.
+        assertEquals(listOf(30_000L), ArtworkCandidates.mosaicPositionsMs(60_000, 1))
+        // One video filling all four cells: 20% to 80%, evenly.
+        assertEquals(
+            listOf(12_000L, 24_000L, 36_000L, 48_000L),
+            ArtworkCandidates.mosaicPositionsMs(60_000, 4),
+        )
+        assertTrue(ArtworkCandidates.mosaicPositionsMs(0, 4).isEmpty())
+        assertTrue(ArtworkCandidates.mosaicPositionsMs(60_000, 0).isEmpty())
     }
 }

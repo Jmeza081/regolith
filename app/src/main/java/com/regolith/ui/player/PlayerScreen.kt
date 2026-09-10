@@ -171,7 +171,16 @@ fun PlayerScreen(
     val windowShape = LocalWindowShape.current
     val hinge = windowShape.hinge
     val flex = windowShape.posture == FoldPosture.TABLE_TOP && hinge != null
-    val immersive = !flex && (landscape || fullscreen)
+    // A wide window turned sideways is not a reason to fill it. On a phone,
+    // landscape IS full screen — there is nothing else 411dp of height can
+    // usefully hold. Unfolded, or on a tablet, there is room for the picture
+    // AND the folder beside it, so the sideways layout becomes the two-pane
+    // one and full screen goes back to being something you ask for.
+    val wide = windowShape.wide
+    val forcedFullscreen = landscape && !wide
+    val immersive = !flex && (forcedFullscreen || fullscreen)
+    // Video left, everything else in one column on the right (F9).
+    val sideBySide = !flex && !immersive && wide && landscape
 
     // Follow the phone's rotation; hide the system bars whenever the picture fills the screen.
     DisposableEffect(activity, immersive, flex, orientation) {
@@ -199,8 +208,8 @@ fun PlayerScreen(
         }
     }
 
-    // In portrait full screen, back is "leave full screen", not "leave the player".
-    BackHandler(enabled = fullscreen && !landscape) { fullscreen = false }
+    // Wherever full screen was a choice, back un-chooses it before it leaves the player.
+    BackHandler(enabled = fullscreen && !forcedFullscreen) { fullscreen = false }
 
     // Save progress when the app goes to the background mid-playback.
     DisposableEffect(lifecycleOwner) {
@@ -305,9 +314,10 @@ fun PlayerScreen(
         }
     }
 
-    // Only the strip layout has a full screen to enter or leave: landscape is
-    // already full-bleed, and flex mode is the hinge's layout, not a choice.
-    val canToggleFullscreen = !landscape && !flex
+    // Only a windowed layout has a full screen to enter or leave: a phone in
+    // landscape is already full-bleed, and flex mode is the hinge's layout,
+    // not a choice.
+    val canToggleFullscreen = !forcedFullscreen && !flex
     val gestures = remember(viewModel, system, canToggleFullscreen, fullscreen) {
         object : PlayerGestureCallbacks {
             private var dragValue = 0f
@@ -397,7 +407,7 @@ fun PlayerScreen(
     val chromeCallbacks = ChromeCallbacks(
         // Back is "step out one level": out of portrait full screen first,
         // out of the player only when there is no full screen to leave.
-        onBack = { if (fullscreen && !landscape) fullscreen = false else onBack() },
+        onBack = { if (fullscreen && !forcedFullscreen) fullscreen = false else onBack() },
         onTogglePlay = { viewModel.togglePlayPause(); controlsVisible = true },
         onSeekBy = { viewModel.seekBy(it); controlsVisible = true },
         onScrubStart = { scrubPreviewMs = state.positionMs; viewModel.onScrub(state.positionMs) },
@@ -428,7 +438,7 @@ fun PlayerScreen(
                 // The collapse glyph only appears when full screen was a
                 // choice; in landscape it is the rotation, so there is
                 // nothing for a button to undo.
-                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !landscape)
+                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen)
             } else {
                 PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
             }
@@ -489,6 +499,55 @@ fun PlayerScreen(
             if (dragDown > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dragDown * 0.45f)))
             // The map's three columns need the width; it stays a landscape lesson.
             if (showGestureMap && landscape) GestureMap(onDismiss = viewModel::dismissGestureMap)
+        }
+    } else if (sideBySide) {
+        // The picture keeps its 16:9 and sits centred in the left pane; the
+        // right one is a single scrolling column, so what is up next is
+        // beside the film rather than under it.
+        val sideWidth = (windowShape.width * SIDE_COLUMN_FRACTION).coerceIn(300.dp, 460.dp)
+        Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
+            AmbientGlow(state.fileId, Modifier.fillMaxSize())
+            Row(Modifier.fillMaxSize().systemBarsPadding()) {
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().padding(Spacing.s12),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                            .graphicsLayer { scaleX = pictureScale; scaleY = pictureScale },
+                    ) { video() }
+                }
+                SideColumn(
+                    modifier = Modifier.width(sideWidth).fillMaxHeight()
+                        .padding(end = Spacing.s18, top = Spacing.s18, bottom = Spacing.s12)
+                        .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) },
+                    state = state,
+                    onOpenPlayback = { sheet = Sheet.Playback },
+                    onLoopTap = viewModel::tapLoopPoint,
+                    onLoopClear = viewModel::clearLoop,
+                    onNudgeA = viewModel::nudgeLoopA,
+                    onNudgeB = viewModel::nudgeLoopB,
+                    onPlayNext = viewModel::playNext,
+                    settings = {
+                        PlaybackSheetContent(
+                            speed = state.speed,
+                            hardwareDecoding = state.hardwareDecoding,
+                            scrubThumbnails = scrubThumbnails,
+                            autoplayNext = autoplayNext,
+                            autoplayImmediately = autoplayImmediately,
+                            orientation = orientation,
+                            onSpeed = viewModel::setSpeed,
+                            onOrientation = viewModel::setOrientation,
+                            onHardwareDecoding = viewModel::setHardwareDecoding,
+                            onScrubThumbnails = viewModel::setScrubThumbnails,
+                            onAutoplayNext = viewModel::setAutoplayNext,
+                            onAutoplayImmediately = viewModel::setAutoplayImmediately,
+                            onClose = {},
+                            header = false,
+                        )
+                    },
+                )
+            }
         }
     } else {
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
@@ -832,6 +891,48 @@ private fun PortraitDetails(
         TitleBlock(state)
         PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false)
         NextInFolder(state, onPlayNext)
+        Spacer(Modifier.height(Spacing.s30))
+    }
+}
+
+/**
+ * The right-hand pane of the landscape two-pane player (F9): one scrolling
+ * column holding what the wide portrait layout spreads over two.
+ *
+ * The order is what you reach for, not what the design draws first: the
+ * title, the A–B pill, then the folder — the reason the pane exists — and
+ * the playback settings under it. Same components as every other layout;
+ * only the arrangement is new.
+ */
+@Composable
+private fun SideColumn(
+    modifier: Modifier,
+    state: PlaybackState,
+    onOpenPlayback: () -> Unit,
+    onLoopTap: () -> Unit,
+    onLoopClear: () -> Unit,
+    onNudgeA: (Long) -> Unit,
+    onNudgeB: (Long) -> Unit,
+    onPlayNext: (Long) -> Unit,
+    settings: @Composable () -> Unit,
+) {
+    val loop = state.loop
+    Column(
+        modifier.verticalScroll(rememberScrollState())
+            .testTag(if (loop != null) "player_loop_panel" else "player_details"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+    ) {
+        if (loop != null) {
+            AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
+        } else {
+            TitleBlock(state)
+            // Speed and decoder are the panel below; a pill that opened a
+            // sheet saying the same thing would be a second control for one
+            // setting. A–B stays: arming a loop has no other entry.
+            PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, settingsPills = false)
+        }
+        NextInFolder(state, onPlayNext)
+        if (loop == null) settings()
         Spacer(Modifier.height(Spacing.s30))
     }
 }
@@ -1261,3 +1362,11 @@ private const val FULLSCREEN_DRAG_FRACTION = 0.12f
  * stall on a film that has plainly finished.
  */
 private const val AUTOPLAY_SECONDS = 10
+
+/**
+ * The landscape two-pane player's share of the window for its right column,
+ * clamped to 300–460dp. A fraction rather than a fixed width so a tablet
+ * gives the picture more room than an unfolded phone does; a clamp because
+ * a list of 84×47 thumbs and a filename stops improving past ~460dp.
+ */
+private const val SIDE_COLUMN_FRACTION = 0.34f

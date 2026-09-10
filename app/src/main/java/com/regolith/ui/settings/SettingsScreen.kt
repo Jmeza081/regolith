@@ -170,11 +170,6 @@ fun SettingsScreen(
                             checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
                         )
                     }
-                    RegolithSwitch(
-                        label = "Moving tiles",
-                        note = "Tiles play a few seconds of the film. Built the first time you look at one, and kept here — see the artwork cache below.",
-                        checked = state.movingTiles, onCheckedChange = viewModel::setMovingTiles, testTag = "settings_moving_tiles_switch",
-                    )
                 }
             }
 

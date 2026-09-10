@@ -36,7 +36,6 @@ class AppPreferences @Inject constructor(
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val railHidden = booleanPreferencesKey("rail_hidden")
-        val movingTiles = booleanPreferencesKey("moving_tiles")
         val playerOrientation = stringPreferencesKey("player_orientation")
     }
 
@@ -110,18 +109,6 @@ class AppPreferences @Inject constructor(
 
     suspend fun setRailHidden(hidden: Boolean) {
         store.edit { it[Keys.railHidden] = hidden }
-    }
-
-    /**
-     * Settings › Display › Moving tiles. OFF by default, and deliberately:
-     * a moving tile costs twelve key-frame seeks over the share to generate
-     * and about ten times a still's disk space to keep, so a library that
-     * never turns it on pays nothing at all.
-     */
-    val movingTiles: Flow<Boolean> = store.data.map { it[Keys.movingTiles] ?: false }
-
-    suspend fun setMovingTiles(enabled: Boolean) {
-        store.edit { it[Keys.movingTiles] = enabled }
     }
 
     /**

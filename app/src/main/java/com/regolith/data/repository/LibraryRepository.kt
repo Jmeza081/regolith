@@ -43,6 +43,7 @@ class LibraryRepository @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val progressDao: PlaybackProgressDao,
     private val recentSearchDao: RecentSearchDao,
+    private val artwork: com.regolith.data.artwork.ArtworkRepository,
 ) {
     /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
     data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
@@ -156,6 +157,9 @@ class LibraryRepository @Inject constructor(
                 )
             }
         }
+        // A poster.jpg dropped into the folder since the last scan beats the
+        // mosaic the app stitched for it; this is the rescan that notices.
+        artwork.onFolderListed(folder.id, entries)
         // SQLite's NOT IN () with an empty list is fine in Room; it removes everything.
         folderDao.deleteChildrenNotIn(folder.id, dirPaths)
         mediaFileDao.markMissingNotIn(folder.id, filePaths)

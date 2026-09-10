@@ -16,11 +16,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
-import com.regolith.domain.artwork.PREVIEW_CELL_HEIGHT
-import com.regolith.domain.artwork.PREVIEW_CELL_WIDTH
-import com.regolith.domain.artwork.PREVIEW_COLUMNS
-import com.regolith.domain.artwork.PREVIEW_FRAMES
-import com.regolith.domain.artwork.previewPositionsMs
+import com.regolith.data.db.MediaFileEntity
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
@@ -71,20 +67,12 @@ class ArtworkRepository @Inject constructor(
     /** Two extractions at a time: enough to fill a grid, not enough to starve the player. */
     private val extractionSlots = Semaphore(2)
 
-    /**
-     * ONE preview at a time. A sheet is twelve key-frame seeks over SMB
-     * against a thumbnail's one, so a wall that asked for twenty at once
-     * would saturate the share and starve everything else — including
-     * playback, which reads through the same connection.
-     */
-    private val previewSlots = Semaphore(1)
-
-    /** One in-flight sheet per file, so two tiles of the same title share the work. */
-    private val previewsInFlight = mutableMapOf<ArtworkOwner, Deferred<Unit>>()
-
     /** One in-flight resolution per owner; a grid asking for poster and thumb shares it. */
     private val inFlight = mutableMapOf<ArtworkOwner, Deferred<Unit>>()
     private val inFlightLock = Mutex()
+
+    @Volatile private var generationChecked = false
+    private val generationLock = Mutex()
 
     /** Folder listings cached briefly so twenty tiles in one folder cost one SMB list. */
     private val listings = mutableMapOf<Pair<Long, String>, Pair<Long, List<SmbEntry>>>()
@@ -110,10 +98,8 @@ class ArtworkRepository @Inject constructor(
      * Null means "could not, try later" (share unreachable).
      */
     suspend fun resolve(request: ArtworkRequest): ArtworkEntity? {
+        ensureGeneration()
         cached(request)?.let { return it }
-        // Previews have their own pipeline: a different number of frames, a
-        // different shape on disk, and one at a time rather than two.
-        if (request.kind == ArtworkKind.PREVIEW) return resolvePreview(request)
         val job = inFlightLock.withLock {
             inFlight.getOrPut(request.owner) {
                 scope.async {
@@ -127,6 +113,39 @@ class ArtworkRepository @Inject constructor(
         }
         job.await()
         return cached(request)
+    }
+
+    /**
+     * Throw away everything the app generated itself when the rules that
+     * made it have changed since (see [ArtworkStore.GENERATION]). Images
+     * found on the share — a poster.jpg, embedded cover art — are not
+     * affected, because nothing about them has changed.
+     *
+     * Runs at most once per process, before the first resolution.
+     */
+    private suspend fun ensureGeneration() {
+        if (generationChecked) return
+        generationLock.withLock {
+            if (generationChecked) return
+            generationChecked = true
+            if (store.generation() >= ArtworkStore.GENERATION) return
+            val stale = artworkDao.generated()
+            Log.i(TAG, "artwork generation ${store.generation()} -> ${ArtworkStore.GENERATION}: dropping ${stale.size} generated rows")
+            for (row in stale) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+            artworkDao.deleteGenerated()
+            store.setGeneration(ArtworkStore.GENERATION)
+        }
+    }
+
+    /**
+     * A folder's stitched tile is a stand-in for a picture it did not have.
+     * When a scan finds that one has since been added, the mosaic row goes
+     * so the next request runs the source order again and lands on the real
+     * image (design section 08: a sidecar always wins).
+     */
+    suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
+        if (ArtworkCandidates.forFolder(entries).isEmpty()) return
+        artworkDao.deleteMosaic(ArtworkOwner.Folder(folderId).typeName, folderId)
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */
@@ -210,110 +229,115 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun resolveFolder(owner: ArtworkOwner.Folder) {
         val folder = folderDao.byId(owner.id) ?: return
-        val location = locate(folder.shareId) ?: return
-        val entries = listing(location, folder.shareId, folder.relPath)
-        for (candidate in ArtworkCandidates.forFolder(entries)) {
-            val path = if (folder.relPath.isEmpty()) candidate.name else "${folder.relPath}/${candidate.name}"
-            val bytes = readImage(location, path) ?: continue
-            if (saveEncoded(bytes, owner, candidate.source)) return
+        // A sidecar always wins, but it lives on the share, and the mosaic
+        // below may not need the share at all — the demo library and anything
+        // downloaded have local copies. So an unreachable share is remembered
+        // rather than thrown here, and only re-thrown if the mosaic also
+        // could not be made: "try again later" must not become a placeholder.
+        var unreachable: SmbFailure? = null
+        try {
+            locate(folder.shareId)?.let { location ->
+                for (candidate in ArtworkCandidates.forFolder(listing(location, folder.shareId, folder.relPath))) {
+                    val path = if (folder.relPath.isEmpty()) candidate.name else "${folder.relPath}/${candidate.name}"
+                    val bytes = readImage(location, path) ?: continue
+                    if (saveEncoded(bytes, owner, candidate.source)) return
+                }
+            }
+        } catch (e: SmbFailure) {
+            unreachable = e
         }
-        // A 2×2 mosaic of its files' frames arrives with collections in Phase 4.
+        if (mosaic(owner)) return
+        unreachable?.let { throw it }
         placeholder(owner)
     }
 
     /**
-     * A moving tile's sprite sheet: [PREVIEW_FRAMES] frames from across the
-     * middle of the film, packed into one grid and written as a single JPEG.
+     * A folder with no picture of its own gets one made out of its contents:
+     * [ArtworkCandidates.MOSAIC_CELLS] frames stitched into a grid, the way a
+     * photo album shows four of the photos inside it.
      *
-     * Only files have one — a collection has no runtime of its own. A file
-     * the decoder cannot read gets the usual PLACEHOLDER row so the wall
-     * stops asking, and a share that is merely unreachable records nothing
-     * and is tried again later.
+     * Written at each kind's own aspect rather than once and cropped: a 16:9
+     * grid squeezed into a 2:3 poster would slice the outer columns in half.
+     * Same four frames, composed twice — the seeks are the expensive part.
+     *
+     * All-or-nothing: a grid with a black hole in it looks broken in a way a
+     * plain placeholder does not.
      */
-    private suspend fun resolvePreview(request: ArtworkRequest): ArtworkEntity? {
-        val owner = request.owner as? ArtworkOwner.File ?: return null
-        val job = inFlightLock.withLock {
-            previewsInFlight.getOrPut(owner) {
-                scope.async {
-                    try {
-                        previewSlots.withPermit { buildPreview(owner) }
-                    } finally {
-                        inFlightLock.withLock { previewsInFlight.remove(owner) }
-                    }
-                }
-            }
-        }
-        job.await()
-        return cached(request)
-    }
+    private suspend fun mosaic(owner: ArtworkOwner.Folder): Boolean {
+        val files = mosaicFiles(owner.id)
+        if (files.isEmpty()) return false
+        // Fewer videos than cells: the ones there are each give several
+        // frames, so a folder holding one film still reads as that film.
+        val slots = IntArray(files.size)
+        for (i in 0 until ArtworkCandidates.MOSAIC_CELLS) slots[i % files.size]++
 
-    private suspend fun buildPreview(owner: ArtworkOwner.File) {
-        val file = mediaFileDao.byId(owner.id) ?: return
+        val cells = mutableListOf<Bitmap>()
         try {
-            val source = local.file(owner.id)?.let { frames.openLocal(it) } ?: run {
-                val location = locate(file.shareId) ?: return
-                frames.open(location.host, location.credentials, location.share, file.relPath)
-            }
-            source.use { open ->
-                val duration = open.durationMs ?: file.durationMs ?: 0L
-                val positions = previewPositionsMs(duration)
-                if (positions.isEmpty()) {
-                    recordPreviewPlaceholder(owner)
-                    return
-                }
-                val sheet = createBitmap(ArtworkKind.PREVIEW.width, ArtworkKind.PREVIEW.height)
-                val canvas = Canvas(sheet)
-                var drawn = 0
-                try {
-                    positions.forEachIndexed { index, positionMs ->
-                        val frame = open.frameAt(positionMs, PREVIEW_CELL_WIDTH, PREVIEW_CELL_HEIGHT) ?: return@forEachIndexed
-                        try {
-                            val cell = ArtworkStore.centerCrop(frame, PREVIEW_CELL_WIDTH, PREVIEW_CELL_HEIGHT)
-                            canvas.drawBitmap(
-                                cell,
-                                (index % PREVIEW_COLUMNS * PREVIEW_CELL_WIDTH).toFloat(),
-                                (index / PREVIEW_COLUMNS * PREVIEW_CELL_HEIGHT).toFloat(),
-                                null,
-                            )
-                            if (cell !== frame) cell.recycle()
-                            drawn++
-                        } finally {
-                            frame.recycle()
-                        }
+            for ((index, file) in files.withIndex()) {
+                openFrames(file)?.use { source ->
+                    val duration = source.durationMs ?: file.durationMs ?: 0L
+                    for (position in ArtworkCandidates.mosaicPositionsMs(duration, slots[index])) {
+                        cells += source.frameAt(position, MOSAIC_FRAME_MAX, MOSAIC_FRAME_MAX) ?: return false
                     }
-                    // A sheet with holes in it would stutter through black
-                    // cells; better no moving tile than a broken one.
-                    if (drawn == positions.size && store.saveExact(sheet, owner, ArtworkKind.PREVIEW)) {
-                        record(owner, ArtworkKind.PREVIEW, ArtworkSource.FRAMEGRAB)
-                        Log.d(TAG, "preview sheet for ${owner.id}: $drawn frames")
-                    } else {
-                        recordPreviewPlaceholder(owner)
+                }
+            }
+            if (cells.size != ArtworkCandidates.MOSAIC_CELLS) return false
+            var wrote = false
+            for (kind in ArtworkKind.stills) {
+                val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
+                val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
+                val grid = createBitmap(kind.width, kind.height)
+                val canvas = Canvas(grid)
+                try {
+                    cells.forEachIndexed { i, frame ->
+                        val cell = ArtworkStore.centerCrop(frame, cellW, cellH)
+                        canvas.drawBitmap(
+                            cell,
+                            (i % ArtworkCandidates.MOSAIC_COLUMNS * cellW).toFloat(),
+                            (i / ArtworkCandidates.MOSAIC_COLUMNS * cellH).toFloat(),
+                            null,
+                        )
+                        if (cell !== frame) cell.recycle()
+                    }
+                    if (store.saveExact(grid, owner, kind)) {
+                        record(owner, kind, ArtworkSource.MOSAIC)
+                        wrote = true
                     }
                 } finally {
-                    sheet.recycle()
+                    grid.recycle()
                 }
             }
-        } catch (e: SmbFailure) {
-            Log.w(TAG, "preview for $owner deferred: ${e.message}")
-        } catch (e: Exception) {
-            Log.w(TAG, "preview for $owner failed: $e")
-            recordPreviewPlaceholder(owner)
+            if (wrote) Log.d(TAG, "mosaic for folder ${owner.id} from ${files.size} file(s)")
+            return wrote
+        } finally {
+            cells.forEach { it.recycle() }
         }
     }
 
-    private suspend fun recordPreviewPlaceholder(owner: ArtworkOwner) {
-        artworkDao.upsert(
-            ArtworkEntity(
-                ownerType = owner.typeName,
-                ownerId = owner.id,
-                kind = ArtworkKind.PREVIEW.name,
-                source = ArtworkSource.PLACEHOLDER.name,
-                relPath = "",
-                width = 0,
-                height = 0,
-                updatedAtMs = System.currentTimeMillis(),
-            ),
-        )
+    /**
+     * Up to [ArtworkCandidates.MOSAIC_CELLS] videos to draw the mosaic from.
+     * A show folder holds seasons rather than files, so this walks down
+     * breadth-first until it has enough — that is what makes "Severance"
+     * get a tile at all.
+     */
+    private suspend fun mosaicFiles(folderId: Long): List<MediaFileEntity> {
+        val out = mutableListOf<MediaFileEntity>()
+        val queue = ArrayDeque(listOf(folderId))
+        var visited = 0
+        while (queue.isNotEmpty() && out.size < ArtworkCandidates.MOSAIC_CELLS && visited < MOSAIC_MAX_FOLDERS) {
+            val id = queue.removeFirst()
+            visited++
+            out += mediaFileDao.inFolder(id).take(ArtworkCandidates.MOSAIC_CELLS - out.size)
+            if (out.size < ArtworkCandidates.MOSAIC_CELLS) queue += folderDao.children(id).map { it.id }
+        }
+        return out
+    }
+
+    /** The file's frames, from a copy on this device if there is one, else the share. */
+    private suspend fun openFrames(file: MediaFileEntity): FrameSource? {
+        local.file(file.id)?.let { return frames.openLocal(it) }
+        val location = locate(file.shareId) ?: return null
+        return frames.open(location.host, location.credentials, location.share, file.relPath)
     }
 
     private suspend fun saveEncoded(bytes: ByteArray, owner: ArtworkOwner, source: ArtworkSource): Boolean {
@@ -417,5 +441,9 @@ class ArtworkRepository @Inject constructor(
         // Grab at poster height so the 500×750 crop is not upscaled from a 16:9 frame.
         const val FRAME_MAX_WIDTH = 1334
         const val FRAME_MAX_HEIGHT = 750
+        /** A mosaic cell is at most 250×375, so this covers it without decoding a full frame per cell. */
+        const val MOSAIC_FRAME_MAX = 720
+        /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
+        const val MOSAIC_MAX_FOLDERS = 24
     }
 }

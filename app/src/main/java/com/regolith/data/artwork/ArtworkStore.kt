@@ -83,6 +83,24 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    /**
+     * Which generation of the *rules* the cached images were made under.
+     * Bumping [ArtworkStore.GENERATION] is how a change to where a frame is
+     * grabbed reaches a library that already has thumbnails: the app throws
+     * away only what it generated itself and rebuilds it on demand.
+     *
+     * A file rather than a preference so the marker lives and dies with the
+     * directory it describes — clearing the cache clears the marker too.
+     */
+    fun generation(): Int = runCatching { File(root, GENERATION_FILE).readText().trim().toInt() }.getOrDefault(0)
+
+    fun setGeneration(value: Int) {
+        runCatching {
+            root.mkdirs()
+            File(root, GENERATION_FILE).writeText(value.toString())
+        }
+    }
+
     fun delete(owner: ArtworkOwner) {
         File(root, "${owner.typeName}/${owner.id}").deleteRecursively()
     }
@@ -95,6 +113,14 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
 
     companion object {
         const val JPEG_QUALITY = 85
+
+        /**
+         * Bump when a change makes existing generated images wrong.
+         * 2: the frame grab moved from 10% of the runtime to the midpoint,
+         *    and folders without a sidecar gained a mosaic.
+         */
+        const val GENERATION = 2
+        const val GENERATION_FILE = ".generation"
 
         fun sampleSize(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Int {
             var sample = 1

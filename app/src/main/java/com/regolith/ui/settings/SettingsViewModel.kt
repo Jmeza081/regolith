@@ -68,7 +68,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoplayNext.collect { v -> _uiState.update { it.copy(autoplayNext = v) } } }
         viewModelScope.launch { prefs.autoplayImmediately.collect { v -> _uiState.update { it.copy(autoplayImmediately = v) } } }
         viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
-        viewModelScope.launch { prefs.movingTiles.collect { v -> _uiState.update { it.copy(movingTiles = v) } } }
         viewModelScope.launch {
             demo.installed.collect { installed ->
                 val bytes = withContext(Dispatchers.IO) { demo.usedBytes() }
@@ -105,7 +104,6 @@ class SettingsViewModel @Inject constructor(
     fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
     fun setAutoplayImmediately(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayImmediately(enabled) }.let { }
     fun setAutoHideRail(enabled: Boolean) = viewModelScope.launch { prefs.setAutoHideRail(enabled) }.let { }
-    fun setMovingTiles(enabled: Boolean) = viewModelScope.launch { prefs.setMovingTiles(enabled) }.let { }
 
     /**
      * Settings › Demo library. Installing replaces whatever was there, so

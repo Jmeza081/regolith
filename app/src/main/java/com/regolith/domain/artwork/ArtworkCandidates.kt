@@ -20,8 +20,35 @@ object ArtworkCandidates {
     /** "≤ 8 MB per image": anything bigger is skipped, not downsampled. */
     const val MAX_IMAGE_BYTES = 8L * 1024 * 1024
 
-    /** Where in the file to grab the frame: 10% of the runtime. */
-    fun framePositionMs(durationMs: Long): Long = (durationMs / 10).coerceAtLeast(0)
+    /**
+     * Where in the file to grab the frame: the midpoint.
+     *
+     * It used to be 10%, which is where a title card or a studio ident
+     * usually still is. A folder of episodes that share an intro then
+     * produced a folder of identical tiles. Half way in is past every
+     * intro and well short of the credits, so sibling episodes get
+     * visibly different frames.
+     */
+    fun framePositionMs(durationMs: Long): Long = (durationMs / 2).coerceAtLeast(0)
+
+    /**
+     * Where the [MOSAIC_CELLS] frames of a folder mosaic come from within
+     * ONE of its videos, when the folder holds fewer videos than cells:
+     * evenly spread across the middle of the runtime.
+     */
+    fun mosaicPositionsMs(durationMs: Long, count: Int): List<Long> {
+        if (durationMs <= 0 || count <= 0) return emptyList()
+        if (count == 1) return listOf(framePositionMs(durationMs))
+        val start = (durationMs * 0.20).toLong()
+        val end = (durationMs * 0.80).toLong()
+        val step = (end - start) / (count - 1)
+        return List(count) { start + step * it }
+    }
+
+    /** A folder mosaic is 2x2: four frames is enough to read as "these films", and costs four seeks. */
+    const val MOSAIC_COLUMNS = 2
+    const val MOSAIC_ROWS = 2
+    const val MOSAIC_CELLS = MOSAIC_COLUMNS * MOSAIC_ROWS
 
     data class Candidate(val name: String, val source: ArtworkSource)
 

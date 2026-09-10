@@ -320,29 +320,64 @@ has no business knowing what a wall is — and the ids ride on
 dropped as soon as a file outside it is opened, and `state.queued` makes it
 beat the "Keep playing" switch.
 
-### Moving tiles
+### Moving tiles, and why they are gone again (F9)
 
-`Settings › Display › Moving tiles`, **off by default**. A tile that has
-been on screen for 700ms asks for `ArtworkKind.PREVIEW`: twelve 240×135
-frames from across the middle of the runtime, packed into one 960×405 JPEG
-and drawn a cell at a time at 4fps over the still.
+F7 added `Settings › Display › Moving tiles`: twelve 240×135 frames packed
+into one JPEG sprite sheet and drawn a cell at a time at 4fps over the
+still. The mechanism worked. The picture did not — 240×135 is what made a
+wall of eighteen affordable, and at tile size it reads as a smear playing
+over the crisp 500×750 still underneath it.
 
-Why a sprite sheet and not an animated image: **Android can decode animated
-WebP and GIF but cannot encode either** — there is no public API. Twelve
-separate frames would be twelve Coil entries and twelve decodes per tile;
-one sheet is one of each.
+So the whole feature is out: `ArtworkKind.PREVIEW`, the sheet builder, the
+`previewSlots` semaphore, the setting and its preference key. What is left
+is the still, which was always the better picture, and the twelve seeks per
+file and ~3× disk it cost are back in the bank.
 
-Why not real video: the inner-display wall shows eighteen tiles, and no
-phone will give you eighteen concurrent hardware decoder instances. Media3
-fails hard when they run out.
+Kept from the entry for the record, since it is the reason nobody should
+try it as an animated file: **Android can decode animated WebP and GIF but
+cannot encode either** — there is no public API. And real video is out
+because no phone will give you eighteen concurrent hardware decoder
+instances; Media3 fails hard rather than degrading when they run out.
 
-What it costs, measured on the demo library: **42 KB a sheet**, against
-15 KB for a title's poster and thumb together — so roughly 3× a title's
-artwork, or about 57 MB for a thousand-file library where the stills alone
-would be 15 MB. Generation is twelve key-frame seeks per file, serialised
-one at a time (`previewSlots`) because they read through the same connection
-as playback. Settings › Media already reports and clears the artwork cache,
-so the growth stays visible and reversible.
+## F9 — round five
+
+### The landscape player stops being full screen
+
+Landscape used to mean full screen, full stop: `immersive = landscape ||
+fullscreen`. On a phone that is right — 411dp of height has nothing else to
+usefully hold. Unfolded it threw away the best screen in the app. The wide
+*portrait* player already shows the film over two columns of title, pills,
+playback settings and "Next in this folder"; turning the device sideways
+replaced all of it with a picture.
+
+Now `forcedFullscreen = landscape && !wide`, and a wide window turned
+sideways gets `SideColumn`: the picture keeps its 16:9 and sits centred in
+the left pane, and the right pane is ONE scrolling column — title and meta,
+the A–B pill, the folder, then Speed / Rotation / Decoder. YouTube's shape,
+for YouTube's reason: what plays next belongs beside the film, not under it.
+
+Full screen is then a deliberate act everywhere it is possible — the corner
+glyph, or a drag up through the middle third — and back or a drag down
+leaves it. `canToggleFullscreen` is simply `!forcedFullscreen && !flex`,
+which is also what decides whether the collapse glyph is drawn.
+
+The column is `windowShape.width * 0.34`, clamped to 300–460dp: a fraction
+so a tablet gives the picture more room than an unfolded phone, a clamp
+because a list of 84×47 thumbs and a filename stops improving past ~460dp.
+
+### Thumbnails come from the middle of the film
+
+See `ARCHITECTURE.md` for the decision and the `ArtworkStore.GENERATION`
+migration. The short version: a season of episodes that share an intro was
+a grid of the same frame, because the grab was at 10%. It is now at 50%.
+
+### Folders without a picture get a mosaic
+
+A collection with no `folder.jpg` drew a grey wedge. It now draws four
+frames from the videos inside it, stitched 2×2 and composed separately at
+poster and thumb aspect. A sidecar still wins: dropping one in and
+rescanning drops the mosaic row and the next request finds the real image.
+
 
 Verified on the Pixel_Fold AVD: the detached rail button, both Settings
 sections, the drag in both directions mid-gesture, Play all from both a

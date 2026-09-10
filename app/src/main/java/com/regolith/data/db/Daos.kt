@@ -335,6 +335,17 @@ interface ArtworkDao {
     @Query("SELECT COUNT(*) FROM artwork WHERE source != 'PLACEHOLDER'")
     fun observeCount(): Flow<Int>
 
+    /** Rows the app made itself, as opposed to an image found on the share. */
+    @Query("SELECT * FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
+    suspend fun generated(): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
+    suspend fun deleteGenerated()
+
+    /** Drops a folder's mosaic so the next request re-runs the source order and finds the new sidecar. */
+    @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND source = 'MOSAIC'")
+    suspend fun deleteMosaic(ownerType: String, ownerId: Long)
+
     @Query("DELETE FROM artwork")
     suspend fun deleteAll()
 }
