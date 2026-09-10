@@ -7,6 +7,7 @@ import coil3.request.crossfade
 import com.regolith.data.artwork.ArtworkFetcher
 import com.regolith.data.artwork.ArtworkKeyer
 import com.regolith.data.artwork.DurationProbe
+import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.artwork.RetrieverFrameSource
 import com.regolith.data.transfer.TransferScheduler
@@ -24,6 +25,7 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class ArtworkModule {
     @Binds abstract fun bindFrameSourceFactory(impl: RetrieverFrameSource.Factory): FrameSourceFactory
+    @Binds abstract fun bindFrameGrabber(impl: com.regolith.player.Media3Frames): FrameGrabber
     @Binds abstract fun bindTransferScheduler(impl: WorkManagerTransferScheduler): TransferScheduler
 
     companion object {

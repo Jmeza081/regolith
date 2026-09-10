@@ -23,6 +23,7 @@ import com.regolith.data.repository.PlaybackRepository
 import com.regolith.data.media.ChapterRepository
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
+import com.regolith.domain.playback.ChapterMarks
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -77,13 +78,26 @@ data class PlaybackState(
      */
     val queued: Boolean = false,
     /**
-     * The file's chapter markers, read out of the container. Empty when it
-     * has none, which is most files; the Chapters pill and the ticks on the
-     * scrubber both appear only when this does not.
+     * The markers the CONTAINER carries, if any. Read [chapters] instead —
+     * this is the raw half of it.
      */
-    val chapters: List<Chapter> = emptyList(),
+    val containerChapters: List<Chapter> = emptyList(),
     val error: String? = null,
 ) {
+    /**
+     * Where you can jump to. The container's own markers when it has them,
+     * otherwise the runtime cut into even parts — so every film has them,
+     * and a file that was muxed without chapters is no worse off.
+     *
+     * Derived rather than stored: the even divisions depend on [durationMs],
+     * which arrives from the player a moment after the file does.
+     */
+    val chapters: List<Chapter>
+        get() = containerChapters.ifEmpty { ChapterMarks.evenly(durationMs) }
+
+    /** True when a person named these; false when they are even divisions. */
+    val chaptersFromContainer: Boolean get() = containerChapters.isNotEmpty()
+
     /** Just the starts, for the ticks [com.regolith.ui.components.Scrubber] draws. */
     val chapterTicks: List<Long> get() = chapters.map { it.startMs }
 
@@ -271,7 +285,7 @@ class PlaybackSession @Inject constructor(
             // delaying the picture.
             val marks = chapterSource.chapters(fileId)
             if (marks.isNotEmpty() && _state.value.fileId == fileId) {
-                _state.update { it.copy(chapters = marks) }
+                _state.update { it.copy(containerChapters = marks) }
             }
             setScrubThumbnails(prefs.scrubThumbnails.first())
         }

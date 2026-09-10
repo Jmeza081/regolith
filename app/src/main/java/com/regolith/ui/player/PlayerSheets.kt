@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
+import com.regolith.domain.playback.ChapterMarks
 import androidx.compose.ui.platform.LocalConfiguration
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
@@ -283,14 +284,18 @@ fun ChaptersSheetContent(
     chapters: List<Chapter>,
     positionMs: Long,
     durationMs: Long,
+    fromContainer: Boolean,
     onSeek: (Long) -> Unit,
 ) {
     val colors = RegolithTheme.colors
     val currentIndex = chapters.indexOfLast { it.startMs <= positionMs }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
         DisplayText("Chapters")
+        // Which kind you are looking at, because it changes what the names
+        // mean: "Act one" was written by someone, "Part 3" is arithmetic.
         Text(
-            "${chapters.size} in this file",
+            if (fromContainer) "${chapters.size} marked in this file"
+            else everyLabel(ChapterMarks.intervalFor(durationMs)),
             style = TextStyles.meta12, color = colors.metadata,
         )
     }
@@ -336,6 +341,16 @@ fun ChaptersSheetContent(
             }
         }
     }
+}
+
+/** "Every 5 minutes" reads; "Every 5m 00s" does not. */
+private fun everyLabel(intervalMs: Long?): String {
+    if (intervalMs == null || intervalMs <= 0) return "Evenly spaced"
+    if (intervalMs % 60_000L == 0L) {
+        val minutes = intervalMs / 60_000L
+        return if (minutes == 1L) "Every minute" else "Every $minutes minutes"
+    }
+    return "Every ${intervalMs / 1000L} seconds"
 }
 
 @Composable

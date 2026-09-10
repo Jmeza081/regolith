@@ -13,10 +13,20 @@ enum class ArtworkKind(val width: Int, val height: Int, val fileName: String) {
     /** Resume row, Browse grid, search results, the player's scrub preview size. */
     THUMB(320, 180, "thumb.jpg"),
 
+    /**
+     * Title Detail's hero, and nothing else. 16:9 at 720p because it is drawn
+     * across the FULL width of the window — 2076px on the inner display —
+     * where a [THUMB] was being blown up more than six times and looked it.
+     *
+     * Not one of the [stills]: it is four times a thumb's bytes, and a wall
+     * of two hundred tiles has no use for it. It is generated on demand, for
+     * the one title you actually opened.
+     */
+    BACKDROP(1280, 720, "backdrop.jpg"),
     ;
 
     companion object {
-        /** Both kinds, which every frame grab, sidecar and mosaic writes together. */
+        /** What a grid needs, and what every frame grab, sidecar and mosaic writes together. */
         val stills = listOf(POSTER, THUMB)
     }
 }

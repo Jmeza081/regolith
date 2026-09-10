@@ -60,3 +60,23 @@ fun interface DurationProbe {
     /** Milliseconds, or null when even the full probe cannot say. Blocks on the share. */
     suspend fun durationMs(fileId: Long): Long?
 }
+
+/** A frame, and the position it ACTUALLY came from — not the one that was asked for. */
+class GrabbedFrame(val bitmap: android.graphics.Bitmap, val presentationTimeMs: Long)
+
+/**
+ * One still, taken the way the player would take it.
+ *
+ * Separate from [FrameSource] because it answers a different question: a
+ * FrameSource is an open file you ask repeatedly (the scrub previews), and
+ * this is one frame with a receipt saying where it came from. That receipt
+ * is the whole point — the platform extractor silently returns the opening
+ * frame when it cannot seek, and nothing downstream could tell.
+ *
+ * An interface so `data/artwork` keeps no Media3 dependency, and so a test
+ * can hand back whatever it likes.
+ */
+fun interface FrameGrabber {
+    /** Null when the platform cannot do it at all; the caller then falls back. */
+    suspend fun frameAt(fileId: Long, positionMs: Long, maxWidth: Int, maxHeight: Int): GrabbedFrame?
+}

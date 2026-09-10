@@ -7,6 +7,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -210,13 +215,24 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // and our own slide transitions, exactly as before F2.
     // Where the divider can rest. Dragging settles onto one of these rather
     // than landing anywhere: a split you cannot reproduce is a split you have
-    // to keep fixing. The first collapses the wall behind the rail, the last
-    // squeezes the detail to a sliver; the middle one is the even split both
-    // are measured against, and the one the handle's reset button restores.
-    val railAnchor = remember(railInset) { PaneExpansionAnchor.Offset.fromStart(railInset) }
+    // to keep fixing.
+    //
+    // The two ends are deliberately asymmetric, the way every foldable mail
+    // app does it. Dragging LEFT stops at [minListAnchor] — the wall never
+    // collapses, because a two-pane screen with no list is just the detail
+    // with a stripe down the side, and the rail is already how you leave.
+    // Dragging RIGHT goes all the way: the detail is dismissed rather than
+    // squeezed, so nothing ever reflows into a column too narrow to read.
+    // The middle one is the even split both are measured against, and the
+    // one the handle's reset button restores.
+    val minListAnchor = remember(railInset) { PaneExpansionAnchor.Offset.fromStart(railInset + MIN_WALL_WIDTH) }
     val defaultAnchor = remember(listPaneWidth) { PaneExpansionAnchor.Offset.fromStart(listPaneWidth) }
-    val anchors = remember(railAnchor, defaultAnchor) {
-        listOf(railAnchor, defaultAnchor, PaneExpansionAnchor.Proportion(0.85f))
+    val fullListAnchor = remember { PaneExpansionAnchor.Proportion(1f) }
+    val anchors = remember(minListAnchor, defaultAnchor, fullListAnchor) {
+        // A window barely over the two-pane threshold can put the minimum
+        // past the even split; ordered and de-duplicated so the state never
+        // sees anchors that cross.
+        listOf(minListAnchor, defaultAnchor, fullListAnchor).distinct()
     }
     // Written where the strategy is built, read by the reset-on-close effect
     // below. A plain var is enough: both happen in this composition, in order.
@@ -428,6 +444,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             }
                         }
                         entry<RegolithKey.TitleDetail>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+                            DismissiblePane {
                             TitleDetailScreen(
                                 viewModel = hiltViewModel<TitleDetailViewModel, TitleDetailViewModel.Factory>(
                                     creationCallback = { it.create(key.fileId) },
@@ -436,6 +453,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onPlay = { backStack.add(RegolithKey.Player(it)) },
                                 inPane = paneListKey != null,
                             )
+                            }
                         }
                         entry<RegolithKey.Settings>(metadata = tabScreen) {
                             tabContent {
@@ -563,6 +581,46 @@ private const val RAIL_IDLE_MS = 3_000L
  * this plus the rail it contains.
  */
 private val WALL_WIDTH = 364.dp
+
+/**
+ * How narrow the wall may be dragged before the divider refuses to go
+ * further: two poster columns and their gutter. Below this the wall stops
+ * being a wall, and a pane that can be dragged out of existence is a pane
+ * you lose by accident.
+ */
+private val MIN_WALL_WIDTH = 240.dp
+
+/**
+ * Below this the detail pane is on its way out, and above [PANE_FULL_WIDTH]
+ * it is fully itself. Between the two it fades, so dragging the divider to
+ * the right dismisses the detail instead of crushing it — which is what the
+ * old 0.85 anchor did, leaving a column of one-word lines.
+ */
+private val PANE_GONE_WIDTH = 40.dp
+private val PANE_FULL_WIDTH = 260.dp
+
+/**
+ * A pane that leaves rather than shrinks.
+ *
+ * Its content is laid out at [PANE_FULL_WIDTH] however narrow the pane
+ * actually gets, and the overflow is clipped — so the words never reflow on
+ * the way out, the pane just slides under the divider and fades. Below
+ * [PANE_GONE_WIDTH] it is not composed at all.
+ */
+@Composable
+private fun DismissiblePane(content: @Composable () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
+        val width = maxWidth
+        if (width <= PANE_GONE_WIDTH) return@BoxWithConstraints
+        val visible = ((width - PANE_GONE_WIDTH) / (PANE_FULL_WIDTH - PANE_GONE_WIDTH)).coerceIn(0f, 1f)
+        Box(
+            Modifier
+                .requiredWidth(maxOf(width, PANE_FULL_WIDTH))
+                .fillMaxHeight()
+                .graphicsLayer { alpha = visible },
+        ) { content() }
+    }
+}
 
 /**
  * The detail pane before a title is chosen (wide windows only). The wall is

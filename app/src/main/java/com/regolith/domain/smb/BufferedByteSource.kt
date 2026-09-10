@@ -17,6 +17,15 @@ package com.regolith.domain.smb
  * megabyte: measured at 23 reads, 62 KB, 4.5 s per frame. A handful of
  * smaller blocks keeps both regions resident. The player reads mostly
  * forward and keeps the one-block default.
+ *
+ * **Thread safe, and it has to be.** Both readers above it — ExoPlayer's
+ * loader and `MediaMetadataRetriever`'s native decoder — call [readAt]
+ * from threads this class does not own, and the retriever in particular
+ * reads from more than one. An access-ordered `LinkedHashMap` mutates on
+ * every *get*, so two concurrent reads could corrupt the map or hand back
+ * a block that had already been evicted, and the symptom of that is a
+ * frame decoded from the wrong bytes — on a share, never on a local file,
+ * which is exactly the shape of bug that hides for months.
  */
 class BufferedByteSource(
     private val source: SeekableByteSource,
@@ -36,7 +45,11 @@ class BufferedByteSource(
         if (length == 0) return 0
         if (offset >= size) return -1
         val start = offset - (offset % blockSize) // align so sequential reads walk whole blocks
-        val block = blocks[start] ?: fill(start) ?: return -1
+        // Only the cache is guarded; the copy out is not, because the block's
+        // bytes never change once it is filled. Fetching inside the lock does
+        // serialise two readers that miss at the same time — which is the
+        // point: they would otherwise fetch the same block twice.
+        val block = synchronized(blocks) { blocks[start] ?: fill(start) } ?: return -1
         val inBlock = (offset - start).toInt()
         if (inBlock >= block.length) return -1
         val n = minOf(length, block.length - inBlock)
@@ -59,7 +72,7 @@ class BufferedByteSource(
     }
 
     override fun close() {
-        blocks.clear()
+        synchronized(blocks) { blocks.clear() }
         source.close()
     }
 

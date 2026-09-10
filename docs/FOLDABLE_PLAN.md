@@ -496,3 +496,62 @@ the midpoint change exists to avoid.
 
 `adb logcat -s Regolith/Artwork` now says, per file, where the frame came
 from and how the runtime behind it was arrived at.
+
+## F11 — round seven
+
+### Chapters are for every file, not the lucky ones
+
+A chapter list exists so you can jump through a film. Tying that to whether
+the file happened to be muxed with markers made it a feature almost nothing
+had. Now the container's markers win when there are any, and everything else
+gets `ChapterMarks.evenly`: the runtime cut at a round interval off a ladder
+(10 s, 15 s, 30 s, 1/2/5/10/15 min), the first one that gets the count to
+twelve or under.
+
+Round rather than arithmetic on purpose — "every 10 minutes" is a thing you
+can hold in your head. The sheet's subtitle says which kind you are looking
+at, because it changes what the names mean.
+
+### The thumbnail bug, and what it actually was
+
+The midpoint fix (F9) and the runtime fallback (F10) were both right and
+neither was enough, because the last link was never checked: **the platform
+retriever does not tell you which frame it gave you.** Ask it to seek, and
+if it cannot, it returns the opening frame and says nothing.
+
+So artwork extraction moved to Media3's `FrameExtractor` — the same
+extractors and the same `SmbDataSource` the player uses, and a
+`presentationTimeMs` on every frame. The log now prints where the frame
+really came from and warns when it is more than 30 s from where it was
+asked for.
+
+**How it was proven**, worth keeping for the next time: a fixture whose hue
+sweeps once over ten minutes, so the colour of any frame states its own
+timestamp. `ffmpeg -f lavfi -i "color=c=red:s=1280x720:r=10:d=600" -vf
+"hue=H=2*PI*t/600"`, pushed over the demo library's files, and every
+thumbnail read back as 300.7 s of a 600 s clip.
+
+Found on the way: `BufferedByteSource` was not thread safe, and its LRU
+mutates on reads. Two concurrent reads could hand back an evicted block —
+over a share, never on a local file.
+
+**The cost**, taken deliberately: an ExoPlayer and a GL context per
+extraction, 1–3 s against the retriever's 250 ms on a local file. It is one
+still per file, the gap narrows over SMB where I/O dominates, and the
+retriever stays the fallback and stays the scrub-preview path.
+
+### A backdrop that is not a blown-up thumbnail
+
+Title Detail's hero was drawing the 320x180 thumb across 2076px. There is
+now a 1280x720 `BACKDROP`, generated on demand for the one title you opened
+rather than for every tile on a wall. The player's ambient glow takes it too:
+16:9 is the right shape for spill behind a 16:9 picture.
+
+### The divider stops one way and dismisses the other
+
+Both ends used to squeeze. Now dragging LEFT stops at the wall's minimum —
+rail plus 240dp, two poster columns — and dragging RIGHT dismisses the
+detail entirely. `DismissiblePane` lays the detail out at a fixed 260dp
+however narrow the pane gets and clips it, so nothing reflows into a column
+of one-word lines: it slides under the divider and fades out, and below
+40dp it is not composed at all. The handle's reset button brings it back.

@@ -68,7 +68,9 @@ class TitleDetailViewModel @AssistedInject constructor(
                     it.copy(
                         loaded = true,
                         title = file.name.substringBeforeLast('.'),
-                        artwork = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB),
+                        // The hero runs the full width of the window — 2076px unfolded —
+                        // so it takes the 1280x720 backdrop, not the 320x180 tile thumb.
+                        artwork = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP),
                         chips = chipsFor(file),
                         progressMs = progress?.positionMs?.takeIf { p -> p > 0 },
                         durationMs = progress?.durationMs ?: file.durationMs,

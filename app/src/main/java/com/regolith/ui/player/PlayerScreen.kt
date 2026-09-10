@@ -641,6 +641,7 @@ fun PlayerScreen(
                 chapters = state.chapters,
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
+                fromContainer = state.chaptersFromContainer,
                 onSeek = { ms -> viewModel.seekTo(ms); sheet = null },
             )
         }
@@ -1285,7 +1286,10 @@ private fun StripCell(frame: StripFrame, current: Boolean, onSeek: () -> Unit, m
 @Composable
 private fun AmbientGlow(fileId: Long?, modifier: Modifier = Modifier, spill: Boolean = false) {
     if (fileId == null) return
-    val request = remember(fileId) { ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.POSTER) }
+    // The backdrop, not the poster: this sits behind a 16:9 picture and
+    // fills the bands beside it, so a 2:3 centre crop would show the
+    // middle strip of the frame stretched across the whole window.
+    val request = remember(fileId) { ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP) }
     Box(modifier.clipToBounds()) {
         SubcomposeAsyncImage(
             model = request,

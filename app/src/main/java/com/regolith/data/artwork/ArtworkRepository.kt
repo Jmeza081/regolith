@@ -22,6 +22,7 @@ import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -62,14 +63,19 @@ class ArtworkRepository @Inject constructor(
     private val store: ArtworkStore,
     private val local: com.regolith.player.LocalMedia,
     private val durations: DurationProbe,
+    private val grabber: FrameGrabber,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Two extractions at a time: enough to fill a grid, not enough to starve the player. */
     private val extractionSlots = Semaphore(2)
 
-    /** One in-flight resolution per owner; a grid asking for poster and thumb shares it. */
-    private val inFlight = mutableMapOf<ArtworkOwner, Deferred<Unit>>()
+    /**
+     * One in-flight resolution per (owner, is-backdrop); a grid asking for a
+     * poster and a thumb of the same title shares one, and a backdrop request
+     * arriving at the same time does not wait behind it.
+     */
+    private val inFlight = mutableMapOf<Pair<ArtworkOwner, Boolean>, Deferred<Unit>>()
     private val inFlightLock = Mutex()
 
     @Volatile private var generationChecked = false
@@ -101,13 +107,19 @@ class ArtworkRepository @Inject constructor(
     suspend fun resolve(request: ArtworkRequest): ArtworkEntity? {
         ensureGeneration()
         cached(request)?.let { return it }
+        // A backdrop is four times a thumb's bytes and only Title Detail wants
+        // one, so it is never written alongside the stills — it has its own
+        // key, its own in-flight entry and its own trip through the source
+        // order, run for the one title you opened.
+        val kinds = if (request.kind == ArtworkKind.BACKDROP) BACKDROP_ONLY else ArtworkKind.stills
+        val key = request.owner to (request.kind == ArtworkKind.BACKDROP)
         val job = inFlightLock.withLock {
-            inFlight.getOrPut(request.owner) {
+            inFlight.getOrPut(key) {
                 scope.async {
                     try {
-                        extractionSlots.withPermit { resolveOwner(request.owner) }
+                        extractionSlots.withPermit { resolveOwner(request.owner, kinds) }
                     } finally {
-                        inFlightLock.withLock { inFlight.remove(request.owner) }
+                        inFlightLock.withLock { inFlight.remove(key) }
                     }
                 }
             }
@@ -168,30 +180,30 @@ class ArtworkRepository @Inject constructor(
 
     // --- the pipeline
 
-    private suspend fun resolveOwner(owner: ArtworkOwner) {
+    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>) {
         try {
             when (owner) {
-                is ArtworkOwner.File -> resolveFile(owner)
-                is ArtworkOwner.Folder -> resolveFolder(owner)
+                is ArtworkOwner.File -> resolveFile(owner, kinds)
+                is ArtworkOwner.Folder -> resolveFolder(owner, kinds)
             }
         } catch (e: SmbFailure) {
             Log.w(TAG, "artwork for $owner deferred: ${e.message}")
         } catch (e: Exception) {
             Log.w(TAG, "artwork for $owner failed: $e")
-            placeholder(owner)
+            placeholder(owner, kinds)
         }
     }
 
-    private suspend fun resolveFile(owner: ArtworkOwner.File) {
+    private suspend fun resolveFile(owner: ArtworkOwner.File, kinds: List<ArtworkKind>) {
         val file = mediaFileDao.byId(owner.id) ?: return
         // A copy on this device (a download, or the demo library) is opened
         // directly: no share to reach, so this is also the only artwork path
         // that works with the network off.
         local.file(owner.id)?.let { copy ->
             frames.openLocal(copy).use { source ->
-                if (grabFrame(file, owner, source)) return
+                if (grabFrame(file, owner, source, kinds)) return
             }
-            placeholder(owner)
+            placeholder(owner, kinds)
             return
         }
         val location = locate(file.shareId) ?: return
@@ -202,15 +214,15 @@ class ArtworkRepository @Inject constructor(
         for (candidate in ArtworkCandidates.forFile(file.name, siblings)) {
             val path = if (folderRelPath.isEmpty()) candidate.name else "$folderRelPath/${candidate.name}"
             val bytes = readImage(location, path) ?: continue
-            if (saveEncoded(bytes, owner, candidate.source)) return
+            if (saveEncoded(bytes, owner, candidate.source, kinds)) return
         }
 
         // 3 + 4: open the file once for cover art, then a frame at the midpoint.
         frames.open(location.host, location.credentials, location.share, file.relPath).use { source ->
-            if (grabFrame(file, owner, source)) return
+            if (grabFrame(file, owner, source, kinds)) return
         }
         // 5
-        placeholder(owner)
+        placeholder(owner, kinds)
     }
 
     /**
@@ -221,20 +233,43 @@ class ArtworkRepository @Inject constructor(
      * says where the frame was taken from and how the runtime behind that
      * decision was arrived at (`adb logcat -s Regolith/Artwork`).
      */
-    private suspend fun grabFrame(file: MediaFileEntity, owner: ArtworkOwner.File, source: FrameSource): Boolean {
+    private suspend fun grabFrame(file: MediaFileEntity, owner: ArtworkOwner.File, source: FrameSource, kinds: List<ArtworkKind>): Boolean {
         mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height)
         source.embeddedPicture()?.let {
-            if (saveEncoded(it, owner, ArtworkSource.EMBEDDED)) {
+            if (saveEncoded(it, owner, ArtworkSource.EMBEDDED, kinds)) {
                 Log.i(TAG, "${file.name}: cover art embedded in the container (no frame grabbed)")
                 return true
             }
         }
         val duration = runtimeOf(file, source)
         val at = ArtworkCandidates.framePositionMs(duration)
-        Log.i(TAG, "${file.name}: frame at ${at}ms of ${duration}ms")
+
+        // Media3 first: the same extractors and the same data source the
+        // player uses, and it says which frame it actually gave you. The
+        // platform retriever cannot, and returns the OPENING frame when it
+        // fails to seek — the one failure this whole path exists to avoid.
+        grabber.frameAt(file.id, at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)?.let { grabbed ->
+            val off = grabbed.presentationTimeMs - at
+            if (duration > 0 && abs(off) > SEEK_TOLERANCE_MS) {
+                // Not fatal — a file whose key frames really are minutes apart
+                // is legitimately far off — but it is the line to read when a
+                // tile looks like a title card.
+                Log.w(TAG, "${file.name}: asked for ${at}ms, got ${grabbed.presentationTimeMs}ms (${off}ms off)")
+            } else {
+                Log.i(TAG, "${file.name}: frame at ${grabbed.presentationTimeMs}ms of ${duration}ms (media3)")
+            }
+            try {
+                if (saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds)) return true
+            } finally {
+                grabbed.bitmap.recycle()
+            }
+        }
+
+        // Fallback: the platform retriever on the file we already have open.
         val frame = source.frameAt(at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
+        Log.i(TAG, "${file.name}: frame at ${at}ms of ${duration}ms (retriever)")
         return try {
-            saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB)
+            saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB, kinds)
         } finally {
             frame.recycle()
         }
@@ -274,7 +309,7 @@ class ArtworkRepository @Inject constructor(
         return probed
     }
 
-    private suspend fun resolveFolder(owner: ArtworkOwner.Folder) {
+    private suspend fun resolveFolder(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
         val folder = folderDao.byId(owner.id) ?: return
         // A sidecar always wins, but it lives on the share, and the mosaic
         // below may not need the share at all — the demo library and anything
@@ -287,15 +322,15 @@ class ArtworkRepository @Inject constructor(
                 for (candidate in ArtworkCandidates.forFolder(listing(location, folder.shareId, folder.relPath))) {
                     val path = if (folder.relPath.isEmpty()) candidate.name else "${folder.relPath}/${candidate.name}"
                     val bytes = readImage(location, path) ?: continue
-                    if (saveEncoded(bytes, owner, candidate.source)) return
+                    if (saveEncoded(bytes, owner, candidate.source, kinds)) return
                 }
             }
         } catch (e: SmbFailure) {
             unreachable = e
         }
-        if (mosaic(owner)) return
+        if (mosaic(owner, kinds)) return
         unreachable?.let { throw it }
-        placeholder(owner)
+        placeholder(owner, kinds)
     }
 
     /**
@@ -310,7 +345,7 @@ class ArtworkRepository @Inject constructor(
      * All-or-nothing: a grid with a black hole in it looks broken in a way a
      * plain placeholder does not.
      */
-    private suspend fun mosaic(owner: ArtworkOwner.Folder): Boolean {
+    private suspend fun mosaic(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>): Boolean {
         val files = mosaicFiles(owner.id)
         if (files.isEmpty()) return false
         // Fewer videos than cells: the ones there are each give several
@@ -330,7 +365,7 @@ class ArtworkRepository @Inject constructor(
             }
             if (cells.size != ArtworkCandidates.MOSAIC_CELLS) return false
             var wrote = false
-            for (kind in ArtworkKind.stills) {
+            for (kind in kinds) {
                 val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
                 val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
                 val grid = createBitmap(kind.width, kind.height)
@@ -387,9 +422,9 @@ class ArtworkRepository @Inject constructor(
         return frames.open(location.host, location.credentials, location.share, file.relPath)
     }
 
-    private suspend fun saveEncoded(bytes: ByteArray, owner: ArtworkOwner, source: ArtworkSource): Boolean {
+    private suspend fun saveEncoded(bytes: ByteArray, owner: ArtworkOwner, source: ArtworkSource, kinds: List<ArtworkKind>): Boolean {
         var any = false
-        for (kind in ArtworkKind.stills) {
+        for (kind in kinds) {
             if (store.saveEncoded(bytes, owner, kind)) {
                 record(owner, kind, source)
                 any = true
@@ -398,9 +433,9 @@ class ArtworkRepository @Inject constructor(
         return any
     }
 
-    private suspend fun saveBitmap(bitmap: Bitmap, owner: ArtworkOwner, source: ArtworkSource): Boolean {
+    private suspend fun saveBitmap(bitmap: Bitmap, owner: ArtworkOwner, source: ArtworkSource, kinds: List<ArtworkKind>): Boolean {
         var any = false
-        for (kind in ArtworkKind.stills) {
+        for (kind in kinds) {
             if (store.save(bitmap, owner, kind)) {
                 record(owner, kind, source)
                 any = true
@@ -424,9 +459,8 @@ class ArtworkRepository @Inject constructor(
         )
     }
 
-    private suspend fun placeholder(owner: ArtworkOwner) {
-        store.delete(owner)
-        for (kind in ArtworkKind.stills) {
+    private suspend fun placeholder(owner: ArtworkOwner, kinds: List<ArtworkKind>) {
+        for (kind in kinds) {
             artworkDao.upsert(
                 ArtworkEntity(
                     ownerType = owner.typeName,
@@ -492,5 +526,13 @@ class ArtworkRepository @Inject constructor(
         const val MOSAIC_FRAME_MAX = 720
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
         const val MOSAIC_MAX_FOLDERS = 24
+
+        /**
+         * How far from the requested position a frame may land before it is
+         * worth a warning. A key frame every 10 s is ordinary; a grab that
+         * comes back minutes early means the seek was ignored.
+         */
+        const val SEEK_TOLERANCE_MS = 30_000L
+        val BACKDROP_ONLY = listOf(ArtworkKind.BACKDROP)
     }
 }

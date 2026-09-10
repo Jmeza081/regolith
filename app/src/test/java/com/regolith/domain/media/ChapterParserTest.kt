@@ -43,7 +43,7 @@ class ChapterParserTest {
         val mkv = matroska(listOf(0L to null, 45_000L to null))
         val out = ChapterParser.read(source(mkv))
         assertEquals(listOf(null, null), out.map { it.title })
-        assertEquals("Chapter 2", out[1].label(1))
+        assertEquals("Part 2", out[1].label(1))
         assertEquals("Titles", Chapter(0, "Titles").label(0))
     }
 

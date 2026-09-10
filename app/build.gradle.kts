@@ -139,6 +139,7 @@ dependencies {
     implementation(libs.media3.datasource)
     implementation(libs.media3.ui.compose)
     implementation(libs.media3.inspector)
+    implementation(libs.media3.inspector.frame)
 
     // SMB. jcifs-ng drags in the servlet API for an HTTP filter we never
     // use; excluding it keeps a few hundred KB out of the APK.
