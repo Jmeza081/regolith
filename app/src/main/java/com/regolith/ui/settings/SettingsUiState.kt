@@ -26,6 +26,9 @@ data class SettingsUiState(
     val confirmDisconnect: ServerRow? = null,
     val hardwareDecoding: Boolean = true,
     val scrubThumbnails: Boolean = true,
+    val autoplayNext: Boolean = true,
+    /** Wide windows only: whether the nav rail retracts after three idle seconds. */
+    val autoHideRail: Boolean = true,
     /** Images cached on the device, excluding placeholders. */
     val artworkCount: Int = 0,
     val artworkBytes: Long = 0,

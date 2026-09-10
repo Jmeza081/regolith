@@ -49,6 +49,11 @@ class PlayerViewModel @AssistedInject constructor(
     val player: StateFlow<ExoPlayer?> = session.player
     val scrubThumbnails: StateFlow<Boolean> = prefs.scrubThumbnails.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    /** Settings › Playback › Autoplay next, mirrored in the playback sheet. */
+    val autoplayNext: StateFlow<Boolean> = prefs.autoplayNext.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
+
     /** Null until read; false shows the gesture map once. */
     val gesturesSeen: StateFlow<Boolean?> = prefs.gesturesSeen.map<Boolean, Boolean?> { it }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 

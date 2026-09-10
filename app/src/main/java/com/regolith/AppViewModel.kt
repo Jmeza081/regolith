@@ -16,7 +16,8 @@ import javax.inject.Inject
 
 /**
  * App-level state that outlives any single screen: which key the back stack
- * starts on. `null` means "still reading preferences" and keeps the splash up.
+ * starts on (`null` means "still reading preferences" and keeps the splash
+ * up), and whether the nav rail is pinned away on a wide window.
  *
  * A ViewModel is a store that survives rotation. This one is scoped to the
  * Activity, so it is created once per app session.
@@ -49,5 +50,21 @@ class AppViewModel @Inject constructor(
 
     fun completeOnboarding() {
         viewModelScope.launch { prefs.setOnboardingDone(true) }
+    }
+
+    /**
+     * The nav rail pinned away on a wide window (F6). App-level rather than
+     * per-screen: the rail is drawn once, by the nav graph, so the state that
+     * hides it belongs at the same level.
+     */
+    val railHidden: StateFlow<Boolean> = prefs.railHidden
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Settings › Display › Auto-hide the rail: whether the idle timer runs at all. */
+    val autoHideRail: StateFlow<Boolean> = prefs.autoHideRail
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setRailHidden(hidden: Boolean) {
+        viewModelScope.launch { prefs.setRailHidden(hidden) }
     }
 }

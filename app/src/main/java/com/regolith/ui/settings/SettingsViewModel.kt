@@ -65,6 +65,8 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch { prefs.hardwareDecoding.collect { v -> _uiState.update { it.copy(hardwareDecoding = v) } } }
         viewModelScope.launch { prefs.scrubThumbnails.collect { v -> _uiState.update { it.copy(scrubThumbnails = v) } } }
+        viewModelScope.launch { prefs.autoplayNext.collect { v -> _uiState.update { it.copy(autoplayNext = v) } } }
+        viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
         viewModelScope.launch {
             demo.installed.collect { installed ->
                 val bytes = withContext(Dispatchers.IO) { demo.usedBytes() }
@@ -93,6 +95,8 @@ class SettingsViewModel @Inject constructor(
 
     fun setHardwareDecoding(enabled: Boolean) = viewModelScope.launch { prefs.setHardwareDecoding(enabled) }.let { }
     fun setScrubThumbnails(enabled: Boolean) = viewModelScope.launch { prefs.setScrubThumbnails(enabled) }.let { }
+    fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
+    fun setAutoHideRail(enabled: Boolean) = viewModelScope.launch { prefs.setAutoHideRail(enabled) }.let { }
 
     /**
      * Settings › Demo library. Installing replaces whatever was there, so

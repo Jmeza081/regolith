@@ -31,6 +31,9 @@ class AppPreferences @Inject constructor(
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
+        val autoplayNext = booleanPreferencesKey("autoplay_next")
+        val autoHideRail = booleanPreferencesKey("auto_hide_rail")
+        val railHidden = booleanPreferencesKey("rail_hidden")
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */
@@ -58,6 +61,39 @@ class AppPreferences @Inject constructor(
 
     suspend fun setScrubThumbnails(enabled: Boolean) {
         store.edit { it[Keys.scrubThumbnails] = enabled }
+    }
+
+    /**
+     * Settings › Playback › Autoplay next. On by default: a folder of
+     * episodes is the common case, and the Up next card gives you ten
+     * seconds to say no.
+     */
+    val autoplayNext: Flow<Boolean> = store.data.map { it[Keys.autoplayNext] ?: true }
+
+    suspend fun setAutoplayNext(enabled: Boolean) {
+        store.edit { it[Keys.autoplayNext] = enabled }
+    }
+
+    /**
+     * Settings › Display › Auto-hide the rail. Wide windows only; on a phone
+     * the pill is the bottom bar and never retracts. Controls the idle timer
+     * only — [railHidden] is the deliberate pin and is independent of it.
+     */
+    val autoHideRail: Flow<Boolean> = store.data.map { it[Keys.autoHideRail] ?: true }
+
+    suspend fun setAutoHideRail(enabled: Boolean) {
+        store.edit { it[Keys.autoHideRail] = enabled }
+    }
+
+    /**
+     * The rail pinned away by its chevron: the layout gives its width back to
+     * the screen until the spine is tapped. Remembered, unlike the idle
+     * retract, because it is a choice about how much room the nav deserves.
+     */
+    val railHidden: Flow<Boolean> = store.data.map { it[Keys.railHidden] ?: false }
+
+    suspend fun setRailHidden(hidden: Boolean) {
+        store.edit { it[Keys.railHidden] = hidden }
     }
 
     /** Library › Sort by. Remembered, like a column sort in a web table. */

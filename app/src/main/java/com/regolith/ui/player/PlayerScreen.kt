@@ -7,6 +7,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -63,6 +69,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
@@ -74,9 +81,12 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.playback.SeekStacker
 import com.regolith.player.PlaybackState
+import com.regolith.player.NextItem
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.ErrorCard
+import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.Scrubber
@@ -180,6 +190,37 @@ fun PlayerScreen(
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE) viewModel.onPause() }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // --- Up next (F6). Four things have to be true before the app plays on
+    // by itself: you left the setting on, the film actually ran to its end
+    // (playWhenReady is still set, so scrubbing to the last second while
+    // paused is not an ending), the folder has another file, and you have
+    // not already said no to this one.
+    val autoplayNext by viewModel.autoplayNext.collectAsStateWithLifecycle()
+    val upNext = state.next.firstOrNull()
+    var autoplayCancelled by remember(state.fileId) { mutableStateOf(false) }
+    var countdown by remember { mutableStateOf<Int?>(null) }
+    val autoplayArmed = autoplayNext && !autoplayCancelled && upNext != null && state.ended && state.playWhenReady
+    LaunchedEffect(autoplayArmed, upNext?.fileId) {
+        countdown = null
+        if (!autoplayArmed || upNext == null) return@LaunchedEffect
+        // repeatOnLifecycle, not a bare loop: a coroutine launched from the
+        // composition keeps running when the app goes to the background, and
+        // a film that ends off-screen must not quietly pull the next one off
+        // the share. The count starts — and restarts — when the screen is
+        // actually in front of you.
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                for (second in AUTOPLAY_SECONDS downTo 1) {
+                    countdown = second
+                    delay(1_000)
+                }
+                viewModel.playNext(upNext.fileId)
+            } finally {
+                countdown = null
+            }
+        }
     }
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -335,6 +376,20 @@ fun PlayerScreen(
             state.error?.let { error ->
                 ErrorCard(message = error, testTag = "player_error_card", modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding())
             }
+            // Over the ended frame, in every layout: the picture is finished,
+            // so there is nothing underneath worth keeping clear.
+            countdown?.let { seconds ->
+                if (upNext != null) {
+                    Box(Modifier.fillMaxSize().background(Color(0x99000000)))
+                    UpNextCard(
+                        item = upNext,
+                        seconds = seconds,
+                        onPlayNow = { viewModel.playNext(upNext.fileId) },
+                        onCancel = { autoplayCancelled = true },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding(),
+                    )
+                }
+            }
         }
     }
 
@@ -388,9 +443,11 @@ fun PlayerScreen(
                             speed = state.speed,
                             hardwareDecoding = state.hardwareDecoding,
                             scrubThumbnails = scrubThumbnails,
+                            autoplayNext = autoplayNext,
                             onSpeed = viewModel::setSpeed,
                             onHardwareDecoding = viewModel::setHardwareDecoding,
                             onScrubThumbnails = viewModel::setScrubThumbnails,
+                            onAutoplayNext = viewModel::setAutoplayNext,
                             onClose = {},
                             header = false,
                         )
@@ -407,9 +464,11 @@ fun PlayerScreen(
                 speed = state.speed,
                 hardwareDecoding = state.hardwareDecoding,
                 scrubThumbnails = scrubThumbnails,
+                autoplayNext = autoplayNext,
                 onSpeed = viewModel::setSpeed,
                 onHardwareDecoding = viewModel::setHardwareDecoding,
                 onScrubThumbnails = viewModel::setScrubThumbnails,
+                onAutoplayNext = viewModel::setAutoplayNext,
                 onClose = { sheet = null },
             )
         }
@@ -702,6 +761,72 @@ private fun TitleBlock(state: PlaybackState) {
             state.fileSizeBytes.takeIf { it > 0 }?.let { formatBytes(it) },
         )
         Text(meta.joinToString(" · "), style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * The Up next card (F6): the file that is about to play, a ring counting
+ * [AUTOPLAY_SECONDS] down, and the two ways out. It rides over the ended
+ * frame in every layout — portrait, full screen and flex — because by then
+ * the picture is finished and there is nothing underneath to keep clear.
+ *
+ * Cancel does not turn the setting off; it declines this one file. The
+ * switch lives in Settings › Playback and in the playback sheet.
+ */
+@Composable
+private fun UpNextCard(item: NextItem, seconds: Int, onPlayNow: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = RegolithTheme.colors
+    Column(
+        modifier = modifier
+            .widthIn(max = 460.dp)
+            .clip(CardShape)
+            .background(colors.overArt)
+            .border(1.dp, colors.frostBorder, CardShape)
+            .padding(Spacing.s12)
+            .testTag("player_up_next_card"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s12),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            Box(Modifier.size(84.dp, 47.dp).clip(RoundedCornerShape(10.dp))) {
+                ArtworkImage(ArtworkRequest(ArtworkOwner.File(item.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = item.name)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                Eyebrow("Up next", muted = true)
+                Text(item.name, style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOfNotNull(item.durationMs?.let { formatDurationShort(it) }, formatBytes(item.sizeBytes)).joinToString(" · "),
+                    style = TextStyles.meta.copy(lineHeight = 11.designSp()), color = colors.metadata, maxLines = 1,
+                )
+            }
+            CountdownRing(seconds)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            PrimaryButton(text = "Play now", onClick = onPlayNow, compact = true, testTag = "player_up_next_play", modifier = Modifier.weight(1f))
+            SecondaryButton(text = "Cancel", onClick = onCancel, compact = true, testTag = "player_up_next_cancel", modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** The seconds left, as a number inside an arc that empties as they go. */
+@Composable
+private fun CountdownRing(seconds: Int) {
+    val colors = RegolithTheme.colors
+    val fraction = seconds.toFloat() / AUTOPLAY_SECONDS
+    Box(Modifier.size(40.dp).testTag("player_up_next_countdown"), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 3.dp.toPx()
+            val inset = stroke / 2
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            drawArc(
+                color = colors.raised, startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                topLeft = Offset(inset, inset), size = arcSize, style = Stroke(width = stroke),
+            )
+            drawArc(
+                color = colors.accent, startAngle = -90f, sweepAngle = 360f * fraction, useCenter = false,
+                topLeft = Offset(inset, inset), size = arcSize, style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+        }
+        Text("$seconds", style = TextStyles.meta12, color = colors.ink)
     }
 }
 
@@ -1039,3 +1164,10 @@ private const val GLOW_ALPHA = 0.65f
  * stray finger from flipping the layout.
  */
 private const val FULLSCREEN_DRAG_FRACTION = 0.12f
+
+/**
+ * How long the Up next card waits before it plays on by itself. Long enough
+ * to read the title and cancel, short enough that it does not read as a
+ * stall on a film that has plainly finished.
+ */
+private const val AUTOPLAY_SECONDS = 10

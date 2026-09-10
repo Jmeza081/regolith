@@ -76,15 +76,8 @@ fun TitleDetailScreen(
      * bar because the pane does not reach it.
      */
     inPane: Boolean = false,
-    /**
-     * Non-null only when the wall beside this pane is collapsed, i.e. this
-     * pane is the whole window. Draws the control that brings the wall back;
-     * with the wall visible there is nothing to restore, so it is null and
-     * nothing is drawn.
-     */
-    onShowList: (() -> Unit)? = null,
 ) {
-    TitleDetailContent(viewModel.uiState, onBack, onPlay, viewModel::keepOnDevice, viewModel::removeFromDevice, modifier, inPane, onShowList)
+    TitleDetailContent(viewModel.uiState, onBack, onPlay, viewModel::keepOnDevice, viewModel::removeFromDevice, modifier, inPane)
 }
 
 @Composable
@@ -96,7 +89,6 @@ private fun TitleDetailContent(
     onRemove: () -> Unit,
     modifier: Modifier,
     inPane: Boolean,
-    onShowList: (() -> Unit)?,
 ) {
     val state by stateFlow.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
@@ -128,19 +120,6 @@ private fun TitleDetailContent(
                     onMedia = true, size = 44.dp, iconSize = 20.dp,
                     testTag = if (inPane) "detail_close_button" else "topbar_back_button",
                 )
-            }
-            // The start corner, where every app that hides a pane puts the
-            // control that brings it back.
-            onShowList?.let { show ->
-                Box(Modifier.statusBarsPadding().padding(start = Spacing.s12, top = Spacing.s12).align(Alignment.TopStart)) {
-                    IconCircleButton(
-                        icon = painterResource(R.drawable.rg_ic_split_pane),
-                        contentDescription = "Show the list",
-                        onClick = show,
-                        onMedia = true, size = 44.dp, iconSize = 20.dp,
-                        testTag = "detail_show_list_button",
-                    )
-                }
             }
         }
         if (!state.loaded) return@Column

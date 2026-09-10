@@ -102,9 +102,11 @@ fun PlaybackSheetContent(
     speed: Float,
     hardwareDecoding: Boolean,
     scrubThumbnails: Boolean,
+    autoplayNext: Boolean,
     onSpeed: (Float) -> Unit,
     onHardwareDecoding: (Boolean) -> Unit,
     onScrubThumbnails: (Boolean) -> Unit,
+    onAutoplayNext: (Boolean) -> Unit,
     onClose: () -> Unit,
     /**
      * False where this is not a sheet but a panel already on the screen (the
@@ -155,6 +157,18 @@ fun PlaybackSheetContent(
         }
         Spacer(Modifier.width(Spacing.s12))
         SwitchControl(checked = scrubThumbnails, onCheckedChange = onScrubThumbnails, testTag = "player_scrub_thumbnails_switch")
+    }
+
+    // The same preference as Settings › Playback › Autoplay next: this is
+    // where you reach for it once a film has started, the way Decoder
+    // mirrors Settings › Playback › Hardware decoding.
+    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Text("Autoplay next", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
+            Text("Plays the next file in this folder when one ends, after a ten-second countdown.", style = TextStyles.settingMeta, color = colors.metadata)
+        }
+        Spacer(Modifier.width(Spacing.s12))
+        SwitchControl(checked = autoplayNext, onCheckedChange = onAutoplayNext, testTag = "player_autoplay_next_switch")
     }
 }
 

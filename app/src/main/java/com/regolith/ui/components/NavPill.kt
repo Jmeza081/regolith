@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.regolith.R
 import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -68,6 +70,13 @@ fun NavPill(
     modifier: Modifier = Modifier,
     dimmed: Set<MainTab> = emptySet(),
     vertical: Boolean = false,
+    /**
+     * The chevron under the rail's four cells that pins it away, leaving the
+     * [NavRailSpine] on the edge and handing the rail's width back to the
+     * screen. Null on a phone, where the pill is the bottom bar and there is
+     * no width to reclaim.
+     */
+    onHide: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val style = HazeStyle(
@@ -97,6 +106,23 @@ fun NavPill(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             MainTab.entries.forEach { tab -> cell(tab, Modifier.fillMaxWidth().height(NAV_RAIL_CELL_HEIGHT)) }
+            onHide?.let { hide ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(26.dp)
+                        .clickable(interactionSource = null, indication = null, onClick = hide)
+                        .testTag("nav_rail_hide_button"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.rg_ic_chevron_left),
+                        contentDescription = "Hide the rail",
+                        tint = colors.navIdle,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
         }
         return
     }
@@ -119,6 +145,57 @@ fun NavPill(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MainTab.entries.forEach { tab -> cell(tab, Modifier.weight(1f).fillMaxHeight()) }
+    }
+}
+
+/**
+ * The rail retracted (F6): a [NAV_RAIL_SPINE_WIDTH] column of four dots on
+ * the start edge, one per tab, coloured exactly as the rail's labels are —
+ * white for the tab you are on, #8A8A8A otherwise, 22% white when dimmed.
+ * Tapping anywhere on it brings the rail back.
+ *
+ * It is deliberately the *same* nav in a smaller form rather than a generic
+ * "menu" button: the lit dot still answers "where am I", which a hamburger
+ * would not. Same frosted treatment as the pill, so the app still has only
+ * one blurred surface.
+ */
+@Composable
+fun NavRailSpine(
+    selected: MainTab,
+    onExpand: () -> Unit,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+    dimmed: Set<MainTab> = emptySet(),
+) {
+    val colors = RegolithTheme.colors
+    val style = HazeStyle(
+        backgroundColor = colors.ground,
+        tints = listOf(HazeTint(colors.pillBg)),
+        blurRadius = 20.dp,
+        noiseFactor = 0f,
+    )
+    Column(
+        modifier = modifier
+            .width(NAV_RAIL_SPINE_WIDTH)
+            .shadow(elevation = 12.dp, shape = PillShape, ambientColor = colors.ground, spotColor = colors.ground)
+            .clip(PillShape)
+            .hazeEffect(state = hazeState, style = style)
+            .background(colors.pillBg)
+            .border(1.dp, colors.pillBorder, PillShape)
+            .clickable(interactionSource = null, indication = null, onClick = onExpand)
+            .padding(vertical = 10.dp)
+            .testTag("nav_rail_spine"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+    ) {
+        MainTab.entries.forEach { tab ->
+            val ink = when {
+                tab == selected -> colors.ink
+                tab in dimmed -> colors.navDimmed
+                else -> colors.navIdle
+            }
+            Box(Modifier.size(4.dp).background(ink, PillShape))
+        }
     }
 }
 
@@ -159,6 +236,16 @@ private val NAV_RAIL_CELL_HEIGHT: Dp = 66.dp
  * display frames put it.
  */
 val NAV_RAIL_INSET: Dp = Spacing.s18 + NAV_RAIL_WIDTH
+
+/** The retracted rail: four dots and the padding around them. */
+val NAV_RAIL_SPINE_WIDTH: Dp = 14.dp
+
+/**
+ * What a tab screen leaves free when the rail is pinned away: the spine and
+ * the s8 gutter it hugs. 102dp of reserved width becomes 22dp, which is the
+ * 80dp that puts the Library wall's third tile back at its full width.
+ */
+val NAV_RAIL_SPINE_INSET: Dp = Spacing.s8 + NAV_RAIL_SPINE_WIDTH
 
 /** Four 81dp slots plus 10dp of inner padding each side. */
 private val NAV_PILL_MAX_WIDTH = 344.dp

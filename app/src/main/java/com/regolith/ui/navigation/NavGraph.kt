@@ -1,6 +1,8 @@
 package com.regolith.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -18,6 +20,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import android.util.Log
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -41,6 +47,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.regolith.AppViewModel
 import com.regolith.BuildConfig
+import com.regolith.R
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import kotlinx.coroutines.launch
@@ -65,9 +72,12 @@ import com.regolith.ui.browse.BrowseViewModel
 import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
+import com.regolith.ui.components.NAV_RAIL_SPINE_INSET
+import com.regolith.ui.components.NavRailSpine
 import com.regolith.ui.components.NavPill
 import com.regolith.ui.home.ContinueWatchingScreen
 import com.regolith.ui.home.HomeScreen
@@ -78,10 +88,16 @@ import com.regolith.ui.onboarding.OnboardingScreen
 import com.regolith.ui.onboarding.SplashContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onStart
 import com.regolith.ui.settings.SettingsScreen
 import com.regolith.ui.titledetail.TitleDetailScreen
 import com.regolith.ui.titledetail.TitleDetailViewModel
@@ -130,8 +146,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // On a wide window Title Detail is a PANE beside the wall that opened it,
     // not a pushed screen (F2). The key underneath is then still the visible
     // tab, so the rail keeps its selection and the wall marks the open title.
+    // Both walls qualify: a file opened from Browse behaves exactly like one
+    // opened from Library, which is what the F2 plan called for.
     val paneListKey = if (windowShape.wide && topKey is RegolithKey.TitleDetail) {
-        (backStack.getOrNull(backStack.lastIndex - 1) as? RegolithKey)?.takeIf { it is RegolithKey.Library }
+        (backStack.getOrNull(backStack.lastIndex - 1) as? RegolithKey)
+            ?.takeIf { it is RegolithKey.Library || it is RegolithKey.Browse }
     } else {
         null
     }
@@ -144,11 +163,46 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // to clear the system navigation bar.
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val pillInsets = if (windowShape.wide) PaddingValues(bottom = navBarBottom + Spacing.s18) else PaddingValues(bottom = NAV_PILL_CLEARANCE)
+
+    // The rail can be away in two deliberately different ways (F6):
+    //  - PINNED AWAY ([railHidden], remembered in preferences): the layout
+    //    hands the rail's 102dp back to the screen, so the wall gets its
+    //    third tile at full width. Content reflows, so it only ever happens
+    //    because you asked for it.
+    //  - IDLE ([railIdle], this session only): the rail slides off the start
+    //    edge three seconds after the last touch. The reserved inset does not
+    //    change, so nothing reflows and the wall never jumps as you read it.
+    // Either way the spine stays on the edge, and tapping it brings the rail
+    // back. Web analogy: one is a collapsed sidebar, the other is a toolbar
+    // that fades while you scroll.
+    val railHidden by appViewModel.railHidden.collectAsStateWithLifecycle()
+    val autoHideRail by appViewModel.autoHideRail.collectAsStateWithLifecycle()
+    var railIdle by remember { mutableStateOf(false) }
+    val railInset = when {
+        !windowShape.wide -> 0.dp
+        railHidden -> NAV_RAIL_SPINE_INSET
+        else -> NAV_RAIL_INSET
+    }
+    val railVisible = windowShape.wide && !railHidden && !railIdle
+    // Every touch in the app, observed without consuming (Initial pass) and
+    // reported down a flow rather than into state, so a scroll does not
+    // recompose the tree on every frame. collectLatest restarts the delay on
+    // each touch: the rail retracts only once you have actually stopped.
+    val touches = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    LaunchedEffect(autoHideRail, windowShape.wide, railHidden) {
+        railIdle = false
+        if (!autoHideRail || !windowShape.wide || railHidden) return@LaunchedEffect
+        touches.onStart { emit(Unit) }.collectLatest {
+            delay(RAIL_IDLE_MS)
+            railIdle = true
+        }
+    }
+
     // How wide the list pane asks to be. The rail lives INSIDE that pane, so
     // the wall keeps its three columns only if the pane pays for both; the
     // 55% cap keeps the detail worth reading on a window barely over the
     // two-pane threshold, where the full ask would crush it.
-    val listPaneWidth = minOf(NAV_RAIL_INSET + WALL_WIDTH, windowShape.width * 0.55f)
+    val listPaneWidth = minOf(railInset + WALL_WIDTH, windowShape.width * 0.55f)
     // The list-detail scene: on a wide window the strategy pairs the top two
     // keys (a wall and the title open from it) into one two-pane scene, out of
     // the SAME back stack — no second navigation structure (G10).
@@ -156,15 +210,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // and our own slide transitions, exactly as before F2.
     // Where the divider can rest. Dragging settles onto one of these rather
     // than landing anywhere: a split you cannot reproduce is a split you have
-    // to keep fixing. The first collapses the wall to the rail, which is what
-    // makes the detail full screen and raises its toggle.
-    // Written where the strategy is built, read by the detail entry below. A
-    // plain var is enough: both happen in this composition, in this order.
-    var paneExpansion: PaneExpansionState? = null
-    val railAnchor = remember { PaneExpansionAnchor.Offset.fromStart(NAV_RAIL_INSET) }
-    val anchors = remember(listPaneWidth) {
-        listOf(railAnchor, PaneExpansionAnchor.Offset.fromStart(listPaneWidth), PaneExpansionAnchor.Proportion(0.85f))
+    // to keep fixing. The first collapses the wall behind the rail, the last
+    // squeezes the detail to a sliver; the middle one is the even split both
+    // are measured against, and the one the handle's reset button restores.
+    val railAnchor = remember(railInset) { PaneExpansionAnchor.Offset.fromStart(railInset) }
+    val defaultAnchor = remember(listPaneWidth) { PaneExpansionAnchor.Offset.fromStart(listPaneWidth) }
+    val anchors = remember(railAnchor, defaultAnchor) {
+        listOf(railAnchor, defaultAnchor, PaneExpansionAnchor.Proportion(0.85f))
     }
+    // Written where the strategy is built, read by the reset-on-close effect
+    // below. A plain var is enough: both happen in this composition, in order.
+    var paneExpansion: PaneExpansionState? = null
     // Keyed on the pane width: the scaffold remembers how wide it made the
     // panes, and folding the device while a detail is open would otherwise
     // keep the cover screen's much narrower list pane on the inner display
@@ -178,8 +234,24 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
             // waits for 840dp, which the inner display clears by only 12dp.
             directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(currentWindowAdaptiveInfo()),
             paneExpansionState = expansion,
-            paneExpansionDragHandle = { state -> PaneHandle(state) },
+            paneExpansionDragHandle = { state ->
+                PaneHandle(state, defaultAnchor, onReset = { scope.launch { state.animateTo(defaultAnchor) } })
+            },
         )
+    }
+    // Dragging the wall away is a gesture you make for one title, not a mode
+    // you carry between screens: closing the detail puts the divider back, so
+    // the next title always opens on the even split. Guarded on the pane
+    // having actually been open, so nothing is animated at startup.
+    val paneOpen = paneListKey != null
+    val paneWasOpen = remember { mutableStateOf(false) }
+    LaunchedEffect(paneOpen) {
+        if (paneOpen) {
+            paneWasOpen.value = true
+        } else if (paneWasOpen.value) {
+            paneWasOpen.value = false
+            paneExpansion?.animateTo(defaultAnchor)
+        }
     }
     // No preferredPaneSize: the expansion state owns the divider, and two
     // sources for one number is how they drift apart.
@@ -188,7 +260,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // screens (Player, Title Detail, Add Server) have no rail and take the
     // whole width, so the inset is applied per entry, not on the NavDisplay.
     val tabContent: @Composable (@Composable () -> Unit) -> Unit = { content ->
-        Box(Modifier.fillMaxSize().padding(start = if (windowShape.wide) NAV_RAIL_INSET else 0.dp)) { content() }
+        Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
     }
 
     // Opening a title. In the pane layout the wall stays live beside the
@@ -215,6 +287,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
             Modifier
                 .fillMaxSize()
                 .background(RegolithTheme.colors.ground)
+                // Watch every touch without taking it: the Initial pass sees
+                // the event before any child, and nothing here consumes it.
+                // This is what tells the rail you are still using the app.
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            awaitPointerEvent(PointerEventPass.Initial)
+                            touches.tryEmit(Unit)
+                        }
+                    }
+                }
                 .semantics { testTagsAsResourceId = true },
         ) {
             Box(Modifier.fillMaxSize()) {
@@ -301,9 +384,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
                             )
                         }
-                        entry<RegolithKey.Browse>(metadata = tabScreen) { key ->
+                        entry<RegolithKey.Browse>(metadata = tabScreen + listPaneMeta) { key ->
                             tabContent {
                                 BrowseScreen(
+                                    selectedFileId = paneFileId,
                                     viewModel = hiltViewModel<BrowseViewModel, BrowseViewModel.Factory>(
                                         creationCallback = { it.create(key.folderId) },
                                     ),
@@ -334,11 +418,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onBack = { backStack.removeLastOrNull() },
                                 onPlay = { backStack.add(RegolithKey.Player(it)) },
                                 inPane = paneListKey != null,
-                                // Only when the wall is collapsed behind this pane:
-                                // that is the state a handle alone is hard to escape.
-                                onShowList = paneExpansion
-                                    ?.takeIf { paneListKey != null && it.currentAnchor == railAnchor }
-                                    ?.let { state -> { scope.launch { state.animateTo(anchors[1]) } } },
                             )
                         }
                         entry<RegolithKey.Settings>(metadata = tabScreen) {
@@ -388,12 +467,28 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 AnimatedVisibility(visible = splash, exit = fadeOut(), modifier = Modifier.fillMaxSize()) { SplashContent() }
 
                 if (currentTab != null && !splash) {
-                    NavPill(
-                        selected = currentTab,
-                        onSelect = { navigateToTab(it) },
-                        hazeState = hazeState,
-                        dimmed = dimmedTabs,
-                        vertical = windowShape.wide,
+                    // On a wide window the rail and its spine occupy the same
+                    // edge and swap: whichever is not showing has slid out.
+                    AnimatedVisibility(
+                        visible = !railVisible && windowShape.wide,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier.align(Alignment.CenterStart).padding(start = Spacing.s8),
+                    ) {
+                        NavRailSpine(
+                            selected = currentTab,
+                            dimmed = dimmedTabs,
+                            hazeState = hazeState,
+                            onExpand = {
+                                if (railHidden) appViewModel.setRailHidden(false) else railIdle = false
+                                touches.tryEmit(Unit)
+                            },
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = railVisible || !windowShape.wide,
+                        enter = if (windowShape.wide) slideInHorizontally { -it } + fadeIn() else fadeIn(),
+                        exit = if (windowShape.wide) slideOutHorizontally { -it } + fadeOut() else fadeOut(),
                         modifier = if (windowShape.wide) {
                             // The rail: s18 in from the start edge, centred on the height.
                             Modifier.align(Alignment.CenterStart).padding(start = Spacing.s18)
@@ -403,7 +498,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 .navigationBarsPadding()
                                 .padding(bottom = Spacing.s8)
                         },
-                    )
+                    ) {
+                        NavPill(
+                            selected = currentTab,
+                            onSelect = { navigateToTab(it) },
+                            hazeState = hazeState,
+                            dimmed = dimmedTabs,
+                            vertical = windowShape.wide,
+                            // The chevron that pins the rail away, wide windows only.
+                            onHide = { appViewModel.setRailHidden(true) }.takeIf { windowShape.wide },
+                        )
+                    }
                 }
             }
         }
@@ -411,6 +516,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
 }
 
 private const val SPLASH_MS = 1_400L
+
+/**
+ * How long the rail waits after the last touch before it slides away. The
+ * same three seconds the player's chrome uses, for the same reason: long
+ * enough that it never goes while you are aiming at it.
+ */
+private const val RAIL_IDLE_MS = 3_000L
 
 /**
  * The width the Library and Browse walls want beside a detail pane: three
@@ -436,25 +548,52 @@ private fun NoTitleChosen() {
  * app uses for this. The library's [paneExpansionDraggable] modifier carries
  * the 48dp touch target and the accessibility actions, so the split can also
  * be moved without dragging at all.
+ *
+ * Whenever the divider is off [defaultAnchor] the handle also carries the
+ * control that puts it back (F6). It lives here rather than on either
+ * screen because the handle is the one thing on the divider that is always
+ * on screen: dragged fully one way the wall is gone, dragged the other the
+ * detail is a sliver, and a button drawn inside either pane disappears with
+ * it. The bar stays below the button so the handle is still grabbable.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-private fun PaneScaffoldScope.PaneHandle(state: PaneExpansionState) {
+private fun PaneScaffoldScope.PaneHandle(
+    state: PaneExpansionState,
+    defaultAnchor: PaneExpansionAnchor,
+    onReset: () -> Unit,
+) {
     val colors = RegolithTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val dragged by interaction.collectIsDraggedAsState()
+    val moved = state.currentAnchor != null && state.currentAnchor != defaultAnchor
     Box(
         Modifier
             .paneExpansionDraggable(state, 48.dp, interaction, state.defaultDragHandleSemantics())
+            // The desktop splitter gesture, free now that there is something
+            // for it to do. Movement cancels it, so it never eats a drag.
+            .pointerInput(moved) { if (moved) detectTapGestures(onDoubleTap = { onReset() }) }
             .testTag("pane_handle"),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier
-                .width(if (dragged) 5.dp else 4.dp)
-                .height(if (dragged) 56.dp else 40.dp)
-                .clip(PillShape)
-                .background(if (dragged) colors.inkSoft else colors.raised),
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            if (moved) {
+                IconCircleButton(
+                    icon = painterResource(R.drawable.rg_ic_split_even),
+                    contentDescription = "Even split",
+                    onClick = onReset,
+                    size = 28.dp,
+                    iconSize = 15.dp,
+                    testTag = "pane_reset_split",
+                )
+            }
+            Box(
+                Modifier
+                    .width(if (dragged) 5.dp else 4.dp)
+                    .height(if (dragged) 56.dp else 40.dp)
+                    .clip(PillShape)
+                    .background(if (dragged) colors.inkSoft else colors.raised),
+            )
+        }
     }
 }

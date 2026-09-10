@@ -36,6 +36,7 @@ import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.RegolithSwitch
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SurfaceCard
@@ -115,6 +116,25 @@ fun SettingsScreen(
                         label = "Scrub thumbnails", note = "Preview frame while you drag the timeline.",
                         checked = state.scrubThumbnails, onCheckedChange = viewModel::setScrubThumbnails, testTag = "settings_scrub_thumbnails_switch",
                     )
+                    RegolithSwitch(
+                        label = "Autoplay next", note = "Play the next file in the folder when one ends.",
+                        checked = state.autoplayNext, onCheckedChange = viewModel::setAutoplayNext, testTag = "settings_autoplay_next_switch",
+                    )
+                }
+            }
+
+            // Wide windows only: on a phone the pill is the bottom bar and
+            // there is no side space to reclaim, so the row would toggle
+            // something the owner of a phone can never see.
+            if (LocalWindowShape.current.wide) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    Eyebrow("Display", muted = true)
+                    SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                        RegolithSwitch(
+                            label = "Auto-hide the rail", note = "Slides the navigation rail away three seconds after you stop touching the screen.",
+                            checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
+                        )
+                    }
                 }
             }
 

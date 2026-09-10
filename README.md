@@ -16,6 +16,12 @@ Phases 1 to 4 are verified on a real phone against a NAS; Phases 5 and 6
 on the Pixel 10 emulator against a local Samba share. See
 `docs/ARCHITECTURE.md`.
 
+On top of that, the Galaxy Z Fold's inner display has its own layouts
+(F0–F6 in `docs/FOLDABLE_PLAN.md`): a nav rail that retracts to a spine, the
+Library and Browse walls beside a title-detail pane with a resettable
+divider, and the player's two-column and flex-mode layouts. Autoplay next
+came with that round and works on the phone too.
+
 ## Build and run
 
 Requirements: Android Studio 2026.1 (for its bundled JDK 21 and the SDK),

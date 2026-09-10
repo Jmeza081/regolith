@@ -188,3 +188,71 @@ F0 (S) → F1 (S) → F2 (M) → F4 (S) → F3 (M) → F5 (L). F4 before F3 beca
 is a small change on a screen the owner uses constantly; F5 last because it
 is the only phase with new data plumbing and the only one that needs the
 hinge.
+
+---
+
+## F6 — Round two (shipped 2026-09-10)
+
+Three changes asked for after living with F0–F5 on the real Fold. Written up
+first as a review artifact ("The split, the rail, and up next"); this is what
+was built.
+
+### The divider carries its own reset
+
+The old restore control was drawn by Title Detail and only at the collapsed
+anchor. That missed the 85% anchor, where the detail is a 114dp sliver and the
+button was *inside* it — no way back but the handle. Now:
+
+- `PaneHandle` shows a 28dp reset button (`pane_reset_split`) whenever the
+  divider is off its default anchor, from either extreme, with the drag bar
+  still below it so the handle stays grabbable. Double-tap resets too.
+- `TitleDetailScreen.onShowList` is gone, and `rg_ic_split_pane` with it.
+- Closing the detail animates the divider back to the default, so a collapse
+  belongs to one title rather than to the session.
+- `Browse` declares `listPane()` again, revising the F3 decision that took it
+  away: three columns still do not fit, but the tree now yields for the
+  moment a detail is open (the pane drops below `SHARE_TREE_MIN_WIDTH`) and
+  comes back when it closes, rather than Browse giving up the detail
+  permanently. Its selected row lifts onto `skeleton`, one step up from the
+  `surface` card it sits on.
+
+### The rail retracts
+
+102dp of a ~760dp window went to four nav cells, and because the rail sits
+inside the list pane the wall paid for it twice: the pane asks for 466dp, is
+capped at 55%, and handed the wall 316 of the 364 it wants.
+
+- **Idle** (`autoHideRail`, on by default): three seconds after the last touch
+  the rail slides out, leaving `NavRailSpine` — four dots, the current tab
+  lit. The reserved inset is unchanged, so nothing reflows.
+- **Pinned** (`railHidden`, remembered): the chevron under the rail's cells
+  collapses it and the inset drops to `NAV_RAIL_SPINE_INSET` (22dp). Content
+  reflows once, deliberately.
+- Tapping the spine restores the rail, and un-pins it when it was pinned.
+- `Settings › Display › Auto-hide the rail` governs the timer only, and the
+  section is drawn on wide windows only.
+
+Not built: collapsing the rail automatically when a detail pane opens. It was
+in the proposal's "hide for space" sketch, but it changes `listPaneWidth`,
+which rekeys the pane scaffold, which fights the reset-on-close rule above.
+The pin covers the same ground without the churn.
+
+### Autoplay next
+
+`filesAfter()`, `PlaybackState.ended` and `playNext()` already existed; this is
+a trigger, a card and a switch.
+
+- Armed when the setting is on, `STATE_ENDED` arrives with `playWhenReady`
+  still set, the folder has a next file, and this one was not cancelled.
+- The countdown runs inside `repeatOnLifecycle(RESUMED)`, so a film that ends
+  while the app is in the background does not pull the next file off the
+  share; the card is waiting (with a fresh ten seconds) on return.
+- `UpNextCard` rides over the ended frame in every layout — portrait, full
+  screen and flex — with a ten-second ring, *Play now* and *Cancel*. Cancel
+  declines this one file; it does not touch the setting.
+- The switch is `Settings › Playback › Autoplay next` and is mirrored in the
+  player's playback sheet, the way Decoder mirrors hardware decoding.
+
+Verified on the Pixel_Fold AVD in both postures: reset from both extremes,
+reset on close, Browse panes, idle retract, pin and unpin, autoplay through
+two episodes, cancel, and the cover screen unchanged.

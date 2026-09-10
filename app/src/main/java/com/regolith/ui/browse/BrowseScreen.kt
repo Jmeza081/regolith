@@ -1,5 +1,6 @@
 package com.regolith.ui.browse
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -76,6 +77,12 @@ fun BrowseScreen(
      * rather than growing it. Null on a phone, where there is no tree.
      */
     onOpenTree: ((folderId: Long) -> Unit)? = null,
+    /**
+     * The file open in the detail pane beside this wall on a wide window, so
+     * the row or tile it came from is marked. Null on a phone, where opening
+     * a file covers the wall.
+     */
+    selectedFileId: Long? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val offline = state.offlineMessage
@@ -94,7 +101,7 @@ fun BrowseScreen(
                     modifier = Modifier.width(SHARE_TREE_WIDTH).fillMaxHeight().padding(top = TREE_TOP_PADDING, bottom = Spacing.s18),
                 )
             }
-            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, Modifier.weight(1f))
+            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, selectedFileId, Modifier.weight(1f))
         }
     }
 }
@@ -108,6 +115,7 @@ private fun BrowseContent(
     onOpenFolder: (folderId: Long) -> Unit,
     onOpenFile: (fileId: Long) -> Unit,
     onAddServer: () -> Unit,
+    selectedFileId: Long?,
     modifier: Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -202,6 +210,11 @@ private fun BrowseContent(
                                     compact = true,
                                     onClick = { onOpenFile(row.fileId) },
                                     testTag = row.testTag,
+                                    // A row has no art to ring, so the open one is lifted a step.
+                                    // The Library's rows lift onto `surface` from the ground; these
+                                    // already sit ON a surface card, so the same idea measured from
+                                    // the card is `skeleton`, the next step up.
+                                    modifier = if (row.fileId == selectedFileId) Modifier.background(colors.skeleton) else Modifier,
                                 )
                             }
                         }
@@ -249,6 +262,7 @@ private fun BrowseContent(
                             progress = row.fraction,
                             dimmed = offline != null,
                             fallbackLabel = row.name,
+                            selected = row.fileId == selectedFileId,
                             onClick = { onOpenFile(row.fileId) },
                             testTag = row.testTag,
                         )

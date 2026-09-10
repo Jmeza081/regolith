@@ -32,6 +32,24 @@ same `NavPill` is drawn `vertical` as a rail on the start edge, and the four
 tab screens are inset by `NAV_RAIL_INSET` so they sit beside it; pushed
 screens keep the full width. Same keys, same tags, same back stack.
 
+The rail can be away in two different ways, and they are not the same thing:
+
+- **Idle** — three seconds after the last touch anywhere in the app the rail
+  slides off the start edge, leaving `NavRailSpine`: four dots, the current
+  tab lit. The reserved inset does **not** change, so nothing reflows and the
+  wall never jumps while you read it. Governed by
+  `Settings › Display › Auto-hide the rail` (on by default, wide windows only).
+- **Pinned away** — the chevron under the rail's four cells
+  (`nav_rail_hide_button`) collapses it for good; `railHidden` is remembered
+  in preferences and the inset drops from `NAV_RAIL_INSET` (102dp) to
+  `NAV_RAIL_SPINE_INSET` (22dp), so the Library wall gets its third tile at
+  full width. Content reflows, which is why this only happens on request.
+
+Tapping the spine (`nav_rail_spine`) brings the rail back either way — and
+un-pins it when it was pinned. Touches are observed on the root `Box` in the
+`Initial` pointer pass and reported down a `MutableSharedFlow`, not into
+state, so a scroll does not recompose the tree on every frame.
+
 | Tab | Key | Screen | testTag |
 |---|---|---|---|
 | Home | `Home` | `HomeScreen` | `nav_home` |
@@ -66,18 +84,30 @@ opened the player directly).
 
 ## Title Detail is a pane on a wide window
 
-`Library` carries `ListDetailSceneStrategy.listPane()` metadata and
-`TitleDetail` carries `detailPane()`. On a wide window the strategy renders the
+`Library` and `Browse` both carry `ListDetailSceneStrategy.listPane()`
+metadata and `TitleDetail` carries `detailPane()`. On a wide window the strategy renders the
 top two keys as one two-pane scene: the wall on the start edge (inside the
 rail's inset), the detail beside it, with "Choose a title" in the pane until
 one is picked. **The back stack is identical either way** — back pops the
 detail first, then the wall — and the rail keeps the tab that owns the wall.
 Picking another title replaces the open detail rather than stacking one.
 
-A detail opened from `Home`, `Search` or `Browse` has no wall beneath it, so it
-fills the window and keeps the back arrow. Browse spends its width on the share
-tree instead (below). On a compact window nothing changes: the
+A detail opened from `Home` or `Search` has no wall beneath it, so it fills the
+window and keeps the back arrow. On a compact window nothing changes: the
 detail is pushed and slides in, as it has since Phase 6.
+
+### The divider
+
+Three rest positions: the wall collapsed behind the rail, the even split
+(`listPaneWidth`), and 85% (which leaves the detail a sliver). Whenever the
+divider is off the even split, the grab handle carries a reset button
+(`pane_reset_split`); double-tapping the handle does the same. It lives on the
+handle rather than in either pane because the handle is the one thing that is
+on screen in **every** split — a control drawn inside a pane disappears with
+that pane, which is exactly how the collapsed state used to become a dead end.
+
+Closing the detail returns the divider to the even split, so collapsing the
+wall is a gesture for one title rather than a mode carried between screens.
 
 ## Pushed screens (pill hidden)
 
