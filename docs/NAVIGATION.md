@@ -39,8 +39,8 @@ The rail can be away in two different ways, and they are not the same thing:
   tab lit. The reserved inset does **not** change, so nothing reflows and the
   wall never jumps while you read it. Governed by
   `Settings › Display › Auto-hide the rail` (on by default, wide windows only).
-- **Pinned away** — the chevron under the rail's four cells
-  (`nav_rail_hide_button`) collapses it for good; `railHidden` is remembered
+- **Pinned away** — the 44dp circle below the rail (`nav_rail_hide_button`,
+  a sibling of the pill rather than a cell inside it) collapses it for good; `railHidden` is remembered
   in preferences and the inset drops from `NAV_RAIL_INSET` (102dp) to
   `NAV_RAIL_SPINE_INSET` (22dp), so the Library wall gets its third tile at
   full width. Content reflows, which is why this only happens on request.

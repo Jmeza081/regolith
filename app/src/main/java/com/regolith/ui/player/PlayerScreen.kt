@@ -5,10 +5,16 @@ import android.content.res.Configuration
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,6 +53,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -198,10 +205,15 @@ fun PlayerScreen(
     // paused is not an ending), the folder has another file, and you have
     // not already said no to this one.
     val autoplayNext by viewModel.autoplayNext.collectAsStateWithLifecycle()
+    val autoplayImmediately by viewModel.autoplayImmediately.collectAsStateWithLifecycle()
     val upNext = state.next.firstOrNull()
     var autoplayCancelled by remember(state.fileId) { mutableStateOf(false) }
     var countdown by remember { mutableStateOf<Int?>(null) }
-    val autoplayArmed = autoplayNext && !autoplayCancelled && upNext != null && state.ended && state.playWhenReady
+    // An explicit queue beats the setting: tapping Play all or Shuffle on a
+    // folder of seven is a request for all seven, and a queue that stopped
+    // after the first would be a bug in any other player. "Keep playing"
+    // governs what happens when you open ONE file and it ends.
+    val autoplayArmed = (autoplayNext || state.queued) && !autoplayCancelled && upNext != null && state.ended && state.playWhenReady
     LaunchedEffect(autoplayArmed, upNext?.fileId) {
         countdown = null
         if (!autoplayArmed || upNext == null) return@LaunchedEffect
@@ -212,9 +224,14 @@ fun PlayerScreen(
         // actually in front of you.
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             try {
-                for (second in AUTOPLAY_SECONDS downTo 1) {
-                    countdown = second
-                    delay(1_000)
+                // "Don't ask first": no card, no ring, the next file simply
+                // starts. The lifecycle gate still applies — the point of it
+                // is not the countdown but that you are there to see it.
+                if (!autoplayImmediately) {
+                    for (second in AUTOPLAY_SECONDS downTo 1) {
+                        countdown = second
+                        delay(1_000)
+                    }
                 }
                 viewModel.playNext(upNext.fileId)
             } finally {
@@ -222,6 +239,36 @@ fun PlayerScreen(
             }
         }
     }
+
+    // --- The middle-third drag, made visible (F7). The gesture already knew
+    // how far your finger had travelled; nothing on screen did, so there was
+    // no way to tell it was working or how far was far enough.
+    //
+    // Signed: negative is up (toward full screen), positive is down (out of
+    // full screen, or out of the player). `snap` while the finger is down so
+    // the picture tracks it exactly, a spring on release so an abandoned drag
+    // settles rather than jumping.
+    var middleDrag by remember { mutableFloatStateOf(0f) }
+    var middleDragging by remember { mutableStateOf(false) }
+    val middleT by animateFloatAsState(
+        targetValue = middleDrag,
+        animationSpec = if (middleDragging) snap() else spring(dampingRatio = 0.8f, stiffness = 500f),
+        label = "playerMiddleDrag",
+    )
+    // 0..1 of the way to committing, in each direction.
+    val dragUp = (-middleT / FULLSCREEN_DRAG_FRACTION).coerceIn(0f, 1f)
+    val dragDown = (middleT / FULLSCREEN_DRAG_FRACTION).coerceIn(0f, 1f)
+    // Scale is the one transform a SurfaceView actually honours from a parent
+    // graphicsLayer — measured on the Fold: a 0.6 scale moved the picture,
+    // a 0.25 alpha did nothing at all. So the picture grows and shrinks, and
+    // everything that needs to FADE (the details, the ground) is either an
+    // ordinary composable or a scrim drawn over the top.
+    val pictureScale = 1f + dragUp * 0.16f - dragDown * 0.14f
+    val haptics = LocalHapticFeedback.current
+    // One tick as you cross the point of no return, so you can feel that
+    // letting go now will do something.
+    val past = dragUp >= 1f || dragDown >= 1f
+    LaunchedEffect(past) { if (past) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
 
     var controlsVisible by remember { mutableStateOf(true) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
@@ -287,8 +334,10 @@ fun PlayerScreen(
                 this.zone = zone
                 controlsVisible = false
                 if (zone == Zone.MIDDLE) {
-                    // No rail: nothing is being set, so there is no value to show.
+                    // No rail: the picture itself is the readout.
                     middleDy = 0f
+                    middleDragging = true
+                    middleDrag = 0f
                     return
                 }
                 val kind = if (zone == Zone.LEFT) DragKind.Brightness else DragKind.Volume
@@ -298,6 +347,7 @@ fun PlayerScreen(
             override fun onDrag(dyFraction: Float) {
                 if (zone == Zone.MIDDLE) {
                     middleDy += dyFraction
+                    middleDrag = middleDy
                     return
                 }
                 val d = drag ?: return
@@ -309,6 +359,11 @@ fun PlayerScreen(
                 val ended = zone
                 zone = null
                 drag = null
+                // Whatever happens next, the picture springs back to rest: a
+                // committed drag is followed by a layout change, and an
+                // abandoned one has to undo itself visibly.
+                middleDragging = false
+                middleDrag = 0f
                 // Only the middle third dismisses or resizes. A fast brightness
                 // drag used to close the film, because any fling down did.
                 if (ended != Zone.MIDDLE) return
@@ -418,7 +473,10 @@ fun PlayerScreen(
         }
     } else if (immersive) {
         Box(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
-            video()
+            Box(Modifier.fillMaxSize().graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
+            // A SurfaceView ignores alpha from a parent layer, so "dimming"
+            // is a scrim drawn over it rather than a fade applied to it.
+            if (dragDown > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dragDown * 0.45f)))
             // The map's three columns need the width; it stays a landscape lesson.
             if (showGestureMap && landscape) GestureMap(onDismiss = viewModel::dismissGestureMap)
         }
@@ -426,8 +484,17 @@ fun PlayerScreen(
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
         AmbientGlow(state.fileId, Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f)) { video() }
+            Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f).graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
             PortraitDetails(
+                modifier = Modifier.graphicsLayer {
+                    // Up: the details get out of the picture's way. Down: they
+                    // go with it, so the whole player reads as one thing being
+                    // put away rather than a picture shrinking on a live page.
+                    alpha = 1f - maxOf(dragUp, dragDown)
+                    translationY = dragUp * 60.dp.toPx()
+                    scaleX = 1f - dragDown * 0.06f
+                    scaleY = 1f - dragDown * 0.06f
+                },
                 state = state,
                 onOpenPlayback = { sheet = Sheet.Playback },
                 onLoopTap = viewModel::tapLoopPoint,
@@ -444,10 +511,12 @@ fun PlayerScreen(
                             hardwareDecoding = state.hardwareDecoding,
                             scrubThumbnails = scrubThumbnails,
                             autoplayNext = autoplayNext,
+                            autoplayImmediately = autoplayImmediately,
                             onSpeed = viewModel::setSpeed,
                             onHardwareDecoding = viewModel::setHardwareDecoding,
                             onScrubThumbnails = viewModel::setScrubThumbnails,
                             onAutoplayNext = viewModel::setAutoplayNext,
+                            onAutoplayImmediately = viewModel::setAutoplayImmediately,
                             onClose = {},
                             header = false,
                         )
@@ -465,10 +534,12 @@ fun PlayerScreen(
                 hardwareDecoding = state.hardwareDecoding,
                 scrubThumbnails = scrubThumbnails,
                 autoplayNext = autoplayNext,
+                autoplayImmediately = autoplayImmediately,
                 onSpeed = viewModel::setSpeed,
                 onHardwareDecoding = viewModel::setHardwareDecoding,
                 onScrubThumbnails = viewModel::setScrubThumbnails,
                 onAutoplayNext = viewModel::setAutoplayNext,
+                onAutoplayImmediately = viewModel::setAutoplayImmediately,
                 onClose = { sheet = null },
             )
         }
@@ -691,6 +762,7 @@ private fun LoopingPill(modifier: Modifier = Modifier) {
  */
 @Composable
 private fun PortraitDetails(
+    modifier: Modifier,
     state: PlaybackState,
     onOpenPlayback: () -> Unit,
     onLoopTap: () -> Unit,
@@ -704,7 +776,7 @@ private fun PortraitDetails(
     val loop = state.loop
     if (wide) {
         Row(
-            Modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18),
+            modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s30),
         ) {
             Column(
@@ -737,12 +809,12 @@ private fun PortraitDetails(
     // With a loop set, the panel below the picture IS the loop (design frame 29): span, points, clear.
     // Landscape keeps it in the side sheet, since there is no room under the picture.
     if (loop != null) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18).testTag("player_loop_panel"), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
+        Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18).testTag("player_loop_panel"), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
         }
         return
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
         TitleBlock(state)
         PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false)
         NextInFolder(state, onPlayNext)

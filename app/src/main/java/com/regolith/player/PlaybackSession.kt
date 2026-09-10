@@ -67,6 +67,13 @@ data class PlaybackState(
     val loopPendingAMs: Long? = null,
     val loop: AbLoop? = null,
     val next: List<NextItem> = emptyList(),
+    /**
+     * True while an explicit queue is playing (Play all / Shuffle). [next] is
+     * then the rest of that queue rather than the rest of the folder, and the
+     * player plays on whether or not "Keep playing" is switched on: you asked
+     * for all of them.
+     */
+    val queued: Boolean = false,
     /** Chapter start positions. Empty until the container probe (Phase 4). */
     val chaptersMs: List<Long> = emptyList(),
     val error: String? = null,
@@ -113,6 +120,15 @@ class PlaybackSession @Inject constructor(
     private var currentFile: MediaFileEntity? = null
     /** file:// for a copy on this device, regolith:// for the share. */
     private var currentUri: android.net.Uri? = null
+
+    /**
+     * The running order set by Play all or Shuffle: file ids in the order you
+     * saw them on the wall. Empty means no queue, and "next" falls back to
+     * the rest of the folder. It lives here rather than in a ViewModel
+     * because the session is what outlives the player screen (G4), and it is
+     * dropped the moment a file outside it is opened.
+     */
+    private var activeQueue: List<Long> = emptyList()
 
     private fun current(): ExoPlayer = _player.value ?: createPlayer(_state.value.hardwareDecoding).also { _player.value = it }
 
@@ -192,8 +208,18 @@ class PlaybackSession @Inject constructor(
      * Load and play a file. Resumes from the saved position unless
      * [startMs] says otherwise. Safe to call for the file already loaded.
      */
-    fun load(fileId: Long, startMs: Long? = null) {
-        Log.d(TAG, "load($fileId, $startMs) current=${_state.value.fileId}")
+    /**
+     * Play [fileId]. [queue] is an explicit running order (Play all, Shuffle);
+     * pass null to keep whatever queue is running — which is what the
+     * autoplay step does, so walking a queue does not destroy it — and the
+     * queue is dropped as soon as a file outside it is opened.
+     */
+    fun load(fileId: Long, startMs: Long? = null, queue: List<Long>? = null) {
+        Log.d(TAG, "load($fileId, $startMs) current=${_state.value.fileId} queue=${queue?.size ?: activeQueue.size}")
+        when {
+            queue != null -> activeQueue = queue
+            !activeQueue.contains(fileId) -> activeQueue = emptyList()
+        }
         if (_state.value.fileId == fileId && _state.value.error == null) {
             if (!current().isPlaying) current().play()
             return
@@ -210,7 +236,11 @@ class PlaybackSession @Inject constructor(
             val file = library.file(fileId)
             currentFile = file
             val resume = startMs ?: playback.progress(fileId)?.takeUnless { it.completed }?.positionMs ?: 0L
-            val next = library.filesAfter(fileId).map { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
+            // What plays after this one: the rest of an explicit queue if one
+            // is running, otherwise the rest of the folder in name order.
+            val queueTail = activeQueue.drop(activeQueue.indexOf(fileId) + 1).takeIf { activeQueue.isNotEmpty() }
+            val next = (if (queueTail != null) library.filesInOrder(queueTail) else library.filesAfter(fileId))
+                .map { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
             val uri = resolver.playableUriFor(fileId)
             _state.update {
                 it.copy(
@@ -218,6 +248,7 @@ class PlaybackSession @Inject constructor(
                     sourceLabel = if (resolver.isLocal(uri)) "On this device" else file?.let { f -> sourceLabelFor(f) } ?: "",
                     fileSizeBytes = file?.sizeBytes ?: 0,
                     next = next,
+                    queued = activeQueue.isNotEmpty(),
                 )
             }
             currentUri = uri

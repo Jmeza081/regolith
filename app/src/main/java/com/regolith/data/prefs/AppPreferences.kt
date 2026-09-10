@@ -32,8 +32,10 @@ class AppPreferences @Inject constructor(
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
         val autoplayNext = booleanPreferencesKey("autoplay_next")
+        val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val railHidden = booleanPreferencesKey("rail_hidden")
+        val movingTiles = booleanPreferencesKey("moving_tiles")
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */
@@ -64,7 +66,7 @@ class AppPreferences @Inject constructor(
     }
 
     /**
-     * Settings › Playback › Autoplay next. On by default: a folder of
+     * Settings › Playback › Keep playing. On by default: a folder of
      * episodes is the common case, and the Up next card gives you ten
      * seconds to say no.
      */
@@ -72,6 +74,18 @@ class AppPreferences @Inject constructor(
 
     suspend fun setAutoplayNext(enabled: Boolean) {
         store.edit { it[Keys.autoplayNext] = enabled }
+    }
+
+    /**
+     * Settings › Playback › Don't ask first. Skips the Up next card and its
+     * countdown, so the next file simply starts. Off by default, and
+     * meaningless on its own: the player reads it only when [autoplayNext]
+     * is on, because you cannot skip a question you are not being asked.
+     */
+    val autoplayImmediately: Flow<Boolean> = store.data.map { it[Keys.autoplayImmediately] ?: false }
+
+    suspend fun setAutoplayImmediately(enabled: Boolean) {
+        store.edit { it[Keys.autoplayImmediately] = enabled }
     }
 
     /**
@@ -94,6 +108,18 @@ class AppPreferences @Inject constructor(
 
     suspend fun setRailHidden(hidden: Boolean) {
         store.edit { it[Keys.railHidden] = hidden }
+    }
+
+    /**
+     * Settings › Display › Moving tiles. OFF by default, and deliberately:
+     * a moving tile costs twelve key-frame seeks over the share to generate
+     * and about ten times a still's disk space to keep, so a library that
+     * never turns it on pays nothing at all.
+     */
+    val movingTiles: Flow<Boolean> = store.data.map { it[Keys.movingTiles] ?: false }
+
+    suspend fun setMovingTiles(enabled: Boolean) {
+        store.edit { it[Keys.movingTiles] = enabled }
     }
 
     /** Library › Sort by. Remembered, like a column sort in a web table. */

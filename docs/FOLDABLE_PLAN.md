@@ -256,3 +256,97 @@ a trigger, a card and a switch.
 Verified on the Pixel_Fold AVD in both postures: reset from both extremes,
 reset on close, Browse panes, idle retract, pin and unpin, autoplay through
 two episodes, cancel, and the cover screen unchanged.
+
+---
+
+## F7 — Round three (shipped 2026-09-10)
+
+Four changes and one exploration that turned into a fifth, from the artifact
+"Four builds and a costing". The owner approved all of them, including the
+one I had recommended parking.
+
+### The rail's collapse button leaves the pill
+
+A 44dp `IconCircleButton` — the same object the detail pane closes with —
+`s12` below the rail, both centred on the window and sliding as one group.
+`NavPill` loses the `onHide` parameter it grew in F6 and is four cells again.
+
+### Autoplay is two switches
+
+`Settings › Playback` now reads **Keep playing** ("When a file ends, start
+the next one in the folder") with **Don't ask first** ("Skip the ten-second
+Up next card and go straight in") nested under it, indented behind a
+hairline and disabled while the parent is off. `autoplay_immediately` is a
+new preference, off by default, and both switches mirror into the player's
+playback sheet.
+
+### The middle drag is visible
+
+The accumulated drag became real state, so the layout can read it every
+frame; on release an `animateFloatAsState` spring settles it, instead of the
+layout snapping.
+
+- **Up** (windowed): the picture scales toward full-bleed, the details
+  column fades and slides down behind it.
+- **Down** (windowed): both shrink together and a scrim deepens over the
+  lot — the player being put away.
+- **Down** (full screen): the picture shrinks back toward the strip.
+- Crossing the existing 12% commit point fires one haptic tick, so you can
+  feel that letting go now will do something.
+
+**The constraint this is designed around**, measured on the Fold before
+anything was built: a `SurfaceView` is composited by the system in its own
+layer rather than painted into the Compose one, so a parent `graphicsLayer`
+**scale does apply** (0.6 visibly moved the picture) and **alpha does not**
+(0.25 changed nothing). Hence: scale the picture, fade the ordinary
+composables, and darken with a scrim drawn over the top rather than a fade
+applied to it. Switching to a TextureView would make alpha work, at the cost
+of a GPU copy per frame and HDR passthrough; it is not worth it for a fade
+we can get another way.
+
+### Play all and Shuffle, on a real queue
+
+A red `PlayAllButton` sits under the top bar of a Library collection or a
+Browse folder that holds files — never the Library root or the share list,
+where "all" would mean the whole NAS. It opens `PlayAllSheet`, built like
+the sort sheet, offering **In order** and **Shuffle**.
+
+Underneath, `PlaybackSession` gained an `activeQueue`. When one is running,
+`state.next` is the rest of the queue instead of the rest of the folder, so
+the up-next list, the Up next card and autoplay all inherit it for free.
+The order is the wall's own — shuffled in the nav graph, since the session
+has no business knowing what a wall is — and the ids ride on
+`RegolithKey.Player.queue` so a queue survives process death. A queue is
+dropped as soon as a file outside it is opened, and `state.queued` makes it
+beat the "Keep playing" switch.
+
+### Moving tiles
+
+`Settings › Display › Moving tiles`, **off by default**. A tile that has
+been on screen for 700ms asks for `ArtworkKind.PREVIEW`: twelve 240×135
+frames from across the middle of the runtime, packed into one 960×405 JPEG
+and drawn a cell at a time at 4fps over the still.
+
+Why a sprite sheet and not an animated image: **Android can decode animated
+WebP and GIF but cannot encode either** — there is no public API. Twelve
+separate frames would be twelve Coil entries and twelve decodes per tile;
+one sheet is one of each.
+
+Why not real video: the inner-display wall shows eighteen tiles, and no
+phone will give you eighteen concurrent hardware decoder instances. Media3
+fails hard when they run out.
+
+What it costs, measured on the demo library: **42 KB a sheet**, against
+15 KB for a title's poster and thumb together — so roughly 3× a title's
+artwork, or about 57 MB for a thousand-file library where the stills alone
+would be 15 MB. Generation is twelve key-frame seeks per file, serialised
+one at a time (`previewSlots`) because they read through the same connection
+as playback. Settings › Media already reports and clears the artwork cache,
+so the growth stays visible and reversible.
+
+Verified on the Pixel_Fold AVD: the detached rail button, both Settings
+sections, the drag in both directions mid-gesture, Play all from both a
+Library wall (queue of 7) and a Browse folder (queue of 4), shuffle, and
+twelve-frame sheets generated one at a time with a `moving_tile_*` canvas
+per tile. The cover screen is unchanged apart from the Play all button,
+which it gets too.

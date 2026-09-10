@@ -65,6 +65,24 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    /**
+     * Write [bitmap] as it is: no crop, no scale. The preview sheet is a grid
+     * of frames whose geometry the UI relies on to pick cells out of it, so
+     * cropping it to an aspect ratio would silently shred the animation.
+     */
+    fun saveExact(bitmap: Bitmap, owner: ArtworkOwner, kind: ArtworkKind): Boolean {
+        val file = fileFor(relPathFor(owner, kind))
+        file.parentFile?.mkdirs()
+        val tmp = File(file.path + ".tmp")
+        return try {
+            FileOutputStream(tmp).use { out -> bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) }
+            tmp.renameTo(file)
+        } catch (e: Exception) {
+            tmp.delete()
+            false
+        }
+    }
+
     fun delete(owner: ArtworkOwner) {
         File(root, "${owner.typeName}/${owner.id}").deleteRecursively()
     }

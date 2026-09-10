@@ -1,6 +1,8 @@
 package com.regolith.data.artwork
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.core.graphics.createBitmap
 import android.util.Log
 import com.regolith.data.db.ArtworkDao
 import com.regolith.data.db.ArtworkEntity
@@ -14,6 +16,11 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
+import com.regolith.domain.artwork.PREVIEW_CELL_HEIGHT
+import com.regolith.domain.artwork.PREVIEW_CELL_WIDTH
+import com.regolith.domain.artwork.PREVIEW_COLUMNS
+import com.regolith.domain.artwork.PREVIEW_FRAMES
+import com.regolith.domain.artwork.previewPositionsMs
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
@@ -64,6 +71,17 @@ class ArtworkRepository @Inject constructor(
     /** Two extractions at a time: enough to fill a grid, not enough to starve the player. */
     private val extractionSlots = Semaphore(2)
 
+    /**
+     * ONE preview at a time. A sheet is twelve key-frame seeks over SMB
+     * against a thumbnail's one, so a wall that asked for twenty at once
+     * would saturate the share and starve everything else — including
+     * playback, which reads through the same connection.
+     */
+    private val previewSlots = Semaphore(1)
+
+    /** One in-flight sheet per file, so two tiles of the same title share the work. */
+    private val previewsInFlight = mutableMapOf<ArtworkOwner, Deferred<Unit>>()
+
     /** One in-flight resolution per owner; a grid asking for poster and thumb shares it. */
     private val inFlight = mutableMapOf<ArtworkOwner, Deferred<Unit>>()
     private val inFlightLock = Mutex()
@@ -93,6 +111,9 @@ class ArtworkRepository @Inject constructor(
      */
     suspend fun resolve(request: ArtworkRequest): ArtworkEntity? {
         cached(request)?.let { return it }
+        // Previews have their own pipeline: a different number of frames, a
+        // different shape on disk, and one at a time rather than two.
+        if (request.kind == ArtworkKind.PREVIEW) return resolvePreview(request)
         val job = inFlightLock.withLock {
             inFlight.getOrPut(request.owner) {
                 scope.async {
@@ -200,9 +221,104 @@ class ArtworkRepository @Inject constructor(
         placeholder(owner)
     }
 
+    /**
+     * A moving tile's sprite sheet: [PREVIEW_FRAMES] frames from across the
+     * middle of the film, packed into one grid and written as a single JPEG.
+     *
+     * Only files have one — a collection has no runtime of its own. A file
+     * the decoder cannot read gets the usual PLACEHOLDER row so the wall
+     * stops asking, and a share that is merely unreachable records nothing
+     * and is tried again later.
+     */
+    private suspend fun resolvePreview(request: ArtworkRequest): ArtworkEntity? {
+        val owner = request.owner as? ArtworkOwner.File ?: return null
+        val job = inFlightLock.withLock {
+            previewsInFlight.getOrPut(owner) {
+                scope.async {
+                    try {
+                        previewSlots.withPermit { buildPreview(owner) }
+                    } finally {
+                        inFlightLock.withLock { previewsInFlight.remove(owner) }
+                    }
+                }
+            }
+        }
+        job.await()
+        return cached(request)
+    }
+
+    private suspend fun buildPreview(owner: ArtworkOwner.File) {
+        val file = mediaFileDao.byId(owner.id) ?: return
+        try {
+            val source = local.file(owner.id)?.let { frames.openLocal(it) } ?: run {
+                val location = locate(file.shareId) ?: return
+                frames.open(location.host, location.credentials, location.share, file.relPath)
+            }
+            source.use { open ->
+                val duration = open.durationMs ?: file.durationMs ?: 0L
+                val positions = previewPositionsMs(duration)
+                if (positions.isEmpty()) {
+                    recordPreviewPlaceholder(owner)
+                    return
+                }
+                val sheet = createBitmap(ArtworkKind.PREVIEW.width, ArtworkKind.PREVIEW.height)
+                val canvas = Canvas(sheet)
+                var drawn = 0
+                try {
+                    positions.forEachIndexed { index, positionMs ->
+                        val frame = open.frameAt(positionMs, PREVIEW_CELL_WIDTH, PREVIEW_CELL_HEIGHT) ?: return@forEachIndexed
+                        try {
+                            val cell = ArtworkStore.centerCrop(frame, PREVIEW_CELL_WIDTH, PREVIEW_CELL_HEIGHT)
+                            canvas.drawBitmap(
+                                cell,
+                                (index % PREVIEW_COLUMNS * PREVIEW_CELL_WIDTH).toFloat(),
+                                (index / PREVIEW_COLUMNS * PREVIEW_CELL_HEIGHT).toFloat(),
+                                null,
+                            )
+                            if (cell !== frame) cell.recycle()
+                            drawn++
+                        } finally {
+                            frame.recycle()
+                        }
+                    }
+                    // A sheet with holes in it would stutter through black
+                    // cells; better no moving tile than a broken one.
+                    if (drawn == positions.size && store.saveExact(sheet, owner, ArtworkKind.PREVIEW)) {
+                        record(owner, ArtworkKind.PREVIEW, ArtworkSource.FRAMEGRAB)
+                        Log.d(TAG, "preview sheet for ${owner.id}: $drawn frames")
+                    } else {
+                        recordPreviewPlaceholder(owner)
+                    }
+                } finally {
+                    sheet.recycle()
+                }
+            }
+        } catch (e: SmbFailure) {
+            Log.w(TAG, "preview for $owner deferred: ${e.message}")
+        } catch (e: Exception) {
+            Log.w(TAG, "preview for $owner failed: $e")
+            recordPreviewPlaceholder(owner)
+        }
+    }
+
+    private suspend fun recordPreviewPlaceholder(owner: ArtworkOwner) {
+        artworkDao.upsert(
+            ArtworkEntity(
+                ownerType = owner.typeName,
+                ownerId = owner.id,
+                kind = ArtworkKind.PREVIEW.name,
+                source = ArtworkSource.PLACEHOLDER.name,
+                relPath = "",
+                width = 0,
+                height = 0,
+                updatedAtMs = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     private suspend fun saveEncoded(bytes: ByteArray, owner: ArtworkOwner, source: ArtworkSource): Boolean {
         var any = false
-        for (kind in ArtworkKind.entries) {
+        for (kind in ArtworkKind.stills) {
             if (store.saveEncoded(bytes, owner, kind)) {
                 record(owner, kind, source)
                 any = true
@@ -213,7 +329,7 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun saveBitmap(bitmap: Bitmap, owner: ArtworkOwner, source: ArtworkSource): Boolean {
         var any = false
-        for (kind in ArtworkKind.entries) {
+        for (kind in ArtworkKind.stills) {
             if (store.save(bitmap, owner, kind)) {
                 record(owner, kind, source)
                 any = true
@@ -239,7 +355,7 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun placeholder(owner: ArtworkOwner) {
         store.delete(owner)
-        for (kind in ArtworkKind.entries) {
+        for (kind in ArtworkKind.stills) {
             artworkDao.upsert(
                 ArtworkEntity(
                     ownerType = owner.typeName,

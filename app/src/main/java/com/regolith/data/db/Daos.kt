@@ -167,6 +167,14 @@ interface MediaFileDao {
     @Query("SELECT * FROM media_files WHERE folderId = :folderId AND missing = 0 ORDER BY name COLLATE NOCASE")
     suspend fun inFolder(folderId: Long): List<MediaFileEntity>
 
+    /**
+     * A playback queue's files, in whatever order SQLite returns them; the
+     * caller re-orders to match the queue, which is the order you saw on the
+     * wall and not one the database knows about.
+     */
+    @Query("SELECT * FROM media_files WHERE id IN (:ids) AND missing = 0")
+    suspend fun byIds(ids: List<Long>): List<MediaFileEntity>
+
     @Insert
     suspend fun insert(file: MediaFileEntity): Long
 

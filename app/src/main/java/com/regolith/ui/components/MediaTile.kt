@@ -29,6 +29,31 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import coil3.BitmapImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.PREVIEW_CELL_HEIGHT
+import com.regolith.domain.artwork.PREVIEW_CELL_WIDTH
+import com.regolith.domain.artwork.PREVIEW_COLUMNS
+import com.regolith.domain.artwork.PREVIEW_FPS
+import com.regolith.domain.artwork.PREVIEW_FRAMES
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import com.regolith.R
@@ -59,15 +84,83 @@ fun ArtworkImage(
         UnmatchedArt(fallbackLabel, modifier)
         return
     }
-    SubcomposeAsyncImage(
-        model = artwork,
-        contentDescription = null,
-        modifier = modifier,
-        loading = { ReadingArt() },
-        error = { UnmatchedArt(fallbackLabel, Modifier.fillMaxSize()) },
-        success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
-    )
+    val owner = artwork.owner
+    Box(modifier) {
+        SubcomposeAsyncImage(
+            model = artwork,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            loading = { ReadingArt() },
+            error = { UnmatchedArt(fallbackLabel, Modifier.fillMaxSize()) },
+            success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
+        )
+        // Settings › Display › Moving tiles. The still is what loads and what
+        // you see first; the moving frames arrive over it, or never, and the
+        // tile is complete either way.
+        if (LocalMovingTiles.current && owner is ArtworkOwner.File && artwork.kind != ArtworkKind.PREVIEW) {
+            MovingPreview(owner, Modifier.fillMaxSize())
+        }
+    }
 }
+
+/**
+ * The moving half of a tile: [ArtworkKind.PREVIEW]'s sprite sheet, one cell
+ * at a time at [PREVIEW_FPS].
+ *
+ * Two things keep this affordable. It asks for nothing until the tile has
+ * been on screen for [PREVIEW_SETTLE_MS], so flinging through a wall queues
+ * no work — a tile that scrolls past leaves the composition and cancels its
+ * own request. And it is one image: a sheet is a single Coil entry and a
+ * single decode, where twelve frames would be twelve of each.
+ */
+@Composable
+private fun MovingPreview(owner: ArtworkOwner.File, modifier: Modifier) {
+    var settled by remember(owner.id) { mutableStateOf(false) }
+    LaunchedEffect(owner.id) {
+        delay(PREVIEW_SETTLE_MS)
+        settled = true
+    }
+    if (!settled) return
+
+    val painter = rememberAsyncImagePainter(model = ArtworkRequest(owner, ArtworkKind.PREVIEW))
+    val state by painter.state.collectAsState()
+    val sheet = (state as? AsyncImagePainter.State.Success)?.result?.image?.let { it as? BitmapImage }?.bitmap?.asImageBitmap() ?: return
+
+    var frame by remember(sheet) { mutableIntStateOf(0) }
+    LaunchedEffect(sheet) {
+        while (true) {
+            delay(1_000L / PREVIEW_FPS)
+            frame = (frame + 1) % PREVIEW_FRAMES
+        }
+    }
+    // Fades in over the still rather than replacing it, so a tile that is
+    // already on screen does not blink when its sheet lands.
+    val alpha by animateFloatAsState(targetValue = 1f, label = "movingTile")
+    Canvas(modifier.clipToBounds().alpha(alpha).testTag("moving_tile_${owner.id}")) {
+        // Cover the tile the way ContentScale.Crop would: scale the 16:9 cell
+        // until it covers, then centre the overflow.
+        val scale = maxOf(size.width / PREVIEW_CELL_WIDTH, size.height / PREVIEW_CELL_HEIGHT)
+        val w = (PREVIEW_CELL_WIDTH * scale).roundToInt()
+        val h = (PREVIEW_CELL_HEIGHT * scale).roundToInt()
+        drawImage(
+            image = sheet,
+            srcOffset = IntOffset(frame % PREVIEW_COLUMNS * PREVIEW_CELL_WIDTH, frame / PREVIEW_COLUMNS * PREVIEW_CELL_HEIGHT),
+            srcSize = IntSize(PREVIEW_CELL_WIDTH, PREVIEW_CELL_HEIGHT),
+            dstOffset = IntOffset(((size.width - w) / 2).roundToInt(), ((size.height - h) / 2).roundToInt()),
+            dstSize = IntSize(w, h),
+        )
+    }
+}
+
+/**
+ * Whether tiles move (Settings › Display › Moving tiles). A composition
+ * local rather than a parameter on every tile: the setting is app-wide and
+ * four screens draw tiles, none of which otherwise care.
+ */
+val LocalMovingTiles = staticCompositionLocalOf { false }
+
+/** How long a tile must sit still before it is worth twelve seeks over SMB. */
+private const val PREVIEW_SETTLE_MS = 700L
 
 /**
  * The poster tile (design section 01, "Media tiles"; section 05). 2:3 at

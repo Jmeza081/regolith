@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -117,24 +119,43 @@ fun SettingsScreen(
                         checked = state.scrubThumbnails, onCheckedChange = viewModel::setScrubThumbnails, testTag = "settings_scrub_thumbnails_switch",
                     )
                     RegolithSwitch(
-                        label = "Autoplay next", note = "Play the next file in the folder when one ends.",
+                        label = "Keep playing", note = "When a file ends, start the next one in the folder.",
                         checked = state.autoplayNext, onCheckedChange = viewModel::setAutoplayNext, testTag = "settings_autoplay_next_switch",
                     )
+                    // Indented under its parent and greyed when it is off: you
+                    // cannot skip a question you are not being asked. Disabled
+                    // rather than hidden, so the option is visible before you
+                    // turn the parent on and the list never changes shape.
+                    NestedRow {
+                        RegolithSwitch(
+                            label = "Don't ask first", note = "Skip the ten-second Up next card and go straight in.",
+                            checked = state.autoplayImmediately, onCheckedChange = viewModel::setAutoplayImmediately,
+                            enabled = state.autoplayNext, testTag = "settings_autoplay_immediately_switch",
+                        )
+                    }
                 }
             }
 
             // Wide windows only: on a phone the pill is the bottom bar and
             // there is no side space to reclaim, so the row would toggle
             // something the owner of a phone can never see.
-            if (LocalWindowShape.current.wide) {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                    Eyebrow("Display", muted = true)
-                    SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                Eyebrow("Display", muted = true)
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    // Wide windows only: on a phone the pill is the bottom bar
+                    // and there is no side space to reclaim, so the row would
+                    // toggle something a phone can never show.
+                    if (LocalWindowShape.current.wide) {
                         RegolithSwitch(
                             label = "Auto-hide the rail", note = "Slides the navigation rail away three seconds after you stop touching the screen.",
                             checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
                         )
                     }
+                    RegolithSwitch(
+                        label = "Moving tiles",
+                        note = "Tiles play a few seconds of the film. Built the first time you look at one, and kept here — see the artwork cache below.",
+                        checked = state.movingTiles, onCheckedChange = viewModel::setMovingTiles, testTag = "settings_moving_tiles_switch",
+                    )
                 }
             }
 
@@ -215,5 +236,19 @@ private fun DisconnectDialog(name: String, onConfirm: () -> Unit, onKeep: () -> 
                 SecondaryButton(text = "Keep it", onClick = onKeep, testTag = "settings_disconnect_keep_button", modifier = Modifier.fillMaxWidth())
             }
         }
+    }
+}
+
+/**
+ * A settings row that depends on the one above it: indented, with a hairline
+ * down its start edge standing in for the bracket a nested list would draw.
+ * The child itself carries the disabled state; this is only the geometry.
+ */
+@Composable
+private fun NestedRow(content: @Composable () -> Unit) {
+    val colors = RegolithTheme.colors
+    Row(Modifier.height(IntrinsicSize.Min)) {
+        Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = Spacing.s8).background(colors.hairline))
+        Box(Modifier.padding(start = Spacing.s12).weight(1f)) { content() }
     }
 }

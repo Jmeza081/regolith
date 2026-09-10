@@ -49,10 +49,15 @@ class PlayerViewModel @AssistedInject constructor(
     val player: StateFlow<ExoPlayer?> = session.player
     val scrubThumbnails: StateFlow<Boolean> = prefs.scrubThumbnails.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    /** Settings › Playback › Autoplay next, mirrored in the playback sheet. */
+    /** Settings › Playback › Keep playing, mirrored in the playback sheet. */
     val autoplayNext: StateFlow<Boolean> = prefs.autoplayNext.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
+
+    /** Settings › Playback › Don't ask first: no card, no countdown, the next file simply starts. */
+    val autoplayImmediately: StateFlow<Boolean> = prefs.autoplayImmediately.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setAutoplayImmediately(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayImmediately(enabled) }.let { }
 
     /** Null until read; false shows the gesture map once. */
     val gesturesSeen: StateFlow<Boolean?> = prefs.gesturesSeen.map<Boolean, Boolean?> { it }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -97,7 +102,7 @@ class PlayerViewModel @AssistedInject constructor(
     }
 
     init {
-        session.load(key.fileId, key.startMs)
+        session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
     }
 
     fun togglePlayPause() = session.togglePlayPause()

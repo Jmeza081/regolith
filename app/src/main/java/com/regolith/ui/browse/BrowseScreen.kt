@@ -18,6 +18,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
@@ -29,6 +32,8 @@ import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.ListRow
+import com.regolith.ui.components.PlayAllButton
+import com.regolith.ui.components.PlayAllSheet
 import com.regolith.ui.components.NoticeCard
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RowLeading
@@ -78,6 +83,11 @@ fun BrowseScreen(
      */
     onOpenTree: ((folderId: Long) -> Unit)? = null,
     /**
+     * Play all / Shuffle from this folder: the file ids in the order the list
+     * is showing them. Null at the share list, where there are no files yet.
+     */
+    onPlayAll: ((fileIds: List<Long>, shuffle: Boolean) -> Unit)? = null,
+    /**
      * The file open in the detail pane beside this wall on a wide window, so
      * the row or tile it came from is marked. Null on a phone, where opening
      * a file covers the wall.
@@ -101,7 +111,7 @@ fun BrowseScreen(
                     modifier = Modifier.width(SHARE_TREE_WIDTH).fillMaxHeight().padding(top = TREE_TOP_PADDING, bottom = Spacing.s18),
                 )
             }
-            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, selectedFileId, Modifier.weight(1f))
+            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, Modifier.weight(1f))
         }
     }
 }
@@ -115,10 +125,12 @@ private fun BrowseContent(
     onOpenFolder: (folderId: Long) -> Unit,
     onOpenFile: (fileId: Long) -> Unit,
     onAddServer: () -> Unit,
+    onPlayAll: ((fileIds: List<Long>, shuffle: Boolean) -> Unit)?,
     selectedFileId: Long?,
     modifier: Modifier,
 ) {
     val colors = RegolithTheme.colors
+    var playAllOpen by remember { mutableStateOf(false) }
     Column(modifier.fillMaxSize().testTag("browse_screen")) {
         // No back arrow (design frame 25): the pill and the system back gesture do the navigating, and the breadcrumb says where you are.
         // The title is "Browse" at the root and the folder's own name inside one.
@@ -137,6 +149,27 @@ private fun BrowseContent(
         val shares = state.rows.filterIsInstance<BrowseRow.ShareRow>()
         val folders = state.rows.filterIsInstance<BrowseRow.FolderRow>()
         val files = state.rows.filterIsInstance<BrowseRow.FileRow>()
+
+        // The folder's own CTA, above the list and only where there is
+        // something to play: a folder of folders has nothing to queue.
+        if (onPlayAll != null && files.isNotEmpty()) {
+            PlayAllButton(
+                onClick = { playAllOpen = true },
+                modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
+            )
+        }
+        if (playAllOpen && onPlayAll != null) {
+            PlayAllSheet(
+                fileCount = files.size,
+                totalMs = files.map { it.durationMs }.takeIf { d -> d.all { it != null } }?.filterNotNull()?.sum(),
+                firstName = files.firstOrNull()?.name,
+                onPlay = { shuffle ->
+                    playAllOpen = false
+                    onPlayAll(files.map { it.fileId }, shuffle)
+                },
+                onDismiss = { playAllOpen = false },
+            )
+        }
 
         val offlineCard = @Composable {
             NoticeCard(

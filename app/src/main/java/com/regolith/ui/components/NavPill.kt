@@ -70,13 +70,6 @@ fun NavPill(
     modifier: Modifier = Modifier,
     dimmed: Set<MainTab> = emptySet(),
     vertical: Boolean = false,
-    /**
-     * The chevron under the rail's four cells that pins it away, leaving the
-     * [NavRailSpine] on the edge and handing the rail's width back to the
-     * screen. Null on a phone, where the pill is the bottom bar and there is
-     * no width to reclaim.
-     */
-    onHide: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val style = HazeStyle(
@@ -106,23 +99,6 @@ fun NavPill(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             MainTab.entries.forEach { tab -> cell(tab, Modifier.fillMaxWidth().height(NAV_RAIL_CELL_HEIGHT)) }
-            onHide?.let { hide ->
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(26.dp)
-                        .clickable(interactionSource = null, indication = null, onClick = hide)
-                        .testTag("nav_rail_hide_button"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.rg_ic_chevron_left),
-                        contentDescription = "Hide the rail",
-                        tint = colors.navIdle,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
-            }
         }
         return
     }

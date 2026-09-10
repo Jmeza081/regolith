@@ -1,10 +1,14 @@
 package com.regolith.domain.artwork
 
 /**
- * The two images the app keeps per thing (design section 08, "Where each
- * image lands"). A poster is 2:3 and a thumb is 16:9; both are generated
- * from the same source and cached side by side, so a screen never waits
- * on a second extraction to switch shapes.
+ * The images the app keeps per thing (design section 08, "Where each image
+ * lands"). A poster is 2:3 and a thumb is 16:9; both are generated from the
+ * same source and cached side by side, so a screen never waits on a second
+ * extraction to switch shapes.
+ *
+ * [PREVIEW] is the odd one out and is NOT one of the [stills]: it is a
+ * sprite sheet for Settings › Display › Moving tiles, generated separately
+ * and only when that setting is on.
  */
 enum class ArtworkKind(val width: Int, val height: Int, val fileName: String) {
     /** Library tiles, Media grid, Title Detail. */
@@ -12,6 +16,46 @@ enum class ArtworkKind(val width: Int, val height: Int, val fileName: String) {
 
     /** Resume row, Browse grid, search results, the player's scrub preview size. */
     THUMB(320, 180, "thumb.jpg"),
+
+    /**
+     * A moving tile's frames, packed edge to edge into ONE image:
+     * [PREVIEW_COLUMNS] × [PREVIEW_ROWS] cells of [PREVIEW_CELL_WIDTH] ×
+     * [PREVIEW_CELL_HEIGHT]. A sprite sheet rather than an animated file
+     * because Android can decode animated WebP and GIF but cannot ENCODE
+     * either — there is no public API for it. One JPEG is also one Coil
+     * request, one decode and one memory-cache entry per tile, where twelve
+     * separate frames would be twelve of each.
+     */
+    PREVIEW(PREVIEW_CELL_WIDTH * PREVIEW_COLUMNS, PREVIEW_CELL_HEIGHT * PREVIEW_ROWS, "preview.jpg"),
+    ;
+
+    companion object {
+        /** The two still kinds, which every frame grab and sidecar writes together. */
+        val stills = listOf(POSTER, THUMB)
+    }
+}
+
+/** A preview cell: small enough that a wall of decoded sheets stays affordable. */
+const val PREVIEW_CELL_WIDTH = 240
+const val PREVIEW_CELL_HEIGHT = 135
+const val PREVIEW_COLUMNS = 4
+const val PREVIEW_ROWS = 3
+
+/** Twelve frames, played at [PREVIEW_FPS]: a three-second loop of the film. */
+const val PREVIEW_FRAMES = PREVIEW_COLUMNS * PREVIEW_ROWS
+const val PREVIEW_FPS = 4
+
+/**
+ * Where the frames are taken from: evenly spaced across the middle of the
+ * runtime, avoiding the black open and the credits. Pure, so it is unit
+ * testable without a file.
+ */
+fun previewPositionsMs(durationMs: Long): List<Long> {
+    if (durationMs <= 0) return emptyList()
+    val start = (durationMs * 0.10).toLong()
+    val end = (durationMs * 0.80).toLong()
+    val step = (end - start) / PREVIEW_FRAMES
+    return List(PREVIEW_FRAMES) { start + step * it }
 }
 
 /** Where an image came from, in the order the resolver tries them. */

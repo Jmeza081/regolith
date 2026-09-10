@@ -73,6 +73,7 @@ import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
+import com.regolith.ui.components.LocalMovingTiles
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
@@ -268,6 +269,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // details would leave the wall marking the wrong tile and turn the pane's
     // close control back into a back arrow. On a phone the wall is covered,
     // so the top key is never a detail and this is the plain push it was.
+    // Play all / Shuffle from a collection. The order is the one the wall was
+    // showing, shuffled here rather than in the session so the session never
+    // has to know what a wall is; the queue rides on the Player key so it
+    // survives the process being killed.
+    fun playAll(fileIds: List<Long>, shuffle: Boolean) {
+        val queue = if (shuffle) fileIds.shuffled() else fileIds
+        val first = queue.firstOrNull() ?: return
+        backStack.add(RegolithKey.Player(first, queue = queue))
+    }
+
     fun openTitle(fileId: Long) {
         if (windowShape.wide && backStack.lastOrNull() is RegolithKey.TitleDetail) backStack.removeLastOrNull()
         backStack.add(RegolithKey.TitleDetail(fileId))
@@ -282,7 +293,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
 
     // Root container. testTagsAsResourceId: without this, uiautomator (and
     // therefore argent's `describe`) cannot see any Compose testTag at all.
-    CompositionLocalProvider(LocalWindowShape provides windowShape, LocalNavPillInsets provides pillInsets) {
+    val movingTiles by appViewModel.movingTiles.collectAsStateWithLifecycle()
+    CompositionLocalProvider(
+        LocalWindowShape provides windowShape,
+        LocalNavPillInsets provides pillInsets,
+        LocalMovingTiles provides movingTiles,
+    ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -366,6 +382,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     startOnDevice = key.onDevice,
                                     selectedFileId = paneFileId,
+                                    // Only inside a collection: on the root, "all" would
+                                    // mean every file on every share.
+                                    onPlayAll = if (key.folderId != null) ::playAll else null,
                                 )
                             }
                         }
@@ -395,6 +414,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
                                     onOpenFile = { openTitle(it) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                                    onPlayAll = ::playAll,
                                     // The tree restarts the Browse chain instead of pushing onto
                                     // it, so back from a jump leaves Browse rather than walking
                                     // through every folder the tree was used to skip.
@@ -499,15 +519,31 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 .padding(bottom = Spacing.s8)
                         },
                     ) {
-                        NavPill(
-                            selected = currentTab,
-                            onSelect = { navigateToTab(it) },
-                            hazeState = hazeState,
-                            dimmed = dimmedTabs,
-                            vertical = windowShape.wide,
-                            // The chevron that pins the rail away, wide windows only.
-                            onHide = { appViewModel.setRailHidden(true) }.takeIf { windowShape.wide },
-                        )
+                        // On a wide window the rail and the control that pins
+                        // it away are two objects, not one: the pill is four
+                        // tabs and nothing else, and the circle beneath it is
+                        // plainly a control — the same 44dp frosted circle the
+                        // detail pane closes with. They slide as one group, so
+                        // the edge never shows half a nav.
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                            NavPill(
+                                selected = currentTab,
+                                onSelect = { navigateToTab(it) },
+                                hazeState = hazeState,
+                                dimmed = dimmedTabs,
+                                vertical = windowShape.wide,
+                            )
+                            if (windowShape.wide) {
+                                IconCircleButton(
+                                    icon = painterResource(R.drawable.rg_ic_chevron_left),
+                                    contentDescription = "Hide the rail",
+                                    onClick = { appViewModel.setRailHidden(true) },
+                                    size = 44.dp,
+                                    iconSize = 20.dp,
+                                    testTag = "nav_rail_hide_button",
+                                )
+                            }
+                        }
                     }
                 }
             }

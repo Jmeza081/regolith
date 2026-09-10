@@ -64,6 +64,10 @@ class AppViewModel @Inject constructor(
     val autoHideRail: StateFlow<Boolean> = prefs.autoHideRail
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    /** Settings › Display › Moving tiles: provided to the tree as LocalMovingTiles. */
+    val movingTiles: StateFlow<Boolean> = prefs.movingTiles
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     fun setRailHidden(hidden: Boolean) {
         viewModelScope.launch { prefs.setRailHidden(hidden) }
     }

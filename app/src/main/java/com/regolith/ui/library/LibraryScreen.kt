@@ -58,6 +58,8 @@ import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.PlayAllButton
+import com.regolith.ui.components.PlayAllSheet
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
@@ -103,6 +105,12 @@ fun LibraryScreen(
     onOpenTitle: (fileId: Long) -> Unit,
     onSearch: () -> Unit,
     onAddServer: () -> Unit,
+    /**
+     * Play all / Shuffle from this collection: the file ids in the order the
+     * wall is showing them, [shuffle] saying whether to scramble that order.
+     * Null on the Library root, where "all" would mean the whole NAS.
+     */
+    onPlayAll: ((fileIds: List<Long>, shuffle: Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier,
     startOnDevice: Boolean = false,
     /**
@@ -115,6 +123,7 @@ fun LibraryScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
     var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
+    var playAllOpen by remember { mutableStateOf(false) }
     val unreachable = state.unreachable
     val readyCount = state.device.ready.size
 
@@ -152,6 +161,17 @@ fun LibraryScreen(
                 // The top bar's subtitle ends 8dp above this; on its own that read as
                 // one block of text with a control stuck to it.
                 modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12, bottom = Spacing.s18),
+            )
+        }
+
+        // The collection's own CTA. Titles only: a Collection tile is a folder
+        // of folders and has no single file to start with, so a wall of them
+        // has nothing to play in order.
+        val playable = state.tiles.filterIsInstance<LibraryTile.Title>()
+        if (onPlayAll != null && tab == LibraryTab.NETWORK && playable.isNotEmpty()) {
+            PlayAllButton(
+                onClick = { playAllOpen = true },
+                modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
             )
         }
 
@@ -233,6 +253,22 @@ fun LibraryScreen(
                 }
             }
         }
+    }
+
+    if (playAllOpen && onPlayAll != null) {
+        val playable = state.tiles.filterIsInstance<LibraryTile.Title>()
+        PlayAllSheet(
+            fileCount = playable.size,
+            // Only a total we can stand behind: one unprobed file and the
+            // sum would be quietly short, which is worse than no number.
+            totalMs = playable.map { it.durationMs }.takeIf { d -> d.all { it != null } }?.filterNotNull()?.sum(),
+            firstName = playable.firstOrNull()?.name,
+            onPlay = { shuffle ->
+                playAllOpen = false
+                onPlayAll(playable.map { it.fileId }, shuffle)
+            },
+            onDismiss = { playAllOpen = false },
+        )
     }
 
     if (state.sortSheetOpen) {

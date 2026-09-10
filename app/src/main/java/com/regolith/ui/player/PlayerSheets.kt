@@ -103,10 +103,12 @@ fun PlaybackSheetContent(
     hardwareDecoding: Boolean,
     scrubThumbnails: Boolean,
     autoplayNext: Boolean,
+    autoplayImmediately: Boolean,
     onSpeed: (Float) -> Unit,
     onHardwareDecoding: (Boolean) -> Unit,
     onScrubThumbnails: (Boolean) -> Unit,
     onAutoplayNext: (Boolean) -> Unit,
+    onAutoplayImmediately: (Boolean) -> Unit,
     onClose: () -> Unit,
     /**
      * False where this is not a sheet but a panel already on the screen (the
@@ -159,16 +161,32 @@ fun PlaybackSheetContent(
         SwitchControl(checked = scrubThumbnails, onCheckedChange = onScrubThumbnails, testTag = "player_scrub_thumbnails_switch")
     }
 
-    // The same preference as Settings › Playback › Autoplay next: this is
-    // where you reach for it once a film has started, the way Decoder
-    // mirrors Settings › Playback › Hardware decoding.
+    // The same two preferences as Settings › Playback: this is where you
+    // reach for them once a film has started, the way Decoder mirrors
+    // Settings › Playback › Hardware decoding.
     Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text("Autoplay next", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
-            Text("Plays the next file in this folder when one ends, after a ten-second countdown.", style = TextStyles.settingMeta, color = colors.metadata)
+            Text("Keep playing", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
+            Text("When a file ends, start the next one in this folder.", style = TextStyles.settingMeta, color = colors.metadata)
         }
         Spacer(Modifier.width(Spacing.s12))
         SwitchControl(checked = autoplayNext, onCheckedChange = onAutoplayNext, testTag = "player_autoplay_next_switch")
+    }
+
+    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).padding(start = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Text(
+                "Don't ask first",
+                style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()),
+                color = if (autoplayNext) colors.inkSoft else colors.metadata,
+            )
+            Text("Skip the ten-second Up next card and go straight in.", style = TextStyles.settingMeta, color = colors.metadata)
+        }
+        Spacer(Modifier.width(Spacing.s12))
+        SwitchControl(
+            checked = autoplayImmediately, onCheckedChange = onAutoplayImmediately,
+            enabled = autoplayNext, testTag = "player_autoplay_immediately_switch",
+        )
     }
 }
 

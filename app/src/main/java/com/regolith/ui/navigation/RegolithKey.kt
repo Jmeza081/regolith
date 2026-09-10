@@ -30,7 +30,14 @@ sealed interface RegolithKey : NavKey {
     /** Home's "All": every part-watched title. */
     @Serializable data object ContinueWatching : RegolithKey
     @Serializable data class TitleDetail(val fileId: Long) : RegolithKey
-    @Serializable data class Player(val fileId: Long, val startMs: Long? = null) : RegolithKey
+    /**
+     * [queue] is an explicit running order from Play all or Shuffle: file ids
+     * in the order the wall showed them, [fileId] being the first. Empty for
+     * the ordinary case of opening one file, where "next" is worked out from
+     * the folder instead. It rides on the key rather than in a ViewModel so a
+     * queue survives the process being killed and restored.
+     */
+    @Serializable data class Player(val fileId: Long, val startMs: Long? = null, val queue: List<Long> = emptyList()) : RegolithKey
 
     /** Add Source Server flow (design section 03). Phase 1 fills these in. */
     @Serializable sealed interface AddServer : RegolithKey {

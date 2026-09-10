@@ -276,6 +276,17 @@ class LibraryRepository @Inject constructor(
         return "${server.name} · ${share.name}"
     }
 
+    /**
+     * The files of an explicit playback queue (Play all / Shuffle), in the
+     * queue's own order. Missing files drop out silently: a queue built from
+     * a wall you were looking at can outlive a rescan.
+     */
+    suspend fun filesInOrder(ids: List<Long>): List<MediaFileEntity> {
+        if (ids.isEmpty()) return emptyList()
+        val byId = mediaFileDao.byIds(ids).associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
     /** "Next in this folder": the files after [fileId] in its folder, in name order. */
     suspend fun filesAfter(fileId: Long): List<MediaFileEntity> {
         val file = mediaFileDao.byId(fileId) ?: return emptyList()
