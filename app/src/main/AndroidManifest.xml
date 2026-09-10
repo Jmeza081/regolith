@@ -56,6 +56,41 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+              "Open with Regolith". Android offers an app in the chooser for a
+              file only if it declares it can VIEW that file's type, and the
+              type arrives two different ways: a content:// URI from a picker
+              or a chooser, where the provider states the MIME type, and a
+              file:// or http(s):// URI with an extension and often no type at
+              all. Both are declared, which is why the same action appears
+              twice with different data.
+            -->
+            <intent-filter android:label="@string/open_with_regolith">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="video/*" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+            </intent-filter>
+            <intent-filter android:label="@string/open_with_regolith">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <!-- The containers Regolith actually plays; a wildcard here
+                     would put it in the chooser for documents and archives. -->
+                <data android:pathPattern=".*\\.mkv" />
+                <data android:pathPattern=".*\\.mp4" />
+                <data android:pathPattern=".*\\.m4v" />
+                <data android:pathPattern=".*\\.mov" />
+                <data android:pathPattern=".*\\.webm" />
+                <data android:pathPattern=".*\\.avi" />
+                <data android:pathPattern=".*\\.ts" />
+                <data android:pathPattern=".*\\.m2ts" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

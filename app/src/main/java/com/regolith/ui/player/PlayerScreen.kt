@@ -156,6 +156,7 @@ fun PlayerScreen(
     val player by viewModel.player.collectAsStateWithLifecycle()
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
+    val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
@@ -179,8 +180,11 @@ fun PlayerScreen(
     val wide = windowShape.wide
     val forcedFullscreen = landscape && !wide
     val immersive = !flex && (forcedFullscreen || fullscreen)
-    // Video left, everything else in one column on the right (F9).
-    val sideBySide = !flex && !immersive && wide && landscape
+    // Video left, the folder in a column on the right (F9). A film handed
+    // over by another app has no folder, so there is nothing to put beside
+    // it and the picture takes the width instead of a third of the screen
+    // going to an empty column.
+    val sideBySide = !flex && !immersive && wide && landscape && state.next.isNotEmpty()
 
     // Follow the phone's rotation; hide the system bars whenever the picture fills the screen.
     DisposableEffect(activity, immersive, flex, orientation) {
@@ -295,6 +299,11 @@ fun PlayerScreen(
     // the sheet is open, and a list of the last film's chapters over the next
     // one is worse than no list.
     LaunchedEffect(state.fileId) { if (sheet == Sheet.Chapters) sheet = null }
+    // Pictures cost a key-frame seek each, so they are only asked for once
+    // the sheet is actually open — and again if the film changes under it.
+    LaunchedEffect(sheet, state.fileId, state.durationMs) {
+        if (sheet == Sheet.Chapters) viewModel.requestChapterFrames()
+    }
     var fill by remember { mutableStateOf(false) }
     var drag by remember { mutableStateOf<DragOverlay?>(null) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
@@ -421,6 +430,10 @@ fun PlayerScreen(
         onLoopTap = { if (state.loop != null) sheet = Sheet.AbLoop else viewModel.tapLoopPoint() },
         onLoopClear = viewModel::clearLoop,
         onFullscreen = { fullscreen = !fullscreen },
+        // Null greys the button out rather than removing it: a transport row
+        // that changes width as you walk a folder is worse than a dead key.
+        onPrevious = state.previous?.let { p -> { viewModel.playNext(p.fileId) } },
+        onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
     )
 
     // The playback sheet's own content, inline rather than behind a pill.
@@ -639,6 +652,7 @@ fun PlayerScreen(
         Sheet.Chapters -> PlayerSheetHost(onDismiss = { sheet = null }, testTag = "player_chapters_sheet") {
             ChaptersSheetContent(
                 chapters = state.chapters,
+                frames = chapterFrames,
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
                 fromContainer = state.chaptersFromContainer,
@@ -672,6 +686,8 @@ private class ChromeCallbacks(
     val onLoopTap: () -> Unit,
     val onLoopClear: () -> Unit,
     val onFullscreen: () -> Unit,
+    val onPrevious: (() -> Unit)?,
+    val onNext: (() -> Unit)?,
 )
 
 /** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
@@ -699,11 +715,7 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
             ChromeScrim(landscape = false)
             IconCell(R.drawable.rg_ic_arrow_down, "Leave the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
             IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
-            Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(Spacing.s30), verticalAlignment = Alignment.CenterVertically) {
-                IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", 26.dp, { cb.onSeekBy(-10_000) }, "player_seek_back_button")
-                PlayCircle(state, 48.dp, 20.dp, cb.onTogglePlay)
-                IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", 26.dp, { cb.onSeekBy(10_000) }, "player_seek_forward_button")
-            }
+            Transport(state, cb, gap = Spacing.s18, circle = 48.dp, glyph = 26.dp, modifier = Modifier.align(Alignment.Center))
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
                 scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
@@ -787,13 +799,46 @@ private fun BoxScope.FullChrome(
 }
 
 /** A glyph in a hit cell, white on the picture. */
+/**
+ * Previous · back 10 · play · forward 10 · next, at whatever size the layout
+ * asks for. One definition, because three chromes drew the middle three and
+ * would have drifted apart the moment two more were added to each.
+ *
+ * The skip keys are always drawn and greyed when there is nowhere to go: a
+ * transport row that changes width as you walk through a folder moves the
+ * play button under your thumb.
+ */
 @Composable
-private fun IconCell(icon: Int, description: String, iconSize: androidx.compose.ui.unit.Dp, onClick: () -> Unit, testTag: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 44.dp) {
+private fun Transport(
+    state: PlaybackState,
+    cb: ChromeCallbacks,
+    gap: androidx.compose.ui.unit.Dp,
+    circle: androidx.compose.ui.unit.Dp,
+    glyph: androidx.compose.ui.unit.Dp,
+    cell: androidx.compose.ui.unit.Dp = 44.dp,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+        IconCell(R.drawable.rg_ic_skip_previous, "Previous", glyph - 5.dp, cb.onPrevious ?: {}, "player_previous_button", size = cell, enabled = cb.onPrevious != null)
+        IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", glyph, { cb.onSeekBy(-10_000) }, "player_seek_back_button", size = cell)
+        PlayCircle(state, circle, circle * 0.42f, cb.onTogglePlay)
+        IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", glyph, { cb.onSeekBy(10_000) }, "player_seek_forward_button", size = cell)
+        IconCell(R.drawable.rg_ic_skip_next, "Next", glyph - 5.dp, cb.onNext ?: {}, "player_next_button", size = cell, enabled = cb.onNext != null)
+    }
+}
+
+@Composable
+private fun IconCell(icon: Int, description: String, iconSize: androidx.compose.ui.unit.Dp, onClick: () -> Unit, testTag: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 44.dp, enabled: Boolean = true) {
     Box(
-        modifier.size(size).clickable(interactionSource = null, indication = null, onClick = onClick).testTag(testTag),
+        modifier.size(size).clickable(interactionSource = null, indication = null, enabled = enabled, onClick = onClick).testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(painterResource(icon), contentDescription = description, tint = RegolithTheme.colors.ink, modifier = Modifier.size(iconSize))
+        Icon(
+            painterResource(icon),
+            contentDescription = description,
+            tint = if (enabled) RegolithTheme.colors.ink else RegolithTheme.colors.disabledInk,
+            modifier = Modifier.size(iconSize),
+        )
     }
 }
 
@@ -835,11 +880,19 @@ private fun PillRow(
             )
         }
         if (settingsPills) PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_decoder, testTag = "player_decoder_pill")
-        // Only when the file actually has them. The pill used to be drawn
-        // unconditionally and did nothing at all, which is worse than absent:
-        // a control that promises something it cannot do.
-        if (!onMedia && state.chapters.isNotEmpty()) {
-            PillButton(text = "Chapters", onClick = onChapters, onMedia = false, icon = R.drawable.rg_ic_chapters, testTag = "player_chapters_pill")
+        // The pill is drawn as soon as the film is loaded, but it spins until
+        // the list has SETTLED — the container has been read and the runtime
+        // is known. Opening earlier meant a sheet that resized itself as the
+        // parts were recounted underneath it.
+        if (!onMedia) {
+            PillButton(
+                text = "Chapters",
+                onClick = { if (state.chaptersReady) onChapters() },
+                onMedia = false,
+                icon = R.drawable.rg_ic_chapters,
+                testTag = "player_chapters_pill",
+                loading = !state.chaptersReady,
+            )
         }
     }
 }
@@ -1219,14 +1272,8 @@ private fun FlexDeck(
             )
             Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
         }
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", 27.dp, { cb.onSeekBy(-10_000) }, "player_seek_back_button", size = 52.dp)
-            PlayCircle(state, 74.dp, 26.dp, cb.onTogglePlay)
-            IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", 27.dp, { cb.onSeekBy(10_000) }, "player_seek_forward_button", size = 52.dp)
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Transport(state, cb, gap = Spacing.s30, circle = 74.dp, glyph = 27.dp, cell = 52.dp)
         }
         state.next.firstOrNull()?.let { item ->
             Spacer(Modifier.weight(1f))

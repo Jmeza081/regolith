@@ -1,5 +1,12 @@
 package com.regolith.ui.player
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.regolith.ui.theme.ThumbShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +36,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -270,18 +278,20 @@ private fun DecoderRow(title: String, meta: String, selected: Boolean, onClick: 
  * rows with joined −0.5s / +0.5s buttons, and Clear loop in red text.
  */
 /**
- * The chapter list (the Chapters pill). Every marker the container carries,
- * with the one the playhead is inside marked and the rest reading as a
- * table of contents: name on the left, start time on the right.
+ * The chapter list (the Chapters pill): a wall of stills, not a list of
+ * times. A chapter is a place in a film, and the only thing that says which
+ * place is the picture — the number beside it is how you got there, not what
+ * you were looking for.
  *
- * Tapping one seeks and closes — a chapter list is a way to get somewhere,
- * so leaving it open over the picture would be a second tap to do nothing.
- * The list is never empty here: the pill that opens it is only drawn when
- * the file has chapters.
+ * Columns come from the width, so the phone gets two and the inner display
+ * three or four. Frames arrive one at a time through the scrub pipeline and
+ * fade in over the card's own ground; the cards never resize, so the sheet
+ * does not jump as they land.
  */
 @Composable
 fun ChaptersSheetContent(
     chapters: List<Chapter>,
+    frames: Map<Long, android.graphics.Bitmap?>,
     positionMs: Long,
     durationMs: Long,
     fromContainer: Boolean,
@@ -294,54 +304,98 @@ fun ChaptersSheetContent(
         // Which kind you are looking at, because it changes what the names
         // mean: "Act one" was written by someone, "Part 3" is arithmetic.
         Text(
-            if (fromContainer) "${chapters.size} marked in this file"
-            else everyLabel(ChapterMarks.intervalFor(durationMs)),
+            if (fromContainer) "${chapters.size} marked in this file" else everyLabel(ChapterMarks.intervalFor(durationMs)),
             style = TextStyles.meta12, color = colors.metadata,
         )
     }
-    Column(Modifier.testTag("player_chapters_list")) {
-        chapters.forEachIndexed { index, chapter ->
-            val playing = index == currentIndex
-            // The end of a chapter is the start of the next one; the last runs
-            // to the end of the film, which the container never states.
-            val endMs = chapters.getOrNull(index + 1)?.startMs ?: durationMs
-            Row(
-                Modifier.fillMaxWidth()
-                    .clickable(interactionSource = null, indication = null) { onSeek(chapter.startMs) }
-                    .padding(vertical = Spacing.s12)
-                    .testTag("player_chapter_$index"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
-            ) {
-                // A bar rather than a dot: it reads as "you are in here", which
-                // is what a chapter is, where a dot reads as a single instant.
-                Box(
-                    Modifier.width(3.dp).height(28.dp).clip(PillShape)
-                        .background(if (playing) colors.accent else Color.Transparent),
-                )
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                    Text(
-                        chapter.label(index),
-                        style = TextStyles.rowLabelMedium,
-                        color = if (playing) colors.ink else colors.body,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
-                    if (endMs > chapter.startMs) {
-                        Text(formatDurationShort(endMs - chapter.startMs), style = TextStyles.meta, color = colors.metadata, maxLines = 1)
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {
+        val columns = (maxWidth / CHAPTER_CARD_MIN).toInt().coerceIn(2, 4)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            chapters.chunked(columns).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    row.forEach { chapter ->
+                        val index = chapters.indexOf(chapter)
+                        ChapterCard(
+                            chapter = chapter,
+                            index = index,
+                            frame = frames[chapter.startMs],
+                            playing = index == currentIndex,
+                            // The end of a chapter is the start of the next; the
+                            // last runs to the end of the film, which the
+                            // container never states.
+                            endMs = chapters.getOrNull(index + 1)?.startMs ?: durationMs,
+                            onClick = { onSeek(chapter.startMs) },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
+                    // Keeps the last row's cards the same width as every other
+                    // row's rather than stretching two across four columns.
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                Text(
-                    formatClock(chapter.startMs),
-                    style = TextStyles.meta12,
-                    color = if (playing) colors.ink else colors.metadata,
-                )
-            }
-            if (index < chapters.lastIndex) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
             }
         }
     }
 }
+
+@Composable
+private fun ChapterCard(
+    chapter: Chapter,
+    index: Int,
+    frame: android.graphics.Bitmap?,
+    playing: Boolean,
+    endMs: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RegolithTheme.colors
+    Column(
+        modifier
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .testTag("player_chapter_$index"),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                // Ringed rather than tinted: the frame is the content, and
+                // anything drawn over it reads as part of the picture.
+                .then(if (playing) Modifier.border(2.dp, colors.accent, ThumbShape) else Modifier)
+                .padding(if (playing) 3.dp else 0.dp)
+                .clip(ThumbShape)
+                .background(colors.skeleton),
+        ) {
+            val fade by animateFloatAsState(if (frame != null) 1f else 0f, label = "chapterFrame")
+            frame?.let {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().alpha(fade),
+                )
+            }
+            Text(
+                formatClock(chapter.startMs),
+                style = TextStyles.meta,
+                color = colors.inkSoft,
+                modifier = Modifier.align(Alignment.BottomStart).padding(Spacing.s4)
+                    .background(colors.overArt, PillShape).padding(horizontal = Spacing.s8, vertical = 3.dp),
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Text(
+                chapter.label(index),
+                style = TextStyles.rowLabelMedium,
+                color = if (playing) colors.ink else colors.body,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (endMs > chapter.startMs) {
+                Text(formatDurationShort(endMs - chapter.startMs), style = TextStyles.meta, color = colors.metadata, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Narrower than this and a 16:9 still stops being worth looking at. */
+private val CHAPTER_CARD_MIN = 150.dp
 
 /** "Every 5 minutes" reads; "Every 5m 00s" does not. */
 private fun everyLabel(intervalMs: Long?): String {

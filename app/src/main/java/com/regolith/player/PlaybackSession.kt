@@ -70,6 +70,8 @@ data class PlaybackState(
     val loopPendingAMs: Long? = null,
     val loop: AbLoop? = null,
     val next: List<NextItem> = emptyList(),
+    /** What Previous plays: the file before this one in the queue, or in the folder. */
+    val previous: NextItem? = null,
     /**
      * True while an explicit queue is playing (Play all / Shuffle). [next] is
      * then the rest of that queue rather than the rest of the folder, and the
@@ -82,6 +84,13 @@ data class PlaybackState(
      * this is the raw half of it.
      */
     val containerChapters: List<Chapter> = emptyList(),
+    /**
+     * False until the container has actually been read. Without it there is
+     * no way to tell "this file has no chapters" from "we have not looked
+     * yet", and the sheet would open on even divisions and then reshuffle
+     * itself when the real ones arrived.
+     */
+    val chaptersScanned: Boolean = false,
     val error: String? = null,
 ) {
     /**
@@ -97,6 +106,13 @@ data class PlaybackState(
 
     /** True when a person named these; false when they are even divisions. */
     val chaptersFromContainer: Boolean get() = containerChapters.isNotEmpty()
+
+    /**
+     * Settled: the container has been read AND the runtime is known, so the
+     * list will not change shape under the sheet. The pill spins until this
+     * is true rather than opening onto a list that then resizes itself.
+     */
+    val chaptersReady: Boolean get() = chaptersScanned && durationMs > 0 && chapters.isNotEmpty()
 
     /** Just the starts, for the ticks [com.regolith.ui.components.Scrubber] draws. */
     val chapterTicks: List<Long> get() = chapters.map { it.startMs }
@@ -268,6 +284,17 @@ class PlaybackSession @Inject constructor(
             val queueTail = activeQueue.drop(activeQueue.indexOf(fileId) + 1).takeIf { activeQueue.isNotEmpty() }
             val next = (if (queueTail != null) library.filesInOrder(queueTail) else library.filesAfter(fileId))
                 .map { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
+            // Previous walks the same order Next does: the queue when one is
+            // running, the folder otherwise. Null at the first file, which is
+            // what greys the button out.
+            val previousId = if (activeQueue.isNotEmpty()) {
+                activeQueue.getOrNull(activeQueue.indexOf(fileId) - 1)
+            } else {
+                library.fileBefore(fileId)?.id
+            }
+            val previous = previousId?.let { id ->
+                library.file(id)?.let { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
+            }
             val uri = resolver.playableUriFor(fileId)
             _state.update {
                 it.copy(
@@ -275,6 +302,7 @@ class PlaybackSession @Inject constructor(
                     sourceLabel = if (resolver.isLocal(uri)) "On this device" else file?.let { f -> sourceLabelFor(f) } ?: "",
                     fileSizeBytes = file?.sizeBytes ?: 0,
                     next = next,
+                    previous = previous,
                     queued = activeQueue.isNotEmpty(),
                 )
             }
@@ -284,10 +312,50 @@ class PlaybackSession @Inject constructor(
             // of latency on a sheet nobody has opened yet, and never worth
             // delaying the picture.
             val marks = chapterSource.chapters(fileId)
-            if (marks.isNotEmpty() && _state.value.fileId == fileId) {
-                _state.update { it.copy(containerChapters = marks) }
+            if (_state.value.fileId == fileId) {
+                _state.update { it.copy(containerChapters = marks, chaptersScanned = true) }
             }
             setScrubThumbnails(prefs.scrubThumbnails.first())
+        }
+    }
+
+    /**
+     * Play a film another app handed us: a `content://` or `file://` URI and
+     * whatever name came with it.
+     *
+     * Everything the library provides is simply absent — no row, so no
+     * artwork, no folder, no "next in this folder", no resume point, and no
+     * scrub previews (those need a seekable handle on the file, which the
+     * library resolves and a foreign URI does not). What survives is the
+     * player itself: transport, speed, decoder, A–B, and chapters, which are
+     * even divisions of a runtime and need nothing but the runtime.
+     */
+    fun loadExternal(uri: android.net.Uri, title: String) {
+        Log.d(TAG, "loadExternal($uri)")
+        saveProgress()
+        activeQueue = emptyList()
+        currentFile = null
+        currentUri = uri
+        _state.value = PlaybackState(
+            fileId = null,
+            title = title,
+            sourceLabel = "Opened from another app",
+            speed = _state.value.speed,
+            hardwareDecoding = _state.value.hardwareDecoding,
+            // Nothing to read a container for, and nothing to wait on: the
+            // even divisions arrive with the runtime.
+            chaptersScanned = true,
+        )
+        _scrubThumbnails.value.close()
+        _scrubThumbnails.value = ScrubThumbnails.None
+        scope.launch {
+            val hardware = prefs.hardwareDecoding.first()
+            if (hardware != _state.value.hardwareDecoding) {
+                _state.update { it.copy(hardwareDecoding = hardware) }
+                _player.value?.release()
+                _player.value = null
+            }
+            startPlayer(null, null, 0L)
         }
     }
 
@@ -312,11 +380,11 @@ class PlaybackSession @Inject constructor(
         }
     }
 
-    private fun startPlayer(fileId: Long, file: MediaFileEntity?, positionMs: Long) {
+    private fun startPlayer(fileId: Long?, file: MediaFileEntity?, positionMs: Long) {
         val item = MediaItem.Builder()
-            .setUri(currentUri ?: resolver.uriFor(fileId))
-            .setMediaId(fileId.toString())
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.name).build())
+            .setUri(currentUri ?: resolver.uriFor(checkNotNull(fileId) { "no file and no uri" }))
+            .setMediaId(fileId?.toString() ?: EXTERNAL_MEDIA_ID)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.name ?: _state.value.title).build())
             .build()
         val p = current()
         p.setMediaItem(item, positionMs)
@@ -456,6 +524,7 @@ class PlaybackSession @Inject constructor(
     }
 
     private companion object {
+        const val EXTERNAL_MEDIA_ID = "external"
         const val TAG = "Regolith/Playback"
         const val TICK_MS = 250L
         const val SAVE_EVERY_TICKS = 20 // every 5 s while playing

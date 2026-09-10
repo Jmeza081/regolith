@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +43,8 @@ fun PillButton(
     icon: Int? = null,
     onLongClick: (() -> Unit)? = null,
     onMedia: Boolean = true,
+    /** Swaps the icon for a spinner and dims the label: the pill is there, its content is not ready. */
+    loading: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     val background = when {
@@ -54,7 +57,7 @@ fun PillButton(
         onMedia -> colors.onMediaBorder
         else -> colors.frostBorder
     }
-    val ink = if (selected || onMedia) colors.ink else colors.inkSoft
+    val ink = if (loading) colors.metadata else if (selected || onMedia) colors.ink else colors.inkSoft
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -66,7 +69,10 @@ fun PillButton(
             .padding(horizontal = Spacing.s12)
             .testTag(testTag),
     ) {
-        if (icon != null) {
+        if (loading) {
+            CircularProgressIndicator(color = ink, strokeWidth = 1.5.dp, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(Spacing.s8))
+        } else if (icon != null) {
             Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(Spacing.s8))
         }

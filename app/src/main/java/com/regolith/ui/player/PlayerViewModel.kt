@@ -97,6 +97,40 @@ class PlayerViewModel @AssistedInject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
+     * A frame for every chapter, through the same pipeline as the filmstrip:
+     * ask for a position, redraw as the pictures land. The chapter sheet is
+     * a wall of stills rather than a list of times, and this is what fills
+     * it — one key-frame seek per row, and no new machinery.
+     *
+     * Frames are taken a little INTO each part, not at its first frame: a
+     * chapter boundary is usually a cut, and the frame on a cut is often
+     * black or a title card. The same reason the artwork grab moved off 10%.
+     */
+    val chapterFrames: StateFlow<Map<Long, Bitmap?>> = session.scrubThumbnails
+        .flatMapLatest { thumbs ->
+            combine(state, thumbs.updates) { s, _ ->
+                s.chapters.associate { it.startMs to thumbs.nearest(frameFor(it.startMs, s)) }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** Fill the chapter sheet, the part you are in first. */
+    fun requestChapterFrames() {
+        val thumbs = session.scrubThumbnails.value
+        val s = state.value
+        val here = s.positionMs
+        s.chapters.map { frameFor(it.startMs, s) }
+            .sortedByDescending { (it - here).absoluteValue }
+            .forEach(thumbs::request)
+    }
+
+    private fun frameFor(startMs: Long, s: PlaybackState): Long {
+        val end = s.chapters.firstOrNull { it.startMs > startMs }?.startMs ?: s.durationMs
+        val into = ((end - startMs) * CHAPTER_FRAME_FRACTION).toLong()
+        return (startMs + into).coerceIn(0L, (s.durationMs - 1).coerceAtLeast(0L))
+    }
+
+    /**
      * Load the filmstrip, nearest the playhead first: the frames beside where
      * you are are the ones you are about to look at, and the worker serves
      * the most recent request first.
@@ -108,7 +142,12 @@ class PlayerViewModel @AssistedInject constructor(
     }
 
     init {
-        session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
+        val external = key.externalUri
+        if (external != null) {
+            session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
+        } else {
+            session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
+        }
     }
 
     fun togglePlayPause() = session.togglePlayPause()
@@ -140,6 +179,9 @@ class PlayerViewModel @AssistedInject constructor(
     }
 
     companion object {
+        /** How far into a chapter its picture is taken from: past the cut at its start. */
+        const val CHAPTER_FRAME_FRACTION = 0.25f
+
         /** Frames across the flex-mode filmstrip. Nine fits the artboard's deck without crowding. */
         const val STRIP_FRAMES = 9
 

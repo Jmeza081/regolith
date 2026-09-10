@@ -25,6 +25,9 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class ArtworkModule {
     @Binds abstract fun bindFrameSourceFactory(impl: RetrieverFrameSource.Factory): FrameSourceFactory
+    // Media3's frame extractor is @UnstableApi; the opt-in stops at this
+    // binding so nothing above it has to know which library takes the still.
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     @Binds abstract fun bindFrameGrabber(impl: com.regolith.player.Media3Frames): FrameGrabber
     @Binds abstract fun bindTransferScheduler(impl: WorkManagerTransferScheduler): TransferScheduler
 

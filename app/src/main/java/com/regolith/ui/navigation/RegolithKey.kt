@@ -37,7 +37,25 @@ sealed interface RegolithKey : NavKey {
      * the folder instead. It rides on the key rather than in a ViewModel so a
      * queue survives the process being killed and restored.
      */
-    @Serializable data class Player(val fileId: Long, val startMs: Long? = null, val queue: List<Long> = emptyList()) : RegolithKey
+    /**
+     * The player. Normally a library file by id; [externalUri] is set instead
+     * when another app handed us a film to play, in which case there is no
+     * row, no artwork, no folder and no queue — just a URI and a name.
+     */
+    @Serializable data class Player(
+        val fileId: Long,
+        val startMs: Long? = null,
+        val queue: List<Long> = emptyList(),
+        val externalUri: String? = null,
+        val externalTitle: String? = null,
+    ) : RegolithKey {
+        companion object {
+            /** No row has this id; it marks a key whose film came from outside the library. */
+            const val EXTERNAL = -1L
+
+            fun external(uri: String, title: String) = Player(fileId = EXTERNAL, externalUri = uri, externalTitle = title)
+        }
+    }
 
     /** Add Source Server flow (design section 03). Phase 1 fills these in. */
     @Serializable sealed interface AddServer : RegolithKey {

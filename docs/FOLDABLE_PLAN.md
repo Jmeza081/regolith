@@ -555,3 +555,56 @@ detail entirely. `DismissiblePane` lays the detail out at a fixed 260dp
 however narrow the pane gets and clips it, so nothing reflows into a column
 of one-word lines: it slides under the divider and fades out, and below
 40dp it is not composed at all. The handle's reset button brings it back.
+
+## F12 — round eight
+
+### The divider resizes the view, not the layout
+
+F11 gave the detail pane a floor width and clipped it. The wall did not have
+one, and `GridCells.Fixed(3)` meant its tiles simply got narrower as the
+divider came left — resizing content, which is the thing the drawer idea
+exists to avoid.
+
+Both panes are drawers now: content measured at a floor (the wall at
+rail + 364dp, the detail at 360dp) and placed at the start edge, with the
+overflow clipped. A `Layout` rather than a `Box` — a Box asked to hold
+something wider than itself does not promise where it puts it, and the
+overflow was leaving on the OUTER edge, cutting the first tile in half
+instead of tucking the last one under the divider.
+
+### The rail's inset tells the truth
+
+**Reverses part of F6.** Reserving the rail's 102dp while the rail was slid
+away meant an empty stripe down the side of the screen, and the two ways of
+hiding the rail reserving different amounts of space. It now follows what is
+on screen and animates, which is what "nothing should jump" actually wanted.
+
+The pane scaffold keys off the *pinned* state only. It is keyed on the pane
+width, and an animated one would rebuild it on every frame of a retraction.
+
+### Chapters are pictures
+
+The sheet is a wall of 16:9 stills at two to four columns, taken a quarter
+of the way into each part — a chapter boundary is usually a cut, and the
+frame on a cut is often black. They come through the same scrub pipeline the
+flex filmstrip uses, so a chapter sheet costs one key-frame seek per card
+and no new machinery.
+
+The pill spins until the list has **settled**: `chaptersScanned` separates
+"this file has no chapters" from "we have not looked yet". Without it the
+sheet opened on even divisions and recounted itself when the real ones
+arrived, which is the height jump.
+
+### Previous and Next
+
+One `Transport` composable now, shared by all three chromes. The skip keys
+are always drawn and dimmed when there is nowhere to go — a transport row
+that changes width as you walk a folder moves the play button out from under
+your thumb.
+
+### Open with Regolith
+
+A `VIEW` intent on a video plays it. No row, so no artwork, no folder, no
+resume point, no scrub previews; the player itself is all there, chapters
+included, because even divisions need nothing but a runtime. The landscape
+two-pane layout stands down when there is no folder to put beside the film.

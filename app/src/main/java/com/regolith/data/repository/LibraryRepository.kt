@@ -298,4 +298,12 @@ class LibraryRepository @Inject constructor(
         val index = siblings.indexOfFirst { it.id == fileId }
         return if (index < 0) emptyList() else siblings.drop(index + 1)
     }
+
+    /** The file immediately before [fileId] in its folder: the player's Previous. */
+    suspend fun fileBefore(fileId: Long): MediaFileEntity? {
+        val file = mediaFileDao.byId(fileId) ?: return null
+        val siblings = mediaFileDao.inFolder(file.folderId)
+        val index = siblings.indexOfFirst { it.id == fileId }
+        return if (index <= 0) null else siblings[index - 1]
+    }
 }

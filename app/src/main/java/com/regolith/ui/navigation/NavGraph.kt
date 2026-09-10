@@ -39,6 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.media3.common.util.UnstableApi
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -183,12 +187,28 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val railHidden by appViewModel.railHidden.collectAsStateWithLifecycle()
     val autoHideRail by appViewModel.autoHideRail.collectAsStateWithLifecycle()
     var railIdle by remember { mutableStateOf(false) }
-    val railInset = when {
+    val railVisible = windowShape.wide && !railHidden && !railIdle
+    // F6 reserved the rail's 102dp even while it was slid away, so nothing
+    // would reflow. What that actually produced was a screen with an obvious
+    // empty stripe down the side and no rail in it — and the two ways of
+    // hiding the rail reserving different amounts of space, which read as a
+    // bug rather than as a decision. The inset now follows what is on screen
+    // either way, and ANIMATES there, which is what "nothing should jump"
+    // really wanted.
+    val railInsetTarget = when {
+        !windowShape.wide -> 0.dp
+        railVisible -> NAV_RAIL_INSET
+        else -> NAV_RAIL_SPINE_INSET
+    }
+    val railInset by animateDpAsState(railInsetTarget, label = "railInset")
+    // Pane geometry keys off the PINNED state only. It must not follow the
+    // animation: the scaffold below is keyed on the pane width, so an
+    // animated one would rebuild it on every frame of a retraction.
+    val paneRailInset = when {
         !windowShape.wide -> 0.dp
         railHidden -> NAV_RAIL_SPINE_INSET
         else -> NAV_RAIL_INSET
     }
-    val railVisible = windowShape.wide && !railHidden && !railIdle
     // Every touch in the app, observed without consuming (Initial pass) and
     // reported down a flow rather than into state, so a scroll does not
     // recompose the tree on every frame. collectLatest restarts the delay on
@@ -207,7 +227,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // the wall keeps its three columns only if the pane pays for both; the
     // 55% cap keeps the detail worth reading on a window barely over the
     // two-pane threshold, where the full ask would crush it.
-    val listPaneWidth = minOf(railInset + WALL_WIDTH, windowShape.width * 0.55f)
+    val listPaneWidth = minOf(paneRailInset + WALL_WIDTH, windowShape.width * 0.55f)
     // The list-detail scene: on a wide window the strategy pairs the top two
     // keys (a wall and the title open from it) into one two-pane scene, out of
     // the SAME back stack — no second navigation structure (G10).
@@ -225,7 +245,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // squeezed, so nothing ever reflows into a column too narrow to read.
     // The middle one is the even split both are measured against, and the
     // one the handle's reset button restores.
-    val minListAnchor = remember(railInset) { PaneExpansionAnchor.Offset.fromStart(railInset + MIN_WALL_WIDTH) }
+    val minListAnchor = remember(paneRailInset) { PaneExpansionAnchor.Offset.fromStart(paneRailInset + MIN_WALL_WIDTH) }
     val defaultAnchor = remember(listPaneWidth) { PaneExpansionAnchor.Offset.fromStart(listPaneWidth) }
     val fullListAnchor = remember { PaneExpansionAnchor.Proportion(1f) }
     val anchors = remember(minListAnchor, defaultAnchor, fullListAnchor) {
@@ -259,6 +279,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // you carry between screens: closing the detail puts the divider back, so
     // the next title always opens on the even split. Guarded on the pane
     // having actually been open, so nothing is animated at startup.
+    // A film handed over by another app opens the player on top of whatever
+    // was there, and is consumed so a rotation does not reopen it.
+    val external by appViewModel.external.collectAsStateWithLifecycle()
+    LaunchedEffect(external) {
+        val video = external ?: return@LaunchedEffect
+        backStack.add(RegolithKey.Player.external(video.uri, video.title))
+        appViewModel.openedExternal()
+    }
+
     val paneOpen = paneListKey != null
     val paneWasOpen = remember { mutableStateOf(false) }
     LaunchedEffect(paneOpen) {
@@ -276,7 +305,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // screens (Player, Title Detail, Add Server) have no rail and take the
     // whole width, so the inset is applied per entry, not on the NavDisplay.
     val tabContent: @Composable (@Composable () -> Unit) -> Unit = { content ->
-        Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
+        // A tab screen is also the LIST pane of the two-pane scene, so it gets
+        // the same drawer treatment the detail pane has: laid out at no less
+        // than its natural width and clipped, never reflowed, as the divider
+        // squeezes it. Only on a wide window — a phone is never narrower than
+        // its own content.
+        DrawerPane(minWidth = paneRailInset + WALL_WIDTH, enabled = windowShape.wide) {
+            Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
+        }
     }
 
     // Opening a title. In the pane layout the wall stays live beside the
@@ -444,7 +480,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             }
                         }
                         entry<RegolithKey.TitleDetail>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
-                            DismissiblePane {
+                            DrawerPane(minWidth = DETAIL_MIN_WIDTH, enabled = paneListKey != null, fade = true) {
                             TitleDetailScreen(
                                 viewModel = hiltViewModel<TitleDetailViewModel, TitleDetailViewModel.Factory>(
                                     creationCallback = { it.create(key.fileId) },
@@ -591,34 +627,58 @@ private val WALL_WIDTH = 364.dp
 private val MIN_WALL_WIDTH = 240.dp
 
 /**
- * Below this the detail pane is on its way out, and above [PANE_FULL_WIDTH]
- * it is fully itself. Between the two it fades, so dragging the divider to
- * the right dismisses the detail instead of crushing it — which is what the
- * old 0.85 anchor did, leaving a column of one-word lines.
+ * Below this a fading pane is on its way out and stops being composed at
+ * all; [DETAIL_MIN_WIDTH] is the width its content is laid out at whatever
+ * the pane is actually given.
  */
 private val PANE_GONE_WIDTH = 40.dp
-private val PANE_FULL_WIDTH = 260.dp
+private val DETAIL_MIN_WIDTH = 360.dp
 
 /**
- * A pane that leaves rather than shrinks.
+ * A pane that slides under the divider rather than shrinking under it.
  *
- * Its content is laid out at [PANE_FULL_WIDTH] however narrow the pane
- * actually gets, and the overflow is clipped — so the words never reflow on
- * the way out, the pane just slides under the divider and fades. Below
- * [PANE_GONE_WIDTH] it is not composed at all.
+ * The whole point is that dragging the split resizes the *view*, never the
+ * *layout*: content is measured at [minWidth] however narrow the pane gets
+ * and the overflow is clipped, so a title that fitted on one line still
+ * fits on one line while half of it is off-screen — which is what a drawer
+ * does, and what every foldable mail app does with its list.
+ *
+ * [fade] adds the dismissal on top, for the pane that is allowed to leave:
+ * it dims on the way out and stops being composed below [PANE_GONE_WIDTH].
+ * The pane that cannot be dismissed does not fade, because it is not going
+ * anywhere — it is just partly behind the divider.
  */
 @Composable
-private fun DismissiblePane(content: @Composable () -> Unit) {
+private fun DrawerPane(
+    minWidth: Dp,
+    enabled: Boolean = true,
+    fade: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    if (!enabled) {
+        content()
+        return
+    }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val width = maxWidth
-        if (width <= PANE_GONE_WIDTH) return@BoxWithConstraints
-        val visible = ((width - PANE_GONE_WIDTH) / (PANE_FULL_WIDTH - PANE_GONE_WIDTH)).coerceIn(0f, 1f)
-        Box(
-            Modifier
-                .requiredWidth(maxOf(width, PANE_FULL_WIDTH))
-                .fillMaxHeight()
-                .graphicsLayer { alpha = visible },
-        ) { content() }
+        if (fade && width <= PANE_GONE_WIDTH) return@BoxWithConstraints
+        val visible = if (fade) ((width - PANE_GONE_WIDTH) / (minWidth - PANE_GONE_WIDTH)).coerceIn(0f, 1f) else 1f
+        val floor = with(LocalDensity.current) { minWidth.roundToPx() }
+        // A Layout rather than a Box: the content has to be MEASURED at the
+        // floor and PLACED at the start edge, and a Box that is asked to hold
+        // something wider than itself does not promise where it puts it. The
+        // overflow then leaves under the divider, which is the whole idea —
+        // clipped on the side the divider is on, never on the outer edge.
+        Layout(
+            content = { Box(Modifier.graphicsLayer { alpha = visible }) { content() } },
+            modifier = Modifier.fillMaxSize(),
+        ) { measurables, constraints ->
+            val w = maxOf(constraints.maxWidth, floor)
+            val placeable = measurables.first().measure(
+                constraints.copy(minWidth = w, maxWidth = w, minHeight = constraints.maxHeight),
+            )
+            layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
+        }
     }
 }
 

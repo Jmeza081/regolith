@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Regolith</string>
+    <!-- The label on the "Open with" row, where the app name alone reads as a category. -->
+    <string name="open_with_regolith">Play in Regolith</string>
 </resources>

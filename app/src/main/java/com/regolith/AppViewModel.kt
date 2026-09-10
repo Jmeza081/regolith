@@ -7,6 +7,8 @@ import com.regolith.data.repository.SourceRepository
 import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.navigation.RegolithKey
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -64,7 +66,30 @@ class AppViewModel @Inject constructor(
     val autoHideRail: StateFlow<Boolean> = prefs.autoHideRail
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    /**
+     * A film another app asked us to play, waiting to be opened.
+     *
+     * It lives here rather than being read off the Activity's intent where
+     * it is needed, because the Activity is recreated on every rotation and
+     * its intent is not consumed by being handled — reading it there would
+     * reopen the player every time the device turned. Consumed exactly once
+     * by [openedExternal].
+     */
+    private val _external = MutableStateFlow<ExternalVideo?>(null)
+    val external: StateFlow<ExternalVideo?> = _external.asStateFlow()
+
+    fun openExternal(uri: String, title: String) {
+        _external.value = ExternalVideo(uri, title)
+    }
+
+    fun openedExternal() {
+        _external.value = null
+    }
+
     fun setRailHidden(hidden: Boolean) {
         viewModelScope.launch { prefs.setRailHidden(hidden) }
     }
 }
+
+/** A film handed to Regolith by another app: where it is, and what to call it. */
+data class ExternalVideo(val uri: String, val title: String)
