@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.activity.compose.BackHandler
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -75,12 +77,25 @@ import com.regolith.player.PlaybackState
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.ErrorCard
-import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.Scrubber
 import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.PillShape
+import com.regolith.ui.adaptive.FoldPosture
+import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.theme.RegolithTheme
+import coil3.compose.SubcomposeAsyncImageContent
+import coil3.compose.SubcomposeAsyncImage
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import com.regolith.ui.theme.ThumbShape
+import kotlin.math.abs
+import kotlin.math.absoluteValue
+import androidx.compose.ui.platform.LocalDensity
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.designSp
@@ -96,10 +111,18 @@ private enum class DragKind { Brightness, Volume }
 private data class DragOverlay(val kind: DragKind, val fraction: Float, val xFraction: Float)
 
 /**
- * The player (design section 10). Landscape is the engine: immersive,
- * every control on the picture, 18/30/12 padding. Portrait is the same
- * engine in a 16:9 strip with fewer controls on the picture and the
- * title, meta line, pills and "Next in this folder" underneath.
+ * The player (design section 10). Full screen is the engine: immersive,
+ * every control on the picture, 18/30/12 padding. The windowed layout is
+ * the same engine in a 16:9 strip with fewer controls on the picture and
+ * the title, meta line, pills and "Next in this folder" underneath.
+ *
+ * Two separate things decide which one you get:
+ *  - the phone's rotation, which the player always follows (landscape is
+ *    always full screen: there is nothing else a wide screen should do);
+ *  - the full-screen button, which fills the screen *in the orientation
+ *    you are already in*. It never rotates the phone.
+ * So the button is a portrait-only control; in landscape the picture is
+ * already full-bleed and turning the phone back is what leaves it.
  *
  * Immersive mode and orientation are Activity-level settings, applied in
  * a DisposableEffect and undone when the screen leaves.
@@ -120,13 +143,23 @@ fun PlayerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val system = remember(activity) { PlayerSystemControls(activity) }
+    // Fills the screen without touching the orientation. Landscape is
+    // full-bleed either way, so this only means anything in portrait.
+    var fullscreen by remember { mutableStateOf(false) }
+    // Half open on a table, hinge across: the picture takes the top half and
+    // the controls the bottom, so nothing has to be held. This wins over
+    // full screen — there is no picture worth filling a folded screen with.
+    val windowShape = LocalWindowShape.current
+    val hinge = windowShape.hinge
+    val flex = windowShape.posture == FoldPosture.TABLE_TOP && hinge != null
+    val immersive = !flex && (landscape || fullscreen)
 
-    // Follow the phone's rotation; immersive only in landscape.
-    DisposableEffect(activity, landscape) {
+    // Follow the phone's rotation; hide the system bars whenever the picture fills the screen.
+    DisposableEffect(activity, immersive, flex) {
         val window = activity?.window ?: return@DisposableEffect onDispose {}
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        if (landscape) {
+        if (immersive || flex) {
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
@@ -138,6 +171,9 @@ fun PlayerScreen(
             system.resetBrightness()
         }
     }
+
+    // In portrait full screen, back is "leave full screen", not "leave the player".
+    BackHandler(enabled = fullscreen && !landscape) { fullscreen = false }
 
     // Save progress when the app goes to the background mid-playback.
     DisposableEffect(lifecycleOwner) {
@@ -171,10 +207,19 @@ fun PlayerScreen(
         }
     }
 
-    val gestures = remember(viewModel, system) {
+    // Only the strip layout has a full screen to enter or leave: landscape is
+    // already full-bleed, and flex mode is the hinge's layout, not a choice.
+    val canToggleFullscreen = !landscape && !flex
+    val gestures = remember(viewModel, system, canToggleFullscreen, fullscreen) {
         object : PlayerGestureCallbacks {
             private var dragValue = 0f
+            private var zone: Zone? = null
+            private var middleDy = 0f
             override fun onTap(zone: Zone) {
+                if (zone == Zone.MIDDLE) {
+                    controlsVisible = !controlsVisible
+                    return
+                }
                 val now = System.currentTimeMillis()
                 val stacked = stacker.onSingleTap(if (zone == Zone.LEFT) -1 else 1, now)
                 if (stacked != null) {
@@ -185,6 +230,12 @@ fun PlayerScreen(
                 }
             }
             override fun onDoubleTap(zone: Zone) {
+                // The middle is neither the back nor the forward side, so it
+                // cannot seek; play/pause is the gesture that belongs there.
+                if (zone == Zone.MIDDLE) {
+                    viewModel.togglePlayPause()
+                    return
+                }
                 val now = System.currentTimeMillis()
                 viewModel.seekBy(stacker.onDoubleTap(if (zone == Zone.LEFT) -1 else 1, now))
                 seekLabel = stacker.pendingLabel(now)
@@ -192,20 +243,44 @@ fun PlayerScreen(
             override fun onLongPressStart() = viewModel.holdFast(true)
             override fun onPressReleased() { if (state.holdingFast) viewModel.holdFast(false) }
             override fun onDragStart(zone: Zone, xFraction: Float) {
+                this.zone = zone
+                controlsVisible = false
+                if (zone == Zone.MIDDLE) {
+                    // No rail: nothing is being set, so there is no value to show.
+                    middleDy = 0f
+                    return
+                }
                 val kind = if (zone == Zone.LEFT) DragKind.Brightness else DragKind.Volume
                 dragValue = if (kind == DragKind.Brightness) system.brightness() else system.volume()
                 drag = DragOverlay(kind, dragValue, xFraction)
-                controlsVisible = false
             }
             override fun onDrag(dyFraction: Float) {
+                if (zone == Zone.MIDDLE) {
+                    middleDy += dyFraction
+                    return
+                }
                 val d = drag ?: return
                 dragValue = (dragValue - dyFraction * 1.5f).coerceIn(0f, 1f)
                 if (d.kind == DragKind.Brightness) system.setBrightness(dragValue) else system.setVolume(dragValue)
                 drag = d.copy(fraction = dragValue)
             }
             override fun onDragEnd(flingDown: Boolean) {
+                val ended = zone
+                zone = null
                 drag = null
-                if (flingDown) onBack()
+                // Only the middle third dismisses or resizes. A fast brightness
+                // drag used to close the film, because any fling down did.
+                if (ended != Zone.MIDDLE) return
+                val down = middleDy > 0f
+                val committed = abs(middleDy) > FULLSCREEN_DRAG_FRACTION || flingDown
+                middleDy = 0f
+                if (!committed) return
+                when {
+                    !canToggleFullscreen -> if (down) onBack()
+                    down && fullscreen -> fullscreen = false
+                    down -> onBack()
+                    !fullscreen -> fullscreen = true
+                }
             }
             override fun onZoom(factor: Float) {
                 if (factor > 1.02f) fill = true else if (factor < 0.98f) fill = false
@@ -214,7 +289,9 @@ fun PlayerScreen(
     }
 
     val chromeCallbacks = ChromeCallbacks(
-        onBack = onBack,
+        // Back is "step out one level": out of portrait full screen first,
+        // out of the player only when there is no full screen to leave.
+        onBack = { if (fullscreen && !landscape) fullscreen = false else onBack() },
         onTogglePlay = { viewModel.togglePlayPause(); controlsVisible = true },
         onSeekBy = { viewModel.seekBy(it); controlsVisible = true },
         onScrubStart = { scrubPreviewMs = state.positionMs; viewModel.onScrub(state.positionMs) },
@@ -223,11 +300,13 @@ fun PlayerScreen(
         onOpenPlayback = { sheet = Sheet.Playback },
         onLoopTap = { if (state.loop != null) sheet = Sheet.AbLoop else viewModel.tapLoopPoint() },
         onLoopClear = viewModel::clearLoop,
-        onFullscreen = { activity?.requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE },
+        onFullscreen = { fullscreen = !fullscreen },
     )
 
     val video = @Composable {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // Black only where the picture is the whole screen. Elsewhere the
+        // letterbox bars are left clear so the glow behind shows through them.
+        Box(Modifier.fillMaxSize().background(if (immersive) Color.Black else Color.Transparent)) {
             player?.let { p ->
                 ContentFrame(p, Modifier.fillMaxSize(), SURFACE_TYPE_SURFACE_VIEW, if (fill) ContentScale.Crop else ContentScale.Fit)
             }
@@ -235,12 +314,19 @@ fun PlayerScreen(
             if (state.isBuffering) {
                 CircularProgressIndicator(color = RegolithTheme.colors.accent, trackColor = Color.Transparent, strokeWidth = 2.dp, modifier = Modifier.align(Alignment.Center).size(48.dp).testTag("player_buffering"))
             }
-            if (landscape) {
-                LandscapeChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
+            if (flex) {
+                // Above the fold there is only the header: the timeline and the
+                // transport live in the deck below, where the hands are.
+                FlexChrome(state, controlsVisible && drag == null, chromeCallbacks)
+            } else if (immersive) {
+                // The collapse glyph only appears when full screen was a
+                // choice; in landscape it is the rotation, so there is
+                // nothing for a button to undo.
+                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !landscape)
             } else {
                 PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
             }
-            if (state.loop != null && !landscape) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
+            if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
             drag?.let { DragRail(it) }
             seekLabel?.let { SeekPill(it, left = it.startsWith("−")) }
             if (state.holdingFast) {
@@ -252,13 +338,39 @@ fun PlayerScreen(
         }
     }
 
-    if (landscape) {
-        Box(modifier.fillMaxSize().testTag("player_screen")) {
+    if (flex) {
+        // The split is the hinge's own position, read from the device, not
+        // half the screen: the two halves of a fold are not exactly equal.
+        val topHeight = with(LocalDensity.current) { hinge!!.top.toDp() }
+        val strip by viewModel.strip.collectAsStateWithLifecycle()
+        // Ask for the strip once the deck is on screen, and again if the film changes.
+        LaunchedEffect(state.durationMs, scrubThumbnails) {
+            if (scrubThumbnails && state.durationMs > 0) viewModel.requestStrip()
+        }
+        Column(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
+            Box(Modifier.fillMaxWidth().height(topHeight)) {
+                AmbientGlow(state.fileId, Modifier.fillMaxSize())
+                video()
+            }
+            FlexDeck(
+                state = state,
+                strip = strip,
+                scrubPreviewMs = scrubPreviewMs,
+                cb = chromeCallbacks,
+                onPlayNext = viewModel::playNext,
+                modifier = Modifier.fillMaxWidth().weight(1f).background(RegolithTheme.colors.ground),
+            )
+        }
+    } else if (immersive) {
+        Box(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
             video()
-            if (showGestureMap) GestureMap(onDismiss = viewModel::dismissGestureMap)
+            // The map's three columns need the width; it stays a landscape lesson.
+            if (showGestureMap && landscape) GestureMap(onDismiss = viewModel::dismissGestureMap)
         }
     } else {
-        Column(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
+        Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
+        AmbientGlow(state.fileId, Modifier.fillMaxSize())
+        Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f)) { video() }
             PortraitDetails(
                 state = state,
@@ -268,12 +380,29 @@ fun PlayerScreen(
                 onNudgeA = viewModel::nudgeLoopA,
                 onNudgeB = viewModel::nudgeLoopB,
                 onPlayNext = viewModel::playNext,
+                // The playback sheet's own content, inline in the left column on
+                // a wide window. The phone never composes it here.
+                settings = {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
+                        PlaybackSheetContent(
+                            speed = state.speed,
+                            hardwareDecoding = state.hardwareDecoding,
+                            scrubThumbnails = scrubThumbnails,
+                            onSpeed = viewModel::setSpeed,
+                            onHardwareDecoding = viewModel::setHardwareDecoding,
+                            onScrubThumbnails = viewModel::setScrubThumbnails,
+                            onClose = {},
+                            header = false,
+                        )
+                    }
+                },
             )
+        }
         }
     }
 
     when (sheet) {
-        Sheet.Playback -> PlayerSheetHost(landscape, onDismiss = { sheet = null }, testTag = "player_playback_sheet") {
+        Sheet.Playback -> PlayerSheetHost(immersive, onDismiss = { sheet = null }, testTag = "player_playback_sheet") {
             PlaybackSheetContent(
                 speed = state.speed,
                 hardwareDecoding = state.hardwareDecoding,
@@ -285,7 +414,7 @@ fun PlayerScreen(
             )
         }
         Sheet.AbLoop -> state.loop?.let { loop ->
-            PlayerSheetHost(landscape, onDismiss = { sheet = null }, testTag = "player_loop_sheet") {
+            PlayerSheetHost(immersive, onDismiss = { sheet = null }, testTag = "player_loop_sheet") {
                 AbLoopSheetContent(
                     loop = loop,
                     positionMs = state.positionMs,
@@ -361,14 +490,25 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
 }
 
 /**
- * Landscape chrome (design "Player · landscape"): 18/30/12 padding; back
+ * Full-screen chrome (design "Player · landscape"): 18/30/12 padding; back
  * with the title (Michroma 16) and meta line top-left; speed, A–B, HW
  * pills and the playback-sheet glyph top-right; 52 · 74 circle · 52 in
  * the middle at 40dp gaps; the clocks at 600 13px around the 4dp track
- * with the red knob, and the fullscreen glyph at the end.
+ * with the red knob.
+ *
+ * Also the chrome for portrait full screen, where [canCollapse] adds the
+ * glyph that puts the picture back in its strip. In landscape there is no
+ * such glyph: rotation put you here and rotation takes you back.
  */
 @Composable
-private fun BoxScope.LandscapeChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks) {
+private fun BoxScope.FullChrome(
+    state: PlaybackState,
+    visible: Boolean,
+    scrubPreviewMs: Long?,
+    scrubFrame: android.graphics.Bitmap?,
+    cb: ChromeCallbacks,
+    canCollapse: Boolean,
+) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -404,7 +544,9 @@ private fun BoxScope.LandscapeChrome(state: PlaybackState, visible: Boolean, scr
                             trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
                         )
                         Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
-                        IconCell(R.drawable.rg_ic_fullscreen, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
+                        if (canCollapse) {
+                            IconCell(R.drawable.rg_ic_fullscreen_exit, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
+                        }
                     }
                 }
             }
@@ -441,17 +583,25 @@ private fun PlayCircle(state: PlaybackState, size: androidx.compose.ui.unit.Dp, 
 }
 
 @Composable
-private fun PillRow(state: PlaybackState, onOpenPlayback: () -> Unit, onLoopTap: () -> Unit, onLoopClear: () -> Unit, onMedia: Boolean) {
+private fun PillRow(
+    state: PlaybackState,
+    onOpenPlayback: () -> Unit,
+    onLoopTap: () -> Unit,
+    onLoopClear: () -> Unit,
+    onMedia: Boolean,
+    /** False where the speed and decoder panel is already on screen (the wide player). */
+    settingsPills: Boolean = true,
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-        PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
-        if (onMedia || state.loop != null || state.loopPendingAMs != null) {
+        if (settingsPills) PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
+        if (onMedia || !settingsPills || state.loop != null || state.loopPendingAMs != null) {
             PillButton(
                 text = if (state.loopPendingAMs != null && state.loop == null) "A ·" else "A–B",
                 selected = state.loop != null, onClick = onLoopTap, onLongClick = onLoopClear, onMedia = onMedia,
                 icon = R.drawable.rg_ic_loop, testTag = "player_loop_pill",
             )
         }
-        PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_decoder, testTag = "player_decoder_pill")
+        if (settingsPills) PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_decoder, testTag = "player_decoder_pill")
         if (!onMedia) {
             PillButton(text = "Chapters", onClick = {}, onMedia = false, icon = R.drawable.rg_ic_chapters, testTag = "player_chapters_pill")
         }
@@ -473,7 +623,12 @@ private fun LoopingPill(modifier: Modifier = Modifier) {
 /**
  * Under the picture in portrait (design "Player · portrait"): title in
  * Michroma 17, the meta line, the three 40dp frosted pills, and NEXT IN
- * THIS FOLDER as 56dp rows with an 84×47 thumb at 10dp corners.
+ * THIS FOLDER as 56dp rows with an 84x47 thumb at 10dp corners.
+ *
+ * On a wide window (a foldable's inner display) the same material is two
+ * columns: what the film is and how it plays on the left, what plays next
+ * on the right. The playback settings come inline through [settings]
+ * instead of a sheet, because there is room for them.
  */
 @Composable
 private fun PortraitDetails(
@@ -484,51 +639,98 @@ private fun PortraitDetails(
     onNudgeA: (Long) -> Unit,
     onNudgeB: (Long) -> Unit,
     onPlayNext: (Long) -> Unit,
+    settings: @Composable () -> Unit,
 ) {
-    val colors = RegolithTheme.colors
+    val wide = LocalWindowShape.current.wide
+    val loop = state.loop
+    if (wide) {
+        Row(
+            Modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s30),
+        ) {
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState())
+                    .testTag(if (loop != null) "player_loop_panel" else "player_details"),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+            ) {
+                if (loop != null) {
+                    AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
+                } else {
+                    TitleBlock(state)
+                    // Speed and decoder are the panel below; a pill that opened a
+                    // sheet saying the same thing would be a second control for
+                    // one setting. A-B stays: arming a loop has no other entry.
+                    PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, settingsPills = false)
+                    settings()
+                }
+                Spacer(Modifier.height(Spacing.s30))
+            }
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s12),
+            ) {
+                NextInFolder(state, onPlayNext)
+                Spacer(Modifier.height(Spacing.s30))
+            }
+        }
+        return
+    }
     // With a loop set, the panel below the picture IS the loop (design frame 29): span, points, clear.
     // Landscape keeps it in the side sheet, since there is no room under the picture.
-    state.loop?.let { loop ->
+    if (loop != null) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18).testTag("player_loop_panel"), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
         }
         return
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 17.designSp(), lineHeight = 22.1.designSp()), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val meta = (state.video?.chips ?: emptyList()) + listOfNotNull(
-                state.durationMs.takeIf { it > 0 }?.let { formatDurationShort(it) },
-                state.fileSizeBytes.takeIf { it > 0 }?.let { formatBytes(it) },
-            )
-            Text(meta.joinToString(" · "), style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        TitleBlock(state)
         PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false)
-        if (state.next.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                MichromaLabel("Next in this folder")
-                state.next.take(10).forEach { item ->
-                    Row(
-                        Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
-                            .clickable(interactionSource = null, indication = null) { onPlayNext(item.fileId) }
-                            .testTag("player_next_${item.fileId}"),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
-                    ) {
-                        Box(Modifier.size(84.dp, 47.dp).clip(RoundedCornerShape(10.dp))) {
-                            ArtworkImage(ArtworkRequest(ArtworkOwner.File(item.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = item.name)
-                        }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                            Text(item.name, style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                listOfNotNull(item.durationMs?.let { formatDurationShort(it) }, formatBytes(item.sizeBytes)).joinToString(" · "),
-                                style = TextStyles.meta.copy(lineHeight = 11.designSp()), color = colors.metadata, maxLines = 1,
-                            )
-                        }
-                    }
+        NextInFolder(state, onPlayNext)
+        Spacer(Modifier.height(Spacing.s30))
+    }
+}
+
+/** The title in Michroma 17 over its metadata line. Both layouts open with it. */
+@Composable
+private fun TitleBlock(state: PlaybackState) {
+    val colors = RegolithTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 17.designSp(), lineHeight = 22.1.designSp()), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        val meta = (state.video?.chips ?: emptyList()) + listOfNotNull(
+            state.durationMs.takeIf { it > 0 }?.let { formatDurationShort(it) },
+            state.fileSizeBytes.takeIf { it > 0 }?.let { formatBytes(it) },
+        )
+        Text(meta.joinToString(" · "), style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** "Next in this folder": 56dp rows with an 84x47 thumb. Empty draws nothing. */
+@Composable
+private fun NextInFolder(state: PlaybackState, onPlayNext: (Long) -> Unit) {
+    val colors = RegolithTheme.colors
+    if (state.next.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+        Eyebrow("Next in this folder", muted = true)
+        state.next.take(10).forEach { item ->
+            Row(
+                Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
+                    .clickable(interactionSource = null, indication = null) { onPlayNext(item.fileId) }
+                    .testTag("player_next_${item.fileId}"),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
+            ) {
+                Box(Modifier.size(84.dp, 47.dp).clip(RoundedCornerShape(10.dp))) {
+                    ArtworkImage(ArtworkRequest(ArtworkOwner.File(item.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = item.name)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                    Text(item.name, style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(item.durationMs?.let { formatDurationShort(it) }, formatBytes(item.sizeBytes)).joinToString(" · "),
+                        style = TextStyles.meta.copy(lineHeight = 11.designSp()), color = colors.metadata, maxLines = 1,
+                    )
                 }
             }
         }
-        Spacer(Modifier.height(Spacing.s30))
     }
 }
 
@@ -618,7 +820,7 @@ private fun GestureMap(onDismiss: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(interactionSource = null, indication = null, onClick = onDismiss).testTag("player_gesture_map")) {
         Row(Modifier.fillMaxSize()) {
             GestureZone(R.drawable.rg_ic_seek_back, "Double-tap", "Back 10s. Keep tapping to stack it — 20s, 30s.", "Drag up or down here for brightness", Modifier.weight(1f))
-            GestureZone(R.drawable.rg_ic_pause, "Tap", "Show the controls. Tap again to hide, or wait 3 seconds.", "Long-press for 2× while held · pinch to fill or fit", Modifier.weight(1f))
+            GestureZone(R.drawable.rg_ic_pause, "Double-tap", "Play or pause. A single tap shows the controls.", "Drag up for full screen, down to leave it · long-press for 2×", Modifier.weight(1f))
             GestureZone(R.drawable.rg_ic_seek_forward, "Double-tap", "Forward 10s, stacking the same way.", "Drag up or down here for volume", Modifier.weight(1f))
         }
         Row(Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
@@ -626,7 +828,7 @@ private fun GestureMap(onDismiss: () -> Unit) {
             Text("Zones are invisible in use — shown here only", style = TextStyles.meta12, color = colors.body)
         }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 26.dp, vertical = 18.dp)) {
-            Text("Swipe down anywhere · leave the player", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body, modifier = Modifier.weight(1f))
+            Text("Swipe down the middle · leave the player", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body, modifier = Modifier.weight(1f))
             Text("Drag the scrub bar · thumbnails follow the finger", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body, textAlign = TextAlign.End)
         }
     }
@@ -644,3 +846,196 @@ private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, 
         Text(hint, style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.metadata, textAlign = TextAlign.Center)
     }
 }
+
+/**
+ * The chrome over the picture in flex mode: the header, and only the
+ * header. Back, the title with its meta line, the speed / A–B / decoder
+ * pills and the playback glyph — the same row [FullChrome] draws. The
+ * timeline and the transport are in the deck below the hinge, where the
+ * hands are when the device is standing on a table.
+ */
+@Composable
+private fun BoxScope.FlexChrome(state: PlaybackState, visible: Boolean, cb: ChromeCallbacks) {
+    val colors = RegolithTheme.colors
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
+            ChromeScrim(landscape = true)
+            Row(
+                Modifier.fillMaxWidth().padding(start = Spacing.s18, end = Spacing.s18, top = 14.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+                        DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 16.designSp(), lineHeight = 20.8.designSp()), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
+                        Text(meta.filter { it.isNotEmpty() }.joinToString(" · "), style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    PillRow(state, cb.onOpenPlayback, cb.onLoopTap, cb.onLoopClear, onMedia = true)
+                    IconCell(R.drawable.rg_ic_sliders, "Playback", 19.dp, cb.onOpenPlayback, "player_playback_button", size = 40.dp)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Everything below the hinge in flex mode. The filmstrip is the scrub
+ * preview turned inside out: instead of one frame under the finger while
+ * dragging, the whole film is laid out at once and a tap goes there. Then
+ * the timeline, the transport at the size a standing device wants, and what
+ * plays next.
+ *
+ * Unlike the chrome over the picture the deck never hides: it is not on top
+ * of anything.
+ */
+@Composable
+private fun FlexDeck(
+    state: PlaybackState,
+    strip: List<StripFrame>,
+    scrubPreviewMs: Long?,
+    cb: ChromeCallbacks,
+    onPlayNext: (fileId: Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RegolithTheme.colors
+    // While a drag is live the strip follows the finger, which is what
+    // replaces the floating preview the phone shows.
+    val here = scrubPreviewMs ?: state.positionMs
+    val currentMs = strip.minByOrNull { (it.positionMs - here).absoluteValue }?.positionMs
+    Column(
+        modifier.padding(horizontal = Spacing.s30).padding(top = Spacing.s18, bottom = Spacing.s12).navigationBarsPadding(),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+    ) {
+        if (strip.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().testTag("player_strip"), horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                strip.forEach { frame ->
+                    StripCell(
+                        frame = frame,
+                        current = frame.positionMs == currentMs,
+                        onSeek = { if (state.durationMs > 0) cb.onScrubEnd(frame.positionMs.toFloat() / state.durationMs) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            Text(formatClock(here), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
+            Scrubber(
+                positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
+                loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chaptersMs,
+                onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
+                trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
+            )
+            Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", 27.dp, { cb.onSeekBy(-10_000) }, "player_seek_back_button", size = 52.dp)
+            PlayCircle(state, 74.dp, 26.dp, cb.onTogglePlay)
+            IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", 27.dp, { cb.onSeekBy(10_000) }, "player_seek_forward_button", size = 52.dp)
+        }
+        state.next.firstOrNull()?.let { item ->
+            Spacer(Modifier.weight(1f))
+            Row(
+                Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
+                    .clickable(interactionSource = null, indication = null) { onPlayNext(item.fileId) }
+                    .testTag("player_next_${item.fileId}"),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
+            ) {
+                Box(Modifier.size(84.dp, 47.dp).clip(RoundedCornerShape(10.dp))) {
+                    ArtworkImage(ArtworkRequest(ArtworkOwner.File(item.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = item.name)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                    Eyebrow("Up next", muted = true)
+                    Text(item.name, style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+/** One frame of the filmstrip: the picture once it lands, its time beneath, ringed when the playhead is in its slice. */
+@Composable
+private fun StripCell(frame: StripFrame, current: Boolean, onSeek: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = RegolithTheme.colors
+    Column(
+        modifier.clickable(interactionSource = null, indication = null, onClick = onSeek).testTag("player_strip_${frame.positionMs}"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.s4),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                .then(if (current) Modifier.border(2.dp, colors.ink, ThumbShape) else Modifier)
+                .padding(if (current) 3.dp else 0.dp)
+                .clip(ThumbShape)
+                .background(colors.skeleton),
+        ) {
+            frame.bitmap?.let { bmp ->
+                Image(bitmap = bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Text(formatClock(frame.positionMs), style = TextStyles.meta.copy(lineHeight = 11.designSp()), color = if (current) colors.ink else colors.metadata, maxLines = 1)
+    }
+}
+
+/**
+ * The ambient light behind a letterboxed picture: the title's own poster,
+ * blurred past recognition, scaled out so the blur has no edge, and dimmed
+ * under a scrim. A 2:39 film then sits in its own colour instead of a black
+ * band, which is the whole point.
+ *
+ * The poster is the one the artwork pipeline already generated and cached
+ * for this file, so the glow costs no read over the share and works with
+ * the network gone. Nothing is drawn until it resolves: an unmatched file
+ * keeps the black it has now rather than gaining a blurred placeholder.
+ */
+@Composable
+private fun AmbientGlow(fileId: Long?, modifier: Modifier = Modifier) {
+    if (fileId == null) return
+    val request = remember(fileId) { ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.POSTER) }
+    Box(modifier.clipToBounds()) {
+        SubcomposeAsyncImage(
+            model = request,
+            contentDescription = null,
+            loading = {},
+            error = {},
+            success = { SubcomposeAsyncImageContent(contentScale = ContentScale.Crop) },
+            modifier = Modifier
+                .fillMaxSize()
+                .scale(GLOW_SCALE)
+                .blur(GLOW_BLUR, BlurredEdgeTreatment.Unbounded)
+                .alpha(GLOW_ALPHA)
+                .testTag("player_ambient_glow"),
+        )
+        // Keeps the glow under the picture rather than beside it, and lets it
+        // fall off downward the way spill light actually does: strongest around
+        // the picture, back to the app's own ground by the bottom of the screen.
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(0f to Color(0x4D000000), 0.62f to Color(0xA6000000), 1f to RegolithTheme.colors.ground),
+            ),
+        )
+    }
+}
+
+/** Enough blur that no shape survives; the glow is colour, not a picture. */
+private val GLOW_BLUR = 56.dp
+
+/** Scaled past the edges so the blur has nothing to fade into. */
+private const val GLOW_SCALE = 1.35f
+
+private const val GLOW_ALPHA = 0.65f
+
+/**
+ * How far a middle drag must travel, as a fraction of the picture's height,
+ * before it enters or leaves full screen. A flick commits at any distance;
+ * this is the floor for a slow, deliberate drag, and it is what stops a
+ * stray finger from flipping the layout.
+ */
+private const val FULLSCREEN_DRAG_FRACTION = 0.12f

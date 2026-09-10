@@ -40,6 +40,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.TileShape
+import com.regolith.ui.theme.scaledDp
 
 /**
  * Art at any size: the image when there is one, the design's "reading"
@@ -98,6 +99,8 @@ fun MediaTile(
     matched: Boolean = true,
     fallbackLabel: String = title,
     shape: Shape = TileShape,
+    /** Wide window only: this is the title open in the detail pane beside the wall. */
+    selected: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     Column(modifier.clickable(interactionSource = null, indication = null, onClick = onClick).testTag(testTag)) {
@@ -105,6 +108,12 @@ fun MediaTile(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(kind.width.toFloat() / kind.height)
+                // The selected tile is ringed rather than tinted: the art is
+                // the content, so anything drawn over it would be read as
+                // part of the picture. Outside the clip so the ring is not
+                // shaved by the tile's own corners.
+                .then(if (selected) Modifier.border(2.dp, colors.ink, shape) else Modifier)
+                .padding(if (selected) 4.dp else 0.dp)
                 .clip(shape)
                 .background(colors.surface)
                 .alpha(if (dimmed) 0.45f else 1f),
@@ -165,10 +174,10 @@ fun ResumeCard(
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(CardShape).background(colors.surface)) {
             ArtworkImage(artwork, Modifier.fillMaxSize(), fallbackLabel = title)
             Box(
-                Modifier.align(Alignment.Center).size(42.dp).background(Color(0x24FFFFFF), PillShape).border(1.dp, Color(0x47FFFFFF), PillShape),
+                Modifier.align(Alignment.Center).size(42.scaledDp()).background(Color(0x24FFFFFF), PillShape).border(1.dp, Color(0x47FFFFFF), PillShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(R.drawable.rg_ic_play), contentDescription = "Play", tint = colors.ink, modifier = Modifier.size(15.dp))
+                Icon(painterResource(R.drawable.rg_ic_play), contentDescription = "Play", tint = colors.ink, modifier = Modifier.size(15.scaledDp()))
             }
             Chip(timeLeft, ChipStyle.OverArt, Modifier.align(Alignment.TopEnd).padding(Spacing.s8))
             ProgressEdge(progress, Modifier.align(Alignment.BottomStart))

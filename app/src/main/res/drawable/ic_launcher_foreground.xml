@@ -3,14 +3,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Wedge outline: point right, concave back edge -->
+    <!--
+        The Strata Wedge: point right, concave back edge, cut into five
+        bands of rock.
+
+        The bands are separated, not stacked. Butted edge to edge they
+        read as one striped triangle; the gaps are what make them strata,
+        and they let the #0A0A0A background through as the bedding plane
+        between them. The rhythm is the splash wedge's
+        (@drawable/rg_wedge_white) at half scale, so the launcher icon and
+        the splash are the same mark: band, gap, band, at roughly three
+        parts ink to one part gap.
+
+        Bands run the full width and are clipped to the wedge, so each one
+        picks up the taper without any per-band geometry.
+    -->
     <group android:name="wedge">
         <clip-path android:pathData="M36,30 L80,54 L36,78 Q46,54 36,30 Z" />
-        <!-- Strata bands, top to bottom -->
-        <path android:fillColor="#EDEDED" android:pathData="M0,26 H108 V40 H0 Z" />
-        <path android:fillColor="#A0A0A0" android:pathData="M0,40 H108 V50 H0 Z" />
-        <path android:fillColor="#E11B17" android:pathData="M0,50 H108 V58 H0 Z" />
-        <path android:fillColor="#6E6E6E" android:pathData="M0,58 H108 V68 H0 Z" />
-        <path android:fillColor="#2E2E2E" android:pathData="M0,68 H108 V82 H0 Z" />
+        <!-- Strata, top to bottom. The red is the middle band, on the wedge's axis. -->
+        <path android:fillColor="#EDEDED" android:pathData="M0,28 H108 V37 H0 Z" />
+        <path android:fillColor="#A0A0A0" android:pathData="M0,40.5 H108 V47.5 H0 Z" />
+        <path android:fillColor="#E11B17" android:pathData="M0,50.5 H108 V59.5 H0 Z" />
+        <path android:fillColor="#6E6E6E" android:pathData="M0,63 H108 V69.5 H0 Z" />
+        <path android:fillColor="#2E2E2E" android:pathData="M0,72.5 H108 V80 H0 Z" />
     </group>
 </vector>

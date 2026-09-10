@@ -40,6 +40,7 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "DEMO_LIBRARY", "true")
         }
         release {
             isMinifyEnabled = true
@@ -49,6 +50,10 @@ android {
             // still installable for side-loading. Swap for a real key before
             // any store upload.
             signingConfig = signingConfigs.getByName("debug")
+            // The side-load build IS the test build today (a debug APK is too
+            // big to send), so Settings' demo library ships in it. Set this
+            // false — and drop res/raw/demo_*.mp4 — for a real store build.
+            buildConfigField("boolean", "DEMO_LIBRARY", "true")
         }
     }
 
@@ -59,6 +64,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
 
@@ -93,6 +99,10 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    // Adaptive layouts: window size class + fold posture for the foldable inner
+    // display (ui/adaptive), and the list-detail scene strategy for Navigation 3.
+    implementation(libs.androidx.compose.material3.adaptive)
+    implementation(libs.androidx.compose.material3.adaptive.navigation3)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.androidx.core.ktx)

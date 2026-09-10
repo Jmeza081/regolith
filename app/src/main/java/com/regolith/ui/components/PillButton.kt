@@ -23,6 +23,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.scaledDp
 
 /**
  * A tappable pill: "1.0×", "A–B", "HW", "Chapters" (design section 10).
@@ -57,7 +58,7 @@ fun PillButton(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .height(if (onMedia) 34.dp else 40.dp)
+            .height(if (onMedia) 34.scaledDp() else 40.scaledDp())
             .clip(PillShape)
             .background(background)
             .border(1.dp, border, PillShape)

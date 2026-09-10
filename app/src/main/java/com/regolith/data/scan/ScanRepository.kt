@@ -8,7 +8,9 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.ScanRunEntity
+import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.domain.media.DemoSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -27,11 +29,19 @@ import javax.inject.Singleton
 class ScanRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val shareDao: ShareDao,
+    private val serverDao: ServerDao,
     private val scanRunDao: ScanRunDao,
 ) {
-    /** Scan every enabled share of [serverId], or of every server when null. */
+    /**
+     * Scan every enabled share of [serverId], or of every server when null.
+     * The demo library is skipped: there is no host to walk, and failing to
+     * reach it would mark it out of reach ([DemoSource]).
+     */
     suspend fun scanAll(serverId: Long? = null) {
-        val shares = shareDao.observeEnabled().first().filter { serverId == null || it.serverId == serverId }
+        val demoServerIds = serverDao.observeAll().first().filter { DemoSource.isDemo(it.host) }.map { it.id }.toSet()
+        val shares = shareDao.observeEnabled().first()
+            .filter { serverId == null || it.serverId == serverId }
+            .filterNot { it.serverId in demoServerIds }
         shares.forEach { enqueue(it.id) }
     }
 

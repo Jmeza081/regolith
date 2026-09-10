@@ -106,6 +106,38 @@ class RetrieverFrameSource private constructor(
             Log.d(TAG, "open $relPath: ${dataSource.reads} reads, ${dataSource.bytes / 1024} KB, ${(System.nanoTime() - started) / 1_000_000} ms")
             return RetrieverFrameSource(source, retriever, dataSource)
         }
+
+        override fun openLocal(file: java.io.File): FrameSource {
+            // Same class, different byte source: the retriever cannot tell,
+            // and neither can anything above it.
+            val source = FileByteSource(file)
+            val retriever = MediaMetadataRetriever()
+            val dataSource = ByteSourceMediaDataSource(source)
+            try {
+                retriever.setDataSource(dataSource)
+            } catch (e: RuntimeException) {
+                retriever.release()
+                source.close()
+                throw e
+            }
+            return RetrieverFrameSource(source, retriever, dataSource)
+        }
+    }
+
+    /** A file on this device, read the way the share is read. No buffering: the page cache is the buffer. */
+    private class FileByteSource(file: java.io.File) : SeekableByteSource {
+        private val handle = java.io.RandomAccessFile(file, "r")
+        override val size: Long = handle.length()
+
+        override fun readAt(offset: Long, dst: ByteArray, dstOffset: Int, length: Int): Int = synchronized(handle) {
+            if (offset >= size) return -1
+            handle.seek(offset)
+            handle.read(dst, dstOffset, length)
+        }
+
+        override fun close() {
+            runCatching { handle.close() }
+        }
     }
 
     private companion object {

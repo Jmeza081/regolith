@@ -42,6 +42,43 @@ Android Studio writes it on first open, or create it by hand.
 
 Emulator driving and QA go through the argent MCP tools (see `CLAUDE.md`).
 
+### Foldable emulator
+
+The owner's phone is a Galaxy Z Fold, and the inner display gets its own
+layouts (`docs/FOLDABLE_PLAN.md`). A second AVD, `Pixel_Fold`, uses the SDK's
+Pixel 10 Pro Fold profile (inner 2076×2152 @ 390 dpi, cover 1080×2364) on the
+same API 37 image as `Pixel_10`. This machine has no `avdmanager`, so it was
+written by hand: `~/.android/avd/Pixel_Fold.ini` plus
+`Pixel_Fold.avd/config.ini` copied from `Pixel_10` with the profile's
+`hw.lcd.*`, `hw.sensor.hinge.*` and `hw.displayRegion.0.1.*` keys.
+
+Postures, once it is running:
+
+```
+adb emu fold                              # cover screen (compact)
+adb emu unfold                            # inner display, fully open
+adb shell cmd device_state print-states   # lists the ids: closed / half-opened / opened
+adb shell cmd device_state state 1        # half open (flex mode); `state reset` releases it
+adb logcat -s Regolith                    # prints "window shape: …" on every change (debug builds)
+```
+
+`WindowShape` (`ui/adaptive/`) is what the app sees: `wide` is true on the
+inner display and false on the cover, so every wide layout can be checked
+on one emulator by folding it.
+
+### Trying it without a share
+
+Settings › Demo › **Load** writes a pretend NAS — four collections, 18
+titles, a few part-watched — and copies four bundled test clips onto the
+device, one per title. Everything plays, scrubs and shows real frame-grab
+posters with no network at all, which is what makes the app reviewable on
+a train. **Remove** deletes it; nothing else is touched.
+
+The section is behind `BuildConfig.DEMO_LIBRARY`, true in both build types
+today because the side-load (`assembleRelease`) build is the one that gets
+tested on a phone. Set it false — and delete `res/raw/demo_*.mp4` — before
+any store upload.
+
 ## Layout
 
 ```

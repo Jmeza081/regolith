@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
 import java.io.Closeable
+import java.io.File
 
 /**
  * One open video, asked for pictures. Behind this sit the platform's
@@ -33,4 +34,11 @@ interface FrameSource : Closeable {
 /** Opens a [FrameSource] on one file of a share. Throws [com.regolith.domain.smb.SmbFailure]. */
 interface FrameSourceFactory {
     fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): FrameSource
+
+    /**
+     * The same, on a copy already on this device (a download, or the demo
+     * library). No network, so no [com.regolith.domain.smb.SmbFailure] and
+     * no read-ahead worth the name.
+     */
+    fun openLocal(file: File): FrameSource
 }

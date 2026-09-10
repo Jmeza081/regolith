@@ -27,6 +27,8 @@ sealed interface RegolithKey : NavKey {
 
     // --- Pushed screens.
     @Serializable data object Search : RegolithKey
+    /** Home's "All": every part-watched title. */
+    @Serializable data object ContinueWatching : RegolithKey
     @Serializable data class TitleDetail(val fileId: Long) : RegolithKey
     @Serializable data class Player(val fileId: Long, val startMs: Long? = null) : RegolithKey
 

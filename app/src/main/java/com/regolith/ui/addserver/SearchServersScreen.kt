@@ -47,7 +47,7 @@ import com.regolith.data.discovery.DiscoveryEvent
 import com.regolith.data.discovery.HostDiscovery
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
-import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
@@ -157,7 +157,7 @@ fun SearchServersScreen(
             }
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    MichromaLabel("Found so far", Modifier.weight(1f))
+                    Eyebrow("Found so far", Modifier.weight(1f), muted = true)
                     Text(
                         if (state.total > 0) "${state.checked} of ${state.total} checked" else "",
                         style = TextStyles.meta12.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium), color = colors.metadata,

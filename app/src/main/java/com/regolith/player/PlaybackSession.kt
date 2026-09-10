@@ -94,6 +94,7 @@ class PlaybackSession @Inject constructor(
     private val playback: PlaybackRepository,
     private val prefs: AppPreferences,
     private val frames: FrameSourceFactory,
+    private val local: LocalMedia,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(PlaybackState())
@@ -236,6 +237,8 @@ class PlaybackSession @Inject constructor(
         val file = currentFile
         _scrubThumbnails.value = if (enabled && fileId != null && file != null) {
             OnDemandScrubThumbnails(durationMs = file.durationMs ?: _state.value.durationMs) {
+                // Same rule as playback: the copy on this device first.
+                local.fileBlocking(fileId)?.let { return@OnDemandScrubThumbnails frames.openLocal(it) }
                 val media = resolver.resolveBlocking(fileId) ?: error("file $fileId is unknown")
                 frames.open(media.host, media.credentials, media.share, media.relPath)
             }

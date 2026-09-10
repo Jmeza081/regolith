@@ -37,7 +37,7 @@ import com.regolith.ui.components.Chip
 import com.regolith.ui.components.ChipStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.IconCircleButton
-import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
@@ -52,6 +52,7 @@ import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDate
 import com.regolith.ui.util.formatRemaining
 import kotlinx.coroutines.flow.StateFlow
+import com.regolith.ui.theme.scaledDp
 
 /**
  * Title Detail (design section 09): a 210dp hero of the art with the
@@ -68,8 +69,22 @@ fun TitleDetailScreen(
     onBack: () -> Unit,
     onPlay: (fileId: Long) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * True when this is the detail pane beside the wall on a wide window
+     * (F2). Nothing was pushed, so the glyph over the art closes the pane
+     * instead of stepping back, and the art does not run under the status
+     * bar because the pane does not reach it.
+     */
+    inPane: Boolean = false,
+    /**
+     * Non-null only when the wall beside this pane is collapsed, i.e. this
+     * pane is the whole window. Draws the control that brings the wall back;
+     * with the wall visible there is nothing to restore, so it is null and
+     * nothing is drawn.
+     */
+    onShowList: (() -> Unit)? = null,
 ) {
-    TitleDetailContent(viewModel.uiState, onBack, onPlay, viewModel::keepOnDevice, viewModel::removeFromDevice, modifier)
+    TitleDetailContent(viewModel.uiState, onBack, onPlay, viewModel::keepOnDevice, viewModel::removeFromDevice, modifier, inPane, onShowList)
 }
 
 @Composable
@@ -80,12 +95,18 @@ private fun TitleDetailContent(
     onKeep: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier,
+    inPane: Boolean,
+    onShowList: (() -> Unit)?,
 ) {
     val state by stateFlow.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("detail_screen")) {
-        // Hero: the art runs under the status bar; the overlays are the design's exact stops.
-        Box(Modifier.fillMaxWidth().height(210.dp + 24.dp)) {
+        // Hero: the art runs under the status bar; the overlays are the
+        // design's exact stops. 210px was 66% of a 320px frame and had
+        // become 51% of the phone, so it goes through SIZE_SCALE like every
+        // other fixed size; the 24dp is the status bar it runs under, which
+        // is a system inset and does not scale.
+        Box(Modifier.fillMaxWidth().height(210.scaledDp() + 24.dp)) {
             ArtworkImage(state.artwork, Modifier.fillMaxSize(), fallbackLabel = state.title)
             Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x2EFFFFFF), Color.Transparent), radius = 700f)))
             Box(
@@ -93,11 +114,33 @@ private fun TitleDetailContent(
                     Brush.verticalGradient(0f to Color(0x99000000), 0.32f to Color.Transparent, 1f to Color(0xF5000000)),
                 ),
             )
-            Box(Modifier.statusBarsPadding().padding(start = Spacing.s12, top = Spacing.s12)) {
+            // In a pane the glyph closes the pane (and sits at the end, where
+            // a close control belongs); pushed, it is the back circle the
+            // design draws at the start.
+            Box(
+                Modifier.statusBarsPadding().padding(start = Spacing.s12, top = Spacing.s12, end = Spacing.s12)
+                    .align(if (inPane) Alignment.TopEnd else Alignment.TopStart),
+            ) {
                 IconCircleButton(
-                    icon = painterResource(R.drawable.rg_ic_back), contentDescription = "Back", onClick = onBack,
-                    onMedia = true, size = 44.dp, iconSize = 20.dp, testTag = "topbar_back_button",
+                    icon = painterResource(if (inPane) R.drawable.rg_ic_close else R.drawable.rg_ic_back),
+                    contentDescription = if (inPane) "Close" else "Back",
+                    onClick = onBack,
+                    onMedia = true, size = 44.dp, iconSize = 20.dp,
+                    testTag = if (inPane) "detail_close_button" else "topbar_back_button",
                 )
+            }
+            // The start corner, where every app that hides a pane puts the
+            // control that brings it back.
+            onShowList?.let { show ->
+                Box(Modifier.statusBarsPadding().padding(start = Spacing.s12, top = Spacing.s12).align(Alignment.TopStart)) {
+                    IconCircleButton(
+                        icon = painterResource(R.drawable.rg_ic_split_pane),
+                        contentDescription = "Show the list",
+                        onClick = show,
+                        onMedia = true, size = 44.dp, iconSize = 20.dp,
+                        testTag = "detail_show_list_button",
+                    )
+                }
             }
         }
         if (!state.loaded) return@Column
@@ -143,7 +186,7 @@ private fun TitleDetailContent(
             }
             if (state.siblings.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    MichromaLabel("In this collection")
+                    Eyebrow("In this collection", muted = true)
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                         state.siblings.forEach { s ->
                             com.regolith.ui.components.MediaTile(

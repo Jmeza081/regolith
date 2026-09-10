@@ -26,7 +26,11 @@ starts on `Onboarding` (first run) or `Home`.
 ## Tabs
 
 `MainTab` has four entries. The pill is drawn once, by `RegolithNavGraph`,
-over the `NavDisplay`, and only when the top key belongs to a tab.
+over the `NavDisplay`, and only when the top key belongs to a tab. On a wide
+window (`LocalWindowShape.wide`: a foldable's inner display, a tablet) the
+same `NavPill` is drawn `vertical` as a rail on the start edge, and the four
+tab screens are inset by `NAV_RAIL_INSET` so they sit beside it; pushed
+screens keep the full width. Same keys, same tags, same back stack.
 
 | Tab | Key | Screen | testTag |
 |---|---|---|---|
@@ -52,9 +56,28 @@ that folder's wall. Titles push `TitleDetail`. The search icon pushes `Search`.
 `Browse(folderId = null)` is the tab root: the enabled shares. Tapping a
 share creates (or finds) its root folder row and pushes `Browse(folderId)`;
 tapping a folder pushes another `Browse(folderId)`. The pill stays visible at
-every depth and back pops one level. A file pushes `TitleDetail(fileId)`,
+every depth and back pops one level. On a wide window a share tree stands to
+the left of the list (`ShareTree`), listing every enabled share and its
+top-level folders; tapping one RESTARTS the chain (`[Home, Browse(folder)]`)
+rather than pushing, so back from a jump leaves Browse instead of walking back
+through folders you skipped. The tree is dropped below 600dp of screen width. A file pushes `TitleDetail(fileId)`,
 whose red Play pushes `Player(fileId)` (since Phase 3; in Phases 1–2 a file
 opened the player directly).
+
+## Title Detail is a pane on a wide window
+
+`Library` carries `ListDetailSceneStrategy.listPane()` metadata and
+`TitleDetail` carries `detailPane()`. On a wide window the strategy renders the
+top two keys as one two-pane scene: the wall on the start edge (inside the
+rail's inset), the detail beside it, with "Choose a title" in the pane until
+one is picked. **The back stack is identical either way** — back pops the
+detail first, then the wall — and the rail keeps the tab that owns the wall.
+Picking another title replaces the open detail rather than stacking one.
+
+A detail opened from `Home`, `Search` or `Browse` has no wall beneath it, so it
+fills the window and keeps the back arrow. Browse spends its width on the share
+tree instead (below). On a compact window nothing changes: the
+detail is pushed and slides in, as it has since Phase 6.
 
 ## Pushed screens (pill hidden)
 

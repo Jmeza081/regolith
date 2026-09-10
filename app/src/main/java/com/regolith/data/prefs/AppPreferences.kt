@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -28,6 +29,8 @@ class AppPreferences @Inject constructor(
         val scrubThumbnails = booleanPreferencesKey("scrub_thumbnails")
         val librarySort = stringPreferencesKey("library_sort")
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
+        val libraryViewMode = stringPreferencesKey("library_view_mode")
+        val browseViewMode = stringPreferencesKey("browse_view_mode")
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */
@@ -63,4 +66,27 @@ class AppPreferences @Inject constructor(
     suspend fun setLibrarySort(sort: LibrarySort) {
         store.edit { it[Keys.librarySort] = sort.name }
     }
+
+    /**
+     * Library's grid/rows switch. The poster wall is the design's default,
+     * so GRID is what a fresh install gets. Browse keeps its own choice
+     * ([browseViewMode]) because the two lists answer different questions:
+     * "what have I got" vs "what is in this folder".
+     */
+    val libraryViewMode: Flow<ViewMode> = store.data.map { it[Keys.libraryViewMode].toViewMode(ViewMode.GRID) }
+
+    suspend fun setLibraryViewMode(mode: ViewMode) {
+        store.edit { it[Keys.libraryViewMode] = mode.name }
+    }
+
+    /** Browse's grid/rows switch. Rows are the design's default here: a folder listing reads as a list. */
+    val browseViewMode: Flow<ViewMode> = store.data.map { it[Keys.browseViewMode].toViewMode(ViewMode.ROWS) }
+
+    suspend fun setBrowseViewMode(mode: ViewMode) {
+        store.edit { it[Keys.browseViewMode] = mode.name }
+    }
+
+    /** An unknown or missing stored name falls back rather than throwing (the enum may gain cases). */
+    private fun String?.toViewMode(fallback: ViewMode) =
+        this?.let { runCatching { ViewMode.valueOf(it) }.getOrNull() } ?: fallback
 }

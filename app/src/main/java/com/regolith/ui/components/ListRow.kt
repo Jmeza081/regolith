@@ -28,6 +28,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.ThumbShape
+import com.regolith.ui.theme.scaledDp
 
 enum class RowTrailing { Chevron, Checked, None }
 
@@ -41,6 +42,9 @@ sealed interface RowLeading {
 
     /** A 52dp-wide 16:9 thumbnail with 7dp corners (Browse files, search results). */
     data class Thumb(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
+
+    /** A 34dp-wide 2:3 poster with 7dp corners (Library in rows mode). */
+    data class Poster(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
 
     data object None : RowLeading
 }
@@ -62,7 +66,12 @@ fun ListRow(
     leading: RowLeading = RowLeading.None,
     trailing: RowTrailing = RowTrailing.Chevron,
     compact: Boolean = false,
-    minHeight: androidx.compose.ui.unit.Dp = 56.dp,
+    /**
+     * 56px in the frames around a 34px icon box. The box goes through
+     * SIZE_SCALE, so the row that frames it must too, or the box ends up
+     * 6dp from the card edge where the design had 11.
+     */
+    minHeight: androidx.compose.ui.unit.Dp = 56.scaledDp(),
     /** Text drawn at the right instead of a glyph, e.g. "2.4 TB free". */
     trailingText: String? = null,
 ) {
@@ -76,12 +85,15 @@ fun ListRow(
             .testTag(testTag),
     ) {
         when (leading) {
-            is RowLeading.IconBox -> Box(Modifier.size(34.dp).background(colors.badgeBg, BoxShape), contentAlignment = Alignment.Center) {
-                Icon(painterResource(leading.icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.dp))
+            is RowLeading.IconBox -> Box(Modifier.size(34.scaledDp()).background(colors.badgeBg, BoxShape), contentAlignment = Alignment.Center) {
+                Icon(painterResource(leading.icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.scaledDp()))
             }
-            is RowLeading.Glyph -> Icon(painterResource(leading.icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.dp))
-            is RowLeading.Thumb -> Box(Modifier.width(52.dp).aspectRatio(16f / 9f).clip(ThumbShape)) {
-                ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(52.dp, 29.25.dp))
+            is RowLeading.Glyph -> Icon(painterResource(leading.icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
+            is RowLeading.Thumb -> Box(Modifier.width(52.scaledDp()).aspectRatio(16f / 9f).clip(ThumbShape)) {
+                ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(52.scaledDp(), 29.25.scaledDp()))
+            }
+            is RowLeading.Poster -> Box(Modifier.width(34.scaledDp()).aspectRatio(2f / 3f).clip(ThumbShape)) {
+                ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(34.scaledDp(), 51.scaledDp()))
             }
             RowLeading.None -> Unit
         }
@@ -99,11 +111,11 @@ fun ListRow(
         when (trailing) {
             RowTrailing.Chevron -> {
                 Spacer(Modifier.width(Spacing.s12))
-                Icon(painterResource(R.drawable.rg_ic_chevron_right), contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.dp))
+                Icon(painterResource(R.drawable.rg_ic_chevron_right), contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.scaledDp()))
             }
             RowTrailing.Checked -> {
                 Spacer(Modifier.width(Spacing.s12))
-                Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.ink, modifier = Modifier.size(18.dp))
+                Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
             }
             RowTrailing.None -> Unit
         }

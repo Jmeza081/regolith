@@ -6,18 +6,23 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.regolith.R
 
 /*
  * Two faces (design section 01, "Type & nav"):
- *  - Michroma: wordmark, screen titles, the Settings section labels.
+ *  - Michroma: the app's own voice, and only that -- wordmark, screen
+ *    titles, dialog and empty-state titles. Never a label, never content.
  *    Uppercase only. Drawn with a 0.55px stroke for weight by
  *    [com.regolith.ui.components.DisplayText].
- *  - Space Grotesk: everything a person actually reads, including the
- *    tracked uppercase eyebrows and nav labels.
+ *  - Space Grotesk: everything else, including every section eyebrow and
+ *    every row. One eyebrow style app-wide; Settings used to have its own
+ *    Michroma one, which put the display face on wayfinding and made the
+ *    screen read as three competing headings.
  *
  * Every style below is a `font:` declaration copied verbatim from the design
  * export, in the design's own CSS px, then multiplied by [TYPE_SCALE] on the
@@ -38,6 +43,28 @@ import com.regolith.R
  * top; this factor only fixes the design-to-device mismatch.
  */
 const val TYPE_SCALE = 1.28f
+
+/**
+ * Design px -> dp multiplier for anything drawn at a FIXED size.
+ *
+ * The frames are 320 px wide and the phone is 411 dp, so a 112 px poster
+ * that filled 35% of a frame fills 27% of the screen. Every fixed size in
+ * the export carries that same 22% shortfall: buttons, thumbnails,
+ * posters, glyphs. A button is type in a box and a thumbnail is art in a
+ * box; both are ratios the frames drew, not absolutes.
+ *
+ * Two kinds of number are deliberately NOT scaled:
+ *  - anything already expressed as a fraction of the width. The Library
+ *    and Browse grids divide what is left after the gutters, so their
+ *    tiles land at 29% and 45% of the screen against the frames' 28% and
+ *    43%. They were never wrong, and scaling them would make them wrong.
+ *  - gutters, gaps, and the 44dp hit targets. Room across is what a wider
+ *    screen is for, and 44dp is an ergonomic floor, not a proportion.
+ */
+const val SIZE_SCALE = TYPE_SCALE
+
+/** A design-export px size (a 48 dp button, a 52 dp thumb, a 19 dp glyph) as scaled dp. */
+fun Number.scaledDp(): Dp = (toFloat() * SIZE_SCALE).dp
 
 /**
  * A design-export px value as a scaled [TextUnit], for the few call sites that
@@ -79,10 +106,6 @@ object TextStyles {
     val wordmark = michroma(21, 27.3f)
     /** Dialog title: `400 15px/1.4`. */
     val dialogTitle = michroma(15, 21f)
-    /** Settings section labels ("SHARES · 3"): `400 10px/1`, #6E6E6E. */
-    val michromaLabel = michroma(10, 10f)
-    /** Server name on a Settings row: `400 12px/1.3`. */
-    val michromaRow = michroma(12, 15.6f)
     /** Hero figure on the Scanning screen: `400 40px`. */
     val heroFigure = michroma(40, 46f)
 
@@ -103,8 +126,12 @@ object TextStyles {
     val subtitle = sg(FontWeight.Normal, 12, 12f)
     /** Row label, 15px semibold (design's type specimen). */
     val rowLabel = sg(FontWeight.SemiBold, 15, 19f)
-    /** Row label in a card, medium: `500 14px/18px`. */
-    val rowLabelMedium = sg(FontWeight.Medium, 14, 18f)
+    /**
+     * Row label in a card. The export drew 14/18 here and 15/19 on Settings
+     * rows -- one point apart, same weight, side by side across cards.
+     * Collapsed onto [settingLabel]: one row size, one compact size.
+     */
+    val rowLabelMedium get() = settingLabel
     /** Compact row label / card title: `500 13px/17px`. */
     val rowLabelSmall = sg(FontWeight.Medium, 13, 17f)
     /** Settings row label: `500 15px/19px`. */

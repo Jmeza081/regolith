@@ -26,13 +26,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.regolith.BuildConfig
 import com.regolith.R
+import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
-import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.RegolithSwitch
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SurfaceCard
@@ -44,6 +47,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.util.formatBytes
+import com.regolith.ui.theme.scaledDp
 
 /**
  * Settings tab (design section 11): SHARES as a card of 48dp rows (an
@@ -65,14 +69,14 @@ fun SettingsScreen(
         TopBar(title = state.title)
         Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                MichromaLabel("Shares · ${state.servers.size}")
+                Eyebrow("Shares · ${state.servers.size}", muted = true)
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     state.servers.forEach { row ->
                         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(8.dp).background(if (row.reachable) colors.ink else colors.metadata, PillShape))
                             Spacer(Modifier.width(Spacing.s12))
                             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                DisplayText(row.name, style = TextStyles.michromaRow, color = if (row.reachable) colors.ink else colors.body, maxLines = 1)
+                                Text(row.name, style = TextStyles.settingLabel, overflow = TextOverflow.Ellipsis, color = if (row.reachable) colors.ink else colors.body, maxLines = 1)
                                 if (row.showing) Tag("Showing")
                             }
                             Text(row.status, style = TextStyles.meta, color = colors.metadata, maxLines = 1)
@@ -104,7 +108,7 @@ fun SettingsScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                MichromaLabel("Playback")
+                Eyebrow("Playback", muted = true)
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     RegolithSwitch(label = "Hardware decoding", checked = state.hardwareDecoding, onCheckedChange = viewModel::setHardwareDecoding, testTag = "settings_hardware_decoding_switch")
                     RegolithSwitch(
@@ -115,7 +119,7 @@ fun SettingsScreen(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                MichromaLabel("Media")
+                Eyebrow("Media", muted = true)
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(Spacing.s12)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -132,7 +136,34 @@ fun SettingsScreen(
                     }
                 }
             }
-            Spacer(Modifier.height(112.dp - Spacing.s18))
+            if (BuildConfig.DEMO_LIBRARY) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    Eyebrow("Demo", muted = true)
+                    SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(Spacing.s12)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Demo library", style = TextStyles.settingLabel, color = colors.ink)
+                                Text(
+                                    when {
+                                        state.demoWorking && state.demoInstalled -> "Removing…"
+                                        state.demoWorking -> "Writing files…"
+                                        state.demoInstalled -> "A pretend NAS with 18 titles · ${formatBytes(state.demoBytes)}"
+                                        else -> "A pretend NAS you can browse and play with no network"
+                                    },
+                                    style = TextStyles.settingMeta, color = colors.metadata,
+                                    modifier = Modifier.testTag("settings_demo_meta"),
+                                )
+                            }
+                            SecondaryButton(
+                                text = if (state.demoInstalled) "Remove" else "Load",
+                                onClick = viewModel::toggleDemoLibrary, compact = true,
+                                enabled = !state.demoWorking, testTag = "settings_demo_button",
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(LocalNavPillInsets.current.calculateBottomPadding() - Spacing.s18))
         }
     }
 
@@ -160,7 +191,7 @@ private fun DisconnectDialog(name: String, onConfirm: () -> Unit, onKeep: () -> 
                 style = TextStyles.body, color = colors.body,
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                DestructiveButton(text = "Disconnect", onClick = onConfirm, testTag = "settings_disconnect_confirm_button", modifier = Modifier.fillMaxWidth().height(48.dp))
+                DestructiveButton(text = "Disconnect", onClick = onConfirm, testTag = "settings_disconnect_confirm_button", modifier = Modifier.fillMaxWidth().height(48.scaledDp()))
                 SecondaryButton(text = "Keep it", onClick = onKeep, testTag = "settings_disconnect_keep_button", modifier = Modifier.fillMaxWidth())
             }
         }

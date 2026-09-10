@@ -52,8 +52,3 @@ fun Eyebrow(text: String, modifier: Modifier = Modifier, muted: Boolean = false)
     Text(text.uppercase(), style = TextStyles.eyebrow, color = if (muted) colors.metadata else colors.body, modifier = modifier, maxLines = 1)
 }
 
-/** Settings' section labels ("SHARES · 3", "PLAYBACK"): Michroma 10px, #6E6E6E, no stroke. */
-@Composable
-fun MichromaLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), style = TextStyles.michromaLabel, color = RegolithTheme.colors.metadata, modifier = modifier, maxLines = 1)
-}

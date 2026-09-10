@@ -76,3 +76,9 @@ fun formatWhen(thenMs: Long, nowMs: Long = System.currentTimeMillis()): String {
         else -> SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(thenMs))
     }
 }
+
+/** "1 file", "3 files": counts read as counts, not as a template that forgot to check. */
+fun formatFileCount(count: Int): String = "$count file" + (if (count == 1) "" else "s")
+
+/** "1 folder", "2 folders". */
+fun formatFolderCount(count: Int): String = "$count folder" + (if (count == 1) "" else "s")

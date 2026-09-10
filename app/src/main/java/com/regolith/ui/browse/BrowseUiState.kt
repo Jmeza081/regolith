@@ -3,6 +3,7 @@ package com.regolith.ui.browse
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.library.ViewMode
 
 /** One entry on the Browse screen: a row at the root, a tile inside a folder. */
 sealed interface BrowseRow {
@@ -30,7 +31,28 @@ sealed interface BrowseRow {
     ) : BrowseRow {
         override val testTag get() = "browse_file_$fileId"
         val artwork get() = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB)
+
+        /** 0..1 watched, for the bar along the bottom of a tile; null when never started. */
+        val fraction: Float?
+            get() = if (progressMs != null && durationMs != null && durationMs > 0) (progressMs.toFloat() / durationMs).coerceIn(0f, 1f) else null
     }
+}
+
+/**
+ * One line of the share tree beside the folder list on a wide window: a
+ * share, or one of its top-level folders. Two levels only — the tree is a
+ * way back to the top, not a second file browser.
+ */
+data class TreeNode(
+    val folderId: Long,
+    val name: String,
+    /** 0 = the share itself, 1 = a folder directly under it. */
+    val depth: Int,
+    /** Playable files directly inside, drawn at the end of the line. */
+    val fileCount: Int,
+    val isShare: Boolean,
+) {
+    val testTag get() = "browse_tree_$folderId"
 }
 
 data class BrowseUiState(
@@ -44,4 +66,10 @@ data class BrowseUiState(
     val offlineMessage: String? = null,
     /** Root with no enabled share anywhere. */
     val noSource: Boolean = false,
+    /** Rows or tiles. Remembered across launches, separately from Library's. */
+    val viewMode: ViewMode = ViewMode.ROWS,
+    /** Every enabled share and its top-level folders, for the wide window's tree. Empty elsewhere. */
+    val tree: List<TreeNode> = emptyList(),
+    /** Which tree line is the folder on screen. */
+    val currentFolderId: Long? = null,
 )

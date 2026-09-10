@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.regolith.domain.media.DemoSource
 
 /**
  * Source servers and their shares: the "Add source server" flow, plus the
@@ -154,6 +155,8 @@ class SourceRepository @Inject constructor(
     /** "Try again": one cheap listing of the first enabled share's root. Returns true when the server answered. */
     suspend fun probeReachable(serverId: Long): Boolean {
         val server = serverDao.byId(serverId) ?: return false
+        // The demo library has no host; it is never out of reach.
+        if (DemoSource.isDemo(server.host)) return true
         val share = shareDao.observeForServer(serverId).first().firstOrNull { it.enabled } ?: return false
         return try {
             gateway.list(SmbHost(server.host, server.port), credentialsFor(serverId), share.name, "")

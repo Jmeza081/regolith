@@ -29,10 +29,17 @@ class MediaProbe @Inject constructor(
     private val resolver: MediaUriResolver,
 ) {
     /** Throws on an unreachable share or an unreadable container. */
-    suspend fun probe(fileId: Long): MediaInfo = runInterruptible(Dispatchers.IO) {
+    suspend fun probe(fileId: Long): MediaInfo {
+        // Resolved outside runInterruptible: it is a suspending lookup, and a
+        // copy on this device means the probe never touches the share.
+        val uri = resolver.playableUriFor(fileId)
+        return runInterruptible(Dispatchers.IO) { probeUri(uri) }
+    }
+
+    private fun probeUri(uri: android.net.Uri): MediaInfo {
         val mediaSources = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(DefaultDataSource.Factory(context, smbDataSourceFactory))
-        MetadataRetriever.Builder(context, MediaItem.fromUri(resolver.uriFor(fileId)))
+        return MetadataRetriever.Builder(context, MediaItem.fromUri(uri))
             .setMediaSourceFactory(mediaSources)
             .build()
             .use { retriever ->

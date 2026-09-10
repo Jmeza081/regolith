@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.regolith.domain.media.DemoSource
 
 /**
  * Folders and files as the app knows them. The Browse screen reads from
@@ -97,6 +98,8 @@ class LibraryRepository @Inject constructor(
         val folder = checkNotNull(folderDao.byId(folderId)) { "folder $folderId" }
         val share = checkNotNull(shareDao.byId(folder.shareId)) { "share ${folder.shareId}" }
         val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
+        // Nothing to re-list: the demo library's rows are all there ever was.
+        if (DemoSource.isDemo(server.host)) return FolderOutcome(folderDao.children(folderId), folder.fileCount)
         val host = SmbHost(server.host, server.port)
         val credentials = sources.credentialsFor(server.id)
 

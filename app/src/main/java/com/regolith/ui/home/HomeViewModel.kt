@@ -37,8 +37,7 @@ class HomeViewModel @Inject constructor(
     transfers: TransferRepository,
 ) : ViewModel() {
 
-    private val resume = library.observeContinueWatching(RESUME_LIMIT)
-        .flatMapLatest { files -> library.observeProgress(files.map { it.id }).map2(files) }
+    private val resume = library.observeResume(RESUME_LIMIT)
     private val shares = sources.observeEnabledShares()
     private val runs = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
 
@@ -79,27 +78,6 @@ class HomeViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch { scans.scanAll() }
     }
-
-    private fun kotlinx.coroutines.flow.Flow<List<com.regolith.data.db.PlaybackProgressEntity>>.map2(files: List<MediaFileEntity>) =
-        kotlinx.coroutines.flow.flow {
-            collect { progress ->
-                val byId = progress.associateBy { it.fileId }
-                emit(
-                    files.mapNotNull { f ->
-                        val p = byId[f.id] ?: return@mapNotNull null
-                        val parsed = ParsedName(f.titleParsed ?: f.name.substringBeforeLast('.'), f.year, f.season, f.episode)
-                        ResumeItem(
-                            fileId = f.id,
-                            name = if (parsed.matched) parsed.display else f.name.substringBeforeLast('.'),
-                            artwork = ArtworkRequest(ArtworkOwner.File(f.id), ArtworkKind.THUMB),
-                            positionMs = p.positionMs,
-                            durationMs = p.durationMs,
-                            meta = listOfNotNull(VideoInfo.resolutionLabelFor(f.width, f.height).ifEmpty { null }, formatWhen(p.updatedAtMs)).joinToString(" · "),
-                        )
-                    },
-                )
-            }
-        }
 
     private companion object {
         const val RESUME_LIMIT = 10

@@ -10,8 +10,15 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.abs
 
-/** Which half of the picture a gesture landed on (design section 10, gesture map). */
-enum class Zone { LEFT, RIGHT }
+/**
+ * Which third of the picture a gesture landed on (design section 10, whose
+ * gesture map has always been drawn in three columns).
+ *
+ * Thirds, not halves: the middle needs a zone of its own for the full-screen
+ * drag, and it also keeps a fast downward flick — the one that leaves the
+ * player — away from the brightness and volume drags at the edges.
+ */
+enum class Zone { LEFT, MIDDLE, RIGHT }
 
 /** Everything the gesture layer can tell the screen. All positions are fractions of the layer. */
 interface PlayerGestureCallbacks {
@@ -19,11 +26,11 @@ interface PlayerGestureCallbacks {
     fun onDoubleTap(zone: Zone)
     fun onLongPressStart()
     fun onPressReleased()
-    /** A vertical drag began at [xFraction]; brightness on the left, volume on the right. */
+    /** A vertical drag began at [xFraction]; brightness on the left, volume on the right, full screen in the middle. */
     fun onDragStart(zone: Zone, xFraction: Float)
     /** Positive = finger moved down, as a fraction of the layer height. */
     fun onDrag(dyFraction: Float)
-    /** [flingDown] is a fast downward flick: "swipe down anywhere · leave the player". */
+    /** [flingDown] is a fast downward flick. In the middle zone that is "leave the player". */
     fun onDragEnd(flingDown: Boolean)
     /** Pinch factor since the last event; > 1 spreads (fill), < 1 pinches (fit). */
     fun onZoom(factor: Float)
@@ -96,6 +103,10 @@ fun Modifier.playerGestures(callbacks: PlayerGestureCallbacks): Modifier = this
         }
     }
 
-private fun zoneOf(offset: Offset, size: IntSize): Zone = if (offset.x < size.width / 2f) Zone.LEFT else Zone.RIGHT
+private fun zoneOf(offset: Offset, size: IntSize): Zone = when {
+    offset.x < size.width / 3f -> Zone.LEFT
+    offset.x > size.width * 2f / 3f -> Zone.RIGHT
+    else -> Zone.MIDDLE
+}
 
 private const val FLING_DOWN_PX_PER_S = 4_000f

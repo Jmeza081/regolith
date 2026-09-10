@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.stateIn
+import kotlin.math.absoluteValue
 
 /**
  * Thin adapter between the Player screen and the app-owned
@@ -61,6 +62,35 @@ class PlayerViewModel @AssistedInject constructor(
         .flatMapLatest { thumbs -> combine(scrubMs, thumbs.updates) { ms, _ -> ms?.let { thumbs.nearest(it) } } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * The filmstrip under the hinge in flex mode: [STRIP_FRAMES] frames, one
+     * per equal slice of the film, taken at the middle of each slice so the
+     * first is not the black frame every film opens on.
+     *
+     * Same pipeline as the scrub preview -- ask for a position, redraw as
+     * frames land -- so a strip costs nine key-frame seeks and no new
+     * machinery. Nothing is asked for until [requestStrip] is called, which
+     * only the flex layout does.
+     */
+    val strip: StateFlow<List<StripFrame>> = session.scrubThumbnails
+        .flatMapLatest { thumbs ->
+            combine(state, thumbs.updates) { s, _ ->
+                stripPositions(s.durationMs).map { ms -> StripFrame(ms, thumbs.nearest(ms)) }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Load the filmstrip, nearest the playhead first: the frames beside where
+     * you are are the ones you are about to look at, and the worker serves
+     * the most recent request first.
+     */
+    fun requestStrip() {
+        val thumbs = session.scrubThumbnails.value
+        val here = state.value.positionMs
+        stripPositions(state.value.durationMs).sortedByDescending { (it - here).absoluteValue }.forEach(thumbs::request)
+    }
+
     init {
         session.load(key.fileId, key.startMs)
     }
@@ -92,4 +122,16 @@ class PlayerViewModel @AssistedInject constructor(
     override fun onCleared() {
         session.stop()
     }
+
+    companion object {
+        /** Frames across the flex-mode filmstrip. Nine fits the artboard's deck without crowding. */
+        const val STRIP_FRAMES = 9
+
+        /** The middle of each of [STRIP_FRAMES] equal slices, or empty until the duration is known. */
+        fun stripPositions(durationMs: Long): List<Long> =
+            if (durationMs <= 0) emptyList() else List(STRIP_FRAMES) { i -> (durationMs * (2 * i + 1)) / (2 * STRIP_FRAMES) }
+    }
 }
+
+/** One frame of the flex-mode filmstrip: where it is in the film, and the picture once it has arrived. */
+data class StripFrame(val positionMs: Long, val bitmap: Bitmap?)

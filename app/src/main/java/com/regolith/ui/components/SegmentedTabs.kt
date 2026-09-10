@@ -27,6 +27,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.scaledDp
 
 /** One segment: a label, an optional count badge, and its testTag. */
 data class Segment(val label: String, val testTag: String, val count: Int? = null)
@@ -62,7 +63,7 @@ fun SegmentedTabs(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp)
+                    .height(36.scaledDp())
                     .clip(PillShape)
                     .background(if (isSelected) colors.hairline else Color.Transparent)
                     .clickable(interactionSource = interaction, indication = null, role = Role.Tab, onClick = { onSelect(index) })

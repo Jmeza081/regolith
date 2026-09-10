@@ -41,6 +41,7 @@ import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.designSp
 import kotlinx.coroutines.launch
+import com.regolith.ui.theme.scaledDp
 
 private data class Page(val image: Int, val eyebrow: String, val title: String, val body: String)
 
@@ -105,7 +106,7 @@ fun OnboardingScreen(
                 // The last page has no Skip: "Find my server" is the only way on, as in the design.
                 if (!last) {
                     Box(
-                        Modifier.width(80.dp).height(48.dp).clickable(interactionSource = null, indication = null, onClick = onFinish).testTag("onboarding_skip_button"),
+                        Modifier.width(80.dp).height(48.scaledDp()).clickable(interactionSource = null, indication = null, onClick = onFinish).testTag("onboarding_skip_button"),
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         Text("Skip", style = TextStyles.buttonTertiary, color = colors.ink)

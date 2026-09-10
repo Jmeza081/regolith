@@ -22,6 +22,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.scaledDp
 import com.regolith.ui.theme.designSp
 
 /** Where a chip sits decides how it is drawn (design section 01, "Badges & chips"). */
@@ -58,7 +59,7 @@ fun Chip(
         )
         ChipStyle.Selected -> Box(
             contentAlignment = Alignment.Center,
-            modifier = modifier.height(36.dp).background(colors.accent, PillShape).padding(horizontal = Spacing.s18),
+            modifier = modifier.height(36.scaledDp()).background(colors.accent, PillShape).padding(horizontal = Spacing.s18),
         ) {
             Text(text, style = TextStyles.chipSelected, color = Color.White)
         }
@@ -73,7 +74,7 @@ fun CollectionBadge(count: Int, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier.background(colors.overArt, PillShape).padding(horizontal = Spacing.s4, vertical = Spacing.s2),
     ) {
-        Icon(painterResource(R.drawable.rg_ic_browse), contentDescription = null, tint = colors.ink, modifier = Modifier.size(10.dp))
+        Icon(painterResource(R.drawable.rg_ic_browse), contentDescription = null, tint = colors.ink, modifier = Modifier.size(10.scaledDp()))
         Spacer(Modifier.width(Spacing.s4))
         Text(count.toString(), style = TextStyles.badge.copy(lineHeight = 12.designSp()), color = colors.ink)
     }

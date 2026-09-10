@@ -19,7 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.em
-import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.ProgressBar
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.theme.PillShape
@@ -167,7 +167,7 @@ fun ScanningScreen(
         }
         if (state.running) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                MichromaLabel("Reading")
+                Eyebrow("Reading", muted = true)
                 Text("/" + state.currentPath, style = TextStyles.notice, color = colors.inkSoft, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("scanning_path"))
             }
         } else if (state.failed != null) {

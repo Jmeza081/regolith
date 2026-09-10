@@ -23,6 +23,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.ViewMode
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.ui.util.formatDurationShort
@@ -76,6 +77,7 @@ class LibraryViewModel @AssistedInject constructor(
 
     init {
         viewModelScope.launch { prefs.librarySort.collect { sort -> _uiState.update { it.copy(sort = sort, tiles = sorted(unsorted, sort)) } } }
+        viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch {
             val shares = sources.observeEnabledShares()
             val servers = sources.observeServers()
@@ -108,7 +110,7 @@ class LibraryViewModel @AssistedInject constructor(
             }.collect { state ->
                 unsorted = state.tiles
                 _uiState.update {
-                    state.copy(sort = it.sort, sortSheetOpen = it.sortSheetOpen, tiles = sorted(state.tiles, it.sort), device = it.device, checkingReachability = it.checkingReachability)
+                    state.copy(sort = it.sort, sortSheetOpen = it.sortSheetOpen, viewMode = it.viewMode, tiles = sorted(state.tiles, it.sort), device = it.device, checkingReachability = it.checkingReachability)
                 }
             }
         }
@@ -267,6 +269,11 @@ class LibraryViewModel @AssistedInject constructor(
     fun setSort(sort: LibrarySort) {
         _uiState.update { it.copy(sort = sort, sortSheetOpen = false, tiles = sorted(unsorted, sort)) }
         viewModelScope.launch { prefs.setLibrarySort(sort) }
+    }
+
+    /** Poster wall <-> rows. Written to preferences; the collector above puts it back on the state. */
+    fun toggleViewMode() {
+        viewModelScope.launch { prefs.setLibraryViewMode(_uiState.value.viewMode.toggled()) }
     }
 
     /** "Scan first" nudge and pull-to-refresh both land here. */

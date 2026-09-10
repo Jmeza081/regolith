@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import coil3.ImageLoader
 import com.regolith.data.artwork.ArtworkRepository
 import com.regolith.data.db.ScanRunEntity
+import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
@@ -36,6 +37,7 @@ class SettingsViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val artwork: ArtworkRepository,
     private val imageLoader: ImageLoader,
+    private val demo: DemoLibrary,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -64,6 +66,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.hardwareDecoding.collect { v -> _uiState.update { it.copy(hardwareDecoding = v) } } }
         viewModelScope.launch { prefs.scrubThumbnails.collect { v -> _uiState.update { it.copy(scrubThumbnails = v) } } }
         viewModelScope.launch {
+            demo.installed.collect { installed ->
+                val bytes = withContext(Dispatchers.IO) { demo.usedBytes() }
+                _uiState.update { it.copy(demoInstalled = installed, demoBytes = bytes) }
+            }
+        }
+        viewModelScope.launch {
             artwork.observeCount().collect { count ->
                 val bytes = withContext(Dispatchers.IO) { artwork.cacheSizeBytes() }
                 _uiState.update { it.copy(artworkCount = count, artworkBytes = bytes) }
@@ -85,6 +93,21 @@ class SettingsViewModel @Inject constructor(
 
     fun setHardwareDecoding(enabled: Boolean) = viewModelScope.launch { prefs.setHardwareDecoding(enabled) }.let { }
     fun setScrubThumbnails(enabled: Boolean) = viewModelScope.launch { prefs.setScrubThumbnails(enabled) }.let { }
+
+    /**
+     * Settings › Demo library. Installing replaces whatever was there, so
+     * the button is safe to press twice; removing deletes the demo server
+     * (its shares, folders and files cascade) and the clips.
+     */
+    fun toggleDemoLibrary() {
+        if (_uiState.value.demoWorking) return
+        val installed = _uiState.value.demoInstalled
+        viewModelScope.launch {
+            _uiState.update { it.copy(demoWorking = true) }
+            if (installed) demo.remove() else demo.install()
+            _uiState.update { it.copy(demoWorking = false, demoBytes = withContext(Dispatchers.IO) { demo.usedBytes() }) }
+        }
+    }
 
     /** Settings › Media › Clear: forget every cached image and re-read on demand. */
     fun clearArtwork() {

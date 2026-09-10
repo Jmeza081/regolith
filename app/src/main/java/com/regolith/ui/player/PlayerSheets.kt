@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.domain.playback.AbLoop
 import com.regolith.ui.components.DisplayText
-import com.regolith.ui.components.MichromaLabel
+import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.PillShape
@@ -52,6 +52,7 @@ import com.regolith.ui.theme.designSp
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
 import com.regolith.ui.util.formatSpeed
+import com.regolith.ui.theme.scaledDp
 
 /**
  * Sheet container for the player (design section 10). Landscape gets a
@@ -105,22 +106,30 @@ fun PlaybackSheetContent(
     onHardwareDecoding: (Boolean) -> Unit,
     onScrubThumbnails: (Boolean) -> Unit,
     onClose: () -> Unit,
+    /**
+     * False where this is not a sheet but a panel already on the screen (the
+     * wide player's left column): the SPEED and DECODER eyebrows label it,
+     * and there is nothing to close.
+     */
+    header: Boolean = true,
 ) {
     val colors = RegolithTheme.colors
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        DisplayText("Playback", style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()), modifier = Modifier.weight(1f))
-        Box(Modifier.size(36.dp).clickable(interactionSource = null, indication = null, onClick = onClose).testTag("player_sheet_close"), contentAlignment = Alignment.Center) {
-            Icon(painterResource(R.drawable.rg_ic_close), contentDescription = "Close", tint = colors.body, modifier = Modifier.size(20.dp))
+    if (header) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            DisplayText("Playback", style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()), modifier = Modifier.weight(1f))
+            Box(Modifier.size(36.dp).clickable(interactionSource = null, indication = null, onClick = onClose).testTag("player_sheet_close"), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.rg_ic_close), contentDescription = "Close", tint = colors.body, modifier = Modifier.size(20.dp))
+            }
         }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-        MichromaLabel("Speed")
+        Eyebrow("Speed", muted = true)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
             PLAYBACK_SPEEDS.forEach { s ->
                 val selected = s == speed
                 Box(
-                    Modifier.weight(1f).height(36.dp).clip(PillShape)
+                    Modifier.weight(1f).height(36.scaledDp()).clip(PillShape)
                         .background(if (selected) colors.accent else colors.frostBg)
                         .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
                         .clickable(interactionSource = null, indication = null) { onSpeed(s) }
@@ -134,7 +143,7 @@ fun PlaybackSheetContent(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-        MichromaLabel("Decoder")
+        Eyebrow("Decoder", muted = true)
         DecoderRow("Hardware", "Direct play, lowest battery cost", selected = hardwareDecoding, onClick = { onHardwareDecoding(true) }, testTag = "player_decoder_hw")
         DecoderRow("Software", "Slower, but plays what the chip cannot", selected = !hardwareDecoding, onClick = { onHardwareDecoding(false) }, testTag = "player_decoder_sw")
     }
@@ -199,7 +208,7 @@ fun AbLoopSheetContent(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-        MichromaLabel("The span")
+        Eyebrow("The span", muted = true)
         Column(Modifier.fillMaxWidth().background(colors.surface, CardShape).border(1.dp, colors.hairline, CardShape).padding(start = Spacing.s12, end = Spacing.s12, top = 14.dp, bottom = Spacing.s12)) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val w = maxWidth

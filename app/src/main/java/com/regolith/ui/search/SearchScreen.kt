@@ -51,6 +51,7 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SurfaceCard
@@ -59,6 +60,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.designSp
+import com.regolith.ui.theme.scaledDp
 
 /**
  * Search (design section 06). A 44dp pill field with the glyph, a red
@@ -84,7 +86,7 @@ fun SearchScreen(
     Column(modifier.fillMaxSize().statusBarsPadding().testTag("search_screen")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.s18, vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
             Row(
-                Modifier.weight(1f).height(44.dp).clip(PillShape).background(colors.surface).border(1.dp, colors.raised, PillShape).padding(horizontal = Spacing.s12),
+                Modifier.weight(1f).height(44.scaledDp()).clip(PillShape).background(colors.surface).border(1.dp, colors.raised, PillShape).padding(horizontal = Spacing.s12),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(painterResource(R.drawable.rg_ic_search), contentDescription = null, tint = colors.body, modifier = Modifier.size(16.dp))
@@ -124,7 +126,7 @@ fun SearchScreen(
 
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = 112.dp),
+            contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
             // The filter chips leave with the results: with no matches the empty card sits under the field (design frame 24).
@@ -133,7 +135,7 @@ fun SearchScreen(
                     SearchFilter.entries.forEach { f ->
                         val selected = f == state.filter
                         Box(
-                            Modifier.height(34.dp).clip(PillShape)
+                            Modifier.height(34.scaledDp()).clip(PillShape)
                                 .background(if (selected) colors.accent else colors.frostBg)
                                 .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
                                 .clickable(interactionSource = null, indication = null) { viewModel.setFilter(f) }
@@ -224,7 +226,7 @@ private fun HitRow(hit: SearchHit, query: String, onOpenTitle: (Long) -> Unit, o
         }.testTag(hit.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(82.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp))) {
+        Box(Modifier.width(82.scaledDp()).aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp))) {
             when (hit) {
                 is SearchHit.Folder -> Box(Modifier.fillMaxSize().background(colors.surface).border(1.dp, colors.hairline, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
                     Icon(painterResource(R.drawable.rg_ic_folder_small), contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.dp))

@@ -2,6 +2,7 @@ package com.regolith.ui.browse
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.MediaFileTypes
@@ -14,7 +15,10 @@ import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,11 +29,13 @@ import kotlinx.coroutines.launch
  *
  * `folderId == null` is the root: the enabled shares across all servers.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel(assistedFactory = BrowseViewModel.Factory::class)
 class BrowseViewModel @AssistedInject constructor(
     @Assisted private val folderId: Long?,
     private val library: LibraryRepository,
     private val sources: SourceRepository,
+    private val prefs: AppPreferences,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -42,6 +48,40 @@ class BrowseViewModel @AssistedInject constructor(
 
     init {
         if (folderId == null) observeRoot() else observeFolder(folderId)
+        viewModelScope.launch { prefs.browseViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
+        observeTree()
+        _uiState.update { it.copy(currentFolderId = folderId) }
+    }
+
+    /**
+     * The share tree for a wide window: every enabled share and the folders
+     * directly under it. Built from the folder rows the Library already keeps
+     * in memory for the whole share, so it costs one more query, not one per
+     * node, and it stays live as a scan discovers folders.
+     */
+    private fun observeTree() {
+        viewModelScope.launch {
+            sources.observeEnabledShares()
+                .flatMapLatest { shares ->
+                    val ids = shares.map { it.id }
+                    library.observeFoldersInShares(ids).map { folders -> shares to folders }
+                }
+                .collect { (shares, folders) ->
+                    val roots = folders.filter { it.parentId == null }.associateBy { it.shareId }
+                    val nodes = shares.flatMap { share ->
+                        val root = roots[share.id] ?: return@flatMap emptyList()
+                        val children = folders.filter { it.parentId == root.id }.sortedBy { it.name.lowercase() }
+                        listOf(TreeNode(root.id, share.name, depth = 0, fileCount = root.fileCount, isShare = true)) +
+                            children.map { TreeNode(it.id, it.name, depth = 1, fileCount = it.fileCount, isShare = false) }
+                    }
+                    _uiState.update { it.copy(tree = nodes) }
+                }
+        }
+    }
+
+    /** Rows <-> tiles. Written to preferences; the collector above puts it back on the state. */
+    fun toggleViewMode() {
+        viewModelScope.launch { prefs.setBrowseViewMode(_uiState.value.viewMode.toggled()) }
     }
 
     private fun observeRoot() {

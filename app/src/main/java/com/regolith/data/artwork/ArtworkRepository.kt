@@ -57,6 +57,7 @@ class ArtworkRepository @Inject constructor(
     private val gateway: SmbGateway,
     private val frames: FrameSourceFactory,
     private val store: ArtworkStore,
+    private val local: com.regolith.player.LocalMedia,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -137,6 +138,26 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun resolveFile(owner: ArtworkOwner.File) {
         val file = mediaFileDao.byId(owner.id) ?: return
+        // A copy on this device (a download, or the demo library) is opened
+        // directly: no share to reach, so this is also the only artwork path
+        // that works with the network off.
+        local.file(owner.id)?.let { copy ->
+            frames.openLocal(copy).use { source ->
+                mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height)
+                source.embeddedPicture()?.let { if (saveEncoded(it, owner, ArtworkSource.EMBEDDED)) return }
+                val duration = source.durationMs ?: 0L
+                val frame = source.frameAt(ArtworkCandidates.framePositionMs(duration), FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)
+                if (frame != null) {
+                    try {
+                        if (saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB)) return
+                    } finally {
+                        frame.recycle()
+                    }
+                }
+            }
+            placeholder(owner)
+            return
+        }
         val location = locate(file.shareId) ?: return
         val folderRelPath = file.relPath.substringBeforeLast('/', "")
         val siblings = listing(location, file.shareId, folderRelPath)

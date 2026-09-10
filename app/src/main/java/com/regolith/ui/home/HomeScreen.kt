@@ -1,10 +1,12 @@
 package com.regolith.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -23,7 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,12 +34,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
+import com.regolith.ui.adaptive.LocalWindowShape
+import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
@@ -54,6 +61,7 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.TileShape
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatRemaining
+import com.regolith.ui.theme.scaledDp
 
 /**
  * Home tab (design section 04): resume first, then what arrived. Five
@@ -75,29 +83,54 @@ fun HomeScreen(
     onOpenTitle: (fileId: Long) -> Unit,
     onPlay: (fileId: Long, startMs: Long) -> Unit,
     onOpenDevice: () -> Unit,
+    onOpenContinueWatching: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
     val pullState = rememberPullToRefreshState()
     val refreshing = state.refreshLine != null
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = viewModel::refresh,
-        state = pullState,
-        modifier = modifier.fillMaxSize().testTag("home_screen"),
-        indicator = {
-            // The design's refresh line: a 30dp ring with the arrow, then "Release to refresh" /
-            // one line of live status, never a Material spinner.
-            RefreshLine(
-                fraction = pullState.distanceFraction,
-                refreshing = refreshing,
-                status = state.refreshLine,
-                modifier = Modifier.align(Alignment.TopCenter),
+    // The content follows the finger at 60% of the pull, which is what makes
+    // the gesture feel like it is moving the page rather than arming a
+    // hidden switch. It springs back on release, and drops away once the
+    // refresh line takes over the space.
+    val thresholdPx = with(LocalDensity.current) { PULL_THRESHOLD.toPx() }
+    val dragOffset = pullState.distanceFraction.coerceAtMost(MAX_PULL) * thresholdPx * PULL_FOLLOW
+    val settling by animateFloatAsState(if (refreshing) 0f else dragOffset, label = "pullSettle")
+    val pullOffset = if (refreshing) settling else dragOffset
+    val wide = LocalWindowShape.current.wide
+
+    // BoxWithConstraints: the wide layout sizes the resume cards from the
+    // real width (three edge to edge), which a plain Box cannot read.
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .pullToRefresh(
+                isRefreshing = refreshing,
+                state = pullState,
+                // Material's 80dp triggered on the smallest flick down; this
+                // asks for a deliberate pull instead.
+                threshold = PULL_THRESHOLD,
+                onRefresh = viewModel::refresh,
             )
-        },
+            .testTag("home_screen"),
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        // Wide: three cards fill the row. Phone: the design's card-and-a-half peek.
+        // Read here, at the BoxWithConstraints level, since maxWidth is not in scope inside the Column.
+        val resumeWidth = if (wide) (maxWidth - Spacing.s18 * 2 - Spacing.s8 * 2) / 3 else RESUME_CARD_WIDTH
+        // The design's refresh line: a 30dp ring with the arrow, then "Release to refresh" /
+        // one line of live status, never a Material spinner.
+        RefreshLine(
+            fraction = pullState.distanceFraction,
+            refreshing = refreshing,
+            status = state.refreshLine,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().graphicsLayer { translationY = pullOffset },
+        )
+        Column(
+            Modifier.fillMaxSize()
+                .graphicsLayer { translationY = pullOffset }
+                .verticalScroll(rememberScrollState()),
+        ) {
             TopBar(
                 title = "Home",
                 actions = if (state.hasSource) listOf(TopBarAction(R.drawable.rg_ic_search, "Search", "home_search_button", onSearch)) else emptyList(),
@@ -108,13 +141,17 @@ fun HomeScreen(
                 return@Column
             }
             if (refreshing) Spacer(Modifier.height(30.dp + Spacing.s18))
-
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
                 if (state.resume.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         Row(Modifier.padding(horizontal = Spacing.s18), verticalAlignment = Alignment.Bottom) {
                             Eyebrow("Continue watching", Modifier.weight(1f))
-                            Text("All", style = TextStyles.link, color = colors.ink, modifier = Modifier.testTag("home_resume_all"))
+                            Text(
+                                "All", style = TextStyles.link, color = colors.ink,
+                                modifier = Modifier
+                                    .clickable(interactionSource = null, indication = null, onClick = onOpenContinueWatching)
+                                    .testTag("home_resume_all"),
+                            )
                         }
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = Spacing.s18),
@@ -130,7 +167,7 @@ fun HomeScreen(
                                     progress = item.fraction,
                                     onClick = { onPlay(item.fileId, item.positionMs) },
                                     testTag = item.testTag,
-                                    modifier = Modifier.width(186.dp),
+                                    modifier = Modifier.width(resumeWidth),
                                 )
                             }
                         }
@@ -140,23 +177,27 @@ fun HomeScreen(
                 if (state.newlyAdded.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         Eyebrow("Newly added", Modifier.padding(horizontal = Spacing.s18))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = Spacing.s18),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                            modifier = Modifier.testTag("home_new_row"),
-                        ) {
-                            items(state.newlyAdded, key = { it.fileId }) { item ->
-                                Box(
-                                    Modifier
-                                        .width(if (state.resume.isEmpty()) 96.dp else 112.dp)
-                                        .aspectRatio(2f / 3f)
-                                        .clip(TileShape)
-                                        .background(colors.surface)
-                                        .clickable(interactionSource = null, indication = null) { onOpenTitle(item.fileId) }
-                                        .testTag(item.testTag),
-                                ) {
-                                    ArtworkImage(item.artwork, Modifier.fillMaxSize(), fallbackLabel = item.name)
-                                    if (item.unwatched) UnwatchedDot(Modifier.align(Alignment.TopEnd).padding(4.dp), lightHalo = true, size = 8.dp)
+                        if (wide) {
+                            // The wall: rows of six posters, edge to edge. Home is a
+                            // vertical scroll, so this is plain rows rather than a
+                            // LazyVerticalGrid (which would need its own height).
+                            // The tag stays the same so the QA flows find it either way.
+                            Column(Modifier.padding(horizontal = Spacing.s18).testTag("home_new_row"), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                state.newlyAdded.chunked(WALL_COLUMNS).forEach { row ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                        row.forEach { item -> NewPoster(item, onOpenTitle, Modifier.weight(1f)) }
+                                        repeat(WALL_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                                    }
+                                }
+                            }
+                        } else {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = Spacing.s18),
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                                modifier = Modifier.testTag("home_new_row"),
+                            ) {
+                                items(state.newlyAdded, key = { it.fileId }) { item ->
+                                    NewPoster(item, onOpenTitle, Modifier.width(if (state.resume.isEmpty()) 96.scaledDp() else NEW_POSTER_WIDTH))
                                 }
                             }
                         }
@@ -177,7 +218,7 @@ fun HomeScreen(
                             contentPadding = PaddingValues(Spacing.s12),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(painterResource(R.drawable.rg_ic_download), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.dp))
+                                Icon(painterResource(R.drawable.rg_ic_download), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.scaledDp()))
                                 Spacer(Modifier.width(Spacing.s12))
                                 Text(
                                     "${state.downloadsReady} download" + (if (state.downloadsReady == 1) " ready" else "s ready"),
@@ -189,10 +230,53 @@ fun HomeScreen(
                     }
                 }
             }
-            Spacer(Modifier.height(112.dp))
+            Spacer(Modifier.height(LocalNavPillInsets.current.calculateBottomPadding()))
         }
     }
 }
+
+/**
+ * The resume card. The design drew 186px on a 320px frame — a card and a
+ * half in view; at 411dp that had become two and a half, and the row read
+ * as small tiles rather than "the thing you were watching".
+ */
+private val RESUME_CARD_WIDTH = 256.dp
+
+/** Posters across on the wide Home wall (the inner-display frame). */
+private const val WALL_COLUMNS = 6
+
+/** One "Newly added" poster: 2:3 art with the unwatched dot. The row and the wall draw the same one. */
+@Composable
+private fun NewPoster(item: NewItem, onOpenTitle: (fileId: Long) -> Unit, modifier: Modifier = Modifier) {
+    val colors = RegolithTheme.colors
+    Box(
+        modifier
+            .aspectRatio(2f / 3f)
+            .clip(TileShape)
+            .background(colors.surface)
+            .clickable(interactionSource = null, indication = null) { onOpenTitle(item.fileId) }
+            .testTag(item.testTag),
+    ) {
+        ArtworkImage(item.artwork, Modifier.fillMaxSize(), fallbackLabel = item.name)
+        if (item.unwatched) UnwatchedDot(Modifier.align(Alignment.TopEnd).padding(4.dp), lightHalo = true, size = 8.dp)
+    }
+}
+
+/**
+ * "Newly added". The design's 112px was 35% of a 320px frame and had
+ * become 27% of the screen; [com.regolith.ui.theme.SIZE_SCALE] puts it
+ * back. The 96dp variant (no resume row above it) scales with it.
+ */
+private val NEW_POSTER_WIDTH = 112.scaledDp()
+
+/** How far the finger travels before a release refreshes. Material's default is 80dp. */
+private val PULL_THRESHOLD = 130.dp
+
+/** Content moves this fraction of the pull, so the page trails the finger. */
+private const val PULL_FOLLOW = 0.6f
+
+/** Past this much of the threshold the page stops following: the rubber band is spent. */
+private const val MAX_PULL = 1.6f
 
 /**
  * The refresh line (design: "Pull to refresh" / "Refreshing"): a 30dp
@@ -209,8 +293,8 @@ private fun RefreshLine(fraction: Float, refreshing: Boolean, status: String?, m
         verticalArrangement = Arrangement.spacedBy(Spacing.s8),
         modifier = modifier.padding(top = Spacing.s8).alpha(if (refreshing) 1f else fraction.coerceIn(0f, 1f)).testTag("home_refresh_line"),
     ) {
-        Box(Modifier.size(30.dp).border(1.dp, colors.onMediaBorder, PillShape), contentAlignment = Alignment.Center) {
-            Icon(painterResource(if (refreshing) R.drawable.rg_ic_collapse else R.drawable.rg_ic_arrow_up), contentDescription = null, tint = colors.ink, modifier = Modifier.size(15.dp))
+        Box(Modifier.size(30.scaledDp()).border(1.dp, colors.onMediaBorder, PillShape), contentAlignment = Alignment.Center) {
+            Icon(painterResource(if (refreshing) R.drawable.rg_ic_collapse else R.drawable.rg_ic_arrow_up), contentDescription = null, tint = colors.ink, modifier = Modifier.size(15.scaledDp()))
         }
         Text(
             (status ?: if (fraction >= 1f) "Release to refresh" else "Pull to refresh").uppercase(),
@@ -233,8 +317,8 @@ private fun NoSourceServer(onAddServer: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(Spacing.s18),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-            Box(Modifier.size(44.dp).border(1.dp, colors.raised, androidx.compose.foundation.shape.RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.body, modifier = Modifier.size(21.dp))
+            Box(Modifier.size(44.scaledDp()).border(1.dp, colors.raised, androidx.compose.foundation.shape.RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.body, modifier = Modifier.size(21.scaledDp()))
             }
             DisplayText("No source\nserver", style = TextStyles.emptyTitle, textAlign = TextAlign.Center)
             Text(

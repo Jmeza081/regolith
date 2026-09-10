@@ -52,6 +52,7 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
+import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
@@ -71,7 +72,16 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.designSp
 import com.regolith.ui.theme.TileShape
 import com.regolith.ui.util.formatBytes
+import com.regolith.ui.util.formatFileCount
 import com.regolith.ui.util.formatWhen
+import com.regolith.ui.theme.ThumbShape
+import com.regolith.ui.components.viewModeAction
+import com.regolith.ui.components.RowTrailing
+import com.regolith.ui.components.RowLeading
+import com.regolith.ui.components.ListRow
+import com.regolith.domain.library.ViewMode
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.regolith.ui.theme.scaledDp
 
 private enum class LibraryTab { NETWORK, ON_DEVICE }
 
@@ -95,6 +105,12 @@ fun LibraryScreen(
     onAddServer: () -> Unit,
     modifier: Modifier = Modifier,
     startOnDevice: Boolean = false,
+    /**
+     * The title open in the detail pane beside this wall, on a wide window.
+     * The nav graph reads it off the back stack; on a phone it is always
+     * null because Title Detail is a pushed screen, not a pane.
+     */
+    selectedFileId: Long? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
@@ -116,6 +132,7 @@ fun LibraryScreen(
             actions = listOf(
                 TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
                 TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
             ),
         )
 
@@ -132,7 +149,9 @@ fun LibraryScreen(
                 ),
                 selected = if (tab == LibraryTab.NETWORK) 0 else 1,
                 onSelect = { tab = if (it == 0) LibraryTab.NETWORK else LibraryTab.ON_DEVICE },
-                modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s18),
+                // The top bar's subtitle ends 8dp above this; on its own that read as
+                // one block of text with a control stuck to it.
+                modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12, bottom = Spacing.s18),
             )
         }
 
@@ -148,80 +167,69 @@ fun LibraryScreen(
             return
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier.fillMaxSize().testTag("library_grid"),
-            contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = 112.dp),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-        ) {
-            // Only the Network tab is affected by a share going away (design:
-            // "the message lives there rather than over files that play fine").
-            if (unreachable.isNotEmpty() && onBack == null) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    OutOfReach(
-                        server = unreachable.first(),
-                        checking = state.checkingReachability,
-                        readyCount = readyCount,
-                        paused = state.device.inFlight.filter { it.status == TransferStatus.PAUSED },
-                        onTryAgain = viewModel::tryAgain,
-                        onGoDevice = { tab = LibraryTab.ON_DEVICE },
-                    )
+        // Both layouts draw the same leading blocks and the same tiles; only
+        // the container differs, so the decisions are made once, here.
+        val showUnreachable = unreachable.isNotEmpty() && onBack == null
+        val showSkeletons = !state.loaded || (state.tiles.isEmpty() && state.scanning)
+        val showEmpty = state.loaded && state.tiles.isEmpty() && !state.scanning
+        val showScanLine = state.scanning && state.tiles.isNotEmpty()
+        val unreachableBlock = @Composable {
+            OutOfReach(
+                server = unreachable.first(),
+                checking = state.checkingReachability,
+                readyCount = readyCount,
+                paused = state.device.inFlight.filter { it.status == TransferStatus.PAUSED },
+                onTryAgain = viewModel::tryAgain,
+                onGoDevice = { tab = LibraryTab.ON_DEVICE },
+            )
+        }
+        val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, onScan = viewModel::scanAll) }
+
+        if (state.viewMode == ViewMode.GRID) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.fillMaxSize().testTag("library_grid"),
+                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+            ) {
+                // Only the Network tab is affected by a share going away (design:
+                // "the message lives there rather than over files that play fine").
+                if (showUnreachable) item(span = { GridItemSpan(maxLineSpan) }) { unreachableBlock() }
+                if (showSkeletons) {
+                    items(9) { SkeletonTile() }
+                    return@LazyVerticalGrid
+                }
+                if (showEmpty) {
+                    item(span = { GridItemSpan(maxLineSpan) }) { emptyBlock() }
+                    return@LazyVerticalGrid
+                }
+                if (showScanLine) item(span = { GridItemSpan(maxLineSpan) }) { ScanLine() }
+                items(state.tiles, key = { it.testTag }) { tile ->
+                    TileView(tile, dimmed = unreachable.isNotEmpty(), selected = tile.isSelected(selectedFileId), onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle)
                 }
             }
-            if (!state.loaded || (state.tiles.isEmpty() && state.scanning)) {
-                items(9) { SkeletonTile() }
-                return@LazyVerticalGrid
-            }
-            if (state.tiles.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_empty_card")) {
-                        DisplayText(if (state.scannedOnce) "Nothing here" else "Not scanned yet", style = TextStyles.emptyTitle)
-                        Spacer(Modifier.height(Spacing.s8))
-                        Text(
-                            if (state.scannedOnce) "The scan found nothing playable here." else "Regolith reads the share once to know what is on it. Nothing is copied off it.",
-                            style = TextStyles.body, color = colors.body,
-                        )
-                        if (!state.scannedOnce) {
-                            Spacer(Modifier.height(Spacing.s18))
-                            PrimaryButton(text = "Scan now", onClick = viewModel::scanAll, testTag = "library_scan_button", modifier = Modifier.fillMaxWidth())
-                        }
-                    }
+        } else {
+            // Rows: no card frame here. A wall can hold a thousand titles, and
+            // the design's cards are for short grouped lists (Browse, Settings);
+            // a hairline between rows is what keeps a long list readable.
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag("library_rows"),
+                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+            ) {
+                if (showUnreachable) item { unreachableBlock() }
+                if (showSkeletons) {
+                    items(6) { SkeletonRow() }
+                    return@LazyColumn
                 }
-                return@LazyVerticalGrid
-            }
-            if (state.scanning) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("Still reading the share · more will arrive", style = TextStyles.meta, color = colors.metadata, modifier = Modifier.testTag("library_scanning_line"))
+                if (showEmpty) {
+                    item { emptyBlock() }
+                    return@LazyColumn
                 }
-            }
-            items(state.tiles, key = { it.testTag }) { tile ->
-                when (tile) {
-                    is LibraryTile.Collection -> MediaTile(
-                        artwork = tile.artwork,
-                        kind = ArtworkKind.POSTER,
-                        title = tile.name,
-                        meta = "${tile.fileCount} files",
-                        count = tile.fileCount,
-                        resolution = tile.resolutionLabel.ifEmpty { null },
-                        dimmed = unreachable.isNotEmpty(),
-                        onClick = { onOpenCollection(tile.folderId) },
-                        testTag = tile.testTag,
-                    )
-                    is LibraryTile.Title -> MediaTile(
-                        artwork = tile.artwork,
-                        kind = ArtworkKind.POSTER,
-                        title = tile.name,
-                        meta = tile.meta,
-                        resolution = tile.resolutionLabel.ifEmpty { null },
-                        unwatched = tile.unwatched,
-                        matched = tile.matched,
-                        fallbackLabel = tile.fileName,
-                        progress = tile.progress,
-                        dimmed = unreachable.isNotEmpty(),
-                        onClick = { onOpenTitle(tile.fileId) },
-                        testTag = tile.testTag,
-                    )
+                if (showScanLine) item { Box(Modifier.padding(bottom = Spacing.s8)) { ScanLine() } }
+                itemsIndexed(state.tiles, key = { _, tile -> tile.testTag }) { index, tile ->
+                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                    TileRow(tile, dimmed = unreachable.isNotEmpty(), selected = tile.isSelected(selectedFileId), onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle)
                 }
             }
         }
@@ -230,6 +238,117 @@ fun LibraryScreen(
     if (state.sortSheetOpen) {
         SortSheet(selected = state.sort, onSelect = viewModel::setSort, onDismiss = { viewModel.openSortSheet(false) })
     }
+}
+
+/** Is this the title the detail pane is showing? Collections are never selected: they open a wall, not a detail. */
+private fun LibraryTile.isSelected(selectedFileId: Long?): Boolean =
+    selectedFileId != null && this is LibraryTile.Title && fileId == selectedFileId
+
+/** One tile on the wall. Both layouts hand a [LibraryTile] to the same two components. */
+@Composable
+private fun TileView(
+    tile: LibraryTile,
+    dimmed: Boolean,
+    selected: Boolean = false,
+    onOpenCollection: (Long) -> Unit,
+    onOpenTitle: (Long) -> Unit,
+) {
+    when (tile) {
+        is LibraryTile.Collection -> MediaTile(
+            artwork = tile.artwork,
+            kind = ArtworkKind.POSTER,
+            title = tile.name,
+            meta = formatFileCount(tile.fileCount),
+            count = tile.fileCount,
+            resolution = tile.resolutionLabel.ifEmpty { null },
+            dimmed = dimmed,
+            onClick = { onOpenCollection(tile.folderId) },
+            testTag = tile.testTag,
+        )
+        is LibraryTile.Title -> MediaTile(
+            artwork = tile.artwork,
+            kind = ArtworkKind.POSTER,
+            title = tile.name,
+            meta = tile.meta,
+            resolution = tile.resolutionLabel.ifEmpty { null },
+            unwatched = tile.unwatched,
+            matched = tile.matched,
+            fallbackLabel = tile.fileName,
+            progress = tile.progress,
+            dimmed = dimmed,
+            selected = selected,
+            onClick = { onOpenTitle(tile.fileId) },
+            testTag = tile.testTag,
+        )
+    }
+}
+
+/**
+ * The same tile as one row: a 34dp poster, the name, and the line the tile
+ * would have carried under it, with the resolution folded in so nothing is
+ * lost by switching layout. A collection keeps its chevron; a title has
+ * nowhere further to go and drops it.
+ */
+@Composable
+private fun TileRow(
+    tile: LibraryTile,
+    dimmed: Boolean,
+    selected: Boolean = false,
+    onOpenCollection: (Long) -> Unit,
+    onOpenTitle: (Long) -> Unit,
+) {
+    val alpha = if (dimmed) 0.45f else 1f
+    // A row has no art to ring, so the selected one is lifted onto the card surface.
+    val selectedBg = if (selected) Modifier.background(RegolithTheme.colors.surface) else Modifier
+    when (tile) {
+        is LibraryTile.Collection -> ListRow(
+            title = tile.name,
+            meta = listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · "),
+            leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.name),
+            minHeight = 64.scaledDp(),
+            onClick = { onOpenCollection(tile.folderId) },
+            testTag = tile.testTag,
+            modifier = Modifier.alpha(alpha),
+        )
+        is LibraryTile.Title -> ListRow(
+            title = if (tile.matched) tile.name else tile.fileName,
+            meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
+            leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.fileName),
+            trailing = RowTrailing.None,
+            minHeight = 64.scaledDp(),
+            onClick = { onOpenTitle(tile.fileId) },
+            testTag = tile.testTag,
+            modifier = selectedBg.alpha(alpha),
+        )
+    }
+}
+
+/** "Nothing here" / "Not scanned yet": the same card in either layout. */
+@Composable
+private fun EmptyWall(scannedOnce: Boolean, onScan: () -> Unit) {
+    val colors = RegolithTheme.colors
+    SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_empty_card")) {
+        DisplayText(if (scannedOnce) "Nothing here" else "Not scanned yet", style = TextStyles.dialogTitle)
+        Spacer(Modifier.height(Spacing.s8))
+        Text(
+            if (scannedOnce) "The scan found nothing playable here." else "Regolith reads the share once to know what is on it. Nothing is copied off it.",
+            style = TextStyles.body, color = colors.body,
+        )
+        if (!scannedOnce) {
+            Spacer(Modifier.height(Spacing.s18))
+            PrimaryButton(text = "Scan now", onClick = onScan, testTag = "library_scan_button", modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+/** "Still reading the share": the wall fills in behind it as the scan walks. */
+@Composable
+private fun ScanLine() {
+    Text(
+        "Still reading the share · more will arrive",
+        style = TextStyles.meta, color = RegolithTheme.colors.metadata,
+        modifier = Modifier.testTag("library_scanning_line"),
+    )
 }
 
 /**
@@ -263,7 +382,7 @@ private fun SortSheet(selected: LibrarySort, onSelect: (LibrarySort) -> Unit, on
                 ) {
                     Text(sort.label, style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = if (sort == selected) colors.ink else colors.inkSoft, modifier = Modifier.weight(1f))
                     if (sort == selected) {
-                        Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.dp))
+                        Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.scaledDp()))
                     }
                 }
             }
@@ -284,6 +403,22 @@ private fun SkeletonTile() {
         }
         Skeleton(Modifier.fillMaxWidth().height(8.dp), shape = RoundedCornerShape(4.dp))
         Skeleton(Modifier.fillMaxWidth(0.7f).height(8.dp), shape = RoundedCornerShape(4.dp))
+    }
+}
+
+/** A resting row while the first scan walks: the poster block and two bars. */
+@Composable
+private fun SkeletonRow() {
+    Row(Modifier.fillMaxWidth().padding(vertical = Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.width(34.scaledDp()).aspectRatio(2f / 3f).clip(ThumbShape)
+                .background(Brush.linearGradient(listOf(Color(0xFF1C2228), Color(0xFF0B0E11)))),
+        )
+        Spacer(Modifier.width(Spacing.s12))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            Skeleton(Modifier.fillMaxWidth(0.6f).height(8.dp), shape = RoundedCornerShape(4.dp))
+            Skeleton(Modifier.fillMaxWidth(0.35f).height(8.dp), shape = RoundedCornerShape(4.dp))
+        }
     }
 }
 
@@ -309,7 +444,7 @@ private fun OutOfReach(
                 Modifier.fillMaxWidth().background(colors.noticeBg, RoundedCornerShape(18.dp)).padding(Spacing.s18),
                 verticalAlignment = Alignment.Top,
             ) {
-                Icon(painterResource(R.drawable.rg_ic_wifi_off), contentDescription = null, tint = colors.body, modifier = Modifier.size(19.dp))
+                Icon(painterResource(R.drawable.rg_ic_wifi_off), contentDescription = null, tint = colors.body, modifier = Modifier.size(19.scaledDp()))
                 Spacer(Modifier.width(Spacing.s12))
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     Text("${server.name} is out of reach", style = TextStyles.rowLabelMedium.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
@@ -341,7 +476,7 @@ private fun OutOfReach(
                         Modifier.fillMaxWidth().background(colors.surface, RoundedCornerShape(18.dp)).padding(Spacing.s18),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.width(60.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).alpha(0.4f)) {
+                        Box(Modifier.width(60.scaledDp()).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).alpha(0.4f)) {
                             ArtworkImage(ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = row.name)
                         }
                         Spacer(Modifier.width(Spacing.s12))
@@ -360,7 +495,7 @@ private fun OutOfReach(
 private fun NoSource(onAddServer: () -> Unit) {
     val colors = RegolithTheme.colors
     // Design "Media · first run": the dashed card at 20dp corners, centred in the space above the pill.
-    Box(Modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, bottom = 112.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()), contentAlignment = Alignment.Center) {
         Column(
             Modifier.fillMaxWidth().background(Color(0xFF050505), RoundedCornerShape(20.dp))
                 .dashedBorder(colors.raised, RoundedCornerShape(20.dp))
@@ -369,7 +504,7 @@ private fun NoSource(onAddServer: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
-            Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.dp))
+            Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.scaledDp()))
             DisplayText("No source server", style = TextStyles.dialogTitle, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             Text(
                 "Point Regolith at an SMB share and it lists what's on it — films, recordings, anything it can play.",
@@ -416,7 +551,7 @@ private fun DeviceTab(
         if (state.ready.isEmpty() && state.inFlight.isEmpty() && state.failed.isEmpty()) {
             item {
                 SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_device_empty")) {
-                    DisplayText("Nothing on this device", style = TextStyles.emptyTitle)
+                    DisplayText("Nothing on this device", style = TextStyles.dialogTitle)
                     Spacer(Modifier.height(Spacing.s8))
                     Text("Open a title and choose \"Keep on this device\" to play it with no network.", style = TextStyles.body, color = colors.body)
                 }
@@ -481,7 +616,7 @@ private fun DeviceRowView(row: DeviceRow, minHeight: androidx.compose.ui.unit.Dp
         Modifier.fillMaxWidth().defaultMinSize(minHeight = minHeight).clickable(interactionSource = null, indication = null, onClick = onClick).padding(vertical = Spacing.s4).testTag(row.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(60.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(9.dp)).alpha(if (dimThumb) 0.45f else 1f)) {
+        Box(Modifier.width(60.scaledDp()).aspectRatio(16f / 9f).clip(RoundedCornerShape(9.dp)).alpha(if (dimThumb) 0.45f else 1f)) {
             ArtworkImage(ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = row.name)
         }
         Spacer(Modifier.width(Spacing.s12))

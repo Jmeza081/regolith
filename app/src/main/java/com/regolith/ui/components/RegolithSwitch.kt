@@ -30,6 +30,7 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.scaledDp
 
 /**
  * The design's switch (section 01, "Forms & controls"): a 44×26 pill with
@@ -59,19 +60,22 @@ fun SwitchControl(
         checked -> Color.White
         else -> colors.metadata
     }
-    val x by animateDpAsState(if (checked) 20.dp else 0.dp, label = "knob")
+    // 44 wide, 20 knob, 2 inset each side: the knob travels 44 - 20 - 4 = 20.
+    // All four numbers go through the same scale, or the knob stops short of
+    // the end of a track that grew without it.
+    val x by animateDpAsState(if (checked) 20.scaledDp() else 0.dp, label = "knob")
     Box(
         modifier
-            .size(width = 44.dp, height = 26.dp)
+            .size(width = 44.scaledDp(), height = 26.scaledDp())
             .clip(PillShape)
             .background(track)
             .then(if (!enabled) Modifier.border(1.dp, colors.raised, PillShape) else Modifier)
             .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Switch) { onCheckedChange(!checked) }
-            .padding(2.dp)
+            .padding(2.scaledDp())
             .testTag(testTag),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Box(Modifier.offset(x = x).size(20.dp).background(knob, PillShape))
+        Box(Modifier.offset(x = x).size(20.scaledDp()).background(knob, PillShape))
     }
 }
 

@@ -17,3 +17,6 @@ local.properties
 
 # macOS
 .DS_Store
+
+# argent tool artifacts (screen recordings, flows scratch)
+.argent/

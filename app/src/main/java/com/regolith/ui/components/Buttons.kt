@@ -26,10 +26,13 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.scaledDp
 
 /*
  * Buttons (design section 01, "Buttons"), each a `font:`/`height:` pair
- * copied from the specimen:
+ * copied from the specimen. The heights below are the design's px; every
+ * one is multiplied by SIZE_SCALE on the way to dp, so the pill keeps
+ * the proportion to its label that the frames drew:
  *  - Primary      48dp · #E11B17 · 700 15px · optional 16dp leading icon, gap 8
  *  - Secondary    48dp · frosted (rgba(255,255,255,.06) + .18 hairline) · 600 15px, #EDEDED
  *  - Tertiary     44dp · no fill · 600 14px, white
@@ -74,7 +77,7 @@ private fun BasePill(
             .testTag(testTag),
     ) {
         if (leadingIcon != null) {
-            Icon(leadingIcon, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp).padding(end = 0.dp))
+            Icon(leadingIcon, contentDescription = null, tint = fg, modifier = Modifier.size(16.scaledDp()))
             Box(Modifier.size(Spacing.s8))
         }
         Text(text, style = style, color = fg, maxLines = 1)
@@ -96,7 +99,7 @@ fun PrimaryButton(
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
-        height = if (compact) 42.dp else 48.dp, background = colors.accent, border = null, ink = Color.White,
+        height = if (compact) 42.scaledDp() else 48.scaledDp(), background = colors.accent, border = null, ink = Color.White,
         style = if (compact) TextStyles.buttonSmall else TextStyles.buttonPrimary, leadingIcon = leadingIcon,
     )
 }
@@ -115,7 +118,7 @@ fun SecondaryButton(
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
-        height = if (compact) 42.dp else 48.dp, background = colors.frostBg, border = colors.frostBorder, ink = colors.inkSoft,
+        height = if (compact) 42.scaledDp() else 48.scaledDp(), background = colors.frostBg, border = colors.frostBorder, ink = colors.inkSoft,
         style = if (compact) TextStyles.buttonSmall else TextStyles.buttonSecondary, leadingIcon = leadingIcon,
     )
 }
@@ -132,7 +135,7 @@ fun TertiaryButton(
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
-        height = 44.dp, background = Color.Transparent, border = null, ink = colors.ink,
+        height = 44.scaledDp(), background = Color.Transparent, border = null, ink = colors.ink,
         style = TextStyles.buttonTertiary, leadingIcon = null,
     )
 }
@@ -153,7 +156,7 @@ fun DestructiveButton(
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
-        height = if (compact) 42.dp else 44.dp, background = colors.accent, border = null, ink = Color.White,
+        height = if (compact) 42.scaledDp() else 44.scaledDp(), background = colors.accent, border = null, ink = Color.White,
         style = if (compact) TextStyles.buttonSmall else TextStyles.buttonTertiary, leadingIcon = null,
     )
 }
@@ -168,8 +171,8 @@ fun IconCircleButton(
     modifier: Modifier = Modifier,
     /** Over the picture: `rgba(0,0,0,.42)` fill and a `.34` hairline instead of the frost. */
     onMedia: Boolean = false,
-    size: Dp = 48.dp,
-    iconSize: Dp = 18.dp,
+    size: Dp = 48.scaledDp(),
+    iconSize: Dp = 18.scaledDp(),
 ) {
     val colors = RegolithTheme.colors
     Box(

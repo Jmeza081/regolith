@@ -30,4 +30,11 @@ data class SettingsUiState(
     val artworkCount: Int = 0,
     val artworkBytes: Long = 0,
     val clearing: Boolean = false,
+    // --- Demo library (BuildConfig.DEMO_LIBRARY builds only).
+    /** True while the demo server exists; the row offers the opposite action. */
+    val demoInstalled: Boolean = false,
+    /** True while it is being written or removed: both take a second or two. */
+    val demoWorking: Boolean = false,
+    /** What the demo's clips occupy on the device. */
+    val demoBytes: Long = 0,
 )

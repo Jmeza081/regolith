@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.regolith.ui.util.formatFileCount
 
 enum class SearchFilter(val label: String) { ALL("All"), UNWATCHED("Unwatched"), UHD("4K"), ON_DEVICE("On device") }
 
@@ -129,7 +130,7 @@ class SearchViewModel @Inject constructor(
                     folderId = folder.id,
                     browsable = true,
                     primary = folder.name,
-                    meta = listOfNotNull(if (kind == FolderKind.TITLE) "title" else "folder", "${folder.fileCount} files".takeIf { folder.fileCount > 0 }).joinToString(" · "),
+                    meta = listOfNotNull(if (kind == FolderKind.TITLE) "title" else "folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
                 )
             }
         }

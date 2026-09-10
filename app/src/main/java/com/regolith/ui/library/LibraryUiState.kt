@@ -2,6 +2,7 @@ package com.regolith.ui.library
 
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.ViewMode
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 
@@ -65,6 +66,8 @@ data class LibraryUiState(
     val tiles: List<LibraryTile> = emptyList(),
     val sort: LibrarySort = LibrarySort.NAME,
     val sortSheetOpen: Boolean = false,
+    /** Poster wall or rows. Remembered across launches. */
+    val viewMode: ViewMode = ViewMode.GRID,
     val loaded: Boolean = false,
     /** No enabled share anywhere. */
     val noSource: Boolean = false,
