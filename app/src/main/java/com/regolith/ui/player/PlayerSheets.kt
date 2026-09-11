@@ -450,13 +450,25 @@ fun AbLoopSheetContent(
                         Box(Modifier.offset(x = at(loop.aMs)).width(at(loop.bMs) - at(loop.aMs)).fillMaxHeight().background(Color(0x4DE11B17)))
                         Box(Modifier.offset(x = at(positionMs)).width(2.dp).fillMaxHeight().background(colors.ink))
                     }
-                    Box(Modifier.fillMaxWidth().height(14.dp).padding(top = Spacing.s2)) {
-                        // Labels sit under their points; a short loop would stack them, so B never starts before A ends.
-                        val aX = (at(loop.aMs) - 16.dp).coerceAtLeast(0.dp)
-                        val bX = (at(loop.bMs) - 16.dp).coerceIn(aX + 40.dp, (w - 40.dp).coerceAtLeast(aX + 40.dp))
-                        Text(formatClock(loop.aMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.designSp()), color = colors.body, modifier = Modifier.offset(x = aX))
-                        Text(formatClock(loop.bMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.designSp()), color = colors.body, modifier = Modifier.offset(x = bX))
-                        Text(formatClock(durationMs), style = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, lineHeight = 11.designSp()), color = colors.metadata, modifier = Modifier.align(Alignment.CenterEnd))
+                    // No fixed height here. It used to be 14dp for an 11sp
+                    // line, which cut the bottom off every number — and a
+                    // clipped digit reads as a rendering fault, not a tight
+                    // layout. The row is as tall as its text and the card has
+                    // room underneath it.
+                    Box(Modifier.fillMaxWidth().padding(top = Spacing.s4)) {
+                        // Labels sit under their points, but never on top of
+                        // each other: a short loop would stack A and B, and a
+                        // loop that runs to the end would put B under the
+                        // runtime at the right edge. Each one is held a label's
+                        // width clear of the last.
+                        val labelSpace = 44.dp
+                        val rightEdge = (w - labelSpace).coerceAtLeast(0.dp)
+                        val aX = (at(loop.aMs) - 16.dp).coerceIn(0.dp, (rightEdge - labelSpace * 2).coerceAtLeast(0.dp))
+                        val bX = (at(loop.bMs) - 16.dp).coerceIn(aX + labelSpace, (rightEdge - labelSpace).coerceAtLeast(aX + labelSpace))
+                        val markStyle = TextStyles.meta.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                        Text(formatClock(loop.aMs), style = markStyle, color = colors.body, maxLines = 1, modifier = Modifier.offset(x = aX))
+                        Text(formatClock(loop.bMs), style = markStyle, color = colors.body, maxLines = 1, modifier = Modifier.offset(x = bX))
+                        Text(formatClock(durationMs), style = markStyle, color = colors.metadata, maxLines = 1, modifier = Modifier.align(Alignment.CenterEnd))
                     }
                 }
             }

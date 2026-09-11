@@ -992,25 +992,26 @@ private fun PillRow(
     // tap away at the end of this very row, and a pill that only ever opened
     // that sheet was a second door to one setting.
     val left = @Composable {
-        // Over the picture the loop pill is always there, because that is
-        // where a loop gets armed. Under it, it appears once a loop is on its
-        // way and steps aside otherwise: the row is at its limit on a phone.
-        // Unarmed it is a glyph alone — the label only earns its width once
-        // it has something to say ("A ·", "A–B"); spelled out at rest it
-        // pushed the rotation pill off the end of a 411dp row.
+        // Always here, at every width. It used to appear under the picture
+        // only once a loop was already on its way, which was a width
+        // compromise from when this row was one scrolling group with a speed
+        // pill in it — and it meant a loop could only be STARTED in full
+        // screen, so the feature was invisible to anyone who never went
+        // there. The row is three groups now and has the room.
+        //
+        // Unarmed it is a glyph alone: the label only earns its width once it
+        // has something to say ("A ·", "A–B").
         val armed = state.loop != null || state.loopPendingAMs != null
-        if (onMedia || armed) {
-            PillButton(
-                text = when {
-                    !armed -> ""
-                    state.loop == null -> "A ·"
-                    else -> "A–B"
-                },
-                selected = state.loop != null, onClick = cb.onLoopTap, onLongClick = cb.onLoopClear, onMedia = onMedia,
-                icon = R.drawable.rg_ic_loop, testTag = "player_loop_pill",
-                contentDescription = if (armed) null else "A–B loop. Tap to set point A.",
-            )
-        }
+        PillButton(
+            text = when {
+                !armed -> ""
+                state.loop == null -> "A ·"
+                else -> "A–B"
+            },
+            selected = state.loop != null, onClick = cb.onLoopTap, onLongClick = cb.onLoopClear, onMedia = onMedia,
+            icon = R.drawable.rg_ic_loop, testTag = "player_loop_pill",
+            contentDescription = if (armed) null else "A–B loop. Tap to set point A.",
+        )
         // One pill that cycles rather than three that sit there, because two
         // of the three are always the answer you did not pick.
         //
