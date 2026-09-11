@@ -130,7 +130,6 @@ import com.regolith.ui.theme.designSp
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
-import com.regolith.ui.util.formatSpeed
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -832,12 +831,14 @@ private fun BoxScope.FullChrome(
                         )
                         Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
                     }
-                    // Shuffle · previous · play · next · repeat, centred. The
-                    // gap closes up in a portrait window: five cells at 40dp
-                    // apart is 442dp and a phone has 411.
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Transport(state, cb, gap = if (landscape) 40.dp else Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp, modes = true)
-                    }
+                    // Previous · play · next dead centre, shuffle and repeat
+                    // on the edges. The gap between the three closes up in a
+                    // portrait window, where the row has 411dp to work in.
+                    Transport(
+                        state, cb, gap = if (landscape) 40.dp else Spacing.s18,
+                        circle = 74.dp, glyph = 27.dp, cell = 52.dp, modes = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     // The pills live UNDER the transport, not up in the header.
                     // Over the top of the picture they sat beside the title,
                     // which read as part of the film's identity; down here they
@@ -877,29 +878,37 @@ private fun Transport(
     modes: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
-        if (modes) {
-            IconCell(
-                R.drawable.rg_ic_shuffle, if (state.shuffled) "Shuffle is on. Tap to play in order." else "Shuffle what is left to play",
-                glyph - 6.dp, cb.onShuffle, "player_shuffle_button", size = cell,
-                tint = if (state.shuffled) colors.accent else null,
-            )
-        }
+    val keys = @Composable {
         IconCell(R.drawable.rg_ic_skip_previous, "Previous", glyph - 5.dp, cb.onPrevious ?: {}, "player_previous_button", size = cell, enabled = cb.onPrevious != null)
         PlayCircle(state, circle, circle * 0.42f, cb.onTogglePlay)
         IconCell(R.drawable.rg_ic_skip_next, "Next", glyph - 5.dp, cb.onNext ?: {}, "player_next_button", size = cell, enabled = cb.onNext != null)
-        if (modes) {
-            // One button cycling three states, like the rotation pill: two of
-            // three are always the answer you did not pick. Red says "not the
-            // default", which is the app's word for it everywhere else, and
-            // the "1" is the second channel so it never rests on colour.
-            IconCell(
-                if (state.repeat == RepeatMode.ONE) LucideR.drawable.lucide_ic_repeat_1 else LucideR.drawable.lucide_ic_repeat,
-                "Repeat: ${state.repeat.label}. Tap to change.",
-                glyph - 6.dp, cb.onRepeat, "player_repeat_button", size = cell,
-                tint = if (state.repeat != RepeatMode.OFF) colors.accent else null,
-            )
-        }
+    }
+    if (!modes) {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) { keys() }
+        return
+    }
+    // The three keys stay dead centre whatever else is on the row, and the
+    // two modes go to the far edges. They are a different kind of control —
+    // they change what the row will do next rather than doing it now — and
+    // the distance says so without a label.
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        IconCell(
+            R.drawable.rg_ic_shuffle,
+            if (state.shuffled) "Shuffle is on. Tap to play in order." else "Shuffle what is left to play",
+            glyph - 6.dp, cb.onShuffle, "player_shuffle_button", Modifier.align(Alignment.CenterStart), size = cell,
+            tint = if (state.shuffled) colors.accent else null,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) { keys() }
+        // One button cycling three states, like the rotation pill: two of
+        // three are always the answer you did not pick. Red says "not the
+        // default", which is the app's word for it everywhere else, and the
+        // "1" is the second channel so it never rests on colour.
+        IconCell(
+            if (state.repeat == RepeatMode.ONE) LucideR.drawable.lucide_ic_repeat_1 else LucideR.drawable.lucide_ic_repeat,
+            "Repeat: ${state.repeat.label}. Tap to change.",
+            glyph - 6.dp, cb.onRepeat, "player_repeat_button", Modifier.align(Alignment.CenterEnd), size = cell,
+            tint = if (state.repeat != RepeatMode.OFF) colors.accent else null,
+        )
     }
 }
 
@@ -979,8 +988,10 @@ private fun PillRow(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
+    // There is no speed pill. Speed lives in the playback sheet, which is one
+    // tap away at the end of this very row, and a pill that only ever opened
+    // that sheet was a second door to one setting.
     val left = @Composable {
-        PillButton(text = formatSpeed(state.speed), onClick = cb.onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
         // Over the picture the loop pill is always there, because that is
         // where a loop gets armed. Under it, it appears once a loop is on its
         // way and steps aside otherwise: the row is at its limit on a phone.
@@ -1000,18 +1011,6 @@ private fun PillRow(
                 contentDescription = if (armed) null else "A–B loop. Tap to set point A.",
             )
         }
-        // The pill is drawn as soon as the film is loaded, but it spins until
-        // the list has SETTLED — the container has been read and the runtime
-        // is known. Opening earlier meant a sheet that resized itself as the
-        // parts were recounted underneath it.
-        PillButton(
-            text = "Chapters",
-            onClick = { if (state.chaptersReady) cb.onChapters() },
-            onMedia = onMedia,
-            icon = R.drawable.rg_ic_chapters,
-            testTag = "player_chapters_pill",
-            loading = !state.chaptersReady,
-        )
         // One pill that cycles rather than three that sit there, because two
         // of the three are always the answer you did not pick.
         //
@@ -1037,6 +1036,20 @@ private fun PillRow(
             )
         }
     }
+    // The pill is drawn as soon as the film is loaded, but it spins until the
+    // list has SETTLED — the container has been read and the runtime is
+    // known. Opening earlier meant a sheet that resized itself as the parts
+    // were recounted underneath it.
+    val centre = @Composable {
+        PillButton(
+            text = "Chapters",
+            onClick = { if (state.chaptersReady) cb.onChapters() },
+            onMedia = onMedia,
+            icon = R.drawable.rg_ic_chapters,
+            testTag = "player_chapters_pill",
+            loading = !state.chaptersReady,
+        )
+    }
     val right = @Composable {
         if (state.fileId != null && state.fileId != com.regolith.ui.navigation.RegolithKey.Player.EXTERNAL) {
             DownloadPill(transfer, onMedia, cb.onKeep, cb.onRemove)
@@ -1049,21 +1062,30 @@ private fun PillRow(
     if (compact) {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
             left()
+            centre()
             right()
         }
         return
     }
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-        // The left group scrolls if it must. Without that the last pill is
-        // not dropped, it is SQUEEZED: the row gives the Text zero width and
-        // you get a pill with nothing written on it. The right group never
-        // moves, so the two glyphs are always in the same place.
+    // Three groups, and Chapters dead centre: the two weighted cells split
+    // whatever is left equally, so the middle is centred on the ROW rather
+    // than on what happens to be beside it.
+    //
+    // The left cell scrolls if it must. Without that its last pill is not
+    // dropped, it is SQUEEZED: the row gives the Text zero width and you get
+    // a pill with nothing written on it.
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Row(
             Modifier.weight(1f).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
             verticalAlignment = Alignment.CenterVertically,
         ) { left() }
-        right()
+        centre()
+        Row(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { right() }
     }
 }
 
@@ -1498,11 +1520,12 @@ private fun FlexDeck(
             )
             Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
         }
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            // The deck is the full width of a half-open fold, so it gets the
-            // whole row the full-screen player does.
-            Transport(state, cb, gap = Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp, modes = true)
-        }
+        // The deck is the full width of a half-open fold, so it gets the
+        // whole row the full-screen player does.
+        Transport(
+            state, cb, gap = Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp,
+            modes = true, modifier = Modifier.fillMaxWidth(),
+        )
         state.next.firstOrNull()?.let { item ->
             Spacer(Modifier.weight(1f))
             Row(
