@@ -137,7 +137,7 @@ fun SettingsScreen(
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     RegolithSwitch(label = "Hardware decoding", checked = state.hardwareDecoding, onCheckedChange = viewModel::setHardwareDecoding, testTag = "settings_hardware_decoding_switch")
                     RegolithSwitch(
-                        label = "Scrub thumbnails", note = "Preview frame while you drag the timeline.",
+                        label = "Scrub thumbnails", note = "Preview frame while you drag the timeline, and the light behind the picture.",
                         checked = state.scrubThumbnails, onCheckedChange = viewModel::setScrubThumbnails, testTag = "settings_scrub_thumbnails_switch",
                     )
                     RegolithSwitch(

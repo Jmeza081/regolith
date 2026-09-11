@@ -7,6 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.FrameIndex
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.PlaybackSession
 import com.regolith.player.PlaybackState
@@ -20,8 +21,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.stateIn
 import kotlin.math.absoluteValue
@@ -76,6 +79,35 @@ class PlayerViewModel @AssistedInject constructor(
     /** The preview frame for the current scrub position; re-evaluated as frames arrive. */
     val scrubFrame: StateFlow<Bitmap?> = session.scrubThumbnails
         .flatMapLatest { thumbs -> combine(scrubMs, thumbs.updates) { ms, _ -> ms?.let { thumbs.nearest(it) } } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * The frame the ambient light is washing the screen with: the one
+     * nearest the playhead, through the same pipeline as everything else
+     * here — ask for a position, redraw when a picture lands.
+     *
+     * It steps once per [FrameIndex] bucket (10 s), because that is the
+     * granularity the cache already stores and asking more often would only
+     * return the same frame. The worker prefetches two buckets either side
+     * of a request, so the light is normally ALREADY holding the frame the
+     * film is about to reach rather than the one it just left.
+     *
+     * Null — and so the static backdrop — when "Scrub thumbnails" is off,
+     * which is the off switch for this too: it is the same key-frame seek
+     * over the share, and a setting that says "do not read extra data off
+     * the share while playing" should mean it here as well.
+     */
+    val ambientFrame: StateFlow<Bitmap?> = session.scrubThumbnails
+        .flatMapLatest { thumbs ->
+            val bucket = state
+                .map { it.positionMs / FrameIndex.DEFAULT_INTERVAL_MS }
+                .distinctUntilChanged()
+                // Requesting from inside the flow means the reads stop when
+                // the screen stops watching, without a job to remember to cancel.
+                .onEach { thumbs.request(ambientPositionOf(it)) }
+            combine(bucket, thumbs.updates) { b, _ -> thumbs.nearest(ambientPositionOf(b)) }
+        }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
@@ -179,6 +211,10 @@ class PlayerViewModel @AssistedInject constructor(
     }
 
     companion object {
+        /** The middle of an ambient bucket, which is the position its cached frame stands for. */
+        private fun ambientPositionOf(bucket: Long): Long =
+            bucket * FrameIndex.DEFAULT_INTERVAL_MS + FrameIndex.DEFAULT_INTERVAL_MS / 2
+
         /** How far into a chapter its picture is taken from: past the cut at its start. */
         const val CHAPTER_FRAME_FRACTION = 0.25f
 

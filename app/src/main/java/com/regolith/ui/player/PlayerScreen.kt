@@ -4,6 +4,8 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -62,6 +64,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -158,6 +162,7 @@ fun PlayerScreen(
     val player by viewModel.player.collectAsStateWithLifecycle()
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
+    val ambientFrame by viewModel.ambientFrame.collectAsStateWithLifecycle()
     val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
@@ -528,7 +533,7 @@ fun PlayerScreen(
         }
         Column(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
             Box(Modifier.fillMaxWidth().height(topHeight)) {
-                AmbientGlow(state.fileId, Modifier.fillMaxSize())
+                AmbientGlow(state.fileId, Modifier.fillMaxSize(), frame = ambientFrame)
                 video()
             }
             FlexDeck(
@@ -550,7 +555,7 @@ fun PlayerScreen(
             // different thing and stay exactly as they are — those pixels are
             // the picture. Black stays underneath, so a film whose poster
             // never loaded looks the way it always did.
-            AmbientGlow(state.fileId, Modifier.fillMaxSize(), spill = true)
+            AmbientGlow(state.fileId, Modifier.fillMaxSize(), spill = true, frame = ambientFrame)
             Box(Modifier.fillMaxSize().graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
             // A SurfaceView ignores alpha from a parent layer, so "dimming"
             // is a scrim drawn over it rather than a fade applied to it.
@@ -565,7 +570,7 @@ fun PlayerScreen(
         // beside the picture rather than below a screenful of settings.
         val sideWidth = (windowShape.width * SIDE_COLUMN_FRACTION).coerceIn(300.dp, 460.dp)
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
-            AmbientGlow(state.fileId, Modifier.fillMaxSize())
+            AmbientGlow(state.fileId, Modifier.fillMaxSize(), frame = ambientFrame)
             Row(Modifier.fillMaxSize().systemBarsPadding()) {
                 Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.s12)) {
                     Box(
@@ -614,7 +619,7 @@ fun PlayerScreen(
         }
     } else {
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
-        AmbientGlow(state.fileId, Modifier.fillMaxSize())
+        AmbientGlow(state.fileId, Modifier.fillMaxSize(), frame = ambientFrame)
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f).graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
             PortraitDetails(
@@ -749,7 +754,8 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
 /**
  * Full-screen chrome (design "Player · landscape"): 18/30/12 padding; back
  * with the title (Michroma 16) and meta line top-left, and nothing else on
- * that edge; 52 · 74 circle · 52 in the middle at 40dp gaps; the clocks at
+ * that edge; the full transport in the middle at 52 · 74 circle · 52 with
+ * 40dp gaps; the clocks at
  * 600 13px around the 4dp track with the red knob, and under the track the
  * pills — speed, A–B, Chapters, rotation — with the playback glyph at the
  * far end of the same row.
@@ -775,7 +781,8 @@ private fun BoxScope.FullChrome(
             // 30dp gutters are the design's landscape frame. Portrait full
             // screen is 411dp across and the pill row under the timeline does
             // not fit inside them, so it takes the portrait frame's 18.
-            val gutter = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) 30.dp else Spacing.s18
+            val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val gutter = if (landscape) 30.dp else Spacing.s18
             Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter, top = 18.dp, bottom = 12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
@@ -787,10 +794,13 @@ private fun BoxScope.FullChrome(
                         }
                     }
                 }
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                    IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", 27.dp, { cb.onSeekBy(-10_000) }, "player_seek_back_button", size = 52.dp)
-                    PlayCircle(state, 74.dp, 26.dp, cb.onTogglePlay)
-                    IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", 27.dp, { cb.onSeekBy(10_000) }, "player_seek_forward_button", size = 52.dp)
+                // Previous and next were missing here and nowhere else: this
+                // row predates [Transport] and was never folded into it, so
+                // full screen was the one place you could not walk the folder.
+                // The gap closes up in a portrait window — five cells at 40dp
+                // apart is 442dp and a phone has 411.
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Transport(state, cb, gap = if (landscape) 40.dp else Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp)
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                     scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
@@ -1431,37 +1441,93 @@ private fun StripCell(frame: StripFrame, current: Boolean, onSeek: () -> Unit, m
 }
 
 /**
- * The ambient light behind a letterboxed picture: the title's own poster,
- * blurred past recognition, scaled out so the blur has no edge, and dimmed
- * under a scrim. A 2:39 film then sits in its own colour instead of a black
- * band, which is the whole point.
+ * The ambient light behind and beside the picture: a bias light, the way a
+ * strip behind a TV works. Blurred past recognition, scaled out so the blur
+ * has no edge, dimmed under a scrim. A 2:39 film then sits in its own
+ * colour instead of a black band, which is the whole point.
  *
- * The poster is the one the artwork pipeline already generated and cached
- * for this file, so the glow costs no read over the share and works with
- * the network gone. Nothing is drawn until it resolves: an unmatched file
- * keeps the black it has now rather than gaining a blurred placeholder.
+ * Two layers. The base coat is the title's own backdrop, which costs no
+ * read over the share and is there before anything else resolves. Over it,
+ * [frame] — the picture the film is actually on — dissolves in as playback
+ * moves, once per 10 s bucket of the scrub cache. Because it is the frame
+ * itself and not a colour picked out of it, the left of the screen glows
+ * what is on the left of the shot and the right glows what is on the
+ * right; a sunset over water lights blue below and orange above on its own,
+ * with no zones to define.
+ *
+ * With "Scrub thumbnails" off there are no frames and the backdrop is the
+ * whole of it, exactly as before.
  */
 @Composable
-private fun AmbientGlow(fileId: Long?, modifier: Modifier = Modifier, spill: Boolean = false) {
+private fun AmbientGlow(
+    fileId: Long?,
+    modifier: Modifier = Modifier,
+    spill: Boolean = false,
+    frame: android.graphics.Bitmap? = null,
+) {
     if (fileId == null) return
     // The backdrop, not the poster: this sits behind a 16:9 picture and
     // fills the bands beside it, so a 2:3 centre crop would show the
     // middle strip of the frame stretched across the whole window.
     val request = remember(fileId) { ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP) }
+    // Film is graded for a screen you look at, not for a lamp. Pushed a
+    // little past life it reads as coloured light; left alone the blur
+    // averages most shots into grey.
+    val lift = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(GLOW_SATURATION) }) }
+
+    // A dissolve, not a cross-fade: the new frame fades UP over the old one,
+    // which holds at full strength underneath until it is covered. Fading
+    // one out while the other fades in leaves both part-transparent in the
+    // middle, and the light dips by a quarter every time it changes — on a
+    // wash this slow that reads as a pulse.
+    val under = remember(fileId) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val over = remember(fileId) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val rise = remember(fileId) { Animatable(1f) }
+    LaunchedEffect(fileId, frame) {
+        if (frame == null || frame === over.value) return@LaunchedEffect
+        under.value = over.value
+        over.value = frame
+        rise.snapTo(0f)
+        rise.animateTo(1f, tween(GLOW_FADE_MS))
+    }
+
     Box(modifier.clipToBounds()) {
-        SubcomposeAsyncImage(
-            model = request,
-            contentDescription = null,
-            loading = {},
-            error = {},
-            success = { SubcomposeAsyncImageContent(contentScale = ContentScale.Crop) },
-            modifier = Modifier
-                .fillMaxSize()
+        // One blur over both layers rather than one each: the dissolve
+        // happens inside the blurred layer, so the two frames mix as light
+        // rather than as two blurred pictures sliding past each other.
+        Box(
+            Modifier.fillMaxSize()
                 .scale(GLOW_SCALE)
                 .blur(GLOW_BLUR, BlurredEdgeTreatment.Unbounded)
-                .alpha(GLOW_ALPHA)
-                .testTag("player_ambient_glow"),
-        )
+                .alpha(GLOW_ALPHA),
+        ) {
+            SubcomposeAsyncImage(
+                model = request,
+                contentDescription = null,
+                loading = {},
+                error = {},
+                success = { SubcomposeAsyncImageContent(contentScale = ContentScale.Crop, colorFilter = lift) },
+                modifier = Modifier.fillMaxSize().testTag("player_ambient_glow"),
+            )
+            // The cache recycles a frame when it evicts one, and this holds a
+            // reference past the moment it was read. Cheaper to ask than to
+            // crash on a recycled bitmap.
+            under.value?.takeIf { !it.isRecycled }?.let { bmp ->
+                Image(
+                    bitmap = bmp.asImageBitmap(), contentDescription = null,
+                    contentScale = ContentScale.Crop, colorFilter = lift,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            over.value?.takeIf { !it.isRecycled }?.let { bmp ->
+                Image(
+                    bitmap = bmp.asImageBitmap(), contentDescription = null,
+                    contentScale = ContentScale.Crop, colorFilter = lift,
+                    alpha = rise.value,
+                    modifier = Modifier.fillMaxSize().testTag("player_ambient_frame"),
+                )
+            }
+        }
         // Two jobs, two scrims. Behind the windowed player the glow has to
         // fall off downward the way spill light does — strongest around the
         // picture, back to the app's own ground by the bottom of the screen.
@@ -1484,6 +1550,17 @@ private val GLOW_BLUR = 56.dp
 private const val GLOW_SCALE = 1.35f
 
 private const val GLOW_ALPHA = 0.65f
+
+/** Past life, so the wash reads as light rather than as haze. 1f would be the film's own grade. */
+private const val GLOW_SATURATION = 1.45f
+
+/**
+ * How long one frame takes to come up over the last. Long, because this is
+ * the room's light and not part of the picture: fast enough to have moved
+ * with the film by the next change, slow enough that nothing in the corner
+ * of your eye ever snaps.
+ */
+private const val GLOW_FADE_MS = 2_200
 
 /**
  * How far a middle drag must travel, as a fraction of the picture's height,
