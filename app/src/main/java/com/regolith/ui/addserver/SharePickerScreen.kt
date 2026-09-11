@@ -31,7 +31,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.SurfaceCard
+import androidx.compose.ui.text.style.TextOverflow
 import com.regolith.ui.components.TopBar
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -43,12 +45,18 @@ import com.regolith.ui.util.formatBytes
  * icon box, the name at 600 15/19 and the free space at 12px. Selection
  * inverts the box to white and thickens the border to 1.5dp white: two
  * channels, so it never rests on colour alone. "Scan N shares" at the foot.
+ *
+ * The card is the whole share. The chevron at its end is the other choice:
+ * go inside and pick folders ([FolderPickerScreen]), for the share whose
+ * `Backups/` is not something you want walked. A share with folders chosen
+ * says how many where the free space would go.
  */
 @Composable
 fun SharePickerScreen(
     viewModel: SharePickerViewModel,
     onBack: () -> Unit,
     onContinue: () -> Unit,
+    onChooseFolders: (shareId: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -78,13 +86,28 @@ fun SharePickerScreen(
                             )
                         }
                         Spacer(Modifier.width(Spacing.s12))
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                            Text(share.name, style = TextStyles.rowLabel, color = colors.ink)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                            Text(share.name, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
-                                listOfNotNull(share.freeBytes?.let { "${formatBytes(it)} free" }, if (share.enabled) "selected" else null).joinToString(" · ").ifEmpty { "share" },
-                                style = TextStyles.meta12, color = colors.metadata,
+                                listOfNotNull(
+                                    share.freeBytes?.let { "${formatBytes(it)} free" },
+                                    when {
+                                        share.roots.isNotEmpty() -> "${share.roots.size} folder" + (if (share.roots.size == 1) "" else "s") + " chosen"
+                                        share.enabled -> "whole share"
+                                        else -> null
+                                    },
+                                ).joinToString(" · ").ifEmpty { "share" },
+                                style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("addserver_share_meta_${share.name}"),
                             )
                         }
+                        Spacer(Modifier.width(Spacing.s8))
+                        RowAction(
+                            icon = R.drawable.rg_ic_chevron_right,
+                            contentDescription = "Choose folders in ${share.name}",
+                            onClick = { onChooseFolders(share.id) },
+                            testTag = "addserver_share_folders_${share.name}",
+                        )
                     }
                 }
             }

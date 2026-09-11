@@ -62,6 +62,9 @@ interface ShareDao {
     suspend fun byId(id: Long): ShareEntity?
 
     @Query("SELECT * FROM shares WHERE id = :id")
+    fun observe(id: Long): Flow<ShareEntity?>
+
+    @Query("SELECT * FROM shares WHERE id = :id")
     fun byIdBlocking(id: Long): ShareEntity?
 
     @Query("SELECT * FROM shares WHERE serverId = :serverId AND name = :name")
@@ -86,6 +89,32 @@ interface ShareDao {
 
     @Query("UPDATE shares SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: Long, enabled: Boolean)
+}
+
+@Dao
+interface ShareRootDao {
+    @Query("SELECT * FROM share_roots WHERE shareId = :shareId ORDER BY relPath")
+    fun observeForShare(shareId: Long): Flow<List<ShareRootEntity>>
+
+    /** Every root of every share, for callers that join in memory. */
+    @Query("SELECT * FROM share_roots ORDER BY shareId, relPath")
+    fun observeAll(): Flow<List<ShareRootEntity>>
+
+    @Query("SELECT relPath FROM share_roots WHERE shareId = :shareId ORDER BY relPath")
+    suspend fun pathsFor(shareId: Long): List<String>
+
+    @Insert
+    suspend fun insert(root: ShareRootEntity): Long
+
+    @Query("DELETE FROM share_roots WHERE shareId = :shareId AND relPath = :relPath")
+    suspend fun delete(shareId: Long, relPath: String)
+
+    @Query("DELETE FROM share_roots WHERE shareId = :shareId")
+    suspend fun clearFor(shareId: Long)
+
+    /** Picking a folder whose parent is already a root, or vice versa: the broader path wins and the narrower rows go. */
+    @Query("DELETE FROM share_roots WHERE shareId = :shareId AND relPath LIKE :prefix")
+    suspend fun deleteUnder(shareId: Long, prefix: String)
 }
 
 @Dao

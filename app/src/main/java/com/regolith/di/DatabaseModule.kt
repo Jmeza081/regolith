@@ -11,6 +11,7 @@ import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.ShareRootDao
 import com.regolith.data.db.TransferDao
 import dagger.Module
 import dagger.Provides
@@ -40,4 +41,5 @@ object DatabaseModule {
     @Provides fun provideScanRunDao(db: RegolithDatabase): ScanRunDao = db.scanRunDao()
     @Provides fun provideRecentSearchDao(db: RegolithDatabase): RecentSearchDao = db.recentSearchDao()
     @Provides fun provideTransferDao(db: RegolithDatabase): TransferDao = db.transferDao()
+    @Provides fun provideShareRootDao(db: RegolithDatabase): ShareRootDao = db.shareRootDao()
 }

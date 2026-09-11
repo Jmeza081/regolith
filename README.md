@@ -72,6 +72,15 @@ adb logcat -s Regolith                    # prints "window shape: …" on every 
 inner display and false on the cover, so every wide layout can be checked
 on one emulator by folding it.
 
+### Choosing folders inside a share
+
+"Choose a share" takes whole shares; the chevron on each share opens
+**Choose folders**, where you pick the folders you actually want in the
+library (`Films/` and `Series/`, not `Backups/`). Picks are written as
+`share_roots` rows; a share with none means the whole share, so nothing
+changes for an install that never uses it. The scan and Browse then treat
+the chosen folders as the share's top level and never read anything else.
+
 ### Trying it without a share
 
 Settings › Demo › **Load** writes a pretend NAS — four collections, 18

@@ -26,7 +26,15 @@ data class Share(
     val freeBytes: Long?,
     /** When a full scan last finished; null means never. */
     val lastScanAtMs: Long? = null,
-)
+    /**
+     * Folders inside the share chosen as the library's roots, as `/`-joined
+     * paths. Empty means the whole share — the only choice there used to be.
+     */
+    val roots: List<String> = emptyList(),
+) {
+    /** True when [relPath] is one of the roots or sits inside one. Empty roots take everything. */
+    fun includes(relPath: String): Boolean = roots.isEmpty() || roots.any { relPath == it || relPath.startsWith("$it/") }
+}
 
 /** A row on the Browse screen: a folder or a playable file. */
 sealed interface BrowseItem {

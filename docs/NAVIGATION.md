@@ -116,6 +116,7 @@ wall is a gesture for one title rather than a mode carried between screens.
 | `Onboarding` | first launch only; Skip → `[Home]`, "Find my server" → `[Home, AddServer.Search]` | 6 |
 | `AddServer.Manual(prefill?)` | "Enter an address" on the finder and Home; a found host arrives as `prefill` | 1, 6 |
 | `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
+| `AddServer.Folders(shareId, relPath)` | A share's chevron on Choose a share, and its own rows going deeper; one key per level, Done pops them all | P1 |
 | `Player(fileId, startMs?)` | TitleDetail; Home resume row later | 1 |
 | `TitleDetail(fileId)` | Browse, Library, Home "Newly added", Search | 3 |
 | `Search` | Home's and Library's search icon; a hit opens `TitleDetail` or `Browse(folderId)` | 4 |

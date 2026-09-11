@@ -10,6 +10,7 @@ import com.regolith.data.db.RecentSearchDao
 import com.regolith.data.db.RecentSearchEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.ShareRootDao
 import com.regolith.domain.library.FolderClassifier
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.TitleParser
@@ -39,6 +40,7 @@ class LibraryRepository @Inject constructor(
     private val sources: SourceRepository,
     private val serverDao: ServerDao,
     private val shareDao: ShareDao,
+    private val shareRootDao: ShareRootDao,
     private val folderDao: FolderDao,
     private val mediaFileDao: MediaFileDao,
     private val progressDao: PlaybackProgressDao,
@@ -101,6 +103,14 @@ class LibraryRepository @Inject constructor(
         val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
         // Nothing to re-list: the demo library's rows are all there ever was.
         if (DemoSource.isDemo(server.host)) return FolderOutcome(folderDao.children(folderId), folder.fileCount)
+        // A share narrowed to chosen folders (schema v5) never lists its own
+        // root: the chosen folders ARE its top level. They are written as
+        // direct children of the root row, each carrying its full path, so
+        // the rest of the walk — and Browse, and the Library — need not know
+        // that "Movies/Action" is not really one level down. Nothing else on
+        // the share is ever read.
+        val roots = if (folder.parentId == null) shareRootDao.pathsFor(share.id) else emptyList()
+        if (roots.isNotEmpty()) return refreshNarrowedRoot(folder, share.id, roots)
         val host = SmbHost(server.host, server.port)
         val credentials = sources.credentialsFor(server.id)
 
@@ -174,6 +184,26 @@ class LibraryRepository @Inject constructor(
             ),
         )
         return FolderOutcome(subfolders, fileCount)
+    }
+
+    /** The share root when folders were chosen: its children are those folders, and only those. */
+    private suspend fun refreshNarrowedRoot(root: FolderEntity, shareId: Long, roots: List<String>): FolderOutcome {
+        val subfolders = roots.map { relPath ->
+            val name = relPath.substringAfterLast('/')
+            val parsed = TitleParser.parseFolderName(name)
+            folderDao.upsert(
+                FolderEntity(
+                    shareId = shareId, parentId = root.id, relPath = relPath, name = name,
+                    fileCount = 0, byteCount = 0, lastListedAtMs = null,
+                    titleParsed = parsed.title, year = parsed.year,
+                ),
+            )
+        }
+        // A folder un-picked since the last scan goes, and its files with it (the FK cascades).
+        folderDao.deleteChildrenNotIn(root.id, roots)
+        mediaFileDao.markMissingNotIn(root.id, emptyList())
+        folderDao.update(root.copy(fileCount = 0, byteCount = 0, lastListedAtMs = System.currentTimeMillis(), kind = FolderKind.ROOT.name))
+        return FolderOutcome(subfolders, 0)
     }
 
     suspend fun markScanned(shareId: Long) {

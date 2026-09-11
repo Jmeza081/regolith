@@ -64,6 +64,12 @@ sealed interface RegolithKey : NavKey {
         @Serializable data class Manual(val prefill: String? = null) : AddServer
         @Serializable data class Connecting(val serverId: Long) : AddServer
         @Serializable data class Shares(val serverId: Long) : AddServer
+        /**
+         * "Choose folders": one level of one share, [relPath] `""` for its
+         * top. Drilling pushes another of these, so back climbs out a level
+         * at a time and Done pops them all.
+         */
+        @Serializable data class Folders(val shareId: Long, val relPath: String = "") : AddServer
         @Serializable data class Scanning(val serverId: Long) : AddServer
     }
 }

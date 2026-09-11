@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
@@ -186,5 +187,38 @@ fun IconCircleButton(
             .testTag(testTag),
     ) {
         Icon(icon, contentDescription = contentDescription, tint = if (onMedia) colors.ink else colors.inkSoft, modifier = Modifier.size(iconSize))
+    }
+}
+
+/**
+ * A 40dp icon button at the end of a row (Settings' scan and disconnect,
+ * the share picker's "Choose folders"). Smaller and quieter than
+ * [IconCircleButton]: a row can carry two of these without the card turning
+ * into a button bar. [tint] defaults to the body grey; pass the accent for
+ * a destructive one.
+ */
+@Composable
+fun RowAction(
+    icon: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tint: Color? = null,
+) {
+    val colors = RegolithTheme.colors
+    Box(
+        modifier.size(40.dp).clip(PillShape)
+            .clickable(interactionSource = null, indication = null, enabled = enabled, onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painterResource(icon),
+            contentDescription = contentDescription,
+            tint = if (!enabled) colors.disabledInk else tint ?: colors.body,
+            modifier = Modifier.size(17.scaledDp()),
+        )
     }
 }

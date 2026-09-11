@@ -50,6 +50,26 @@ data class ShareEntity(
     val lastScanAtMs: Long?,
 )
 
+/**
+ * Schema v5: a folder the user picked as a library root inside a share
+ * (the "Choose folders" step of Add Server). No rows for a share means the
+ * whole share, which is what every share was before this table existed.
+ * The scan walks these instead of the share root, and Browse shows them
+ * as the share's top level; everything else on the share is invisible to
+ * the app. Web analogy: an allowlist of paths on a mount.
+ */
+@Entity(
+    tableName = "share_roots",
+    foreignKeys = [ForeignKey(ShareEntity::class, ["id"], ["shareId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["shareId", "relPath"], unique = true)],
+)
+data class ShareRootEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val shareId: Long,
+    /** `/`-separated, no leading slash, never empty (that would be the share itself). */
+    val relPath: String,
+)
+
 @Entity(
     tableName = "folders",
     foreignKeys = [ForeignKey(ShareEntity::class, ["id"], ["shareId"], onDelete = ForeignKey.CASCADE)],

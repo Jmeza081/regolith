@@ -42,6 +42,7 @@ import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.RegolithSwitch
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SettingsRowHeight
@@ -275,35 +276,5 @@ private fun NestedRow(content: @Composable () -> Unit) {
     Row(Modifier.height(IntrinsicSize.Min)) {
         Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = Spacing.s8).background(colors.hairline))
         Box(Modifier.padding(start = Spacing.s12).weight(1f)) { content() }
-    }
-}
-
-/**
- * A 40dp icon button at the end of a settings row. Smaller and quieter than
- * [IconCircleButton]: a row can carry two of these without the card turning
- * into a button bar.
- */
-@Composable
-private fun RowAction(
-    icon: Int,
-    contentDescription: String,
-    onClick: () -> Unit,
-    testTag: String,
-    enabled: Boolean = true,
-    tint: Color? = null,
-) {
-    val colors = RegolithTheme.colors
-    Box(
-        Modifier.size(40.dp).clip(PillShape)
-            .clickable(interactionSource = null, indication = null, enabled = enabled, onClick = onClick)
-            .testTag(testTag),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painterResource(icon),
-            contentDescription = contentDescription,
-            tint = if (!enabled) colors.disabledInk else tint ?: colors.body,
-            modifier = Modifier.size(17.scaledDp()),
-        )
     }
 }

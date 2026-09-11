@@ -59,6 +59,8 @@ import com.regolith.ui.addserver.ManualEntryScreen
 import com.regolith.ui.addserver.ScanningScreen
 import com.regolith.ui.addserver.ScanningViewModel
 import com.regolith.ui.addserver.SearchServersScreen
+import com.regolith.ui.addserver.FolderPickerScreen
+import com.regolith.ui.addserver.FolderPickerViewModel
 import com.regolith.ui.addserver.SharePickerScreen
 import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
@@ -444,6 +446,18 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 ),
                                 onBack = { backStack.removeLastOrNull() },
                                 onContinue = { backStack.add(RegolithKey.AddServer.Scanning(key.serverId)) },
+                                onChooseFolders = { shareId -> backStack.add(RegolithKey.AddServer.Folders(shareId)) },
+                            )
+                        }
+                        entry<RegolithKey.AddServer.Folders> { key ->
+                            FolderPickerScreen(
+                                viewModel = hiltViewModel<FolderPickerViewModel, FolderPickerViewModel.Factory>(
+                                    creationCallback = { it.create(key.shareId, key.relPath) },
+                                ),
+                                onBack = { backStack.removeLastOrNull() },
+                                onOpen = { relPath -> backStack.add(RegolithKey.AddServer.Folders(key.shareId, relPath)) },
+                                // Done climbs straight back out to the share list, however deep you went.
+                                onDone = { backStack.removeAll { it is RegolithKey.AddServer.Folders } },
                             )
                         }
                         entry<RegolithKey.AddServer.Scanning> { key ->

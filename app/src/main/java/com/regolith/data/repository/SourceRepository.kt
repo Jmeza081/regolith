@@ -5,6 +5,10 @@ import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareEntity
+import com.regolith.data.db.ShareRootDao
+import com.regolith.data.db.ShareRootEntity
+import com.regolith.domain.smb.SmbEntry
+import kotlinx.coroutines.flow.combine
 import com.regolith.domain.model.AuthMode
 import com.regolith.domain.model.Server
 import com.regolith.domain.model.Share
@@ -36,6 +40,7 @@ class SourceRepository @Inject constructor(
     private val gateway: SmbGateway,
     private val serverDao: ServerDao,
     private val shareDao: ShareDao,
+    private val shareRootDao: ShareRootDao,
     private val credentialStore: CredentialStore,
 ) {
     /**
@@ -46,10 +51,22 @@ class SourceRepository @Inject constructor(
 
     fun observeServers(): Flow<List<Server>> = serverDao.observeAll().map { list -> list.map { it.toDomain() } }
 
-    fun observeShares(serverId: Long): Flow<List<Share>> =
-        shareDao.observeForServer(serverId).map { list -> list.map { it.toDomain() } }
+    fun observeShares(serverId: Long): Flow<List<Share>> = withRoots(shareDao.observeForServer(serverId))
 
-    fun observeEnabledShares(): Flow<List<Share>> = shareDao.observeEnabled().map { list -> list.map { it.toDomain() } }
+    fun observeEnabledShares(): Flow<List<Share>> = withRoots(shareDao.observeEnabled())
+
+    /** One share with its chosen folders, live; null once it is gone. */
+    fun observeShare(shareId: Long): Flow<Share?> =
+        combine(shareDao.observe(shareId), shareRootDao.observeForShare(shareId)) { share, roots ->
+            share?.toDomain(roots.map { it.relPath })
+        }
+
+    /** Share rows joined, in memory, with the folders chosen inside them. */
+    private fun withRoots(shares: Flow<List<ShareEntity>>): Flow<List<Share>> =
+        combine(shares, shareRootDao.observeAll()) { list, roots ->
+            val byShare = roots.groupBy({ it.shareId }, { it.relPath })
+            list.map { it.toDomain(byShare[it.id].orEmpty()) }
+        }
 
     suspend fun server(id: Long): Server? = serverDao.byId(id)?.toDomain()
 
@@ -121,7 +138,44 @@ class SourceRepository @Inject constructor(
         return serverId
     }
 
-    suspend fun setShareEnabled(shareId: Long, enabled: Boolean) = shareDao.setEnabled(shareId, enabled)
+    /**
+     * The whole share, or none of it. Either way the folder choice goes:
+     * "on" means everything again, and a share that is off has nothing to
+     * narrow.
+     */
+    suspend fun setShareEnabled(shareId: Long, enabled: Boolean) {
+        shareRootDao.clearFor(shareId)
+        shareDao.setEnabled(shareId, enabled)
+    }
+
+    /**
+     * Pick one folder inside a share as a library root. Turns the share on
+     * if it was off; drops any narrower choice already inside this folder,
+     * because the folder now covers it.
+     */
+    suspend fun addShareRoot(shareId: Long, relPath: String) {
+        require(relPath.isNotEmpty()) { "the share itself is not a root; enable the share" }
+        shareRootDao.deleteUnder(shareId, "$relPath/%")
+        shareRootDao.delete(shareId, relPath)
+        shareRootDao.insert(ShareRootEntity(shareId = shareId, relPath = relPath))
+        shareDao.setEnabled(shareId, true)
+    }
+
+    /** Un-pick a folder. The share stays on even when this was its last root: it goes back to meaning everything. */
+    suspend fun removeShareRoot(shareId: Long, relPath: String) = shareRootDao.delete(shareId, relPath)
+
+    /**
+     * The folders directly inside [relPath] on a share, straight off the
+     * server: the "Choose folders" step lists what is there before anything
+     * has been scanned. Names only; the picker has no use for sizes.
+     * Throws [SmbFailure].
+     */
+    suspend fun listFolders(shareId: Long, relPath: String): List<String> {
+        val share = checkNotNull(shareDao.byId(shareId)) { "share $shareId" }
+        val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
+        val entries: List<SmbEntry> = gateway.list(SmbHost(server.host, server.port), credentialsFor(server.id), share.name, relPath)
+        return entries.filter { it.isDirectory }.map { it.name }.sortedBy { it.lowercase() }
+    }
 
     suspend fun removeServer(serverId: Long) {
         credentialStore.clear(serverId)
@@ -185,5 +239,6 @@ class SourceRepository @Inject constructor(
         unreachableSinceMs = unreachableSinceMs,
     )
 
-    private fun ShareEntity.toDomain() = Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs)
+    private fun ShareEntity.toDomain(roots: List<String> = emptyList()) =
+        Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs, roots = roots)
 }

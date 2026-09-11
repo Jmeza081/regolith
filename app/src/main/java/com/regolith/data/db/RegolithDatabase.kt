@@ -20,6 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *     `app/schemas/` (an "auto migration"); v3 adds one step by hand to
  *     fill the new indexes from rows that already exist.
  *  4. Phase 5: `transfers` table; `servers.unreachableSinceMs`.
+ *  5. `share_roots`: folders chosen inside a share as the library's roots.
  */
 @Database(
     entities = [
@@ -34,13 +35,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ScanRunEntity::class,
         RecentSearchEntity::class,
         TransferEntity::class,
+        ShareRootEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = RegolithDatabase.RebuildFts::class),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -53,6 +56,7 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun scanRunDao(): ScanRunDao
     abstract fun recentSearchDao(): RecentSearchDao
     abstract fun transferDao(): TransferDao
+    abstract fun shareRootDao(): ShareRootDao
 
     /** An external-content FTS table starts empty; `rebuild` indexes what the content table already holds. */
     class RebuildFts : AutoMigrationSpec {
