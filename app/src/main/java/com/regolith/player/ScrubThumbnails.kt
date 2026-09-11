@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 
 /**
  * Preview frames for the seek bar (design section 10). The screen asks for
@@ -34,12 +35,24 @@ interface ScrubThumbnails {
     /** The user is looking here: load this frame (and its neighbours) if missing. */
     fun request(positionMs: Long)
 
+    /**
+     * A wall of frames wanted all at once (the chapter sheet, the flex-mode
+     * filmstrip). Every position is loaded, in order; nothing is dropped.
+     *
+     * Not the same as calling [request] in a loop. That path is built for a
+     * finger on the timeline and keeps only the LATEST position, so twelve
+     * requests fired together came out as two — the first and the last —
+     * and the ten chapters between stayed dark for good.
+     */
+    fun requestAll(positionsMs: List<Long>)
+
     fun close()
 
     object None : ScrubThumbnails {
         override val updates: StateFlow<Long> = MutableStateFlow(0L)
         override fun nearest(positionMs: Long): Bitmap? = null
         override fun request(positionMs: Long) = Unit
+        override fun requestAll(positionsMs: List<Long>) = Unit
         override fun close() = Unit
     }
 }
@@ -59,7 +72,10 @@ class OnDemandScrubThumbnails(
     private val openSource: () -> FrameSource,
 ) : ScrubThumbnails {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Where the finger is. Conflated: a fast drag skips the positions it passed. */
     private val requests = Channel<Long>(Channel.CONFLATED)
+    /** Frames wanted one by one, none skipped. Served whenever the finger is still. */
+    private val batch = Channel<Long>(Channel.UNLIMITED)
     private val index = FrameIndex<Bitmap>(onEvict = { it.recycle() })
     @Volatile private var latestRequestMs = -1L
     private val _updates = MutableStateFlow(0L)
@@ -79,16 +95,28 @@ class OnDemandScrubThumbnails(
         requests.trySend(positionMs)
     }
 
+    override fun requestAll(positionsMs: List<Long>) {
+        positionsMs.forEach { batch.trySend(it) }
+    }
+
     override fun close() {
         scope.cancel()
         requests.close()
+        batch.close()
         synchronized(readLock) { index.clear() }
     }
 
     private suspend fun work() {
         var source: FrameSource? = null
         try {
-            for (positionMs in requests) {
+            while (true) {
+                // Two queues, one worker. `select` is biased to its first
+                // clause, so a finger on the timeline is always served before
+                // the next tile of a wall that can wait.
+                val job = select<Want?> {
+                    requests.onReceiveCatching { r -> r.getOrNull()?.let { Want(it, radius = PREFETCH_RADIUS) } }
+                    batch.onReceiveCatching { r -> r.getOrNull()?.let { Want(it, radius = 0) } }
+                } ?: return
                 val src = source ?: try {
                     openSource().also { source = it; Log.d(TAG, "source open: ${it.width}x${it.height} ${it.durationMs}ms") }
                 } catch (e: Exception) {
@@ -98,7 +126,8 @@ class OnDemandScrubThumbnails(
                 // The player may not know the runtime yet when the file is loaded; the container does.
                 val runtime = if (durationMs > 0) durationMs else src.durationMs ?: 0L
                 val maxBucket = index.bucketOf(runtime)
-                val wanted = synchronized(readLock) { index.missingAround(positionMs, radius = PREFETCH_RADIUS, maxBucket = maxBucket) }
+                val positionMs = job.positionMs
+                val wanted = synchronized(readLock) { index.missingAround(positionMs, radius = job.radius, maxBucket = maxBucket) }
                 for (bucket in wanted) {
                     // A newer request wins over prefetching the neighbours of an old one.
                     if (bucket != index.bucketOf(positionMs) && latestRequestMs != positionMs) break
@@ -114,6 +143,9 @@ class OnDemandScrubThumbnails(
             source?.close()
         }
     }
+
+    /** One thing to fetch: the position, and how many neighbouring buckets to fill in around it. */
+    private class Want(val positionMs: Long, val radius: Int)
 
     private companion object {
         const val TAG = "Regolith/Scrub"

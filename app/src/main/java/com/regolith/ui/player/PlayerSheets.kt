@@ -112,6 +112,7 @@ fun PlaybackSheetContent(
     scrubThumbnails: Boolean,
     autoplayNext: Boolean,
     autoplayImmediately: Boolean,
+    ambientLight: Boolean,
     orientation: PlayerOrientation,
     onSpeed: (Float) -> Unit,
     onOrientation: (PlayerOrientation) -> Unit,
@@ -119,6 +120,7 @@ fun PlaybackSheetContent(
     onScrubThumbnails: (Boolean) -> Unit,
     onAutoplayNext: (Boolean) -> Unit,
     onAutoplayImmediately: (Boolean) -> Unit,
+    onAmbientLight: (Boolean) -> Unit,
     onClose: () -> Unit,
     /**
      * False where this is not a sheet but a panel already on the screen (the
@@ -215,6 +217,18 @@ fun PlaybackSheetContent(
         }
         Spacer(Modifier.width(Spacing.s12))
         SwitchControl(checked = scrubThumbnails, onCheckedChange = onScrubThumbnails, testTag = "player_scrub_thumbnails_switch")
+    }
+
+    // Settings › Display › Ambient light, reachable from where you would
+    // actually notice it — the wash is the most visible thing on this screen
+    // and the switch used to be two tabs away.
+    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Text("Ambient light", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
+            Text("Colour from the picture spills onto the screen around it. Costs a little battery.", style = TextStyles.settingMeta, color = colors.metadata)
+        }
+        Spacer(Modifier.width(Spacing.s12))
+        SwitchControl(checked = ambientLight, onCheckedChange = onAmbientLight, testTag = "player_ambient_light_switch")
     }
 
     // The same two preferences as Settings › Playback: this is where you

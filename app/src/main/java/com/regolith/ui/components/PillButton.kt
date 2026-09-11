@@ -3,6 +3,7 @@ package com.regolith.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -53,6 +54,11 @@ fun PillButton(
      * pill has nothing for it to read otherwise.
      */
     contentDescription: String? = null,
+    /**
+     * 0..1 draws a determinate ring in place of the glyph: the pill is
+     * reporting a job with a known length (a download). Wins over [loading].
+     */
+    progress: Float? = null,
 ) {
     val colors = RegolithTheme.colors
     val background = when {
@@ -66,26 +72,36 @@ fun PillButton(
         else -> colors.frostBorder
     }
     val ink = if (loading) colors.metadata else if (selected || onMedia) colors.ink else colors.inkSoft
+    val height = if (onMedia) 34.scaledDp() else 40.scaledDp()
+    // A glyph on its own is a CIRCLE: as wide as it is tall, the glyph in the
+    // middle, no side padding. With the text padding kept it came out 38 wide
+    // by 34 tall — a pill with nothing in the gap, which read as a mistake.
+    val circle = text.isEmpty()
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (circle) Arrangement.Center else Arrangement.Start,
         modifier = modifier
-            .height(if (onMedia) 34.scaledDp() else 40.scaledDp())
+            .height(height)
+            .then(if (circle) Modifier.width(height) else Modifier)
             .clip(PillShape)
             .background(background)
             .border(1.dp, border, PillShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
-            .padding(horizontal = Spacing.s12)
+            .then(if (circle) Modifier else Modifier.padding(horizontal = Spacing.s12))
             .testTag(testTag),
     ) {
-        if (loading) {
-            CircularProgressIndicator(color = ink, strokeWidth = 1.5.dp, modifier = Modifier.size(13.dp))
-        } else if (icon != null) {
-            Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
+        val glyph = if (circle) 16.dp else 14.dp
+        when {
+            progress != null -> CircularProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) }, color = ink, trackColor = colors.hairline,
+                strokeWidth = 1.5.dp, gapSize = 0.dp, modifier = Modifier.size(glyph),
+            )
+            loading -> CircularProgressIndicator(color = ink, strokeWidth = 1.5.dp, modifier = Modifier.size(13.dp))
+            icon != null -> Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(glyph))
         }
-        // A glyph-only pill (rotation) is a circle, not a pill with a gap in it.
-        if (text.isNotEmpty()) {
-            if (loading || icon != null) Spacer(Modifier.width(Spacing.s8))
+        if (!circle) {
+            if (loading || icon != null || progress != null) Spacer(Modifier.width(Spacing.s8))
             Text(text, style = TextStyles.buttonSmall, color = ink)
         }
     }

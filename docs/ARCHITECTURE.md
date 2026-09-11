@@ -96,7 +96,9 @@ thread and therefore uses the blocking DAO variants.
 ```
 PlayerScreen ── gestures (Modifier.playerGestures) ── SeekStacker (pure)      double-tap seek, stacking taps
              ── PlayerSystemControls                                        brightness (window override), media volume
-             ── PlayerViewModel ── PlaybackSession ── ExoPlayer (StateFlow: rebuilt on HW/SW switch)
+             ── PlayerViewModel ── brightness (StateFlow; survives every layout change, reset once on leaving)
+                                ── transfer (TransferRepository.observeForFile; the download pill)
+                                ── PlaybackSession ── ExoPlayer (StateFlow: rebuilt on HW/SW switch)
                                                    ── AbLoop (pure)          A–B span, ±0.5 s nudges, restart at B
                                                    ── VideoInfo (pure)       "4K · HDR · HEVC" chips from the selected tracks
                                                    ── ScrubThumbnails        Phase 3; the scrubber already reports the live fraction
@@ -123,7 +125,8 @@ MediaTile ── AsyncImage(ArtworkRequest(owner, kind)) ── Coil ImageLoader
 
 TitleDetail ── MediaProbe (Media3 MetadataRetriever through SmbDataSource) ── media_files probe columns
 PlayerScreen ── Chapters pill ── PlaybackState.chapters ── ChapterRepository ── ChapterParser (pure: Matroska Chapters / MP4 chpl)
-PlayerScreen ── Scrubber.onScrub(ms) ── PlayerViewModel ── ScrubThumbnails.request(ms)
+PlayerScreen ── Scrubber.onScrub(ms) ── PlayerViewModel ── ScrubThumbnails.request(ms)        the finger: conflated, newest wins
+PlayerScreen ── Chapters / filmstrip ── PlayerViewModel ── ScrubThumbnails.requestAll(list)   a wall: unlimited, nothing dropped
                                                              └─ OnDemandScrubThumbnails: one FrameSource, 10 s buckets, LRU of 40 (FrameIndex, pure)
 ```
 
@@ -389,6 +392,12 @@ exist. Gated by `BuildConfig.DEMO_LIBRARY`.
 | 2026-09-11 | The light is a 32×18 bitmap, and the smoothing happens in those 576 pixels | Three things fall out of sampling small. Each sample is a 2 KB texture upload rather than a frame, which is what makes eight a second affordable. Blown up to a phone it is already most of the softness, so the blur drops from 56dp to 32 — and blur radius is the cost here. And the temporal smoothing can be an EMA blend (0.3 per sample, a cut settles in about half a second) instead of a cross-fade: a cross-fade animates a full-screen layer's alpha, which dirties the blurred layer sixty times a second and makes the blur the most expensive thing on the screen, where blending leaves exactly one redraw per sample. |
 | 2026-09-11 | A transparent sample is dropped; a black one is not | A TextureView with no frame drawn on it reads back fully transparent, and letting that through blinks the light off every time a file loads. Five probe pixels tell that apart from a genuinely dark shot, which is opaque and passes — the room should go dark with the film. |
 | 2026-09-11 | Ambient light is its own setting, not a rider on "Scrub thumbnails" | F17 put it there because both were the same seek over the share. They no longer are: one is network, the other is GPU readback and the surface type the video renders into. Two costs, two switches. It sits under Display, on by default, and its note says what it costs rather than only what it does. |
+| 2026-09-11 | Brightness belongs to the `PlayerViewModel`, not the screen | The screen re-runs its window setup (`DisposableEffect(immersive, flex, orientation)`) on every layout change, and the brightness reset lived in that effect's `onDispose` — so entering full screen, or turning the phone, quietly undid the drag you had just made. The value now lives in the ViewModel, is applied by a `LaunchedEffect` whenever it changes, and is let go of by a `DisposableEffect(system)` that disposes exactly once, when the player leaves. Inline and full screen are one window; the window has one brightness. |
+| 2026-09-11 | One `PlayerDetails` column for the phone, the unfolded portrait and the unfolded landscape's left column | The landscape column was a hand-built copy of the phone's `PortraitDetails` and had grown its own pill set (no speed pill) and an inline settings panel the phone never had, so folding the device changed what the player offered. The layouts now decide only where the folder goes (`showNext`); what the column holds is decided once. The inline settings panel is gone with it — the playback sheet is the one settings surface everywhere, reversing F10's "settings under the picture". |
+| 2026-09-11 | One `PillRow` everywhere: speed · A–B (armed, or over the picture) · Chapters · rotation — gap — download · settings | Three chromes drew three different rows. The left group scrolls if it must (a phone at 411dp is at its limit), the right group never moves, so the two glyphs are always under the same thumb. The settings glyph moved INTO the row from beside it; the download pill is new and follows `TransferRepository.observeForFile` for the file on screen, so autoplay carries it to the next episode. Hold, not tap, cancels or removes: a single tap that could throw away ten gigabytes is not a tap anyone means. |
+| 2026-09-11 | A glyph-only `PillButton` is a circle | With the text padding kept it came out 38 wide by 34 tall — a pill with nothing in the gap, which read as a mistake. Empty text now means width = height, centred glyph, no side padding. `progress` draws a determinate ring in place of the glyph for the download. |
+| 2026-09-11 | `ScrubThumbnails.requestAll` — a batch queue beside the finger's conflated one | THE CHAPTER BUG: `request()` feeds a `CONFLATED` channel, which is right for a finger (skip what it passed) and wrong for a wall — twelve requests fired in a loop came out as two, the first and the last, and the ten chapters between stayed dark on the `skeleton` ground (#141414, which is what "black squares" were). The batch channel is `UNLIMITED`, drained by the same worker through a `select` biased to the finger's clause, with no neighbour prefetch (radius 0). The flex filmstrip takes the same path. |
+| 2026-09-11 | Ambient light is switchable from the playback sheet too | The wash is the most visible thing on the player and its switch was two tabs away under Settings › Display. Same preference, second door — the pattern Decoder and Keep playing already follow. |
 
 ## Phase plan
 
@@ -410,6 +419,7 @@ exist. Gated by `BuildConfig.DEMO_LIBRARY`.
 | F12 | Round eight: drawer panes on both sides, the rail's honest inset, chapter stills, Previous/Next, "Open with Regolith" (`FOLDABLE_PLAN.md`) | `DrawerPane`, `Transport`, `PlaybackState.chaptersScanned`, `RegolithKey.Player.external` |
 | F11 | Round seven: even-division chapters, Media3 frame extraction, the on-demand backdrop, the asymmetric split divider (`FOLDABLE_PLAN.md`) | `ChapterMarks`, `FrameGrabber`/`Media3Frames`, `ArtworkKind.BACKDROP`, `DismissiblePane` |
 | F10 | Round six: settings under the picture and the folder beside it, one column in wide portrait, chapters, bottom sheets everywhere, ambient letterbox bars, the runtime fallback (`FOLDABLE_PLAN.md`) | `ChapterParser`, `ChapterRepository`, `DurationProbe`, `PlaybackState.chapters` |
+| P1 | Player refinements: shared brightness, ambient light in the sheet, the chapter-wall fix, download in the pill row, circular glyph pills, one details column for every width | `ScrubThumbnails.requestAll`, `PlayerViewModel.brightness`, `PlayerDetails` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

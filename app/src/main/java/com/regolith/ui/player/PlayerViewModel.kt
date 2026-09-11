@@ -6,7 +6,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.regolith.data.prefs.AppPreferences
+import com.regolith.data.transfer.TransferRepository
+import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
+import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.playback.AbLoop
+import com.regolith.ui.titledetail.TransferView
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.PlaybackSession
 import com.regolith.player.PlaybackState
@@ -39,6 +45,7 @@ class PlayerViewModel @AssistedInject constructor(
     @Assisted private val key: RegolithKey.Player,
     private val session: PlaybackSession,
     private val prefs: AppPreferences,
+    private val transfers: TransferRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -117,14 +124,17 @@ class PlayerViewModel @AssistedInject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    /** Fill the chapter sheet, the part you are in first. */
+    /**
+     * Fill the chapter sheet, the part you are in first. One batch, not a
+     * loop of single requests: the single-request path keeps only the latest
+     * position, which is right for a finger and wrong for a wall — it is why
+     * most chapters used to stay dark.
+     */
     fun requestChapterFrames() {
         val thumbs = session.scrubThumbnails.value
         val s = state.value
         val here = s.positionMs
-        s.chapters.map { frameFor(it.startMs, s) }
-            .sortedByDescending { (it - here).absoluteValue }
-            .forEach(thumbs::request)
+        thumbs.requestAll(s.chapters.map { frameFor(it.startMs, s) }.sortedBy { (it - here).absoluteValue })
     }
 
     private fun frameFor(startMs: Long, s: PlaybackState): Long {
@@ -135,13 +145,57 @@ class PlayerViewModel @AssistedInject constructor(
 
     /**
      * Load the filmstrip, nearest the playhead first: the frames beside where
-     * you are are the ones you are about to look at, and the worker serves
-     * the most recent request first.
+     * you are are the ones you are about to look at. A batch, served in order.
      */
     fun requestStrip() {
         val thumbs = session.scrubThumbnails.value
         val here = state.value.positionMs
-        stripPositions(state.value.durationMs).sortedByDescending { (it - here).absoluteValue }.forEach(thumbs::request)
+        thumbs.requestAll(stripPositions(state.value.durationMs).sortedBy { (it - here).absoluteValue })
+    }
+
+    // --- Things the screen used to keep for itself, and lost between layouts.
+
+    /**
+     * The brightness the left-edge drag set, or null for the system's own.
+     * Held here rather than in the screen because the screen re-runs its
+     * window setup every time the layout changes (inline to full screen, a
+     * rotation) and the value was going back to the system default with it.
+     * The player's window is the only thing it applies to; leaving the
+     * player lets it go.
+     */
+    val brightness: StateFlow<Float?> get() = _brightness
+    private val _brightness = MutableStateFlow<Float?>(null)
+
+    fun setBrightness(fraction: Float) {
+        _brightness.value = fraction.coerceIn(0.01f, 1f)
+    }
+
+    /** Settings › Display › Ambient light, also switchable from the playback sheet. */
+    fun setAmbientLight(enabled: Boolean) = viewModelScope.launch { prefs.setAmbientLight(enabled) }.let { }
+
+    /**
+     * The download of the file on screen, for the pill beside the settings
+     * glyph. Follows [PlaybackState.fileId] so autoplay moving to the next
+     * episode moves the pill with it; null for a film another app handed
+     * over, which has no row to keep.
+     */
+    val transfer: StateFlow<TransferView?> = state.map { it.fileId }.distinctUntilChanged()
+        .flatMapLatest { id ->
+            if (id == null || id == RegolithKey.Player.EXTERNAL) flowOf(null) else transfers.observeForFile(id)
+        }
+        .map { row -> row?.let { TransferView(it.statusEnum(), it.bytesDone, it.totalBytes, it.causeEnum(), it.causeBytes) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Start (or retry) copying the current file to this device. */
+    fun keepOnDevice() {
+        val id = state.value.fileId?.takeIf { it != RegolithKey.Player.EXTERNAL } ?: return
+        viewModelScope.launch { transfers.start(id) }
+    }
+
+    /** Cancel a copy in flight, or remove the finished one. The share is untouched. */
+    fun removeFromDevice() {
+        val id = state.value.fileId?.takeIf { it != RegolithKey.Player.EXTERNAL } ?: return
+        viewModelScope.launch { transfers.remove(id) }
     }
 
     init {
