@@ -87,6 +87,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
@@ -162,7 +163,8 @@ fun PlayerScreen(
     val player by viewModel.player.collectAsStateWithLifecycle()
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
-    val ambientFrame by viewModel.ambientFrame.collectAsStateWithLifecycle()
+    val ambientLight by viewModel.ambientLight.collectAsStateWithLifecycle()
+    val ambientFrame by rememberAmbientLight(enabled = ambientLight, key = state.fileId)
     val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
@@ -478,7 +480,15 @@ fun PlayerScreen(
         // instead of being black.
         Box(Modifier.fillMaxSize()) {
             player?.let { p ->
-                ContentFrame(p, Modifier.fillMaxSize(), SURFACE_TYPE_SURFACE_VIEW, if (fill) ContentScale.Crop else ContentScale.Fit)
+                // A SurfaceView goes straight to the compositor and cannot be
+                // read back; a TextureView draws through the view hierarchy and
+                // can. That is the whole trade behind the Ambient light switch,
+                // so the surface type follows it rather than being a constant.
+                ContentFrame(
+                    p, Modifier.fillMaxSize(),
+                    if (ambientLight) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
+                    if (fill) ContentScale.Crop else ContentScale.Fit,
+                )
             }
             Box(Modifier.fillMaxSize().playerGestures(gestures).testTag("player_gesture_layer"))
             if (state.isBuffering) {
@@ -1442,21 +1452,21 @@ private fun StripCell(frame: StripFrame, current: Boolean, onSeek: () -> Unit, m
 
 /**
  * The ambient light behind and beside the picture: a bias light, the way a
- * strip behind a TV works. Blurred past recognition, scaled out so the blur
- * has no edge, dimmed under a scrim. A 2:39 film then sits in its own
- * colour instead of a black band, which is the whole point.
+ * strip behind a TV works. Scaled out so nothing has an edge, blurred, and
+ * dimmed under a scrim. A 2:39 film then sits in its own colour instead of
+ * a black band, which is the whole point.
  *
  * Two layers. The base coat is the title's own backdrop, which costs no
- * read over the share and is there before anything else resolves. Over it,
- * [frame] — the picture the film is actually on — dissolves in as playback
- * moves, once per 10 s bucket of the scrub cache. Because it is the frame
- * itself and not a colour picked out of it, the left of the screen glows
- * what is on the left of the shot and the right glows what is on the
- * right; a sunset over water lights blue below and orange above on its own,
- * with no zones to define.
+ * read over the share and is there before the first frame is drawn — and is
+ * the whole of it when the light is switched off. Over it, [frame]: a 32×18
+ * sample of the picture that is on screen right now, from
+ * [rememberAmbientLight], blown up to fill the window.
  *
- * With "Scrub thumbnails" off there are no frames and the backdrop is the
- * whole of it, exactly as before.
+ * Because it is the frame itself and not a colour picked out of it, the
+ * left of the screen glows what is on the left of the shot; a sunset over
+ * water lights blue below and orange above on its own, with no zones to
+ * define. And because the sample is 32 px across, the upscale alone is most
+ * of the softness — the blur only has to take the last edges off.
  */
 @Composable
 private fun AmbientGlow(
@@ -1474,27 +1484,9 @@ private fun AmbientGlow(
     // little past life it reads as coloured light; left alone the blur
     // averages most shots into grey.
     val lift = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(GLOW_SATURATION) }) }
-
-    // A dissolve, not a cross-fade: the new frame fades UP over the old one,
-    // which holds at full strength underneath until it is covered. Fading
-    // one out while the other fades in leaves both part-transparent in the
-    // middle, and the light dips by a quarter every time it changes — on a
-    // wash this slow that reads as a pulse.
-    val under = remember(fileId) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    val over = remember(fileId) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    val rise = remember(fileId) { Animatable(1f) }
-    LaunchedEffect(fileId, frame) {
-        if (frame == null || frame === over.value) return@LaunchedEffect
-        under.value = over.value
-        over.value = frame
-        rise.snapTo(0f)
-        rise.animateTo(1f, tween(GLOW_FADE_MS))
-    }
-
     Box(modifier.clipToBounds()) {
-        // One blur over both layers rather than one each: the dissolve
-        // happens inside the blurred layer, so the two frames mix as light
-        // rather than as two blurred pictures sliding past each other.
+        // One blur over both layers rather than one each, so the sample and
+        // the backdrop under it mix as light rather than as two pictures.
         Box(
             Modifier.fillMaxSize()
                 .scale(GLOW_SCALE)
@@ -1509,21 +1501,16 @@ private fun AmbientGlow(
                 success = { SubcomposeAsyncImageContent(contentScale = ContentScale.Crop, colorFilter = lift) },
                 modifier = Modifier.fillMaxSize().testTag("player_ambient_glow"),
             )
-            // The cache recycles a frame when it evicts one, and this holds a
-            // reference past the moment it was read. Cheaper to ask than to
-            // crash on a recycled bitmap.
-            under.value?.takeIf { !it.isRecycled }?.let { bmp ->
+            // No cross-fade here on purpose. The light is smoothed where it
+            // is sampled, in 576 pixels; animating a full-screen layer's
+            // alpha instead would re-run the blur on every frame of every
+            // change and make it the most expensive thing on the screen.
+            frame?.let { bmp ->
                 Image(
-                    bitmap = bmp.asImageBitmap(), contentDescription = null,
-                    contentScale = ContentScale.Crop, colorFilter = lift,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            over.value?.takeIf { !it.isRecycled }?.let { bmp ->
-                Image(
-                    bitmap = bmp.asImageBitmap(), contentDescription = null,
-                    contentScale = ContentScale.Crop, colorFilter = lift,
-                    alpha = rise.value,
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    colorFilter = lift,
                     modifier = Modifier.fillMaxSize().testTag("player_ambient_frame"),
                 )
             }
@@ -1543,8 +1530,12 @@ private fun AmbientGlow(
     }
 }
 
-/** Enough blur that no shape survives; the glow is colour, not a picture. */
-private val GLOW_BLUR = 56.dp
+/**
+ * Takes the last edges off the upscaled sample. Much smaller than it was
+ * when this drew a whole poster: a 32-pixel-wide picture blown up to a
+ * phone is already smooth, and blur radius is the cost here.
+ */
+private val GLOW_BLUR = 32.dp
 
 /** Scaled past the edges so the blur has nothing to fade into. */
 private const val GLOW_SCALE = 1.35f
@@ -1553,14 +1544,6 @@ private const val GLOW_ALPHA = 0.65f
 
 /** Past life, so the wash reads as light rather than as haze. 1f would be the film's own grade. */
 private const val GLOW_SATURATION = 1.45f
-
-/**
- * How long one frame takes to come up over the last. Long, because this is
- * the room's light and not part of the picture: fast enough to have moved
- * with the film by the next change, slow enough that nothing in the corner
- * of your eye ever snaps.
- */
-private const val GLOW_FADE_MS = 2_200
 
 /**
  * How far a middle drag must travel, as a fraction of the picture's height,

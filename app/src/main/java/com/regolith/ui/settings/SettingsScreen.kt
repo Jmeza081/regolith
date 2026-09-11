@@ -137,7 +137,7 @@ fun SettingsScreen(
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     RegolithSwitch(label = "Hardware decoding", checked = state.hardwareDecoding, onCheckedChange = viewModel::setHardwareDecoding, testTag = "settings_hardware_decoding_switch")
                     RegolithSwitch(
-                        label = "Scrub thumbnails", note = "Preview frame while you drag the timeline, and the light behind the picture.",
+                        label = "Scrub thumbnails", note = "Preview frame while you drag the timeline.",
                         checked = state.scrubThumbnails, onCheckedChange = viewModel::setScrubThumbnails, testTag = "settings_scrub_thumbnails_switch",
                     )
                     RegolithSwitch(
@@ -173,6 +173,14 @@ fun SettingsScreen(
                             checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
                         )
                     }
+                    // The one switch in the app that is about battery rather
+                    // than taste, so the note says what it costs instead of
+                    // only what it does.
+                    RegolithSwitch(
+                        label = "Ambient light",
+                        note = "Colour from the picture spills onto the screen around it, and follows the film as it plays. Costs a little battery.",
+                        checked = state.ambientLight, onCheckedChange = viewModel::setAmbientLight, testTag = "settings_ambient_light_switch",
+                    )
                 }
             }
 

@@ -37,6 +37,7 @@ class AppPreferences @Inject constructor(
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
+        val ambientLight = booleanPreferencesKey("ambient_light")
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */
@@ -64,6 +65,19 @@ class AppPreferences @Inject constructor(
 
     suspend fun setScrubThumbnails(enabled: Boolean) {
         store.edit { it[Keys.scrubThumbnails] = enabled }
+    }
+
+    /**
+     * Settings › Display › Ambient light. On by default — it is most of what
+     * the player looks like — but it is a switch rather than a constant
+     * because it is the one feature here that reads the video surface back
+     * off the GPU several times a second, and that is battery a phone on a
+     * long flight may want back.
+     */
+    val ambientLight: Flow<Boolean> = store.data.map { it[Keys.ambientLight] ?: true }
+
+    suspend fun setAmbientLight(enabled: Boolean) {
+        store.edit { it[Keys.ambientLight] = enabled }
     }
 
     /**

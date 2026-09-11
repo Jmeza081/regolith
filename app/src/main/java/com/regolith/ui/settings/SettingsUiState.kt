@@ -30,6 +30,7 @@ data class SettingsUiState(
     val autoplayImmediately: Boolean = false,
     /** Wide windows only: whether the nav rail retracts after three idle seconds. */
     val autoHideRail: Boolean = true,
+    val ambientLight: Boolean = true,
     /** Whether tiles play a few seconds of the film instead of showing a still. */
     /** Images cached on the device, excluding placeholders. */
     val artworkCount: Int = 0,
