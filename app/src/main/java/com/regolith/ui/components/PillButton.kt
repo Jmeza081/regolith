@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.regolith.ui.theme.PillShape
@@ -27,7 +29,8 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.scaledDp
 
 /**
- * A tappable pill: "1.0×", "A–B", "HW", "Chapters" (design section 10).
+ * A tappable pill: "1.0×", "A–B", "Chapters" (design section 10), or a
+ * glyph on its own when [text] is blank — then pass a [contentDescription].
  * Over the picture it is 34dp with a 22% white hairline on 35% black;
  * off the picture (portrait, under the video) it is the 40dp frosted
  * pill. [selected] fills it red, the one place a pill may carry the
@@ -45,6 +48,11 @@ fun PillButton(
     onMedia: Boolean = true,
     /** Swaps the icon for a spinner and dims the label: the pill is there, its content is not ready. */
     loading: Boolean = false,
+    /**
+     * What a screen reader says. Required when [text] is blank — a glyph-only
+     * pill has nothing for it to read otherwise.
+     */
+    contentDescription: String? = null,
 ) {
     val colors = RegolithTheme.colors
     val background = when {
@@ -66,16 +74,19 @@ fun PillButton(
             .background(background)
             .border(1.dp, border, PillShape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
             .padding(horizontal = Spacing.s12)
             .testTag(testTag),
     ) {
         if (loading) {
             CircularProgressIndicator(color = ink, strokeWidth = 1.5.dp, modifier = Modifier.size(13.dp))
-            Spacer(Modifier.width(Spacing.s8))
         } else if (icon != null) {
             Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(Spacing.s8))
         }
-        Text(text, style = TextStyles.buttonSmall, color = ink)
+        // A glyph-only pill (rotation) is a circle, not a pill with a gap in it.
+        if (text.isNotEmpty()) {
+            if (loading || icon != null) Spacer(Modifier.width(Spacing.s8))
+            Text(text, style = TextStyles.buttonSmall, color = ink)
+        }
     }
 }

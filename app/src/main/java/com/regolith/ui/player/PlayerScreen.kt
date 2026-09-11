@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -88,6 +89,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.playback.SeekStacker
 import com.regolith.player.PlaybackState
+import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.NextItem
 import com.regolith.ui.components.ArtworkImage
@@ -437,6 +439,11 @@ fun PlayerScreen(
         // that changes width as you walk a folder is worse than a dead key.
         onPrevious = state.previous?.let { p -> { viewModel.playNext(p.fileId) } },
         onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
+        onChapters = { sheet = Sheet.Chapters },
+        onCycleRotation = {
+            viewModel.setOrientation(PlayerOrientation.entries[(orientation.ordinal + 1) % PlayerOrientation.entries.size])
+            controlsVisible = true
+        },
     )
 
     // The playback sheet's own content, inline rather than behind a pill.
@@ -480,7 +487,7 @@ fun PlayerScreen(
                 // The collapse glyph only appears when full screen was a
                 // choice; in landscape it is the rotation, so there is
                 // nothing for a button to undo.
-                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen)
+                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = orientation)
             } else {
                 PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
             }
@@ -581,13 +588,13 @@ fun PlayerScreen(
                             )
                         } else {
                             TitleBlock(state)
-                            // Speed and decoder are the panel below; a pill that
+                            // Speed is the panel below; a pill that
                             // opened a sheet saying the same thing would be a
                             // second control for one setting. A–B and Chapters
                             // stay: neither has another entry.
                             PillRow(
                                 state, { sheet = Sheet.Playback }, viewModel::tapLoopPoint, viewModel::clearLoop,
-                                onMedia = false, settingsPills = false, onChapters = { sheet = Sheet.Chapters },
+                                onMedia = false, speedPill = false, onChapters = { sheet = Sheet.Chapters },
                             )
                             playbackSettings()
                         }
@@ -691,6 +698,9 @@ private class ChromeCallbacks(
     val onFullscreen: () -> Unit,
     val onPrevious: (() -> Unit)?,
     val onNext: (() -> Unit)?,
+    val onChapters: () -> Unit,
+    /** Steps the rotation lock on one: Auto -> Portrait -> Landscape -> Auto. */
+    val onCycleRotation: () -> Unit,
 )
 
 /** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
@@ -738,10 +748,11 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
 
 /**
  * Full-screen chrome (design "Player · landscape"): 18/30/12 padding; back
- * with the title (Michroma 16) and meta line top-left; speed, A–B, HW
- * pills and the playback-sheet glyph top-right; 52 · 74 circle · 52 in
- * the middle at 40dp gaps; the clocks at 600 13px around the 4dp track
- * with the red knob.
+ * with the title (Michroma 16) and meta line top-left, and nothing else on
+ * that edge; 52 · 74 circle · 52 in the middle at 40dp gaps; the clocks at
+ * 600 13px around the 4dp track with the red knob, and under the track the
+ * pills — speed, A–B, Chapters, rotation — with the playback glyph at the
+ * far end of the same row.
  *
  * Also the chrome for portrait full screen, where [canCollapse] adds the
  * glyph that puts the picture back in its strip. In landscape there is no
@@ -755,12 +766,17 @@ private fun BoxScope.FullChrome(
     scrubFrame: android.graphics.Bitmap?,
     cb: ChromeCallbacks,
     canCollapse: Boolean,
+    orientation: PlayerOrientation,
 ) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
             ChromeScrim(landscape = true)
-            Column(Modifier.fillMaxSize().padding(start = 30.dp, end = 30.dp, top = 18.dp, bottom = 12.dp)) {
+            // 30dp gutters are the design's landscape frame. Portrait full
+            // screen is 411dp across and the pill row under the timeline does
+            // not fit inside them, so it takes the portrait frame's 18.
+            val gutter = if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) 30.dp else Spacing.s18
+            Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter, top = 18.dp, bottom = 12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
@@ -769,10 +785,6 @@ private fun BoxScope.FullChrome(
                             val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
                             Text(meta.filter { it.isNotEmpty() }.joinToString(" · "), style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        PillRow(state, cb.onOpenPlayback, cb.onLoopTap, cb.onLoopClear, onMedia = true)
-                        IconCell(R.drawable.rg_ic_sliders, "Playback", 19.dp, cb.onOpenPlayback, "player_playback_button", size = 40.dp)
                     }
                 }
                 Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
@@ -794,6 +806,22 @@ private fun BoxScope.FullChrome(
                         if (canCollapse) {
                             IconCell(R.drawable.rg_ic_fullscreen_exit, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
                         }
+                    }
+                    // The pills live UNDER the timeline, not up in the header.
+                    // Over the top of the picture they sat beside the title,
+                    // which read as part of the film's identity; down here they
+                    // are what they are — the controls for the thing the
+                    // timeline is scrubbing — and the top edge is left to the
+                    // one question a header should answer, which film is this.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        PillRow(
+                            state, cb.onOpenPlayback, cb.onLoopTap, cb.onLoopClear, onMedia = true,
+                            onChapters = cb.onChapters,
+                            orientation = orientation.takeIf { rotationLockable() },
+                            onRotation = cb.onCycleRotation,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconCell(R.drawable.rg_ic_sliders, "Playback", 19.dp, cb.onOpenPlayback, "player_playback_button", size = 40.dp)
                     }
                 }
             }
@@ -862,6 +890,20 @@ private fun PlayCircle(state: PlaybackState, size: androidx.compose.ui.unit.Dp, 
     }
 }
 
+/**
+ * The pills that sit with the timeline: speed, A–B, Chapters, rotation.
+ *
+ * There is no decoder pill. HW/SW was a pill you could only ever tap to
+ * open the sheet it was reporting, for a setting that already has a
+ * permanent home in app Settings — three entrances to one switch. The
+ * pills that remain each DO something on tap.
+ *
+ * @param speedPill false where the speed panel is already on screen (the
+ *   wide player), so the pill would be a second control for one setting.
+ * @param onChapters null on a chrome with nowhere to put the sheet.
+ * @param orientation the current rotation lock, or null where Android does
+ *   the deciding and the pill would be a control that changes nothing.
+ */
 @Composable
 private fun PillRow(
     state: PlaybackState,
@@ -869,36 +911,80 @@ private fun PillRow(
     onLoopTap: () -> Unit,
     onLoopClear: () -> Unit,
     onMedia: Boolean,
-    /** False where the speed and decoder panel is already on screen (the wide player). */
-    settingsPills: Boolean = true,
-    onChapters: () -> Unit = {},
+    modifier: Modifier = Modifier,
+    speedPill: Boolean = true,
+    onChapters: (() -> Unit)? = null,
+    orientation: PlayerOrientation? = null,
+    onRotation: () -> Unit = {},
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-        if (settingsPills) PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
-        if (onMedia || !settingsPills || state.loop != null || state.loopPendingAMs != null) {
+    // Scrollable because four labelled pills plus the playback glyph do not
+    // fit across 411dp, and portrait full screen is exactly that. Without it
+    // the last pill is not dropped, it is SQUEEZED: the row gives the Text
+    // zero width and you get a pill with nothing written on it.
+    Row(
+        modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (speedPill) PillButton(text = formatSpeed(state.speed), onClick = onOpenPlayback, onMedia = onMedia, testTag = "player_speed_pill")
+        if (onMedia || !speedPill || state.loop != null || state.loopPendingAMs != null) {
             PillButton(
                 text = if (state.loopPendingAMs != null && state.loop == null) "A ·" else "A–B",
                 selected = state.loop != null, onClick = onLoopTap, onLongClick = onLoopClear, onMedia = onMedia,
                 icon = R.drawable.rg_ic_loop, testTag = "player_loop_pill",
             )
         }
-        if (settingsPills) PillButton(text = if (state.hardwareDecoding) "HW" else "SW", onClick = onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_decoder, testTag = "player_decoder_pill")
         // The pill is drawn as soon as the film is loaded, but it spins until
         // the list has SETTLED — the container has been read and the runtime
         // is known. Opening earlier meant a sheet that resized itself as the
         // parts were recounted underneath it.
-        if (!onMedia) {
+        if (onChapters != null) {
             PillButton(
                 text = "Chapters",
                 onClick = { if (state.chaptersReady) onChapters() },
-                onMedia = false,
+                onMedia = onMedia,
                 icon = R.drawable.rg_ic_chapters,
                 testTag = "player_chapters_pill",
                 loading = !state.chaptersReady,
             )
         }
+        // One pill that cycles rather than three that sit there, because two
+        // of the three are always the answer you did not pick.
+        //
+        // Glyph only, no label: "Landscape" spelled out pushed the row past
+        // 411dp and the word was the first thing clipped. The three glyphs
+        // are a set — a device standing up, a device lying down, and both of
+        // them for Auto — and red says "locked", which is the app's word for
+        // "not the default" everywhere else. The playback sheet keeps the
+        // written three-way for anyone who wants to read it.
+        if (orientation != null) {
+            PillButton(
+                text = "",
+                onClick = onRotation,
+                selected = orientation != PlayerOrientation.AUTO,
+                onMedia = onMedia,
+                icon = when (orientation) {
+                    PlayerOrientation.AUTO -> LucideR.drawable.lucide_ic_tablet_smartphone
+                    PlayerOrientation.PORTRAIT -> LucideR.drawable.lucide_ic_rectangle_vertical
+                    PlayerOrientation.LANDSCAPE -> LucideR.drawable.lucide_ic_rectangle_horizontal
+                },
+                contentDescription = "Rotation: ${orientation.label}. Tap to change.",
+                testTag = "player_rotation_pill",
+            )
+        }
     }
 }
+
+/**
+ * Whether locking the rotation would do anything here. Android 16 stopped
+ * honouring an app's orientation request on large screens, so on the Fold's
+ * inner display the lock is silently a no-op — see [LARGE_SCREEN_DP]. The
+ * playback sheet greys its row and explains; a pill has nowhere to put that
+ * sentence, so it simply is not drawn.
+ */
+@Composable
+private fun rotationLockable(): Boolean =
+    LocalConfiguration.current.smallestScreenWidthDp < LARGE_SCREEN_DP
 
 /** "LOOPING A–B": a 28dp red pill with the loop glyph, top-left of the picture while armed. */
 @Composable
@@ -950,10 +1036,10 @@ private fun PortraitDetails(
             AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = onLoopClear)
         } else {
             TitleBlock(state)
-            // A wide window shows the speed and decoder panel further down, so
-            // the pills that only open it would be a second control for one
-            // setting. A–B and Chapters stay: neither has another entry.
-            PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, settingsPills = !wide, onChapters = onChapters)
+            // A wide window shows the speed panel further down, so the pill
+            // that only opens it would be a second control for one setting.
+            // A–B and Chapters stay: neither has another entry.
+            PillRow(state, onOpenPlayback, onLoopTap, onLoopClear, onMedia = false, speedPill = !wide, onChapters = onChapters)
         }
         NextInFolder(state, onPlayNext)
         // One column, in the order you use it: the film, then what follows it,
@@ -1213,8 +1299,10 @@ private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, 
 
 /**
  * The chrome over the picture in flex mode: the header, and only the
- * header. Back, the title with its meta line, the speed / A–B / decoder
- * pills and the playback glyph — the same row [FullChrome] draws. The
+ * header. Back, the title with its meta line, the speed and A–B pills and
+ * the playback glyph. Standing on a table there is no timeline up here to
+ * hang them under, the way [FullChrome] now does, and no rotation worth
+ * locking. The
  * timeline and the transport are in the deck below the hinge, where the
  * hands are when the device is standing on a table.
  */

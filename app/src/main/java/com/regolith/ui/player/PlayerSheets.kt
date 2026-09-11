@@ -488,4 +488,4 @@ private fun NudgeRow(label: String, value: String, onMinus: () -> Unit, onPlus: 
  * The same 600dp threshold `WindowShape.wide` uses, measured differently —
  * smallest width, not current width.
  */
-private const val LARGE_SCREEN_DP = 600
+internal const val LARGE_SCREEN_DP = 600
