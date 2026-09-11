@@ -608,3 +608,43 @@ A `VIEW` intent on a video plays it. No row, so no artwork, no folder, no
 resume point, no scrub previews; the player itself is all there, chapters
 included, because even divisions need nothing but a runtime. The landscape
 two-pane layout stands down when there is no folder to put beside the film.
+
+## F13 — round nine: taking the divider out
+
+Three rounds went into making a draggable split behave, and each one made
+the app worse. The pattern is worth writing down, because it is the useful
+part:
+
+Every version had to answer "what happens to the content as the pane
+narrows?", and every answer was wrong somewhere. Resize it, and the wall's
+tiles shrink to nothing. Clip it, and a drawer that hides the wall under the
+divider ALSO stops the rail from resizing it — which is the one resize that
+should happen. Fade it, and you have a pane that is neither there nor gone.
+Each fix moved the problem to the other side of the screen.
+
+**So the split is fixed at 50/50 and the divider is not a control.** It
+needs no handle, no anchors, no reset, and no rule about the extremes. What
+dragging was really for — seeing the whole wall — is what closing the detail
+already does, in one tap, with no state to restore afterwards.
+
+Removed: `PaneHandle`, `DrawerPane`, `pane_reset_split`, the reset-on-close
+effect, `MIN_WALL_WIDTH`, `DETAIL_MIN_WIDTH`, `PANE_GONE_WIDTH`.
+
+### The rail resizes what is beside it
+
+The other half of the same mistake. With the wall behind a drawer, hiding
+the rail stopped giving its space back: the column held its floor width and
+clipped. Now that nothing is dragged, the width only changes when the rail
+does — and then an ordinary resize is exactly right. Measured: tiles are
+224dp wide with the rail out and 289dp with it away, three columns either
+way, nothing clipped.
+
+### Landscape always plays two-pane
+
+`sideBySide` briefly also required `state.next.isNotEmpty()`, added so a
+film from another app would not leave an empty column. It also caught the
+last episode of a season, which then opened into the portrait layout while
+the device was sideways. The test is the window plus "this came from the
+library"; when the folder is merely finished, the column stays and says
+"Nothing after this one", because a column that goes blank reads as a
+screen that failed to draw.

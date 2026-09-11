@@ -7,42 +7,29 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.requiredWidth
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
-import com.regolith.ui.theme.PillShape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
-import androidx.compose.material3.adaptive.layout.defaultDragHandleSemantics
-import androidx.compose.material3.adaptive.layout.PaneScaffoldScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import android.util.Log
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.media3.common.util.UnstableApi
 import androidx.compose.ui.Modifier
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -59,10 +46,8 @@ import com.regolith.BuildConfig
 import com.regolith.R
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.adaptive.layout.rememberPaneExpansionState
-import androidx.compose.material3.adaptive.layout.PaneExpansionState
 import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
@@ -102,7 +87,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -227,58 +211,24 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // the wall keeps its three columns only if the pane pays for both; the
     // 55% cap keeps the detail worth reading on a window barely over the
     // two-pane threshold, where the full ask would crush it.
-    val listPaneWidth = minOf(paneRailInset + WALL_WIDTH, windowShape.width * 0.55f)
-    // The list-detail scene: on a wide window the strategy pairs the top two
-    // keys (a wall and the title open from it) into one two-pane scene, out of
-    // the SAME back stack — no second navigation structure (G10).
-    // shouldHandleSinglePaneLayout = false so a phone keeps the default scene
-    // and our own slide transitions, exactly as before F2.
-    // Where the divider can rest. Dragging settles onto one of these rather
-    // than landing anywhere: a split you cannot reproduce is a split you have
-    // to keep fixing.
     //
-    // The two ends are deliberately asymmetric, the way every foldable mail
-    // app does it. Dragging LEFT stops at [minListAnchor] — the wall never
-    // collapses, because a two-pane screen with no list is just the detail
-    // with a stripe down the side, and the rail is already how you leave.
-    // Dragging RIGHT goes all the way: the detail is dismissed rather than
-    // squeezed, so nothing ever reflows into a column too narrow to read.
-    // The middle one is the even split both are measured against, and the
-    // one the handle's reset button restores.
-    val minListAnchor = remember(paneRailInset) { PaneExpansionAnchor.Offset.fromStart(paneRailInset + MIN_WALL_WIDTH) }
-    val defaultAnchor = remember(listPaneWidth) { PaneExpansionAnchor.Offset.fromStart(listPaneWidth) }
-    val fullListAnchor = remember { PaneExpansionAnchor.Proportion(1f) }
-    val anchors = remember(minListAnchor, defaultAnchor, fullListAnchor) {
-        // A window barely over the two-pane threshold can put the minimum
-        // past the even split; ordered and de-duplicated so the state never
-        // sees anchors that cross.
-        listOf(minListAnchor, defaultAnchor, fullListAnchor).distinct()
-    }
-    // Written where the strategy is built, read by the reset-on-close effect
-    // below. A plain var is enough: both happen in this composition, in order.
-    var paneExpansion: PaneExpansionState? = null
-    // Keyed on the pane width: the scaffold remembers how wide it made the
-    // panes, and folding the device while a detail is open would otherwise
-    // keep the cover screen's much narrower list pane on the inner display
-    // until the pane was closed. A new key is a fresh scaffold at the new size.
-    val listDetail = key(listPaneWidth) {
-        val expansion = rememberPaneExpansionState(anchors = anchors, initialAnchoredIndex = 1)
-        paneExpansion = expansion
-        rememberListDetailSceneStrategy<NavKey>(
-            shouldHandleSinglePaneLayout = false,
-            // Two panes from 600dp, matching WindowShape.wide. The Material default
-            // waits for 840dp, which the inner display clears by only 12dp.
-            directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(currentWindowAdaptiveInfo()),
-            paneExpansionState = expansion,
-            paneExpansionDragHandle = { state ->
-                PaneHandle(state, defaultAnchor, onReset = { scope.launch { state.animateTo(defaultAnchor) } })
-            },
-        )
-    }
-    // Dragging the wall away is a gesture you make for one title, not a mode
-    // you carry between screens: closing the detail puts the divider back, so
-    // the next title always opens on the even split. Guarded on the pane
-    // having actually been open, so nothing is animated at startup.
+    // THE SPLIT DOES NOT MOVE (F13). A draggable divider was built over three
+    // rounds and made the app worse every time: whatever the two panes did as
+    // it moved — reflow, clip, fade — something on one side of the screen was
+    // always wrong, and fixing one side broke the other. An even split is
+    // right for both and needs no handle, no anchors, no reset control and no
+    // rule about what happens at the extremes. What the divider was really
+    // for — seeing the whole wall — is what closing the detail already does.
+    val listDetail = rememberListDetailSceneStrategy<NavKey>(
+        shouldHandleSinglePaneLayout = false,
+        // Two panes from 600dp, matching WindowShape.wide. The Material default
+        // waits for 840dp, which the inner display clears by only 12dp.
+        directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(currentWindowAdaptiveInfo()),
+        paneExpansionState = rememberPaneExpansionState(anchors = EVEN_SPLIT, initialAnchoredIndex = 0),
+        // No drag handle: the divider is a line, not a control.
+        paneExpansionDragHandle = null,
+    )
+
     // A film handed over by another app opens the player on top of whatever
     // was there, and is consumed so a rotation does not reopen it.
     val external by appViewModel.external.collectAsStateWithLifecycle()
@@ -288,31 +238,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         appViewModel.openedExternal()
     }
 
-    val paneOpen = paneListKey != null
-    val paneWasOpen = remember { mutableStateOf(false) }
-    LaunchedEffect(paneOpen) {
-        if (paneOpen) {
-            paneWasOpen.value = true
-        } else if (paneWasOpen.value) {
-            paneWasOpen.value = false
-            paneExpansion?.animateTo(defaultAnchor)
-        }
-    }
-    // No preferredPaneSize: the expansion state owns the divider, and two
-    // sources for one number is how they drift apart.
     val listPaneMeta = ListDetailSceneStrategy.listPane(detailPlaceholder = { NoTitleChosen() })
     // The four tab screens sit beside the rail on a wide window. Pushed
     // screens (Player, Title Detail, Add Server) have no rail and take the
     // whole width, so the inset is applied per entry, not on the NavDisplay.
     val tabContent: @Composable (@Composable () -> Unit) -> Unit = { content ->
-        // A tab screen is also the LIST pane of the two-pane scene, so it gets
-        // the same drawer treatment the detail pane has: laid out at no less
-        // than its natural width and clipped, never reflowed, as the divider
-        // squeezes it. Only on a wide window — a phone is never narrower than
-        // its own content.
-        DrawerPane(minWidth = paneRailInset + WALL_WIDTH, enabled = windowShape.wide) {
-            Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
-        }
+        // The rail is allowed to resize what is beside it: that is the point
+        // of retracting it. The column lays out to whatever is left and lays
+        // out again when the rail goes away — no clipping, because nothing is
+        // being dragged any more and the width only changes when the rail does.
+        Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
     }
 
     // Opening a title. In the pane layout the wall stays live beside the
@@ -480,7 +415,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             }
                         }
                         entry<RegolithKey.TitleDetail>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
-                            DrawerPane(minWidth = DETAIL_MIN_WIDTH, enabled = paneListKey != null, fade = true) {
                             TitleDetailScreen(
                                 viewModel = hiltViewModel<TitleDetailViewModel, TitleDetailViewModel.Factory>(
                                     creationCallback = { it.create(key.fileId) },
@@ -489,7 +423,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onPlay = { backStack.add(RegolithKey.Player(it)) },
                                 inPane = paneListKey != null,
                             )
-                            }
                         }
                         entry<RegolithKey.Settings>(metadata = tabScreen) {
                             tabContent {
@@ -619,68 +552,11 @@ private const val RAIL_IDLE_MS = 3_000L
 private val WALL_WIDTH = 364.dp
 
 /**
- * How narrow the wall may be dragged before the divider refuses to go
- * further: two poster columns and their gutter. Below this the wall stops
- * being a wall, and a pane that can be dragged out of existence is a pane
- * you lose by accident.
+ * The only place the divider is ever put: down the middle. A list of one
+ * anchor is how the scaffold is told the split does not move.
  */
-private val MIN_WALL_WIDTH = 240.dp
-
-/**
- * Below this a fading pane is on its way out and stops being composed at
- * all; [DETAIL_MIN_WIDTH] is the width its content is laid out at whatever
- * the pane is actually given.
- */
-private val PANE_GONE_WIDTH = 40.dp
-private val DETAIL_MIN_WIDTH = 360.dp
-
-/**
- * A pane that slides under the divider rather than shrinking under it.
- *
- * The whole point is that dragging the split resizes the *view*, never the
- * *layout*: content is measured at [minWidth] however narrow the pane gets
- * and the overflow is clipped, so a title that fitted on one line still
- * fits on one line while half of it is off-screen — which is what a drawer
- * does, and what every foldable mail app does with its list.
- *
- * [fade] adds the dismissal on top, for the pane that is allowed to leave:
- * it dims on the way out and stops being composed below [PANE_GONE_WIDTH].
- * The pane that cannot be dismissed does not fade, because it is not going
- * anywhere — it is just partly behind the divider.
- */
-@Composable
-private fun DrawerPane(
-    minWidth: Dp,
-    enabled: Boolean = true,
-    fade: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    if (!enabled) {
-        content()
-        return
-    }
-    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
-        val width = maxWidth
-        if (fade && width <= PANE_GONE_WIDTH) return@BoxWithConstraints
-        val visible = if (fade) ((width - PANE_GONE_WIDTH) / (minWidth - PANE_GONE_WIDTH)).coerceIn(0f, 1f) else 1f
-        val floor = with(LocalDensity.current) { minWidth.roundToPx() }
-        // A Layout rather than a Box: the content has to be MEASURED at the
-        // floor and PLACED at the start edge, and a Box that is asked to hold
-        // something wider than itself does not promise where it puts it. The
-        // overflow then leaves under the divider, which is the whole idea —
-        // clipped on the side the divider is on, never on the outer edge.
-        Layout(
-            content = { Box(Modifier.graphicsLayer { alpha = visible }) { content() } },
-            modifier = Modifier.fillMaxSize(),
-        ) { measurables, constraints ->
-            val w = maxOf(constraints.maxWidth, floor)
-            val placeable = measurables.first().measure(
-                constraints.copy(minWidth = w, maxWidth = w, minHeight = constraints.maxHeight),
-            )
-            layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
-        }
-    }
-}
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+private val EVEN_SPLIT = listOf(PaneExpansionAnchor.Proportion(0.5f))
 
 /**
  * The detail pane before a title is chosen (wide windows only). The wall is
@@ -690,61 +566,5 @@ private fun DrawerPane(
 private fun NoTitleChosen() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Eyebrow("Choose a title", muted = true)
-    }
-}
-
-/**
- * The grab handle on the divider between the wall and the detail: a short
- * vertical pill, dim at rest and lit while dragged, the shape every foldable
- * app uses for this. The library's [paneExpansionDraggable] modifier carries
- * the 48dp touch target and the accessibility actions, so the split can also
- * be moved without dragging at all.
- *
- * Whenever the divider is off [defaultAnchor] the handle also carries the
- * control that puts it back (F6). It lives here rather than on either
- * screen because the handle is the one thing on the divider that is always
- * on screen: dragged fully one way the wall is gone, dragged the other the
- * detail is a sliver, and a button drawn inside either pane disappears with
- * it. The bar stays below the button so the handle is still grabbable.
- */
-@OptIn(ExperimentalMaterial3AdaptiveApi::class)
-@Composable
-private fun PaneScaffoldScope.PaneHandle(
-    state: PaneExpansionState,
-    defaultAnchor: PaneExpansionAnchor,
-    onReset: () -> Unit,
-) {
-    val colors = RegolithTheme.colors
-    val interaction = remember { MutableInteractionSource() }
-    val dragged by interaction.collectIsDraggedAsState()
-    val moved = state.currentAnchor != null && state.currentAnchor != defaultAnchor
-    Box(
-        Modifier
-            .paneExpansionDraggable(state, 48.dp, interaction, state.defaultDragHandleSemantics())
-            // The desktop splitter gesture, free now that there is something
-            // for it to do. Movement cancels it, so it never eats a drag.
-            .pointerInput(moved) { if (moved) detectTapGestures(onDoubleTap = { onReset() }) }
-            .testTag("pane_handle"),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            if (moved) {
-                IconCircleButton(
-                    icon = painterResource(R.drawable.rg_ic_split_even),
-                    contentDescription = "Even split",
-                    onClick = onReset,
-                    size = 28.dp,
-                    iconSize = 15.dp,
-                    testTag = "pane_reset_split",
-                )
-            }
-            Box(
-                Modifier
-                    .width(if (dragged) 5.dp else 4.dp)
-                    .height(if (dragged) 56.dp else 40.dp)
-                    .clip(PillShape)
-                    .background(if (dragged) colors.inkSoft else colors.raised),
-            )
-        }
     }
 }

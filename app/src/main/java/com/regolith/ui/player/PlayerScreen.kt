@@ -180,11 +180,14 @@ fun PlayerScreen(
     val wide = windowShape.wide
     val forcedFullscreen = landscape && !wide
     val immersive = !flex && (forcedFullscreen || fullscreen)
-    // Video left, the folder in a column on the right (F9). A film handed
-    // over by another app has no folder, so there is nothing to put beside
-    // it and the picture takes the width instead of a third of the screen
-    // going to an empty column.
-    val sideBySide = !flex && !immersive && wide && landscape && state.next.isNotEmpty()
+    // Video left, the folder in a column on the right (F9). This is what a
+    // wide window turned sideways ALWAYS does — it used to also require the
+    // folder to have something in it, which meant the last episode of a
+    // season, or any lone file, opened into the portrait layout instead. The
+    // layout is a property of the window, not of what happens to be next.
+    // Only a film handed over by another app stands the column down, because
+    // it has no folder to put there at all.
+    val sideBySide = !flex && !immersive && wide && landscape && state.fileId != null
 
     // Follow the phone's rotation; hide the system bars whenever the picture fills the screen.
     DisposableEffect(activity, immersive, flex, orientation) {
@@ -597,7 +600,7 @@ fun PlayerScreen(
                         .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) }
                         .testTag("player_up_next_column"),
                 ) {
-                    NextInFolder(state, viewModel::playNext)
+                    NextInFolder(state, viewModel::playNext, emptyState = true)
                     Spacer(Modifier.height(Spacing.s30))
                 }
             }
@@ -1042,11 +1045,31 @@ private fun CountdownRing(seconds: Int) {
     }
 }
 
-/** "Next in this folder": 56dp rows with an 84x47 thumb. Empty draws nothing. */
+/**
+ * "Next in this folder": 56dp rows with an 84x47 thumb.
+ *
+ * [emptyState] is for the layout that keeps a column for this whether or not
+ * there is anything in it — the last episode of a season still gets the
+ * two-column player, and a column that goes blank reads as a screen that
+ * failed to draw. Under the picture, where the list is just one more block,
+ * nothing is the right amount to draw.
+ */
 @Composable
-private fun NextInFolder(state: PlaybackState, onPlayNext: (Long) -> Unit) {
+private fun NextInFolder(state: PlaybackState, onPlayNext: (Long) -> Unit, emptyState: Boolean = false) {
     val colors = RegolithTheme.colors
-    if (state.next.isEmpty()) return
+    if (state.next.isEmpty()) {
+        if (emptyState) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                Eyebrow("Next in this folder", muted = true)
+                Text(
+                    "Nothing after this one.",
+                    style = TextStyles.meta12, color = colors.metadata,
+                    modifier = Modifier.testTag("player_next_empty"),
+                )
+            }
+        }
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
         Eyebrow("Next in this folder", muted = true)
         state.next.take(10).forEach { item ->
