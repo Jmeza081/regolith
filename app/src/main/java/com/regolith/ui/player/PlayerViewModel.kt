@@ -214,6 +214,12 @@ class PlayerViewModel @AssistedInject constructor(
     fun holdFast(hold: Boolean) = session.holdFast(hold)
     fun setHardwareDecoding(hardware: Boolean) = session.setHardwareDecoding(hardware)
     fun setScrubThumbnails(enabled: Boolean) = session.setScrubThumbnails(enabled)
+    /** The repeat button: off -> repeat all -> repeat one -> off. */
+    fun cycleRepeat() = session.setRepeat(state.value.repeat.next())
+
+    /** The shuffle button: scramble what is left to play, or put it back in folder order. */
+    fun toggleShuffle() = session.setShuffle(!state.value.shuffled)
+
     fun tapLoopPoint() = session.tapLoopPoint()
     fun nudgeLoopA(deltaMs: Long = AbLoop.NUDGE_MS) = session.nudgeLoopA(deltaMs)
     fun nudgeLoopB(deltaMs: Long = AbLoop.NUDGE_MS) = session.nudgeLoopB(deltaMs)

@@ -24,6 +24,7 @@ import com.regolith.data.media.ChapterRepository
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMarks
+import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +81,19 @@ data class PlaybackState(
      */
     val queued: Boolean = false,
     /**
+     * The running order is scrambled. True only for an order this player
+     * made: [com.regolith.ui.navigation.RegolithNavGraph]'s Shuffle button
+     * hands over a queue that is already shuffled and cannot be un-shuffled,
+     * because the order it came from is gone by then.
+     */
+    val shuffled: Boolean = false,
+    /** What the repeat button is set to. */
+    val repeat: RepeatMode = RepeatMode.OFF,
+    /** The first file of the running order, for [upNext] to wrap round to. Null when this IS it. */
+    val wrapTo: NextItem? = null,
+    /** The last file of the running order, for [upPrevious] to wrap back to. Null when this IS it. */
+    val wrapToLast: NextItem? = null,
+    /**
      * The markers the CONTAINER carries, if any. Read [chapters] instead —
      * this is the raw half of it.
      */
@@ -119,6 +133,19 @@ data class PlaybackState(
 
     /** The chapter the playhead is inside, or null when the file has none. */
     fun chapterAt(ms: Long): Chapter? = chapters.lastOrNull { it.startMs <= ms }
+
+    /**
+     * What plays after this one — what Next does, and what autoplay reaches
+     * for. Normally the next file in the running order; at the end of that
+     * order it is the first file again, but only while repeating all.
+     *
+     * [RepeatMode.ONE] never appears here: the player loops the file itself
+     * and the end is never reached.
+     */
+    val upNext: NextItem? get() = next.firstOrNull() ?: wrapTo.takeIf { repeat == RepeatMode.ALL }
+
+    /** The mirror of [upNext]: Previous wraps back to the last file while repeating all. */
+    val upPrevious: NextItem? get() = previous ?: wrapToLast.takeIf { repeat == RepeatMode.ALL }
 }
 
 /**
@@ -173,6 +200,14 @@ class PlaybackSession @Inject constructor(
      */
     private var activeQueue: List<Long> = emptyList()
 
+    /**
+     * True while [activeQueue] is an order THIS player scrambled, so the
+     * shuffle button can put it back. A queue handed over by Play all ›
+     * Shuffle is already scrambled and cannot be put back — the order it was
+     * made from is gone by the time the player sees it.
+     */
+    private var shuffledHere: Boolean = false
+
     private fun current(): ExoPlayer = _player.value ?: createPlayer(_state.value.hardwareDecoding).also { _player.value = it }
 
     private fun createPlayer(hardware: Boolean): ExoPlayer {
@@ -188,6 +223,7 @@ class PlaybackSession @Inject constructor(
             .also {
                 it.addListener(listener)
                 it.setPlaybackSpeed(_state.value.speed)
+                it.repeatMode = if (_state.value.repeat == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             }
     }
 
@@ -260,8 +296,12 @@ class PlaybackSession @Inject constructor(
     fun load(fileId: Long, startMs: Long? = null, queue: List<Long>? = null) {
         Log.d(TAG, "load($fileId, $startMs) current=${_state.value.fileId} queue=${queue?.size ?: activeQueue.size}")
         when {
-            queue != null -> activeQueue = queue
-            !activeQueue.contains(fileId) -> activeQueue = emptyList()
+            // An order handed over by Play all / Shuffle. It may already be
+            // scrambled, but not by us, so the button reads off: there is no
+            // original order left to put it back to.
+            queue != null -> { activeQueue = queue; shuffledHere = false }
+            // A file from outside the queue ends the queue, and with it the shuffle.
+            !activeQueue.contains(fileId) -> { activeQueue = emptyList(); shuffledHere = false }
         }
         if (_state.value.fileId == fileId && _state.value.error == null) {
             if (!current().isPlaying) current().play()
@@ -279,31 +319,21 @@ class PlaybackSession @Inject constructor(
             val file = library.file(fileId)
             currentFile = file
             val resume = startMs ?: playback.progress(fileId)?.takeUnless { it.completed }?.positionMs ?: 0L
-            // What plays after this one: the rest of an explicit queue if one
-            // is running, otherwise the rest of the folder in name order.
-            val queueTail = activeQueue.drop(activeQueue.indexOf(fileId) + 1).takeIf { activeQueue.isNotEmpty() }
-            val next = (if (queueTail != null) library.filesInOrder(queueTail) else library.filesAfter(fileId))
-                .map { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
-            // Previous walks the same order Next does: the queue when one is
-            // running, the folder otherwise. Null at the first file, which is
-            // what greys the button out.
-            val previousId = if (activeQueue.isNotEmpty()) {
-                activeQueue.getOrNull(activeQueue.indexOf(fileId) - 1)
-            } else {
-                library.fileBefore(fileId)?.id
-            }
-            val previous = previousId?.let { id ->
-                library.file(id)?.let { NextItem(it.id, it.name.substringBeforeLast('.'), it.sizeBytes, it.durationMs) }
-            }
+            val view = queueView(fileId)
+            val repeat = prefs.playerRepeat.first()
             val uri = resolver.playableUriFor(fileId)
             _state.update {
                 it.copy(
                     title = file?.name?.substringBeforeLast('.') ?: "",
                     sourceLabel = if (resolver.isLocal(uri)) "On this device" else file?.let { f -> sourceLabelFor(f) } ?: "",
                     fileSizeBytes = file?.sizeBytes ?: 0,
-                    next = next,
-                    previous = previous,
+                    next = view.next,
+                    previous = view.previous,
+                    wrapTo = view.wrapTo,
+                    wrapToLast = view.wrapToLast,
                     queued = activeQueue.isNotEmpty(),
+                    shuffled = shuffledHere,
+                    repeat = repeat,
                 )
             }
             currentUri = uri
@@ -380,6 +410,92 @@ class PlaybackSession @Inject constructor(
         }
     }
 
+    /** What the transport needs to know about the running order this file sits in. */
+    private data class QueueView(
+        val next: List<NextItem>,
+        val previous: NextItem?,
+        val wrapTo: NextItem?,
+        val wrapToLast: NextItem?,
+    )
+
+    /**
+     * Where [fileId] sits in what is playing: an explicit queue when one is
+     * running, otherwise the folder in name order — the order Browse shows.
+     *
+     * Also the two ends of that order, which is all repeat-all needs: the
+     * first file to follow the last, and the last to precede the first.
+     */
+    private suspend fun queueView(fileId: Long): QueueView {
+        val queued = activeQueue.isNotEmpty()
+        val here = activeQueue.indexOf(fileId)
+        val next = (if (queued) library.filesInOrder(activeQueue.drop(here + 1)) else library.filesAfter(fileId))
+            .map { it.toNextItem() }
+        // Null at the first file, which is what greys the button out.
+        val previousId = if (queued) activeQueue.getOrNull(here - 1) else library.fileBefore(fileId)?.id
+        val order = if (queued) activeQueue else library.file(fileId)?.let { f -> library.filesInFolder(f.folderId).map { it.id } }.orEmpty()
+        return QueueView(
+            next = next,
+            previous = previousId?.let { library.file(it)?.toNextItem() },
+            wrapTo = order.firstOrNull()?.takeIf { it != fileId }?.let { library.file(it)?.toNextItem() },
+            wrapToLast = order.lastOrNull()?.takeIf { it != fileId }?.let { library.file(it)?.toNextItem() },
+        )
+    }
+
+    private fun MediaFileEntity.toNextItem() = NextItem(id, name.substringBeforeLast('.'), sizeBytes, durationMs)
+
+    /**
+     * The repeat button, cycled from the player. [RepeatMode.ONE] is handed
+     * to ExoPlayer, which loops the file without ever reaching its end — so
+     * autoplay never sees an ending and nothing else has to know. The other
+     * two are ours: they only change what [PlaybackState.upNext] answers.
+     */
+    fun setRepeat(mode: RepeatMode) {
+        _state.update { it.copy(repeat = mode) }
+        applyRepeat(mode)
+        scope.launch { prefs.setPlayerRepeat(mode) }
+    }
+
+    private fun applyRepeat(mode: RepeatMode) {
+        _player.value?.repeatMode = if (mode == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+
+    /**
+     * Scramble what is left to play, or put it back.
+     *
+     * On: the running order becomes this file followed by everything else in
+     * a random order, so what you are watching is not interrupted. Off: the
+     * queue is dropped and "next" goes back to the folder in name order.
+     *
+     * A queue that arrived already shuffled (Play all › Shuffle) can be
+     * turned off the same way — it drops back to the folder — but the order
+     * it came from is gone, so it cannot be restored exactly.
+     */
+    fun setShuffle(on: Boolean) {
+        val fileId = _state.value.fileId ?: return
+        scope.launch {
+            if (on) {
+                val order = if (activeQueue.isNotEmpty()) {
+                    activeQueue
+                } else {
+                    library.file(fileId)?.let { f -> library.filesInFolder(f.folderId).map { it.id } }.orEmpty()
+                }
+                activeQueue = listOf(fileId) + (order - fileId).shuffled()
+                shuffledHere = true
+            } else {
+                activeQueue = emptyList()
+                shuffledHere = false
+            }
+            val view = queueView(fileId)
+            _state.update {
+                it.copy(
+                    next = view.next, previous = view.previous,
+                    wrapTo = view.wrapTo, wrapToLast = view.wrapToLast,
+                    queued = activeQueue.isNotEmpty(), shuffled = shuffledHere,
+                )
+            }
+        }
+    }
+
     private fun startPlayer(fileId: Long?, file: MediaFileEntity?, positionMs: Long) {
         val item = MediaItem.Builder()
             .setUri(currentUri ?: resolver.uriFor(checkNotNull(fileId) { "no file and no uri" }))
@@ -387,6 +503,7 @@ class PlaybackSession @Inject constructor(
             .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.name ?: _state.value.title).build())
             .build()
         val p = current()
+        p.repeatMode = if (_state.value.repeat == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         p.setMediaItem(item, positionMs)
         p.prepare()
         p.play()

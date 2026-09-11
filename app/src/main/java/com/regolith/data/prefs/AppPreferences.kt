@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.playback.PlayerOrientation
+import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,7 @@ class AppPreferences @Inject constructor(
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
+        val playerRepeat = stringPreferencesKey("player_repeat")
         val ambientLight = booleanPreferencesKey("ambient_light")
     }
 
@@ -136,6 +138,19 @@ class AppPreferences @Inject constructor(
 
     suspend fun setPlayerOrientation(orientation: PlayerOrientation) {
         store.edit { it[Keys.playerOrientation] = orientation.name }
+    }
+
+    /**
+     * The player's repeat button. Remembered for the same reason the
+     * rotation lock is: someone who watches a folder on a loop means it
+     * about the folder, not about one file.
+     */
+    val playerRepeat: Flow<RepeatMode> = store.data.map { p ->
+        p[Keys.playerRepeat]?.let { runCatching { RepeatMode.valueOf(it) }.getOrNull() } ?: RepeatMode.OFF
+    }
+
+    suspend fun setPlayerRepeat(mode: RepeatMode) {
+        store.edit { it[Keys.playerRepeat] = mode.name }
     }
 
     /** Library › Sort by. Remembered, like a column sort in a web table. */

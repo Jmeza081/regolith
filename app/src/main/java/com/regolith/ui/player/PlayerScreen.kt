@@ -98,6 +98,7 @@ import com.regolith.player.PlaybackState
 import com.regolith.ui.titledetail.TransferView
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.PlayerOrientation
+import com.regolith.domain.playback.RepeatMode
 import com.regolith.player.NextItem
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.DisplayText
@@ -253,14 +254,17 @@ fun PlayerScreen(
     // not already said no to this one.
     val autoplayNext by viewModel.autoplayNext.collectAsStateWithLifecycle()
     val autoplayImmediately by viewModel.autoplayImmediately.collectAsStateWithLifecycle()
-    val upNext = state.next.firstOrNull()
+    val upNext = state.upNext
     var autoplayCancelled by remember(state.fileId) { mutableStateOf(false) }
     var countdown by remember { mutableStateOf<Int?>(null) }
     // An explicit queue beats the setting: tapping Play all or Shuffle on a
     // folder of seven is a request for all seven, and a queue that stopped
     // after the first would be a bug in any other player. "Keep playing"
     // governs what happens when you open ONE file and it ends.
-    val autoplayArmed = (autoplayNext || state.queued) && !autoplayCancelled && upNext != null && state.ended && state.playWhenReady
+    // Repeating all is a third way of saying "keep going", and a louder one
+    // than the setting: it was set on this film, about this folder.
+    val autoplayArmed = (autoplayNext || state.queued || state.repeat == RepeatMode.ALL) &&
+        !autoplayCancelled && upNext != null && state.ended && state.playWhenReady
     LaunchedEffect(autoplayArmed, upNext?.fileId) {
         countdown = null
         if (!autoplayArmed || upNext == null) return@LaunchedEffect
@@ -456,7 +460,7 @@ fun PlayerScreen(
         onFullscreen = { fullscreen = !fullscreen },
         // Null greys the button out rather than removing it: a transport row
         // that changes width as you walk a folder is worse than a dead key.
-        onPrevious = state.previous?.let { p -> { viewModel.playNext(p.fileId) } },
+        onPrevious = state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
         onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
         onChapters = { sheet = Sheet.Chapters },
         onCycleRotation = {
@@ -465,6 +469,8 @@ fun PlayerScreen(
         },
         onKeep = viewModel::keepOnDevice,
         onRemove = viewModel::removeFromDevice,
+        onShuffle = viewModel::toggleShuffle,
+        onRepeat = viewModel::cycleRepeat,
     )
     // The rotation lock, where locking would do anything (see [rotationLockable]).
     val lockable = rotationLockable()
@@ -704,6 +710,10 @@ private class ChromeCallbacks(
     val onKeep: () -> Unit,
     /** Cancel the download in flight, or remove the finished copy. */
     val onRemove: () -> Unit,
+    /** Scramble what is left to play, or put it back in folder order. */
+    val onShuffle: () -> Unit,
+    /** Steps the repeat mode on one: off -> all -> one -> off. */
+    val onRepeat: () -> Unit,
 )
 
 /** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
@@ -783,25 +793,34 @@ private fun BoxScope.FullChrome(
             val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
             val gutter = if (landscape) 30.dp else Spacing.s18
             Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter, top = 18.dp, bottom = 12.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-                            DisplayText(state.title, style = TextStyles.screenTitle.copy(fontSize = 16.designSp(), lineHeight = 20.8.designSp()), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
-                            Text(meta.filter { it.isNotEmpty() }.joinToString(" · "), style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                // The header carries the two ways out and nothing else. What
+                // is playing moved down to sit on the timeline, where the
+                // controls for it are, so the top edge is left to the picture.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
+                    Spacer(Modifier.weight(1f))
+                    if (canCollapse) {
+                        IconCell(R.drawable.rg_ic_fullscreen_exit, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
                     }
                 }
-                // Previous and next were missing here and nowhere else: this
-                // row predates [Transport] and was never folded into it, so
-                // full screen was the one place you could not walk the folder.
-                // The gap closes up in a portrait window — five cells at 40dp
-                // apart is 442dp and a phone has 411.
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Transport(state, cb, gap = if (landscape) 40.dp else Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp)
-                }
+                Spacer(Modifier.weight(1f))
+                // Everything else is one block at the bottom, in the order it
+                // is read: what this is, where you are in it, the transport,
+                // then the controls that are about the film rather than about
+                // playing it.
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+                        DisplayText(
+                            state.title,
+                            style = TextStyles.screenTitle.copy(fontSize = 16.designSp(), lineHeight = 20.8.designSp()),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        val meta = listOf(state.sourceLabel) + (state.video?.chips ?: emptyList())
+                        Text(
+                            meta.filter { it.isNotEmpty() }.joinToString(" · "),
+                            style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                         Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
@@ -812,16 +831,18 @@ private fun BoxScope.FullChrome(
                             trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
                         )
                         Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
-                        if (canCollapse) {
-                            IconCell(R.drawable.rg_ic_fullscreen_exit, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
-                        }
                     }
-                    // The pills live UNDER the timeline, not up in the header.
+                    // Shuffle · previous · play · next · repeat, centred. The
+                    // gap closes up in a portrait window: five cells at 40dp
+                    // apart is 442dp and a phone has 411.
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Transport(state, cb, gap = if (landscape) 40.dp else Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp, modes = true)
+                    }
+                    // The pills live UNDER the transport, not up in the header.
                     // Over the top of the picture they sat beside the title,
                     // which read as part of the film's identity; down here they
                     // are what they are — the controls for the thing the
-                    // timeline is scrubbing — and the top edge is left to the
-                    // one question a header should answer, which film is this.
+                    // timeline is scrubbing.
                     PillRow(state, cb, onMedia = true, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
                 }
             }
@@ -831,9 +852,13 @@ private fun BoxScope.FullChrome(
 
 /** A glyph in a hit cell, white on the picture. */
 /**
- * Previous · back 10 · play · forward 10 · next, at whatever size the layout
- * asks for. One definition, because three chromes drew the middle three and
- * would have drifted apart the moment two more were added to each.
+ * Previous · play · next, at whatever size the layout asks for, with
+ * shuffle and repeat bracketing them where there is room ([modes]).
+ *
+ * There are no ±10s keys. They were two of the five cells and duplicated
+ * the gesture everyone already uses — a double-tap on either side of the
+ * picture, which stacks and needs no aiming. Losing them is what makes room
+ * for shuffle and repeat without the row growing.
  *
  * The skip keys are always drawn and greyed when there is nowhere to go: a
  * transport row that changes width as you walk through a folder moves the
@@ -848,18 +873,49 @@ private fun Transport(
     glyph: androidx.compose.ui.unit.Dp,
     cell: androidx.compose.ui.unit.Dp = 44.dp,
     modifier: Modifier = Modifier,
+    /** Shuffle and repeat on the ends. The full-screen player has the width; the 16:9 strip does not. */
+    modes: Boolean = false,
 ) {
+    val colors = RegolithTheme.colors
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+        if (modes) {
+            IconCell(
+                R.drawable.rg_ic_shuffle, if (state.shuffled) "Shuffle is on. Tap to play in order." else "Shuffle what is left to play",
+                glyph - 6.dp, cb.onShuffle, "player_shuffle_button", size = cell,
+                tint = if (state.shuffled) colors.accent else null,
+            )
+        }
         IconCell(R.drawable.rg_ic_skip_previous, "Previous", glyph - 5.dp, cb.onPrevious ?: {}, "player_previous_button", size = cell, enabled = cb.onPrevious != null)
-        IconCell(R.drawable.rg_ic_seek_back, "Back 10 seconds", glyph, { cb.onSeekBy(-10_000) }, "player_seek_back_button", size = cell)
         PlayCircle(state, circle, circle * 0.42f, cb.onTogglePlay)
-        IconCell(R.drawable.rg_ic_seek_forward, "Forward 10 seconds", glyph, { cb.onSeekBy(10_000) }, "player_seek_forward_button", size = cell)
         IconCell(R.drawable.rg_ic_skip_next, "Next", glyph - 5.dp, cb.onNext ?: {}, "player_next_button", size = cell, enabled = cb.onNext != null)
+        if (modes) {
+            // One button cycling three states, like the rotation pill: two of
+            // three are always the answer you did not pick. Red says "not the
+            // default", which is the app's word for it everywhere else, and
+            // the "1" is the second channel so it never rests on colour.
+            IconCell(
+                if (state.repeat == RepeatMode.ONE) LucideR.drawable.lucide_ic_repeat_1 else LucideR.drawable.lucide_ic_repeat,
+                "Repeat: ${state.repeat.label}. Tap to change.",
+                glyph - 6.dp, cb.onRepeat, "player_repeat_button", size = cell,
+                tint = if (state.repeat != RepeatMode.OFF) colors.accent else null,
+            )
+        }
     }
 }
 
 @Composable
-private fun IconCell(icon: Int, description: String, iconSize: androidx.compose.ui.unit.Dp, onClick: () -> Unit, testTag: String, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 44.dp, enabled: Boolean = true) {
+private fun IconCell(
+    icon: Int,
+    description: String,
+    iconSize: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 44.dp,
+    enabled: Boolean = true,
+    /** Overrides the white, for a control that is reporting a state as well as offering one. */
+    tint: Color? = null,
+) {
     Box(
         modifier.size(size).clickable(interactionSource = null, indication = null, enabled = enabled, onClick = onClick).testTag(testTag),
         contentAlignment = Alignment.Center,
@@ -867,7 +923,11 @@ private fun IconCell(icon: Int, description: String, iconSize: androidx.compose.
         Icon(
             painterResource(icon),
             contentDescription = description,
-            tint = if (enabled) RegolithTheme.colors.ink else RegolithTheme.colors.disabledInk,
+            tint = when {
+                !enabled -> RegolithTheme.colors.disabledInk
+                tint != null -> tint
+                else -> RegolithTheme.colors.ink
+            },
             modifier = Modifier.size(iconSize),
         )
     }
@@ -1439,7 +1499,9 @@ private fun FlexDeck(
             Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
         }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Transport(state, cb, gap = Spacing.s30, circle = 74.dp, glyph = 27.dp, cell = 52.dp)
+            // The deck is the full width of a half-open fold, so it gets the
+            // whole row the full-screen player does.
+            Transport(state, cb, gap = Spacing.s18, circle = 74.dp, glyph = 27.dp, cell = 52.dp, modes = true)
         }
         state.next.firstOrNull()?.let { item ->
             Spacer(Modifier.weight(1f))
