@@ -44,6 +44,7 @@ import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RegolithSwitch
 import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.SettingsRowHeight
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.TopBar
@@ -56,12 +57,14 @@ import com.regolith.ui.util.formatBytes
 import com.regolith.ui.theme.scaledDp
 
 /**
- * Settings tab (design section 11): SHARES as a card of 48dp rows (an
- * 8dp status dot, the server name in Michroma 12, a "SHOWING" tag, the
- * free space on the right, "Add a share" as the last row), then "Scan
- * all" and "Disconnect" side by side at 42dp; PLAYBACK as a card of 56dp
- * switch rows; MEDIA for the artwork cache. The disconnect confirm names
- * what survives ("Keep it", not "Cancel").
+ * Settings tab (design section 11): SHARES as a card of rows (an 8dp
+ * status dot, the server name in Michroma 12, a "SHOWING" tag, the free
+ * space on the right, scan and disconnect at the end), then "Scan all"
+ * and "Add a share"; PLAYBACK as a card of switch rows; MEDIA for the
+ * artwork cache. Every row in every card sits at the same
+ * [SettingsRowHeight] floor, note or no note, so a bare label does not
+ * read as a shorter row than its neighbours. The disconnect confirm
+ * names what survives ("Keep it", not "Cancel").
  */
 @Composable
 fun SettingsScreen(
@@ -83,7 +86,7 @@ fun SettingsScreen(
                 // second one at all.
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     state.servers.forEach { row ->
-                        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(8.dp).background(if (row.reachable) colors.ink else colors.metadata, PillShape))
                             Spacer(Modifier.width(Spacing.s12))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -175,8 +178,8 @@ fun SettingsScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("Media", muted = true)
-                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(Spacing.s12)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Artwork cache", style = TextStyles.settingLabel, color = colors.ink)
                             Text(
@@ -194,8 +197,8 @@ fun SettingsScreen(
             if (BuildConfig.DEMO_LIBRARY) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                     Eyebrow("Demo", muted = true)
-                    SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(Spacing.s12)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                        Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("Demo library", style = TextStyles.settingLabel, color = colors.ink)
                                 Text(

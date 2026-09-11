@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -80,9 +81,23 @@ fun SwitchControl(
 }
 
 /**
+ * The height every row inside a settings card sits at, whether or not it
+ * carries a note. Padding alone made a bare row (label only) sit ~22dp
+ * shorter than its neighbours with helper text, which read as a ragged
+ * list; a shared floor evens the rhythm, and a row whose note wraps to
+ * two lines still grows past it.
+ *
+ * It is the design's 56 put through [scaledDp] rather than a flat 56.dp:
+ * the label and note inside it are scaled type, so an unscaled floor
+ * lands under them and does nothing. Scaled, it matches a one-line-note
+ * row to within a dp, which is what makes the two read as the same row.
+ */
+val SettingsRowHeight = 56.scaledDp()
+
+/**
  * A labelled switch row as Settings and the playback sheet use it: label
  * at 500 15/19, optional note at 400 12/16 in #6E6E6E, switch on the
- * right. 56dp minimum height with 8dp vertical padding.
+ * right. [SettingsRowHeight] minimum with 12dp vertical padding.
  */
 @Composable
 fun RegolithSwitch(
@@ -95,7 +110,10 @@ fun RegolithSwitch(
     note: String? = null,
 ) {
     val colors = RegolithTheme.colors
-    Row(modifier.fillMaxWidth().padding(vertical = Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier.fillMaxWidth().defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
             Text(label, style = TextStyles.settingLabel, color = if (enabled) colors.ink else colors.metadata)
             if (note != null) {
