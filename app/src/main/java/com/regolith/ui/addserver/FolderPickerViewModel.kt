@@ -25,6 +25,13 @@ data class FolderChoice(
     val selected: Boolean,
     /** The root this folder already sits inside, when it does — picked by way of its parent. */
     val includedBy: String?,
+    /**
+     * Picks somewhere below this folder. It is what makes a deep choice
+     * findable: an unpicked folder that says "2 chosen inside" is the
+     * signpost back to them, and without it the only way to know would be to
+     * open every folder on the share.
+     */
+    val chosenInside: Int = 0,
 )
 
 data class FolderPickerUiState(
@@ -82,6 +89,7 @@ class FolderPickerViewModel @AssistedInject constructor(
                     relPath = path,
                     selected = path in roots,
                     includedBy = roots.firstOrNull { path.startsWith("$it/") },
+                    chosenInside = roots.count { it.startsWith("$path/") },
                 )
             },
             wholeShare = share?.enabled == true && roots.isEmpty(),
@@ -111,6 +119,10 @@ class FolderPickerViewModel @AssistedInject constructor(
      * Pick or un-pick one folder. Picking narrows a whole-share choice down
      * to this folder; un-picking the last one widens back to the whole share
      * ([Share.roots] empty means everything), which the screen says out loud.
+     *
+     * Picking a folder that already has picks inside it REPLACES them: it is
+     * the broader answer to the same question, and keeping both would scan
+     * the inner folders twice.
      */
     fun toggle(folder: FolderChoice) {
         if (folder.includedBy != null) return // its parent already covers it

@@ -149,6 +149,11 @@ interface FolderDao {
         val listed = folder.lastListedAtMs != null
         val merged = existing.copy(
             name = folder.name,
+            // A folder can change parent without changing path: a share
+            // narrowed to chosen folders rebuilds the rows on the way down to
+            // them, and a row written by an earlier build may be hanging off
+            // the wrong one.
+            parentId = folder.parentId,
             fileCount = if (listed) folder.fileCount else existing.fileCount,
             byteCount = if (listed) folder.byteCount else existing.byteCount,
             lastListedAtMs = folder.lastListedAtMs ?: existing.lastListedAtMs,

@@ -76,10 +76,17 @@ on one emulator by folding it.
 
 "Choose a share" takes whole shares; the chevron on each share opens
 **Choose folders**, where you pick the folders you actually want in the
-library (`Films/` and `Series/`, not `Backups/`). Picks are written as
-`share_roots` rows; a share with none means the whole share, so nothing
-changes for an install that never uses it. The scan and Browse then treat
-the chosen folders as the share's top level and never read anything else.
+library (`Films/` and `Series/`, not `Backups/`). In each row the box picks
+the folder and the rest of the row opens it, so you can walk down and pick
+at any depth — `Films` at the top and `Series/Severance/Season 02` three
+levels in, with nothing chosen in between. An unpicked folder says how many
+picks are below it, so a deep one is easy to find again.
+
+Picks are written as `share_roots` rows; a share with none means the whole
+share, so nothing changes for an install that never uses it. The library
+keeps the share's real shape: the folders on the way down to a pick get a
+row each, but they are never read off the share, and neither is anything
+outside a chosen folder.
 
 ### Trying it without a share
 

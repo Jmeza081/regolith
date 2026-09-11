@@ -33,8 +33,22 @@ data class Share(
     val roots: List<String> = emptyList(),
 ) {
     /** True when [relPath] is one of the roots or sits inside one. Empty roots take everything. */
-    fun includes(relPath: String): Boolean = roots.isEmpty() || roots.any { relPath == it || relPath.startsWith("$it/") }
+    fun includes(relPath: String): Boolean = rootsCover(roots, relPath)
 }
+
+/**
+ * Is [relPath] part of the library, given the folders chosen inside its
+ * share? A path is in if it IS a chosen folder or sits under one; no chosen
+ * folders at all means the whole share, which is what every share was
+ * before folders could be chosen.
+ *
+ * The one place this rule is written. The scan asks it to decide whether a
+ * folder may be read off the share at all, and a folder that is only on the
+ * WAY to a chosen one is not: it gets a row so the tree keeps its shape,
+ * and nothing more.
+ */
+fun rootsCover(roots: List<String>, relPath: String): Boolean =
+    roots.isEmpty() || roots.any { relPath == it || relPath.startsWith("$it/") }
 
 /** A row on the Browse screen: a folder or a playable file. */
 sealed interface BrowseItem {

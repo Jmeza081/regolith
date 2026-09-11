@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,7 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.ui.components.ErrorCard
 import com.regolith.ui.components.PrimaryButton
-import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
 import com.regolith.ui.components.SurfaceCard
@@ -45,11 +45,15 @@ import com.regolith.ui.theme.TextStyles
 
 /**
  * "Choose folders" — one level of a share, reached from a share's chevron
- * on Choose a share, and from its own rows going deeper. Each row is two
- * targets: the row itself picks or un-picks the folder as a library root,
- * the chevron at its end opens it. A folder already inside a chosen parent
- * is shown greyed with its parent named, because picking it would change
- * nothing.
+ * on Choose a share, and from its own rows going deeper. Picks can sit at
+ * any depth and at different depths from each other: a folder at the top,
+ * another three levels down, and nothing in between.
+ *
+ * Each row is two targets — the box picks, the rest of the row opens (see
+ * [FolderRow]) — and an unpicked folder says how many picks are below it,
+ * so a deep choice can be found again without opening every folder on the
+ * share. A folder already inside a chosen parent shows greyed with its
+ * parent named, because picking it would change nothing.
  *
  * Picks write straight away, like the share toggles do; Done only climbs
  * back out. The rows are one card, the same card Browse draws its folders
@@ -74,8 +78,8 @@ fun FolderPickerScreen(
                 // was in the library whole.
                 Text(
                     when {
-                        state.wholeShare -> "The whole share is in your library. Pick folders to keep only those."
-                        state.chosenCount == 0 -> "Pick the folders to add to your library. Everything else on the share stays out of it."
+                        state.wholeShare -> "The whole share is in your library. Tick folders to keep only those; open one to look inside."
+                        state.chosenCount == 0 -> "Tick the folders to add to your library, at any depth. Open one to look inside."
                         else -> "${state.chosenCount} folder" + (if (state.chosenCount == 1) "" else "s") + " chosen across this share."
                     },
                     style = TextStyles.meta12, color = colors.metadata,
@@ -117,19 +121,22 @@ fun FolderPickerScreen(
 }
 
 /**
- * One folder: the check box that is the pick, the name and its standing,
- * and the chevron that goes in. The same 38dp box the share picker uses,
- * so a chosen folder and a chosen share look like the same decision.
+ * One folder, two targets: the box at the start picks it, everything else
+ * opens it.
+ *
+ * That split is the whole screen. With the row itself picking, walking down
+ * to a folder three levels in meant selecting every folder on the way —
+ * and a selected folder swallows everything under it, so the first tap
+ * made the rest unreachable and the picker looked like it only worked at
+ * the top. Opening is the common act and gets the big target; picking is
+ * the deliberate one and gets a box that looks like what it is.
  */
 @Composable
 private fun FolderRow(folder: FolderChoice, onToggle: () -> Unit, onOpen: () -> Unit) {
     val colors = RegolithTheme.colors
     val covered = folder.includedBy != null
     Row(
-        Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
-            .clickable(interactionSource = null, indication = null, enabled = !covered, onClick = onToggle)
-            .padding(vertical = Spacing.s8)
-            .testTag("addserver_folder_${folder.name}"),
+        Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp).padding(vertical = Spacing.s8),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Three looks, two channels each: a chosen folder is a white box with
@@ -137,35 +144,50 @@ private fun FolderRow(folder: FolderChoice, onToggle: () -> Unit, onOpen: () -> 
         // check (in, but not by its own doing); the rest show a folder glyph.
         Box(
             Modifier.size(38.dp)
-                .background(if (folder.selected) colors.ink else colors.disabledBg, RoundedCornerShape(11.dp))
-                .then(if (covered) Modifier.border(1.dp, colors.hairline, RoundedCornerShape(11.dp)) else Modifier),
+                .clip(RoundedCornerShape(11.dp))
+                .background(if (folder.selected) colors.ink else colors.disabledBg)
+                .then(if (covered) Modifier.border(1.dp, colors.hairline, RoundedCornerShape(11.dp)) else Modifier)
+                .clickable(interactionSource = null, indication = null, enabled = !covered, onClick = onToggle)
+                .testTag("addserver_folder_${folder.name}"),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 painterResource(if (folder.selected || covered) R.drawable.rg_ic_check else R.drawable.rg_ic_folder_small),
-                contentDescription = null,
+                contentDescription = if (folder.selected) "${folder.name}, chosen" else "Choose ${folder.name}",
                 tint = if (folder.selected) colors.ground else colors.metadata,
                 modifier = Modifier.size(18.dp),
             )
         }
         Spacer(Modifier.width(Spacing.s12))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text(folder.name, style = TextStyles.rowLabel, color = if (covered) colors.body else colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                when {
-                    covered -> "Inside ${folder.includedBy!!.substringAfterLast('/')}, already chosen"
-                    folder.selected -> "chosen"
-                    else -> "folder"
-                },
-                style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        Row(
+            Modifier.weight(1f)
+                .clickable(interactionSource = null, indication = null, onClick = onOpen)
+                .testTag("addserver_folder_open_${folder.name}"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                Text(folder.name, style = TextStyles.rowLabel, color = if (covered) colors.body else colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    when {
+                        covered -> "Inside ${folder.includedBy!!.substringAfterLast('/')}, already chosen"
+                        folder.selected -> "chosen"
+                        // The signpost down to a deep pick. Without it an
+                        // unpicked folder looks like an empty branch.
+                        folder.chosenInside == 1 -> "1 chosen inside"
+                        folder.chosenInside > 1 -> "${folder.chosenInside} chosen inside"
+                        else -> "folder"
+                    },
+                    style = TextStyles.meta12,
+                    color = if (folder.chosenInside > 0 && !folder.selected) colors.body else colors.metadata,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                painterResource(R.drawable.rg_ic_chevron_right),
+                contentDescription = "Open ${folder.name}",
+                tint = colors.metadata,
+                modifier = Modifier.size(17.dp),
             )
         }
-        Spacer(Modifier.width(Spacing.s8))
-        RowAction(
-            icon = R.drawable.rg_ic_chevron_right,
-            contentDescription = "Open ${folder.name}",
-            onClick = onOpen,
-            testTag = "addserver_folder_open_${folder.name}",
-        )
     }
 }

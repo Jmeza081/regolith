@@ -17,6 +17,7 @@ import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
+import com.regolith.domain.model.rootsCover
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
@@ -103,14 +104,13 @@ class LibraryRepository @Inject constructor(
         val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
         // Nothing to re-list: the demo library's rows are all there ever was.
         if (DemoSource.isDemo(server.host)) return FolderOutcome(folderDao.children(folderId), folder.fileCount)
-        // A share narrowed to chosen folders (schema v5) never lists its own
-        // root: the chosen folders ARE its top level. They are written as
-        // direct children of the root row, each carrying its full path, so
-        // the rest of the walk — and Browse, and the Library — need not know
-        // that "Movies/Action" is not really one level down. Nothing else on
-        // the share is ever read.
-        val roots = if (folder.parentId == null) shareRootDao.pathsFor(share.id) else emptyList()
-        if (roots.isNotEmpty()) return refreshNarrowedRoot(folder, share.id, roots)
+        // A share narrowed to chosen folders (schema v5): anything that is
+        // not a chosen folder, or inside one, is never read off the share —
+        // not by the scan and not by Browse opening it. That includes the
+        // share root and the folders on the way down to a deep pick, which
+        // get rows so the tree keeps its shape and nothing more.
+        val roots = shareRootDao.pathsFor(share.id)
+        if (!rootsCover(roots, folder.relPath)) return refreshSkeleton(folder, share.id, roots)
         val host = SmbHost(server.host, server.port)
         val credentials = sources.credentialsFor(server.id)
 
@@ -186,24 +186,64 @@ class LibraryRepository @Inject constructor(
         return FolderOutcome(subfolders, fileCount)
     }
 
-    /** The share root when folders were chosen: its children are those folders, and only those. */
-    private suspend fun refreshNarrowedRoot(root: FolderEntity, shareId: Long, roots: List<String>): FolderOutcome {
-        val subfolders = roots.map { relPath ->
+    /**
+     * One folder of the skeleton a narrowed share hangs on: the share root,
+     * or one of the folders on the way down to a chosen one.
+     *
+     * It is never listed over the network. Its children are exactly the next
+     * step towards the chosen folders, so walking the skeleton costs no SMB
+     * calls at all and nothing the user left out is ever read — not by the
+     * scan, and not by Browse, which re-lists whatever folder you open.
+     *
+     * Every child is handed back, chosen or not, so the scan's queue walks
+     * the skeleton down to the chosen folders and then lists those for real.
+     *
+     * The folders in between matter enough to keep. A first attempt hung
+     * every chosen folder directly off the share root, which put `Season 02`
+     * beside `Films` with "Series/Severance" thrown away, and one `Season 02`
+     * looks much like another.
+     */
+    private suspend fun refreshSkeleton(folder: FolderEntity, shareId: Long, roots: List<String>): FolderOutcome {
+        val chosen = roots.toSet()
+        // The folders on the way down, minus any chosen outright: a path that
+        // is both is walked for real, so it is not part of the skeleton.
+        val between = roots.flatMap { ancestorsOf(it) }.toSet() - chosen
+        val prefix = if (folder.relPath.isEmpty()) "" else "${folder.relPath}/"
+        val childPaths = (between + chosen)
+            .filter { it.startsWith(prefix) && it != folder.relPath && !it.removePrefix(prefix).contains('/') }
+            .sorted()
+        val children = childPaths.map { relPath ->
             val name = relPath.substringAfterLast('/')
             val parsed = TitleParser.parseFolderName(name)
             folderDao.upsert(
                 FolderEntity(
-                    shareId = shareId, parentId = root.id, relPath = relPath, name = name,
+                    shareId = shareId, parentId = folder.id, relPath = relPath, name = name,
                     fileCount = 0, byteCount = 0, lastListedAtMs = null,
+                    // A skeleton folder was never listed, so nothing classified
+                    // it. It holds folders, which is what a collection is. A
+                    // chosen one is left alone for its own listing to classify.
+                    kind = if (relPath in chosen) null else FolderKind.COLLECTION.name,
                     titleParsed = parsed.title, year = parsed.year,
                 ),
             )
         }
-        // A folder un-picked since the last scan goes, and its files with it (the FK cascades).
-        folderDao.deleteChildrenNotIn(root.id, roots)
-        mediaFileDao.markMissingNotIn(root.id, emptyList())
-        folderDao.update(root.copy(fileCount = 0, byteCount = 0, lastListedAtMs = System.currentTimeMillis(), kind = FolderKind.ROOT.name))
-        return FolderOutcome(subfolders, 0)
+        // Un-picking a folder has to take its rows with it, and a skeleton
+        // folder left on an abandoned branch would be an empty dead end.
+        folderDao.deleteChildrenNotIn(folder.id, childPaths)
+        mediaFileDao.markMissingNotIn(folder.id, emptyList())
+        folderDao.update(
+            folder.copy(
+                fileCount = 0, byteCount = 0, lastListedAtMs = System.currentTimeMillis(),
+                kind = if (folder.parentId == null) FolderKind.ROOT.name else FolderKind.COLLECTION.name,
+            ),
+        )
+        return FolderOutcome(children, 0)
+    }
+
+    /** "a/b/c" -> ["a", "a/b"]. The folders a path passes through, nearest the share root first. */
+    private fun ancestorsOf(relPath: String): List<String> {
+        val parts = relPath.split('/')
+        return (1 until parts.size).map { parts.take(it).joinToString("/") }
     }
 
     suspend fun markScanned(shareId: Long) {
