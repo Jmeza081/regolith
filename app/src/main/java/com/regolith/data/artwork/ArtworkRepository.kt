@@ -71,11 +71,21 @@ class ArtworkRepository @Inject constructor(
     private val extractionSlots = Semaphore(2)
 
     /**
+     * One of those two, at most, may belong to the background walk. The
+     * prefetch and the screen draw from the same pool, and a walk of two
+     * thousand files would otherwise hold both slots for an hour and make
+     * the app feel slower than having no cache at all.
+     */
+    private val prefetchSlots = Semaphore(1)
+
+    /**
      * One in-flight resolution per (owner, is-backdrop); a grid asking for a
      * poster and a thumb of the same title shares one, and a backdrop request
-     * arriving at the same time does not wait behind it.
+     * arriving at the same time does not wait behind it. The background walk
+     * joins the stills entry, so a tile scrolling into view waits for the
+     * work already running rather than starting it again.
      */
-    private val inFlight = mutableMapOf<Pair<ArtworkOwner, Boolean>, Deferred<Unit>>()
+    private val inFlight = mutableMapOf<Pair<ArtworkOwner, Boolean>, Deferred<Boolean>>()
     private val inFlightLock = Mutex()
 
     @Volatile private var generationChecked = false
@@ -113,19 +123,46 @@ class ArtworkRepository @Inject constructor(
         // order, run for the one title you opened.
         val kinds = if (request.kind == ArtworkKind.BACKDROP) BACKDROP_ONLY else ArtworkKind.stills
         val key = request.owner to (request.kind == ArtworkKind.BACKDROP)
+        joinOrStart(key) { extractionSlots.withPermit { resolveOwner(request.owner, kinds) } }
+        return cached(request)
+    }
+
+    /**
+     * Fill the cache for one owner before anything asks for it — the
+     * background walk ([com.regolith.data.artwork.ArtworkWorker]).
+     *
+     * Every kind comes from ONE extraction, which is the whole reason this
+     * is its own entry point rather than a loop over [resolve]. On demand,
+     * the stills are grabbed when a tile appears and the backdrop is grabbed
+     * AGAIN when the title is opened: two trips over the share for one
+     * picture. The grab is already 1334x750, comfortably bigger than a
+     * 1280x720 backdrop, so writing all three costs nothing extra.
+     *
+     * Returns false when the share could not be reached, so a walk can stop
+     * rather than grind through a thousand files that will all fail.
+     */
+    suspend fun prefetch(owner: ArtworkOwner): Boolean {
+        ensureGeneration()
+        if (ArtworkKind.entries.all { cached(ArtworkRequest(owner, it)) != null }) return true
+        return joinOrStart(owner to false) {
+            prefetchSlots.withPermit { extractionSlots.withPermit { resolveOwner(owner, ArtworkKind.entries) } }
+        }
+    }
+
+    /** Join the resolution already running for [key], or start it. */
+    private suspend fun joinOrStart(key: Pair<ArtworkOwner, Boolean>, body: suspend () -> Boolean): Boolean {
         val job = inFlightLock.withLock {
             inFlight.getOrPut(key) {
                 scope.async {
                     try {
-                        extractionSlots.withPermit { resolveOwner(request.owner, kinds) }
+                        body()
                     } finally {
                         inFlightLock.withLock { inFlight.remove(key) }
                     }
                 }
             }
         }
-        job.await()
-        return cached(request)
+        return job.await()
     }
 
     /**
@@ -180,17 +217,21 @@ class ArtworkRepository @Inject constructor(
 
     // --- the pipeline
 
-    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>) {
-        try {
+    /** False only when the share could not be reached; anything else is dealt with here. */
+    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>): Boolean {
+        return try {
             when (owner) {
                 is ArtworkOwner.File -> resolveFile(owner, kinds)
                 is ArtworkOwner.Folder -> resolveFolder(owner, kinds)
             }
+            true
         } catch (e: SmbFailure) {
             Log.w(TAG, "artwork for $owner deferred: ${e.message}")
+            false
         } catch (e: Exception) {
             Log.w(TAG, "artwork for $owner failed: $e")
             placeholder(owner, kinds)
+            true
         }
     }
 

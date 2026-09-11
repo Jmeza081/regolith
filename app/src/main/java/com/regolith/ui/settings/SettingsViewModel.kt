@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import coil3.ImageLoader
 import com.regolith.data.artwork.ArtworkRepository
 import com.regolith.data.db.ScanRunEntity
+import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,6 +40,7 @@ class SettingsViewModel @Inject constructor(
     private val artwork: ArtworkRepository,
     private val imageLoader: ImageLoader,
     private val demo: DemoLibrary,
+    private val prefetcher: ArtworkPrefetcher,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -63,6 +66,7 @@ class SettingsViewModel @Inject constructor(
                 }
             }.collect { rows -> _uiState.update { it.copy(servers = rows) } }
         }
+        viewModelScope.launch { prefetcher.observe().collect { p -> _uiState.update { it.copy(prefetch = p) } } }
         viewModelScope.launch { prefs.hardwareDecoding.collect { v -> _uiState.update { it.copy(hardwareDecoding = v) } } }
         viewModelScope.launch { prefs.scrubThumbnails.collect { v -> _uiState.update { it.copy(scrubThumbnails = v) } } }
         viewModelScope.launch { prefs.autoplayNext.collect { v -> _uiState.update { it.copy(autoplayNext = v) } } }
@@ -82,6 +86,13 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+
+    /** Settings › Media › Prepare: walk every enabled share and make what is missing. */
+    fun prepareArtwork() {
+        viewModelScope.launch { sources.observeEnabledShares().first().forEach { prefetcher.enqueue(it.id) } }
+    }
+
+    fun stopArtwork() = prefetcher.cancelAll()
 
     fun scanAll() {
         viewModelScope.launch { scans.scanAll() }

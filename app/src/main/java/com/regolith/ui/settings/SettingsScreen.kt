@@ -75,6 +75,18 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
+    // Preparing artwork runs as a foreground job with a notification, and
+    // Android 13+ only shows it once notifications are allowed. Asked on the
+    // tap rather than on arrival: this screen has plenty of other reasons to
+    // be open, and a prompt out of nowhere is a prompt people say no to.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+    val prepareArtwork = {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.prepareArtwork()
+    }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("settings_screen")) {
         TopBar(title = state.title)
         Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
@@ -200,6 +212,35 @@ fun SettingsScreen(
                             text = "Clear", onClick = viewModel::clearArtwork, compact = true,
                             enabled = !state.clearing && state.artworkCount > 0, testTag = "settings_clear_artwork_button",
                         )
+                    }
+                    // The background walk, said here as well as in the
+                    // notification: the shade is where you find out about it
+                    // by accident, and this is where you come to look.
+                    Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Prepare artwork", style = TextStyles.settingLabel, color = colors.ink)
+                            Text(
+                                when {
+                                    state.prefetch.running && state.prefetch.total > 0 ->
+                                        "Working · ${state.prefetch.done} of ${state.prefetch.total}"
+                                    state.prefetch.running -> "Working out what needs a picture"
+                                    else -> "Makes every poster and thumbnail up front, so the library is not still drawing itself while you scroll."
+                                },
+                                style = TextStyles.settingMeta, color = colors.metadata,
+                                modifier = Modifier.testTag("settings_prefetch_meta"),
+                            )
+                        }
+                        Spacer(Modifier.width(Spacing.s12))
+                        SecondaryButton(
+                            text = if (state.prefetch.running) "Stop" else "Prepare",
+                            onClick = { if (state.prefetch.running) viewModel.stopArtwork() else prepareArtwork() },
+                            compact = true, testTag = "settings_prefetch_button",
+                        )
+                    }
+                    if (state.prefetch.running && state.prefetch.total > 0) {
+                        Box(Modifier.fillMaxWidth().padding(bottom = Spacing.s12).height(3.dp).background(colors.hairline, PillShape).testTag("settings_prefetch_progress")) {
+                            Box(Modifier.fillMaxWidth(state.prefetch.fraction).height(3.dp).background(colors.ink, PillShape))
+                        }
                     }
                 }
             }

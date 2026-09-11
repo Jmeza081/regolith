@@ -88,6 +88,17 @@ keeps the share's real shape: the folders on the way down to a pick get a
 row each, but they are never read off the share, and neither is anything
 outside a chosen folder.
 
+### Artwork is made ahead of time
+
+Every poster, thumbnail and backdrop is a frame pulled off the share, which
+costs a second or two each. Rather than doing that while you scroll, a
+background job walks the share when its scan finishes and makes them all up
+front, showing a progress notification you can stop. One frame grab writes
+all three sizes.
+
+A library scanned before this existed has no walk queued for it: tap
+**Settings › Media › Prepare artwork**, or rescan the share.
+
 ### Trying it without a share
 
 Settings › Demo › **Load** writes a pretend NAS — four collections, 18

@@ -1,5 +1,7 @@
 package com.regolith.ui.settings
 
+import com.regolith.data.artwork.PrefetchStatus
+
 /** One server row under SHARES: "TOWER · SHOWING · 2.4 TB free", "STUDIO · out of reach". */
 data class ServerRow(
     val serverId: Long,
@@ -36,6 +38,8 @@ data class SettingsUiState(
     val artworkCount: Int = 0,
     val artworkBytes: Long = 0,
     val clearing: Boolean = false,
+    /** The background artwork walk, so the app says what the notification says. */
+    val prefetch: PrefetchStatus = PrefetchStatus(),
     // --- Demo library (BuildConfig.DEMO_LIBRARY builds only).
     /** True while the demo server exists; the row offers the opposite action. */
     val demoInstalled: Boolean = false,

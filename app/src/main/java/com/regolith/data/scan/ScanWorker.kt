@@ -14,6 +14,7 @@ import com.regolith.R
 import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.ScanRunEntity
+import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.smb.SmbFailure
 import dagger.assisted.Assisted
@@ -38,6 +39,7 @@ class ScanWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val library: LibraryRepository,
     private val scanRunDao: ScanRunDao,
+    private val artwork: ArtworkPrefetcher,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -72,6 +74,11 @@ class ScanWorker @AssistedInject constructor(
             }
             scanRunDao.update(run.copy(status = ScanRunEntity.DONE, foldersDone = folders, filesFound = files, currentPath = "", finishedAtMs = System.currentTimeMillis()))
             library.markScanned(shareId)
+            // The walk knows what to make from the rows this just wrote, so
+            // it starts here rather than being something the user has to ask
+            // for. It skips whatever is already cached, so a rescan that
+            // found nothing new costs a pass over the table and no network.
+            artwork.enqueue(shareId)
             Result.success()
         } catch (e: CancellationException) {
             scanRunDao.update(run.copy(status = ScanRunEntity.CANCELLED, finishedAtMs = System.currentTimeMillis()))
