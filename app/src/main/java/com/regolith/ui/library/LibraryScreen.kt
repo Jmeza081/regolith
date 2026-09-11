@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,6 +58,7 @@ import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.PlayAllButton
 import com.regolith.ui.components.PlayAllSheet
@@ -586,10 +588,28 @@ private fun DeviceTab(
     ) {
         if (state.ready.isEmpty() && state.inFlight.isEmpty() && state.failed.isEmpty()) {
             item {
-                SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_device_empty")) {
-                    DisplayText("Nothing on this device", style = TextStyles.dialogTitle)
+                // The one empty state in the app that gets a drawing. It is
+                // also the only one that is a normal resting state rather
+                // than a fault: a share you have never scanned wants the
+                // scan button, an empty folder wants one quiet line, and
+                // this one wants to say "there is nothing wrong here".
+                SurfaceCard(
+                    style = CardStyle.Empty,
+                    contentPadding = PaddingValues(horizontal = Spacing.s18, vertical = Spacing.s30),
+                    modifier = Modifier.fillMaxWidth().testTag("library_device_empty"),
+                ) {
+                    OrbitArt(Modifier.align(Alignment.CenterHorizontally))
+                    Spacer(Modifier.height(Spacing.s18))
+                    DisplayText(
+                        "Nothing in orbit", style = TextStyles.dialogTitle, textAlign = TextAlign.Center,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
                     Spacer(Modifier.height(Spacing.s8))
-                    Text("Open a title and choose \"Keep on this device\" to play it with no network.", style = TextStyles.body, color = colors.body)
+                    Text(
+                        "Open a title and choose \"Keep on this device\" — it lives here and plays with the share offline.",
+                        style = TextStyles.body, color = colors.body, textAlign = TextAlign.Center,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
                 }
             }
             return@LazyColumn
