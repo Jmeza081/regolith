@@ -124,7 +124,7 @@ MediaTile ── AsyncImage(ArtworkRequest(owner, kind)) ── Coil ImageLoader
                                         → writes BOTH kinds (500×750 poster, 320×180 thumb) + `artwork` rows
 
 TitleDetail ── MediaProbe (Media3 MetadataRetriever through SmbDataSource) ── media_files probe columns
-PlayerScreen ── Chapters pill ── PlaybackState.chapters ── ChapterRepository ── ChapterParser (pure: Matroska Chapters / MP4 chpl)
+PlayerScreen ── Chapters pill ── PlaybackState.chapters ── user_chapters (P9) › ChapterRepository ── ChapterParser (pure) › ChapterMarks.evenly
 PlayerScreen ── Scrubber.onScrub(ms) ── PlayerViewModel ── ScrubThumbnails.request(ms)        the finger: conflated, newest wins
 PlayerScreen ── Chapters / filmstrip ── PlayerViewModel ── ScrubThumbnails.requestAll(list)   a wall: unlimited, nothing dropped
                                                              └─ OnDemandScrubThumbnails: one FrameSource, 10 s buckets, LRU of 40 (FrameIndex, pure)
@@ -307,6 +307,51 @@ off the container, and scrubbing shows real frames — with the network off.
 `probeReachable` skip it instead of failing against a host that does not
 exist. Gated by `BuildConfig.DEMO_LIBRARY`.
 
+## User chapters (P9)
+
+Every file already had chapters — the container's own markers, or the even
+split off a ladder of round intervals — and they are good for jumping and
+useless as places: "Part 3" says nothing about what is there. P9 adds a
+third kind, written by the user in the player, and makes it the one that
+wins.
+
+```
+PlayerScreen ── Chapters sheet › Edit ── PlayerViewModel.chapterDraft (ChapterDraft, pure)
+                                          │   mark at playhead · select · move/nudge · rename · remove
+                                          └─ Done ── UserChapterRepository.save(fileId, chapters) ── user_chapters (schema v8, one set per file, one transaction)
+PlaybackSession.load(fileId) ── followUserChapters ── UserChapterRepository.observe(fileId) ── PlaybackState.userChapters
+PlaybackState.chapters  = userChapters ›› containerChapters ›› ChapterMarks.evenly(duration)      chapterSource says which
+Scrubber(chapters)      = segments with 2dp gaps; the finger's segment grows; ScrubPreview names the part (chapterLabelAt)
+SearchViewModel ── UserChapterRepository.search(q) ── user_chapter_fts MATCH ── SearchHit.Moment ── Player(fileId, startMs)
+Settings › Chapters ── UserChapterRepository.stats() / clearAll()
+```
+
+What a web developer would not guess:
+
+- **The draft lives in the ViewModel, the rows in Room, and the session
+  only observes.** The editor never talks to the player. Done writes a set
+  to `user_chapters`; the session has been collecting that file's rows
+  since `load`, so the scrubber updates by itself — and so does an open
+  player when Settings clears everything. Guardrail G4 holds: the session
+  has no editing state, the ViewModel has no playback state.
+- **Reverting is deleting.** `chapters` is a three-way fallback, so taking
+  the user's rows away lets the container's markers or the even split fill
+  back in. Nothing is stored to "restore".
+- **The rules are a pure value.** `ChapterDraft` (domain) keeps marks
+  sorted, pins 0:00 (rename only), refuses a mark within a second of another,
+  keeps names exactly as typed until save (trimming per keystroke would eat
+  the space you just typed) and remembers which file editing began on, so
+  autoplay moving on cannot make Done write to the wrong film.
+- **The editor is a slot, not a screen.** It takes the A–B loop panel's place
+  under the picture in portrait and in the unfolded column; in landscape or
+  half-open, where there is no column, it is a sheet with a timeline of its
+  own. Edit pauses the film and steps out of a chosen full screen first.
+- **Only names are searchable.** The FTS index is over `title`; an unnamed
+  mark has no words to find. A hit is a `SearchHit.Moment` — a place, not a
+  file: its own eyebrow above the file matches, a tag on the row, no part in
+  multi-select, and a tap that opens the player at that time through the
+  Player key's existing `startMs`.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -483,6 +528,11 @@ exist. Gated by `BuildConfig.DEMO_LIBRARY`.
 | 2026-09-11 | The walk may hold only one of the two extraction slots | `prefetchSlots = Semaphore(1)` is taken before the shared `extractionSlots = Semaphore(2)`, so whatever is on screen always has a slot. A background job that fills both would make the app feel slower than having no cache at all, which is the opposite of the point. The walk also joins the same in-flight entry as a UI stills request, so a tile scrolling into view waits for work already running instead of starting it again. |
 | 2026-09-12 | User-written chapters are a Room table (`user_chapters`, schema v8) keyed by file id, with an external-content FTS index over their names | The same footing as playback progress: the id is stable across rescans (G3) and the rows cascade away with the share. A file's chapters are written as one set in one transaction (`replaceForFile`), never a row at a time, because a chapter's meaning depends on its neighbours. Only `title` is indexed, so an unnamed mark is not findable — it has no words to find. Additive, `@AutoMigration(7, 8)`. |
 | 2026-09-12 | **Corrects the 2026-09-09 search row.** `ftsMatch` writes the star INSIDE the quotes: `"samou*"`, not `"samou"*` | The outside form is FTS5 syntax; on FTS4 (SQLite 3.44 under Robolectric, and the CLI) it quietly matches the whole word only, so "samou" never found "Samouraï" and the migration test passed only because `a` is a whole token of `a.mkv`. Found while writing the chapter-name search, which shares the helper. `"lin* ope*"` is FTS3/4's documented prefix-in-phrase form; quoting each word still keeps `or`, `not` and `-` from acting as operators. |
+| 2026-09-12 | Chapters the user writes beat the file's own markers, which beat the even split; `chapterSource` names which is showing | The owner's call: a chapter they marked is the one they meant, even on a file that came with its own. The order is one getter on `PlaybackState`, and revert is a delete — the next kind down fills in, so nothing has to be kept aside to restore. The sheet's subtitle ("Yours · 4 chapters") says whose they are, because it changes what the names mean. |
+| 2026-09-12 | The chapter editor lives in the player, seeded from the chapters showing now; the draft is ViewModel state | Marking a place needs the scrubber, and the scrubber is in the player; a screen of its own would mean a second timeline to keep in step. Seeding from the current list means there is always something to rename rather than a blank to fill; 0:00 is pinned because a film starts in a chapter. The draft is editing state, not playback state (G4), and it outlives a rotation, which a `remember` in the screen would not. Edit pauses the film so the playhead holds still. |
+| 2026-09-12 | The scrubber draws chapters as segments with a 2dp gap, and the preview names the part | Ticks over one bar said "there is a boundary here"; segments say "you are in this part", and the finger's segment growing (YouTube's gesture) says it before the preview's name does. Every layer — buffered, loop, fill — respects the gaps, so the timeline reads as one drawing. Even divisions keep saying "Part n", the way the sheet does. |
+| 2026-09-12 | Points of interest are their own Search group, above the files, and never part of a selection | A red match inside "The heist" under a film's thumbnail must not be mistaken for a match in a filename, so the group has its own eyebrow and each row a tag. A moment is a place, not a file: nothing to download, so long-press does nothing on it and it only shows under "All" — the other filters are about the file. A tap opens the player at that time via `Player(fileId, startMs)`, a key that already existed. |
+| 2026-09-12 | `ConfirmDialog` is one component, and it sets `testTagsAsResourceId` itself | The Disconnect dialog was about to be copied three times (revert, discard, clear all); CLAUDE.md calls two copies a bug. Promoting it also surfaced that a Compose `Dialog` is a window of its own, which the root Scaffold's `testTagsAsResourceId` never reached — so no dialog button had ever had a resource id. |
 
 ## Phase plan
 
@@ -509,6 +559,7 @@ exist. Gated by `BuildConfig.DEMO_LIBRARY`.
 | P3 | Full-screen player restructured (Spotify order), seek keys removed, shuffle and repeat added | `RepeatMode`, `PlaybackState.shuffled`/`repeat`/`upNext`/`upPrevious`, `Transport(modes)` |
 | P8 | Multi-select in Browse, Library and Search; one batched download behind a queue worker, with an SMB discovery walk, an aggregate progress notification and a Settings dot | `SelectionStore`, `Selection`/`pathCoveredBy`/`coversFileIn`, `SelectionPresenter`, `download_picks` (schema v6), `TransferQueueWorker`, `QueueProgress`, `RegolithNotifications`, `NavPill(dots)` |
 | P2 | Library roots inside a share: the Choose folders drill-down at any depth, on a skeleton of unlisted rows that keeps the share's real tree | `share_roots` (schema v5), `Share.roots`, `rootsCover`, `refreshSkeleton`, `RegolithKey.AddServer.Folders` |
+| P9 | User chapters: mark and name chapters in the player, segments and names on the scrubber, points of interest in Search, clear-all in Settings | `user_chapters` + `user_chapter_fts` (schema v8), `UserChapterRepository`, `ChapterDraft`, `ChapterSource`, `PlaybackState.userChapters`/`chapterSource`, `ChapterEditorContent`, `SearchHit.Moment`, `ConfirmDialog` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

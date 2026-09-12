@@ -9,6 +9,7 @@ import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
@@ -45,6 +46,7 @@ class SettingsViewModel @Inject constructor(
     private val demo: DemoLibrary,
     private val prefetcher: ArtworkPrefetcher,
     private val transfers: TransferRepository,
+    private val userChapters: UserChapterRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -99,6 +101,7 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(demoInstalled = installed, demoBytes = bytes) }
             }
         }
+        viewModelScope.launch { userChapters.stats().collect { c -> _uiState.update { it.copy(userChapters = c) } } }
         viewModelScope.launch {
             artwork.observeCount().collect { count ->
                 val bytes = withContext(Dispatchers.IO) { artwork.cacheSizeBytes() }
@@ -134,6 +137,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun askDisconnect(row: ServerRow?) = _uiState.update { it.copy(confirmDisconnect = row) }
+
+    /** Settings › Chapters › Clear: asks first, because there is no getting them back. */
+    fun askClearChapters(open: Boolean) = _uiState.update { it.copy(confirmClearChapters = open) }
+
+    /** Every chapter the user wrote, on every film. Open players follow the table and update on their own. */
+    fun clearChapters() {
+        _uiState.update { it.copy(confirmClearChapters = false) }
+        viewModelScope.launch { userChapters.clearAll() }
+    }
 
     /** "The media list is removed from this device. Nothing on the share is touched." */
     fun disconnect(row: ServerRow) {

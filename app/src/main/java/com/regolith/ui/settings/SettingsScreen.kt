@@ -315,7 +315,33 @@ fun SettingsScreen(
                 }
             }
             if (BuildConfig.DEMO_LIBRARY) {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                // The chapters the user wrote (P9), and the one way to clear
+            // them all. Per-film revert lives on the player's Chapters
+            // sheet; this is for starting over.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                Eyebrow("Chapters", muted = true)
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Your chapters", style = TextStyles.settingLabel, color = colors.ink)
+                            Text(
+                                state.userChapters.let { c ->
+                                    if (c.isEmpty) "None yet · mark them from the player's Chapters sheet"
+                                    else (if (c.chapters == 1) "1 chapter" else "${c.chapters} chapters") + " on " + (if (c.files == 1) "1 video" else "${c.files} videos")
+                                },
+                                style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.testTag("settings_chapters_meta"),
+                            )
+                        }
+                        Spacer(Modifier.width(Spacing.s12))
+                        SecondaryButton(
+                            text = "Clear", onClick = { viewModel.askClearChapters(true) }, compact = true,
+                            enabled = !state.userChapters.isEmpty, testTag = "settings_clear_chapters_button",
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                     Eyebrow("Demo", muted = true)
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                         Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
@@ -345,6 +371,16 @@ fun SettingsScreen(
         }
     }
 
+    if (state.confirmClearChapters) {
+        val c = state.userChapters
+        ConfirmDialog(
+            title = "Clear chapters?",
+            body = "Every chapter you wrote — " + (if (c.chapters == 1) "1" else "${c.chapters}") + " on " + (if (c.files == 1) "1 video" else "${c.files} videos") + " — goes. The films keep their own markers or the even split.",
+            confirmLabel = "Clear chapters", keepLabel = "Keep them",
+            onConfirm = viewModel::clearChapters, onKeep = { viewModel.askClearChapters(false) },
+            testTag = "settings_clear_chapters",
+        )
+    }
     state.confirmDisconnect?.let { row ->
         ConfirmDialog(
             title = "Disconnect ${row.name}?",

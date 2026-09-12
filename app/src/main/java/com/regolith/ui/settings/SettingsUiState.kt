@@ -1,6 +1,7 @@
 package com.regolith.ui.settings
 
 import com.regolith.data.artwork.PrefetchStatus
+import com.regolith.domain.playback.UserChapterStats
 import com.regolith.domain.transfer.QueueProgress
 import com.regolith.ui.util.formatBytes
 
@@ -44,6 +45,10 @@ data class SettingsUiState(
     val prefetch: PrefetchStatus = PrefetchStatus(),
     /** The download queue, so Settings says what the notification says. */
     val downloads: DownloadsStatus = DownloadsStatus(),
+    /** Chapters the user wrote, across every film (P9). */
+    val userChapters: UserChapterStats = UserChapterStats(),
+    /** The "Clear chapters?" confirm is open. */
+    val confirmClearChapters: Boolean = false,
     // --- Demo library (BuildConfig.DEMO_LIBRARY builds only).
     /** True while the demo server exists; the row offers the opposite action. */
     val demoInstalled: Boolean = false,
