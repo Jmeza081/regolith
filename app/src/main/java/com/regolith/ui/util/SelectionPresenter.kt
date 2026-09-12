@@ -86,6 +86,8 @@ data class SelectionUiState(
      */
     fun coversFile(shareId: Long, folderRelPath: String): Boolean {
         val paths = pickedPaths[shareId] ?: return false
+        // Inclusive: a file directly inside a picked folder is coming too.
+        // Same rule as Selection.coversFileIn, which gates the toggle.
         return pathCoveredBy(paths, folderRelPath)
     }
 }

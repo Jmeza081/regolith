@@ -72,6 +72,13 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onAddServer: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Where the Downloads row leads. Downloads deliberately have no
+     * destination of their own (design section 05: "Downloads live here
+     * rather than in a tab of their own"), so this goes to Library › On
+     * this device.
+     */
+    onOpenDownloads: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
@@ -173,6 +180,68 @@ fun SettingsScreen(
 
             // Wide windows only: on a phone the pill is the bottom bar and
             // there is no side space to reclaim, so the row would toggle
+            // Downloads, between Playback and Display: Media below is about
+            // the artwork cache, which is a different kind of storage
+            // question. This is the "a dot appeared, what is it" answer.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                Eyebrow("Downloads", muted = true)
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    Row(
+                        Modifier
+                            .defaultMinSize(minHeight = SettingsRowHeight)
+                            .padding(vertical = Spacing.s12)
+                            .testTag("settings_downloads_row"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // The same 8dp status dot the share rows use, so the two
+                        // read as one vocabulary rather than two.
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .background(
+                                    when (state.downloads.dotState) {
+                                        DownloadDot.ARRIVING -> colors.ink
+                                        DownloadDot.FAILED -> colors.accent
+                                        DownloadDot.IDLE -> colors.metadata
+                                    },
+                                    PillShape,
+                                )
+                                .testTag("settings_downloads_dot"),
+                        )
+                        Spacer(Modifier.width(Spacing.s12))
+                        Column(Modifier.weight(1f)) {
+                            Text("Downloads", style = TextStyles.settingLabel, color = colors.ink)
+                            Text(
+                                state.downloads.meta,
+                                style = TextStyles.settingMeta, color = colors.metadata,
+                                modifier = Modifier.testTag("settings_downloads_meta"),
+                            )
+                        }
+                        Spacer(Modifier.width(Spacing.s12))
+                        if (state.downloads.running) {
+                            SecondaryButton(
+                                text = "Stop", onClick = viewModel::stopDownloads,
+                                compact = true, testTag = "settings_downloads_stop_button",
+                            )
+                        } else {
+                            SecondaryButton(
+                                text = "Open", onClick = onOpenDownloads,
+                                compact = true, testTag = "settings_downloads_open_button",
+                            )
+                        }
+                    }
+                    // The artwork walk's own bar, reused verbatim: two background
+                    // jobs reporting themselves two different ways would read as
+                    // two features.
+                    state.downloads.fraction?.let { fraction ->
+                        if (state.downloads.running) {
+                            Box(Modifier.fillMaxWidth().padding(bottom = Spacing.s12).height(3.dp).background(colors.hairline, PillShape).testTag("settings_downloads_progress")) {
+                                Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(colors.ink, PillShape))
+                            }
+                        }
+                    }
+                }
+            }
             // something the owner of a phone can never see.
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("Display", muted = true)

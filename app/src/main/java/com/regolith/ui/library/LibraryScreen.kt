@@ -86,6 +86,10 @@ import com.regolith.ui.components.ListRow
 import com.regolith.domain.library.ViewMode
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.regolith.ui.theme.scaledDp
+import androidx.activity.compose.BackHandler
+import com.regolith.ui.components.SelectionBar
+import com.regolith.ui.components.SELECTION_BAR_HEIGHT
+import com.regolith.ui.util.SelectionUiState
 
 private enum class LibraryTab { NETWORK, ON_DEVICE }
 
@@ -129,23 +133,41 @@ fun LibraryScreen(
     val unreachable = state.unreachable
     val readyCount = state.device.ready.size
 
-    Column(modifier.fillMaxSize().testTag("library_screen")) {
+    val selection = state.selection
+    val selecting = selection != null
+    // Back leaves the selection before it leaves the wall.
+    BackHandler(enabled = selecting) { viewModel.cancelSelection() }
+
+    Box(modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().testTag("library_screen")) {
         val subtitle = when {
             tab == LibraryTab.ON_DEVICE -> "${formatBytes(state.device.usedBytes)} of ${formatBytes(state.device.totalBytes)} · plays with no network"
             unreachable.isNotEmpty() -> "${unreachable.first().name} unreachable · $readyCount file${if (readyCount == 1) "" else "s"} playable here"
             else -> state.meta
         }
-        TopBar(
-            title = if (onBack == null) "Media" else state.title,
-            onBack = onBack,
-            subtitle = subtitle,
-            subtitleMuted = tab == LibraryTab.ON_DEVICE || unreachable.isNotEmpty(),
-            actions = listOf(
-                TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
-                TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
-                viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
-            ),
-        )
+        if (selecting) {
+            TopBar(
+                title = if (selection!!.itemCount == 1) "1 selected" else "${selection.itemCount} selected",
+                onBack = viewModel::cancelSelection,
+                modifier = Modifier.testTag("library_selection_topbar"),
+                actions = listOf(
+                    TopBarAction(R.drawable.rg_ic_check, "Select all", "library_select_all_button", viewModel::selectAllHere),
+                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "library_select_cancel_button", viewModel::cancelSelection),
+                ),
+            )
+        } else {
+            TopBar(
+                title = if (onBack == null) "Media" else state.title,
+                onBack = onBack,
+                subtitle = subtitle,
+                subtitleMuted = tab == LibraryTab.ON_DEVICE || unreachable.isNotEmpty(),
+                actions = listOf(
+                    TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
+                    TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                    viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
+                ),
+            )
+        }
 
         if (state.loaded && state.noSource) {
             NoSource(onAddServer)
@@ -211,7 +233,11 @@ fun LibraryScreen(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
-                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                contentPadding = PaddingValues(
+                    start = Spacing.s18, end = Spacing.s18,
+                    bottom = LocalNavPillInsets.current.calculateBottomPadding() +
+                        if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp,
+                ),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s8),
             ) {
@@ -228,7 +254,13 @@ fun LibraryScreen(
                 }
                 if (showScanLine) item(span = { GridItemSpan(maxLineSpan) }) { ScanLine() }
                 items(state.tiles, key = { it.testTag }) { tile ->
-                    TileView(tile, dimmed = unreachable.isNotEmpty(), selected = tile.isSelected(selectedFileId), onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle)
+                    TileView(
+                        tile, dimmed = unreachable.isNotEmpty(),
+                        selected = !selecting && tile.isSelected(selectedFileId),
+                        selection = selection,
+                        onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle,
+                        onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                    )
                 }
             }
         } else {
@@ -237,7 +269,11 @@ fun LibraryScreen(
             // a hairline between rows is what keeps a long list readable.
             LazyColumn(
                 modifier = Modifier.fillMaxSize().testTag("library_rows"),
-                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                contentPadding = PaddingValues(
+                    start = Spacing.s18, end = Spacing.s18,
+                    bottom = LocalNavPillInsets.current.calculateBottomPadding() +
+                        if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp,
+                ),
             ) {
                 if (showUnreachable) item { unreachableBlock() }
                 if (showSkeletons) {
@@ -251,7 +287,13 @@ fun LibraryScreen(
                 if (showScanLine) item { Box(Modifier.padding(bottom = Spacing.s8)) { ScanLine() } }
                 itemsIndexed(state.tiles, key = { _, tile -> tile.testTag }) { index, tile ->
                     if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                    TileRow(tile, dimmed = unreachable.isNotEmpty(), selected = tile.isSelected(selectedFileId), onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle)
+                    TileRow(
+                        tile, dimmed = unreachable.isNotEmpty(),
+                        selected = !selecting && tile.isSelected(selectedFileId),
+                        selection = selection,
+                        onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle,
+                        onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                    )
                 }
             }
         }
@@ -276,6 +318,26 @@ fun LibraryScreen(
     if (state.sortSheetOpen) {
         SortSheet(selected = state.sort, onSelect = viewModel::setSort, onDismiss = { viewModel.openSortSheet(false) })
     }
+
+        if (selection != null) {
+            SelectionBar(
+                summary = selection.summary,
+                detail = selection.detail,
+                actionEnabled = selection.canDownload,
+                onAction = viewModel::downloadSelection,
+                onCancel = viewModel::cancelSelection,
+                testTag = "library_select_bar",
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = Spacing.s18,
+                        end = Spacing.s18,
+                        bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+                    ),
+            )
+        }
+    }
 }
 
 /** Is this the title the detail pane is showing? Collections are never selected: they open a wall, not a detail. */
@@ -288,36 +350,62 @@ private fun TileView(
     tile: LibraryTile,
     dimmed: Boolean,
     selected: Boolean = false,
+    selection: SelectionUiState? = null,
     onOpenCollection: (Long) -> Unit,
     onOpenTitle: (Long) -> Unit,
+    onToggle: (LibraryTile) -> Unit = {},
+    onLongPress: (LibraryTile) -> Unit = {},
 ) {
+    val selecting = selection != null
     when (tile) {
-        is LibraryTile.Collection -> MediaTile(
-            artwork = tile.artwork,
-            kind = ArtworkKind.POSTER,
-            title = tile.name,
-            meta = formatFileCount(tile.fileCount),
-            count = tile.fileCount,
-            resolution = tile.resolutionLabel.ifEmpty { null },
-            dimmed = dimmed,
-            onClick = { onOpenCollection(tile.folderId) },
-            testTag = tile.testTag,
-        )
-        is LibraryTile.Title -> MediaTile(
-            artwork = tile.artwork,
-            kind = ArtworkKind.POSTER,
-            title = tile.name,
-            meta = tile.meta,
-            resolution = tile.resolutionLabel.ifEmpty { null },
-            unwatched = tile.unwatched,
-            matched = tile.matched,
-            fallbackLabel = tile.fileName,
-            progress = tile.progress,
-            dimmed = dimmed,
-            selected = selected,
-            onClick = { onOpenTitle(tile.fileId) },
-            testTag = tile.testTag,
-        )
+        is LibraryTile.Collection -> {
+            val picked = selection?.pickedFolders?.contains(tile.folderId) == true
+            val covered = selection?.coveredFolders?.contains(tile.folderId) == true
+            MediaTile(
+                artwork = tile.artwork,
+                kind = ArtworkKind.POSTER,
+                title = tile.name,
+                meta = if (covered) "Already inside your pick" else formatFileCount(tile.fileCount),
+                count = tile.fileCount,
+                resolution = tile.resolutionLabel.ifEmpty { null },
+                dimmed = dimmed || covered,
+                onClick = when {
+                    covered -> { {} }
+                    selecting -> { { onToggle(tile) } }
+                    else -> { { onOpenCollection(tile.folderId) } }
+                },
+                onLongClick = { onLongPress(tile) },
+                checked = if (selecting) picked || covered else null,
+                testTag = tile.testTag,
+            )
+        }
+        is LibraryTile.Title -> {
+            val picked = selection?.pickedFiles?.contains(tile.fileId) == true
+            val covered = selection?.coversFile(tile.shareId, tile.folderRelPath) == true
+            MediaTile(
+                artwork = tile.artwork,
+                kind = ArtworkKind.POSTER,
+                title = tile.name,
+                meta = tile.meta,
+                resolution = tile.resolutionLabel.ifEmpty { null },
+                // The unwatched dot shares the pick marker's corner, so it
+                // stands down while selecting rather than sitting under it.
+                unwatched = tile.unwatched && !selecting,
+                matched = tile.matched,
+                fallbackLabel = tile.fileName,
+                progress = tile.progress,
+                dimmed = dimmed,
+                selected = selected,
+                onClick = when {
+                    covered -> { {} }
+                    selecting -> { { onToggle(tile) } }
+                    else -> { { onOpenTitle(tile.fileId) } }
+                },
+                onLongClick = { onLongPress(tile) },
+                checked = if (selecting) picked || covered else null,
+                testTag = tile.testTag,
+            )
+        }
     }
 }
 
@@ -332,32 +420,63 @@ private fun TileRow(
     tile: LibraryTile,
     dimmed: Boolean,
     selected: Boolean = false,
+    selection: SelectionUiState? = null,
     onOpenCollection: (Long) -> Unit,
     onOpenTitle: (Long) -> Unit,
+    onToggle: (LibraryTile) -> Unit = {},
+    onLongPress: (LibraryTile) -> Unit = {},
 ) {
+    val selecting = selection != null
     val alpha = if (dimmed) 0.45f else 1f
     // A row has no art to ring, so the selected one is lifted onto the card surface.
     val selectedBg = if (selected) Modifier.background(RegolithTheme.colors.surface) else Modifier
     when (tile) {
-        is LibraryTile.Collection -> ListRow(
-            title = tile.name,
-            meta = listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · "),
-            leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.name),
-            minHeight = 64.scaledDp(),
-            onClick = { onOpenCollection(tile.folderId) },
-            testTag = tile.testTag,
-            modifier = Modifier.alpha(alpha),
-        )
-        is LibraryTile.Title -> ListRow(
-            title = if (tile.matched) tile.name else tile.fileName,
-            meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
-            leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.fileName),
-            trailing = RowTrailing.None,
-            minHeight = 64.scaledDp(),
-            onClick = { onOpenTitle(tile.fileId) },
-            testTag = tile.testTag,
-            modifier = selectedBg.alpha(alpha),
-        )
+        is LibraryTile.Collection -> {
+            val picked = selection?.pickedFolders?.contains(tile.folderId) == true
+            val covered = selection?.coveredFolders?.contains(tile.folderId) == true
+            ListRow(
+                title = tile.name,
+                meta = if (covered) {
+                    "Already inside your pick"
+                } else {
+                    listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · ")
+                },
+                leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.name),
+                minHeight = 64.scaledDp(),
+                trailing = when {
+                    picked || covered -> RowTrailing.Checked
+                    selecting -> RowTrailing.None
+                    else -> RowTrailing.Chevron
+                },
+                onClick = when {
+                    covered -> { {} }
+                    selecting -> { { onToggle(tile) } }
+                    else -> { { onOpenCollection(tile.folderId) } }
+                },
+                onLongClick = { onLongPress(tile) },
+                testTag = tile.testTag,
+                modifier = Modifier.alpha(if (covered) 0.5f else alpha),
+            )
+        }
+        is LibraryTile.Title -> {
+            val picked = selection?.pickedFiles?.contains(tile.fileId) == true
+            val covered = selection?.coversFile(tile.shareId, tile.folderRelPath) == true
+            ListRow(
+                title = if (tile.matched) tile.name else tile.fileName,
+                meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
+                leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.fileName),
+                trailing = if (picked || covered) RowTrailing.Checked else RowTrailing.None,
+                minHeight = 64.scaledDp(),
+                onClick = when {
+                    covered -> { {} }
+                    selecting -> { { onToggle(tile) } }
+                    else -> { { onOpenTitle(tile.fileId) } }
+                },
+                onLongClick = { onLongPress(tile) },
+                testTag = tile.testTag,
+                modifier = selectedBg.alpha(if (covered) 0.5f else alpha),
+            )
+        }
     }
 }
 

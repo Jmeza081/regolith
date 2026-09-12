@@ -5,6 +5,7 @@ import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
+import com.regolith.ui.util.SelectionUiState
 
 /** One poster on the wall. */
 sealed interface LibraryTile {
@@ -30,6 +31,13 @@ sealed interface LibraryTile {
         override val sizeBytes: Long,
         override val durationMs: Long?,
         override val height: Int?,
+        val shareId: Long = 0,
+        /** `/`-joined path inside the share; what a download pick is keyed on. */
+        val relPath: String = "",
+        /** Direct files only, for the selection tally. `fileCount` counts the whole subtree. */
+        val directFileCount: Int = 0,
+        val directByteCount: Long = 0,
+        val listed: Boolean = true,
     ) : LibraryTile {
         override val testTag get() = "library_collection_$folderId"
     }
@@ -53,6 +61,9 @@ sealed interface LibraryTile {
         override val sizeBytes: Long,
         override val durationMs: Long?,
         override val height: Int?,
+        val shareId: Long = 0,
+        /** The folder holding it, so a selection can tell if an ancestor is picked. */
+        val folderRelPath: String = "",
     ) : LibraryTile {
         override val testTag get() = "library_title_$fileId"
     }
@@ -68,6 +79,8 @@ data class LibraryUiState(
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
     val viewMode: ViewMode = ViewMode.GRID,
+    /** Non-null while a multi-selection is running (the contextual bar is up). */
+    val selection: SelectionUiState? = null,
     val loaded: Boolean = false,
     /** No enabled share anywhere. */
     val noSource: Boolean = false,

@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +70,13 @@ fun NavPill(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     dimmed: Set<MainTab> = emptySet(),
+    /**
+     * Tabs carrying a notification dot — today, Settings while downloads are
+     * live or a failure is unacknowledged. A fourth channel beside the
+     * cell's three inks, because "there is something here" is a different
+     * statement from "you are here" and "there is nothing behind this".
+     */
+    dots: Set<MainTab> = emptySet(),
     vertical: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
@@ -85,7 +93,7 @@ fun NavPill(
         .background(colors.pillBg)
         .border(1.dp, colors.pillBorder, PillShape)
     val cell: @Composable (MainTab, Modifier) -> Unit = { tab, cellModifier ->
-        NavCell(tab, selected = tab == selected, dimmed = tab in dimmed, onSelect = onSelect, modifier = cellModifier)
+        NavCell(tab, selected = tab == selected, dimmed = tab in dimmed, dot = tab in dots, onSelect = onSelect, modifier = cellModifier)
     }
     if (vertical) {
         // The rail: one cell high per tab, 10dp of inner padding top and
@@ -142,6 +150,8 @@ fun NavRailSpine(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     dimmed: Set<MainTab> = emptySet(),
+    /** As on the pill. A badged dot goes accent and grows, since 4dp has no room for a second mark. */
+    dots: Set<MainTab> = emptySet(),
 ) {
     val colors = RegolithTheme.colors
     val style = HazeStyle(
@@ -165,19 +175,26 @@ fun NavRailSpine(
         verticalArrangement = Arrangement.spacedBy(Spacing.s8),
     ) {
         MainTab.entries.forEach { tab ->
+            val badged = tab in dots
             val ink = when {
+                badged -> colors.accent
                 tab == selected -> colors.ink
                 tab in dimmed -> colors.navDimmed
                 else -> colors.navIdle
             }
-            Box(Modifier.size(4.dp).background(ink, PillShape))
+            Box(
+                Modifier
+                    .size(if (badged) 6.dp else 4.dp)
+                    .background(ink, PillShape)
+                    .then(if (badged) Modifier.testTag("${tab.testTag}_dot") else Modifier),
+            )
         }
     }
 }
 
 /** One tab cell: glyph over label, the whole cell tappable. Shared by the pill and the rail. */
 @Composable
-private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, onSelect: (MainTab) -> Unit, modifier: Modifier) {
+private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, dot: Boolean, onSelect: (MainTab) -> Unit, modifier: Modifier) {
     val colors = RegolithTheme.colors
     val ink = when {
         selected -> colors.ink
@@ -193,7 +210,21 @@ private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, onSelect: 
             .semantics { this.selected = selected }
             .testTag(tab.testTag),
     ) {
-        Icon(painter = painterResource(tab.icon), contentDescription = tab.label, tint = ink, modifier = Modifier.size(19.scaledDp()))
+        Box {
+            Icon(painter = painterResource(tab.icon), contentDescription = tab.label, tint = ink, modifier = Modifier.size(19.scaledDp()))
+            if (dot) {
+                // The existing UnwatchedDot, offset onto the glyph's corner.
+                // Accent rather than ink: white would read as "selected",
+                // which is the one thing this must not say.
+                UnwatchedDot(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 3.dp, y = (-2).dp)
+                        .testTag("${tab.testTag}_dot"),
+                    size = 5.dp,
+                )
+            }
+        }
         Spacer(Modifier.height(Spacing.s4))
         Text(tab.label.uppercase(), style = TextStyles.navLabel, color = ink)
     }

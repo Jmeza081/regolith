@@ -46,7 +46,7 @@ class ArtworkDaoTest {
     }
 
     @Test
-    fun `version 1 database migrates to 4 with its files intact and indexed`() {
+    fun `version 1 database migrates to 6 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->
             v1.execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
@@ -57,7 +57,9 @@ class ArtworkDaoTest {
                     "VALUES (1, 1, 1, 'a.mkv', 'a.mkv', 'mkv', 10, 0, NULL, 0, 0, 0)",
             )
         }
-        val v3 = migrations.runMigrationsAndValidate(name, 4, true)
+        // Every step of the chain, up to the current version: the whole point
+        // of exporting schemas is that an old install can still be opened.
+        val v3 = migrations.runMigrationsAndValidate(name, 6, true)
         v3.query("SELECT name, width, probedAtMs, titleParsed FROM media_files").use { c ->
             assertEquals(true, c.moveToFirst())
             assertEquals("a.mkv", c.getString(0))
@@ -69,6 +71,17 @@ class ArtworkDaoTest {
             assertEquals(0, c.getInt(0))
         }
         v3.query("SELECT COUNT(*) FROM artwork").use { c ->
+            c.moveToFirst()
+            assertEquals(0, c.getInt(0))
+        }
+        // v5: a share with no rows here is still the whole share, which is
+        // what every share was before folders could be chosen.
+        v3.query("SELECT COUNT(*) FROM share_roots").use { c ->
+            c.moveToFirst()
+            assertEquals(0, c.getInt(0))
+        }
+        // v6: nothing is owed on an install that has never picked a folder.
+        v3.query("SELECT COUNT(*) FROM download_picks").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }

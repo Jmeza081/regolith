@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.transfer.SelectionStore
+import com.regolith.data.transfer.TransferRepository
+import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
+import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.navigation.RegolithKey
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +32,56 @@ import javax.inject.Inject
 class AppViewModel @Inject constructor(
     private val prefs: AppPreferences,
     sources: SourceRepository,
+    transfers: TransferRepository,
+    private val selection: SelectionStore,
 ) : ViewModel() {
+
+    init {
+        // Rows a dead process left RUNNING have no worker behind them and
+        // would read as "arriving" forever. Put them back in the queue once,
+        // at startup, which is the only place that can know a restart happened.
+        viewModelScope.launch { transfers.resumeInterrupted() }
+    }
+
+    /**
+     * Tabs carrying a notification dot.
+     *
+     * Lit while anything is queued, copying or paused ("downloading has
+     * started") or has failed ("you need to know"). Nothing marks it as
+     * seen: there is no new state to persist, and every way of clearing it
+     * already exists — the queue draining, a retry, or Clear all. A
+     * "since you last looked" dot would need a preference and could get
+     * stuck on; this one cannot.
+     */
+    val tabDots: StateFlow<Set<MainTab>> = transfers.observeAll()
+        .map { rows ->
+            val notable = rows.any { it.statusEnum() != TransferStatus.DONE }
+            if (notable) setOf(MainTab.SETTINGS) else emptySet()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** Leaving the tab that was selecting ends the selection. */
+    fun clearSelection() = selection.clear()
+
+    /**
+     * The download notification was tapped, and the nav graph has yet to act
+     * on it.
+     *
+     * Held here for the same reason [external] is: the Activity is recreated
+     * on every rotation with the same intent still attached, so acting on it
+     * where it arrives would jump to the downloads every time the device
+     * turned. Consumed exactly once by [openedDownloads].
+     */
+    private val _openDownloads = MutableStateFlow(false)
+    val openDownloads: StateFlow<Boolean> = _openDownloads.asStateFlow()
+
+    fun requestDownloads() {
+        _openDownloads.value = true
+    }
+
+    fun openedDownloads() {
+        _openDownloads.value = false
+    }
 
     /**
      * Tabs drawn at 22% in the pill (design: "Library and Browse dim in

@@ -1,6 +1,8 @@
 package com.regolith.ui.settings
 
 import com.regolith.data.artwork.PrefetchStatus
+import com.regolith.domain.transfer.QueueProgress
+import com.regolith.ui.util.formatBytes
 
 /** One server row under SHARES: "TOWER · SHOWING · 2.4 TB free", "STUDIO · out of reach". */
 data class ServerRow(
@@ -40,6 +42,8 @@ data class SettingsUiState(
     val clearing: Boolean = false,
     /** The background artwork walk, so the app says what the notification says. */
     val prefetch: PrefetchStatus = PrefetchStatus(),
+    /** The download queue, so Settings says what the notification says. */
+    val downloads: DownloadsStatus = DownloadsStatus(),
     // --- Demo library (BuildConfig.DEMO_LIBRARY builds only).
     /** True while the demo server exists; the row offers the opposite action. */
     val demoInstalled: Boolean = false,
@@ -48,3 +52,52 @@ data class SettingsUiState(
     /** What the demo's clips occupy on the device. */
     val demoBytes: Long = 0,
 )
+
+/**
+ * The download queue as the Settings row reports it.
+ *
+ * Reads the same `transfers` rows the notification does (guardrail G3), so
+ * the row and the shade can never disagree.
+ */
+data class DownloadsStatus(
+    /** Queued, copying or paused. */
+    val arriving: Int = 0,
+    /** Copies finished, for the idle line. */
+    val done: Int = 0,
+    val failed: Int = 0,
+    val bytesDone: Long = 0,
+    val bytesTotal: Long = 0,
+    /** A picked folder is still being walked, so the count can only go up. */
+    val discovering: Boolean = false,
+    val usedBytes: Long = 0,
+    val deviceTotalBytes: Long = 0,
+) {
+    val running: Boolean get() = arriving > 0 || discovering
+
+    /** 0..1 across the batch, by bytes. Null while there is nothing to measure. */
+    val fraction: Float?
+        get() = if (bytesTotal > 0) QueueProgress.permille(bytesDone, bytesTotal) / 1000f else null
+
+    /** The 8dp dot: white while arriving, accent on a failure, grey at rest. */
+    val dotState: DownloadDot
+        get() = when {
+            running -> DownloadDot.ARRIVING
+            failed > 0 -> DownloadDot.FAILED
+            else -> DownloadDot.IDLE
+        }
+
+    /** "3 of 34 · 61.2 GB left", "Finding files…", "3 failed", or what is already kept. */
+    val meta: String
+        get() = when {
+            discovering && arriving == 0 -> "Finding files…"
+            running -> {
+                val left = (bytesTotal - bytesDone).coerceAtLeast(0)
+                val prefix = if (discovering) "At least " else ""
+                "$prefix${QueueProgress.label(done + 1, done + arriving)} · ${formatBytes(left)} left"
+            }
+            failed > 0 -> if (failed == 1) "1 failed" else "$failed failed"
+            else -> "Nothing arriving · ${formatBytes(usedBytes)} of ${formatBytes(deviceTotalBytes)} used"
+        }
+}
+
+enum class DownloadDot { ARRIVING, FAILED, IDLE }

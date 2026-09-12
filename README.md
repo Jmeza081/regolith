@@ -22,6 +22,14 @@ Library and Browse walls beside a title-detail pane with a resettable
 divider, and the player's two-column and flex-mode layouts. Autoplay next
 came with that round and works on the phone too.
 
+Downloads take a batch: hold any video or folder in Browse, Library or
+Search to start picking, tap the rest, and one red Download queues the lot
+— picking a folder takes everything inside it, including folders the app
+has never scanned, which it walks over SMB as the download runs. A
+foreground notification carries the progress across the whole batch and a
+dot on the Settings tab says it started; the copies themselves live where
+they always have, under Library › On this device.
+
 ## Build and run
 
 Requirements: Android Studio 2026.1 (for its bundled JDK 21 and the SDK),

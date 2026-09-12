@@ -103,7 +103,7 @@ fun Selection.toggleFolder(pick: FolderPick): Selection {
 fun Selection.toggleFile(pick: FilePick): Selection {
     val mine = files.firstOrNull { it.fileId == pick.fileId }
     if (mine != null) return copy(files = files - mine)
-    if (coveredByAncestor(pick.shareId, pick.folderRelPath)) return this
+    if (coversFileIn(pick.shareId, pick.folderRelPath)) return this
     return copy(files = files + pick)
 }
 
@@ -117,6 +117,19 @@ fun Selection.coveredByAncestor(shareId: Long, relPath: String): Boolean {
     val paths = folderPathsIn(shareId)
     return paths.any { relPath != it && relPath.startsWith("$it/") }
 }
+
+/**
+ * Is a file in [folderRelPath] already coming, because its own folder or one
+ * of that folder's ancestors is picked?
+ *
+ * Inclusive where [coveredByAncestor] is exclusive, and the difference is
+ * the point. A picked FOLDER is not "covered" by itself — it is picked, and
+ * its row stays toggleable so it can be unpicked. A FILE directly inside a
+ * picked folder has no such standing: the folder is bringing it either way,
+ * so its row is checked and inert.
+ */
+fun Selection.coversFileIn(shareId: Long, folderRelPath: String): Boolean =
+    pathCoveredBy(folderPathsIn(shareId), folderRelPath)
 
 /** True when this exact folder is picked in its own right. */
 fun Selection.hasFolder(folderId: Long): Boolean = folders.any { it.folderId == folderId }

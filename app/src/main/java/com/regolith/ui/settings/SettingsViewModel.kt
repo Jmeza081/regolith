@@ -10,6 +10,9 @@ import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
+import com.regolith.data.transfer.TransferRepository
+import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
+import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.util.formatBytes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +44,7 @@ class SettingsViewModel @Inject constructor(
     private val imageLoader: ImageLoader,
     private val demo: DemoLibrary,
     private val prefetcher: ArtworkPrefetcher,
+    private val transfers: TransferRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -67,6 +71,22 @@ class SettingsViewModel @Inject constructor(
             }.collect { rows -> _uiState.update { it.copy(servers = rows) } }
         }
         viewModelScope.launch { prefetcher.observe().collect { p -> _uiState.update { it.copy(prefetch = p) } } }
+        viewModelScope.launch {
+            combine(transfers.observeAll(), transfers.observePendingPicks()) { rows, pendingPicks ->
+                val active = rows.filter { it.statusEnum() in TransferRepository.ACTIVE_STATUSES }
+                val storage = withContext(Dispatchers.IO) { transfers.storage() }
+                DownloadsStatus(
+                    arriving = active.size,
+                    done = rows.count { it.statusEnum() == TransferStatus.DONE },
+                    failed = rows.count { it.statusEnum() == TransferStatus.FAILED },
+                    bytesDone = active.sumOf { it.bytesDone },
+                    bytesTotal = active.sumOf { it.totalBytes },
+                    discovering = pendingPicks > 0,
+                    usedBytes = storage.usedBytes,
+                    deviceTotalBytes = storage.totalBytes,
+                )
+            }.collect { d -> _uiState.update { it.copy(downloads = d) } }
+        }
         viewModelScope.launch { prefs.hardwareDecoding.collect { v -> _uiState.update { it.copy(hardwareDecoding = v) } } }
         viewModelScope.launch { prefs.scrubThumbnails.collect { v -> _uiState.update { it.copy(scrubThumbnails = v) } } }
         viewModelScope.launch { prefs.autoplayNext.collect { v -> _uiState.update { it.copy(autoplayNext = v) } } }
@@ -93,6 +113,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun stopArtwork() = prefetcher.cancelAll()
+
+    /**
+     * Settings › Downloads › Stop. The rows become FAILED · CANCELLED
+     * rather than disappearing, so a stopped batch lands in Library's
+     * "Failed" section with its "Try again" and the bytes already copied
+     * are kept for the resume.
+     */
+    fun stopDownloads() {
+        viewModelScope.launch { transfers.cancelAll() }
+    }
 
     fun scanAll() {
         viewModelScope.launch { scans.scanAll() }
