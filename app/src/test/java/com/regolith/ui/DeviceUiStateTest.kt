@@ -5,6 +5,8 @@ import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.library.DeviceRow
 import com.regolith.ui.library.DeviceUiState
 import com.regolith.ui.library.RemoveTarget
+import com.regolith.ui.library.withWall
+import com.regolith.ui.library.withRows
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -107,4 +109,86 @@ class DeviceUiStateTest {
         val failed = row(9, TransferStatus.FAILED, 1, 0).copy(cause = TransferCause.NO_ROOM, causeBytes = 12_100_000_000)
         assertEquals(TransferCause.NO_ROOM, failed.cause)
     }
+}
+
+/**
+ * The state merges, which are where a selection is most easily lost.
+ *
+ * Room re-emits the wall constantly and an in-flight download re-emits
+ * every 500 ms. If installing a fresh build reset anything the user was in
+ * the middle of, no selection could survive long enough to be used — which
+ * is precisely the bug these guard against.
+ */
+class LibraryStateMergeTest {
+
+    private fun tile(id: Long) = com.regolith.ui.library.LibraryTile.Title(
+        fileId = id, name = "t$id", resolutionLabel = "", matched = true, unwatched = false, fileName = "t$id.mkv",
+        progress = null, meta = "", artwork = com.regolith.domain.artwork.ArtworkRequest(
+            com.regolith.domain.artwork.ArtworkOwner.File(id), com.regolith.domain.artwork.ArtworkKind.POSTER,
+        ),
+        addedAtMs = 0, sizeBytes = 0, durationMs = null, height = null,
+    )
+
+    @Test
+    fun `a fresh wall does not wipe a live selection`() {
+        // The exact failure: hold a tile, the wall re-emits, the selection is gone.
+        val live = com.regolith.ui.library.LibraryUiState(
+            selection = com.regolith.ui.util.SelectionUiState(itemCount = 3, fileCount = 3),
+            sortSheetOpen = true,
+        )
+        val built = com.regolith.ui.library.LibraryUiState(title = "Severance", tiles = listOf(tile(1)), loaded = true)
+        val merged = live.withWall(built, built.tiles)
+        assertEquals(3, merged.selection?.itemCount)
+        assertEquals(true, merged.sortSheetOpen)
+        // and the build itself did land
+        assertEquals("Severance", merged.title)
+        assertEquals(listOf(1L), merged.tiles.map { (it as com.regolith.ui.library.LibraryTile.Title).fileId })
+        assertEquals(true, merged.loaded)
+    }
+
+    @Test
+    fun `a fresh wall does not wipe the device selection either`() {
+        val live = com.regolith.ui.library.LibraryUiState(
+            device = DeviceUiState(picked = setOf(4L, 5L), confirmRemove = RemoveTarget.PICKED),
+        )
+        val merged = live.withWall(com.regolith.ui.library.LibraryUiState(title = "x"), emptyList())
+        assertEquals(setOf(4L, 5L), merged.device.picked)
+        assertEquals(RemoveTarget.PICKED, merged.device.confirmRemove)
+    }
+
+    @Test
+    fun `a progress tick does not wipe a device selection mid-use`() {
+        val live = DeviceUiState(
+            ready = listOf(row(1, TransferStatus.DONE, 10)),
+            picked = setOf(1L),
+            confirmRemove = RemoveTarget.EVERYTHING,
+            showAllFailed = true,
+        )
+        // The download moved a few bytes; the rows are rebuilt.
+        val built = DeviceUiState(
+            ready = listOf(row(1, TransferStatus.DONE, 10)),
+            inFlight = listOf(row(2, TransferStatus.RUNNING, 100, done = 50)),
+            usedBytes = 60,
+            totalBytes = 1000,
+        )
+        val merged = live.withRows(built)
+        assertEquals(setOf(1L), merged.picked)
+        assertEquals(RemoveTarget.EVERYTHING, merged.confirmRemove)
+        assertEquals(true, merged.showAllFailed)
+        // and the rows themselves are the new ones
+        assertEquals(listOf(2L), merged.inFlight.map { it.fileId })
+        assertEquals(60L, merged.usedBytes)
+    }
+
+    @Test
+    fun `merging onto a resting state changes nothing it should not`() {
+        val merged = com.regolith.ui.library.LibraryUiState().withWall(com.regolith.ui.library.LibraryUiState(title = "x"), emptyList())
+        assertEquals(null, merged.selection)
+        assertEquals(null, merged.device.picked)
+    }
+
+    private fun row(id: Long, status: TransferStatus, total: Long, done: Long = total) = DeviceRow(
+        fileId = id, name = "f$id.mkv", status = status, cause = null, causeBytes = null,
+        bytesDone = done, totalBytes = total, meta = "",
+    )
 }

@@ -114,9 +114,8 @@ class LibraryViewModel @AssistedInject constructor(
                 build(shareList, serverList, parentList, childList, fileList, progressList, runs)
             }.collect { state ->
                 unsorted = state.tiles
-                _uiState.update {
-                    state.copy(sort = it.sort, sortSheetOpen = it.sortSheetOpen, viewMode = it.viewMode, tiles = sorted(state.tiles, it.sort), device = it.device, checkingReachability = it.checkingReachability)
-                }
+                // Onto the live state, never the other way: see withWall.
+                _uiState.update { it.withWall(state, sorted(state.tiles, it.sort)) }
             }
         }
         viewModelScope.launch {
@@ -125,7 +124,8 @@ class LibraryViewModel @AssistedInject constructor(
             val progress = rows.flatMapLatest { rs -> library.observeProgress(rs.map { it.fileId }) }
             combine(rows, files, progress) { rs, fs, ps -> Triple(rs, fs, ps) }.collect { (rs, fs, ps) ->
                 val storage = withContext(Dispatchers.IO) { transfers.storage() }
-                _uiState.update { it.copy(device = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage)) }
+                val built = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage)
+                _uiState.update { it.copy(device = it.device.withRows(built)) }
             }
         }
     }

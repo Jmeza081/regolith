@@ -162,3 +162,40 @@ data class DeviceUiState(
 
 /** Which copies a confirm dialog on the device page is about. */
 enum class RemoveTarget { PICKED, EVERYTHING }
+
+/**
+ * Install a freshly built wall onto the live state.
+ *
+ * Copies the BUILT fields onto the existing state, not the other way
+ * round. The first version did the opposite — took the fresh build and
+ * copied an allowlist of transient fields back onto it — and every field
+ * not on that list was silently reset each time Room re-emitted the wall,
+ * which is constantly: a listing lands, an artwork row arrives, progress
+ * ticks. `selection` was not on the list, so a multi-selection vanished
+ * moments after every hold. This direction cannot lose a field it does
+ * not know about, which is the property that matters.
+ */
+fun LibraryUiState.withWall(built: LibraryUiState, sortedTiles: List<LibraryTile>): LibraryUiState = copy(
+    title = built.title,
+    meta = built.meta,
+    tiles = sortedTiles,
+    loaded = built.loaded,
+    noSource = built.noSource,
+    scanning = built.scanning,
+    scannedOnce = built.scannedOnce,
+    unreachable = built.unreachable,
+)
+
+/**
+ * Install freshly built device rows onto the live device state, keeping
+ * what the user is in the middle of. Same shape as [withWall], for the same
+ * reason: an in-flight download re-emits every 500 ms, and a device
+ * selection that reset on each tick could never be completed.
+ */
+fun DeviceUiState.withRows(built: DeviceUiState): DeviceUiState = copy(
+    usedBytes = built.usedBytes,
+    totalBytes = built.totalBytes,
+    ready = built.ready,
+    inFlight = built.inFlight,
+    failed = built.failed,
+)
