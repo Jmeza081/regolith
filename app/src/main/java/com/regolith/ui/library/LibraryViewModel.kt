@@ -358,4 +358,58 @@ class LibraryViewModel @AssistedInject constructor(
         showAllFailed = !showAllFailed
         _uiState.update { it.copy(device = it.device.copy(showAllFailed = showAllFailed)) }
     }
+
+    // --- device tab: picking copies to remove
+    //
+    // Held on the UiState rather than in SelectionStore. The download
+    // selection is app-scoped because a pick three folders deep has to
+    // survive walking the tree; this one cannot leave the tab it is on, and
+    // one store for both would let a batch mean "download these" and
+    // "delete these" in the same breath.
+
+    private fun updateDevice(block: (DeviceUiState) -> DeviceUiState) =
+        _uiState.update { it.copy(device = block(it.device)) }
+
+    /** Long press on a copy: start picking, and pick the one held. */
+    fun beginDeviceSelection(fileId: Long) = updateDevice { d ->
+        d.copy(picked = (d.picked ?: emptySet()) + fileId)
+    }
+
+    fun toggleDeviceSelection(fileId: Long) = updateDevice { d ->
+        val current = d.picked ?: emptySet()
+        d.copy(picked = if (fileId in current) current - fileId else current + fileId)
+    }
+
+    fun selectAllOnDevice() = updateDevice { d -> d.copy(picked = d.allFileIds.toSet()) }
+
+    fun cancelDeviceSelection() = updateDevice { d -> d.copy(picked = null) }
+
+    /** Ask before removing: the files go, and getting them back is another download. */
+    fun askRemovePicked() = updateDevice { d ->
+        if (d.picked.isNullOrEmpty()) d else d.copy(confirmRemove = RemoveTarget.PICKED)
+    }
+
+    /** "Clear all": ask about everything the page lists. */
+    fun askRemoveAll() = updateDevice { d ->
+        if (d.allFileIds.isEmpty()) d else d.copy(confirmRemove = RemoveTarget.EVERYTHING)
+    }
+
+    fun dismissRemoveConfirm() = updateDevice { d -> d.copy(confirmRemove = null) }
+
+    /** Confirmed. Acts on what the dialog said it was about, not on what is picked now. */
+    fun confirmRemove() {
+        val device = _uiState.value.device
+        val target = device.confirmRemove ?: return
+        val picked = device.picked.orEmpty()
+        viewModelScope.launch {
+            when (target) {
+                RemoveTarget.EVERYTHING -> transfers.removeEverything()
+                // Guarded again here: the dialog cannot open on an empty
+                // selection, and if it somehow did this does nothing rather
+                // than falling through to "everything".
+                RemoveTarget.PICKED -> if (picked.isNotEmpty()) transfers.removeAll(picked)
+            }
+            updateDevice { d -> d.copy(picked = null, confirmRemove = null) }
+        }
+    }
 }

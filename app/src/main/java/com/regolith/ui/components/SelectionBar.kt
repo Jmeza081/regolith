@@ -61,6 +61,13 @@ fun SelectionBar(
     detail: String? = null,
     actionText: String = "Download",
     actionEnabled: Boolean = true,
+    /**
+     * True for an action that destroys something ([DestructiveButton]
+     * rather than [PrimaryButton]). Both are the accent fill — red is the
+     * app's one attention colour — so this is about which word the button
+     * carries, and the confirm dialog is what actually guards the act.
+     */
+    destructive: Boolean = false,
     testTag: String = "browse_select_bar",
 ) {
     val colors = RegolithTheme.colors
@@ -93,13 +100,23 @@ fun SelectionBar(
                 testTag = "${testTag}_cancel",
             )
             Spacer(Modifier.width(Spacing.s4))
-            PrimaryButton(
-                text = actionText,
-                onClick = onAction,
-                testTag = "${testTag}_download",
-                compact = true,
-                enabled = actionEnabled,
-            )
+            if (destructive) {
+                DestructiveButton(
+                    text = actionText,
+                    onClick = onAction,
+                    testTag = "${testTag}_download",
+                    compact = true,
+                    enabled = actionEnabled,
+                )
+            } else {
+                PrimaryButton(
+                    text = actionText,
+                    onClick = onAction,
+                    testTag = "${testTag}_download",
+                    compact = true,
+                    enabled = actionEnabled,
+                )
+            }
         }
     }
 }

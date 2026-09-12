@@ -121,4 +121,44 @@ data class DeviceUiState(
     val failed: List<DeviceRow> = emptyList(),
     /** "Show all 30" expands the failed list past its three-row preview. */
     val showAllFailed: Boolean = false,
-)
+    /**
+     * Copies picked for removal. Null means not selecting.
+     *
+     * A different selection from the download picks, and deliberately not
+     * the same machinery: that one is app-scoped because a pick three
+     * folders deep has to survive walking the tree, while this one lives
+     * and dies on this one tab. Sharing a store would also let a batch mean
+     * "download these" and "delete these" at the same moment.
+     */
+    val picked: Set<Long>? = null,
+    /**
+     * What the open confirm dialog would remove, or null when it is closed.
+     *
+     * The intent is stored rather than inferred from whether anything is
+     * picked: "no picks" and "everything" are one step apart, and a version
+     * that read an empty selection as "clear all" would wipe the device for
+     * anyone who deselected their last row and tapped through.
+     */
+    val confirmRemove: RemoveTarget? = null,
+) {
+    /** Everything the page lists, for "Select all". */
+    val allFileIds: List<Long> get() = (ready + inFlight + failed).map { it.fileId }
+
+    /** How many copies the open dialog is asking about. */
+    val confirmCount: Int
+        get() = when (confirmRemove) {
+            RemoveTarget.PICKED -> picked?.size ?: 0
+            RemoveTarget.EVERYTHING -> allFileIds.size
+            null -> 0
+        }
+
+    /** Bytes the picked copies occupy — what the bar promises to give back. */
+    fun pickedBytes(): Long {
+        val ids = picked ?: return 0
+        return (ready + inFlight + failed).filter { it.fileId in ids }
+            .sumOf { if (it.status == TransferStatus.DONE) it.totalBytes else it.bytesDone }
+    }
+}
+
+/** Which copies a confirm dialog on the device page is about. */
+enum class RemoveTarget { PICKED, EVERYTHING }

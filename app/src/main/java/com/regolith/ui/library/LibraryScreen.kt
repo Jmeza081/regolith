@@ -90,6 +90,14 @@ import androidx.activity.compose.BackHandler
 import com.regolith.ui.components.SelectionBar
 import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.util.SelectionUiState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import com.regolith.ui.theme.PillShape
+import androidx.compose.ui.window.Dialog
+import com.regolith.ui.theme.DialogShape
+import com.regolith.ui.components.DestructiveButton
+import com.regolith.ui.components.SecondaryButton
+import androidx.compose.runtime.LaunchedEffect
 
 private enum class LibraryTab { NETWORK, ON_DEVICE }
 
@@ -135,6 +143,13 @@ fun LibraryScreen(
 
     val selection = state.selection
     val selecting = selection != null
+
+    // Each selection belongs to one tab, and the two mean opposite things —
+    // download these, delete these. Switching tabs ends whichever one you
+    // walked away from, so the bar never counts things the tab cannot show.
+    LaunchedEffect(tab) {
+        if (tab == LibraryTab.ON_DEVICE) viewModel.cancelSelection() else viewModel.cancelDeviceSelection()
+    }
     // No BackHandler: back walks out of the collection and the selection
     // comes with it, so a pick can span a wall and the folders under it.
     // Leaving selection is the X above or Cancel below.
@@ -146,10 +161,26 @@ fun LibraryScreen(
             unreachable.isNotEmpty() -> "${unreachable.first().name} unreachable · $readyCount file${if (readyCount == 1) "" else "s"} playable here"
             else -> state.meta
         }
-        if (selecting) {
+        val devicePickCount = state.device.picked?.size
+        if (devicePickCount != null) {
+            // Removing copies, not picking downloads: a different selection
+            // with its own count, and the same chrome so the gesture reads
+            // the same wherever you use it.
+            TopBar(
+                title = if (devicePickCount == 1) "1 selected" else "$devicePickCount selected",
+                onBack = onBack,
+                modifier = Modifier.testTag("device_selection_topbar"),
+                actions = listOf(
+                    TopBarAction(R.drawable.rg_ic_check, "Select all", "device_select_all_button", viewModel::selectAllOnDevice),
+                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "device_select_cancel_button", viewModel::cancelDeviceSelection),
+                ),
+            )
+        } else if (selecting) {
             TopBar(
                 title = if (selection!!.itemCount == 1) "1 selected" else "${selection.itemCount} selected",
-                onBack = viewModel::cancelSelection,
+                // The screen's own back, not a cancel: it walks out of the
+                // collection and the picks come with it. Cancelling is the X.
+                onBack = onBack,
                 modifier = Modifier.testTag("library_selection_topbar"),
                 actions = listOf(
                     TopBarAction(R.drawable.rg_ic_check, "Select all", "library_select_all_button", viewModel::selectAllHere),
@@ -201,14 +232,58 @@ fun LibraryScreen(
         }
 
         if (tab == LibraryTab.ON_DEVICE) {
-            DeviceTab(
-                state = state.device,
-                onOpenTitle = onOpenTitle,
-                onRetry = viewModel::retryTransfer,
-                onCancel = viewModel::cancelTransfer,
-                onClearFailed = viewModel::clearFailed,
-                onToggleShowAll = viewModel::toggleShowAllFailed,
-            )
+            // Its own Box so the remove bar floats over the list rather than
+            // stacking under it; this branch returns before the wall's own.
+            Box(Modifier.fillMaxSize()) {
+                DeviceTab(
+                    state = state.device,
+                    onOpenTitle = onOpenTitle,
+                    onRetry = viewModel::retryTransfer,
+                    onCancel = viewModel::cancelTransfer,
+                    onClearFailed = viewModel::clearFailed,
+                    onToggleShowAll = viewModel::toggleShowAllFailed,
+                    onLongPress = viewModel::beginDeviceSelection,
+                    onToggle = viewModel::toggleDeviceSelection,
+                    onClearAll = viewModel::askRemoveAll,
+                )
+                val devicePicked = state.device.picked
+                if (devicePicked != null) {
+                    val n = devicePicked.size
+                    SelectionBar(
+                        summary = when {
+                            n == 0 -> "Nothing picked"
+                            n == 1 -> "1 video · ${formatBytes(state.device.pickedBytes())}"
+                            else -> "$n videos · ${formatBytes(state.device.pickedBytes())}"
+                        },
+                        detail = if (n == 0) {
+                            "Hold or tap a copy to start"
+                        } else {
+                            "The share keeps them — this frees the space here"
+                        },
+                        actionText = "Remove",
+                        actionEnabled = n > 0,
+                        destructive = true,
+                        onAction = viewModel::askRemovePicked,
+                        onCancel = viewModel::cancelDeviceSelection,
+                        testTag = "device_select_bar",
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(
+                                start = Spacing.s18,
+                                end = Spacing.s18,
+                                bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+                            ),
+                    )
+                }
+            }
+            if (state.device.confirmRemove != null) {
+                RemoveCopiesDialog(
+                    count = state.device.confirmCount,
+                    onConfirm = viewModel::confirmRemove,
+                    onKeep = viewModel::dismissRemoveConfirm,
+                )
+            }
             return
         }
 
@@ -493,6 +568,57 @@ private fun TileRow(
     }
 }
 
+/**
+ * The one confirm on the On-this-device page.
+ *
+ * Deleting a copy is cheap to undo in principle — the file is still on the
+ * share — and expensive in practice, because getting it back is another
+ * download over SMB. So it asks, and it says which of those two facts
+ * matters: the share is untouched, the time is not.
+ *
+ * Same shape as Settings' disconnect dialog: one destructive button, one
+ * way out, and the count in the title so "Clear all" and a selection of
+ * three are visibly different acts.
+ */
+@Composable
+private fun RemoveCopiesDialog(count: Int, onConfirm: () -> Unit, onKeep: () -> Unit) {
+    val colors = RegolithTheme.colors
+    Dialog(onDismissRequest = onKeep) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(colors.surface, DialogShape)
+                .border(1.dp, colors.raised, DialogShape)
+                .padding(Spacing.s18)
+                .testTag("device_remove_dialog"),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s12),
+        ) {
+            DisplayText(
+                if (count == 1) "Remove 1 download?" else "Remove $count downloads?",
+                style = TextStyles.dialogTitle,
+            )
+            Text(
+                "The copies leave this device and the space comes back. Nothing on the share is touched — you can keep them again whenever you like, and it will be another download.",
+                style = TextStyles.body, color = colors.body,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                DestructiveButton(
+                    text = if (count == 1) "Remove it" else "Remove $count",
+                    onClick = onConfirm,
+                    testTag = "device_remove_confirm_button",
+                    modifier = Modifier.fillMaxWidth().height(48.scaledDp()),
+                )
+                SecondaryButton(
+                    text = "Keep them",
+                    onClick = onKeep,
+                    testTag = "device_remove_keep_button",
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
 /** "Nothing here" / "Not scanned yet": the same card in either layout. */
 @Composable
 private fun EmptyWall(scannedOnce: Boolean, onScan: () -> Unit) {
@@ -711,11 +837,34 @@ private fun DeviceTab(
     onCancel: (Long) -> Unit,
     onClearFailed: () -> Unit,
     onToggleShowAll: () -> Unit,
+    onLongPress: (Long) -> Unit = {},
+    onToggle: (Long) -> Unit = {},
+    onClearAll: () -> Unit = {},
 ) {
     val colors = RegolithTheme.colors
+    val picked = state.picked
+    val selecting = picked != null
+    // One row renderer for all three sections, so picking behaves the same
+    // whether a copy is ready, arriving or failed.
+    val deviceRow: @Composable (DeviceRow, androidx.compose.ui.unit.Dp, String?, () -> Unit, Boolean) -> Unit =
+        { row, minHeight, action, onAction, dimThumb ->
+            DeviceRowView(
+                row = row,
+                minHeight = minHeight,
+                onClick = { if (selecting) onToggle(row.fileId) else onOpenTitle(row.fileId) },
+                onLongClick = { onLongPress(row.fileId) },
+                checked = if (selecting) row.fileId in picked!! else null,
+                action = action,
+                onAction = onAction,
+                dimThumb = dimThumb,
+            )
+        }
     LazyColumn(
         Modifier.fillMaxSize().testTag("library_device_list"),
-        contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = 126.dp),
+        contentPadding = PaddingValues(
+            start = Spacing.s18, end = Spacing.s18,
+            bottom = if (selecting) 126.dp + SELECTION_BAR_HEIGHT + Spacing.s8 else 126.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(Spacing.s18),
     ) {
         if (state.ready.isEmpty() && state.inFlight.isEmpty() && state.failed.isEmpty()) {
@@ -749,9 +898,22 @@ private fun DeviceTab(
         if (state.ready.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Eyebrow("Ready offline", muted = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Eyebrow("Ready offline", Modifier.weight(1f), muted = true)
+                        // Beside its own eyebrow, the way "Clear failed" sits
+                        // beside its own. The page's one page-level act, and
+                        // it asks before it does anything.
+                        if (!selecting) {
+                            Text(
+                                "Clear all", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
+                                modifier = Modifier
+                                    .clickable(interactionSource = null, indication = null, onClick = onClearAll)
+                                    .testTag("device_clear_all_button"),
+                            )
+                        }
+                    }
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
-                        state.ready.forEach { row -> DeviceRowView(row, minHeight = 64.dp, onClick = { onOpenTitle(row.fileId) }, action = null, onAction = {}) }
+                        state.ready.forEach { row -> deviceRow(row, 64.dp, null, {}, false) }
                     }
                 }
             }
@@ -761,7 +923,7 @@ private fun DeviceTab(
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     Eyebrow("Arriving", muted = true)
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
-                        state.inFlight.forEach { row -> DeviceRowView(row, minHeight = 72.dp, onClick = { onOpenTitle(row.fileId) }, action = "Cancel", onAction = { onCancel(row.fileId) }) }
+                        state.inFlight.forEach { row -> deviceRow(row, 72.dp, "Cancel", { onCancel(row.fileId) }, false) }
                     }
                 }
             }
@@ -772,13 +934,16 @@ private fun DeviceTab(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Eyebrow("Failed · ${state.failed.size}", Modifier.weight(1f), muted = true)
                         Text(
-                            "Clear all", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
+                            // "Clear failed", not "Clear all": the page now has a
+                            // Clear all of its own, and two of them meaning
+                            // different amounts would be a trap.
+                            "Clear failed", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
                             modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = onClearFailed).testTag("device_clear_failed_button"),
                         )
                     }
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                         val shown = if (state.showAllFailed) state.failed else state.failed.take(3)
-                        shown.forEach { row -> DeviceRowView(row, minHeight = 72.dp, onClick = { onOpenTitle(row.fileId) }, action = "Try again", onAction = { onRetry(row.fileId) }, dimThumb = true) }
+                        shown.forEach { row -> deviceRow(row, 72.dp, "Try again", { onRetry(row.fileId) }, true) }
                         if (state.failed.size > 3) {
                             Box(
                                 Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
@@ -798,14 +963,51 @@ private fun DeviceTab(
 
 /** One transfer row: a 60dp 16:9 thumb, name at 500 13/17, the cause or meta at 11/1.4, an optional 600 12 action. */
 @Composable
-private fun DeviceRowView(row: DeviceRow, minHeight: androidx.compose.ui.unit.Dp, onClick: () -> Unit, action: String?, onAction: () -> Unit, dimThumb: Boolean = false) {
+private fun DeviceRowView(
+    row: DeviceRow,
+    minHeight: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit,
+    action: String?,
+    onAction: () -> Unit,
+    dimThumb: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    /** Null when not selecting; true when this copy is picked for removal. */
+    checked: Boolean? = null,
+) {
     val colors = RegolithTheme.colors
     Row(
-        Modifier.fillMaxWidth().defaultMinSize(minHeight = minHeight).clickable(interactionSource = null, indication = null, onClick = onClick).padding(vertical = Spacing.s4).testTag(row.testTag),
+        Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = minHeight)
+            .combinedClickable(interactionSource = null, indication = null, onClick = onClick, onLongClick = onLongClick)
+            .padding(vertical = Spacing.s4)
+            .testTag(row.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // A copy has nowhere to walk into, so the whole row picks it and the
+        // check rides on the thumbnail rather than taking a column of its own.
         Box(Modifier.width(60.scaledDp()).aspectRatio(16f / 9f).clip(RoundedCornerShape(9.dp)).alpha(if (dimThumb) 0.45f else 1f)) {
             ArtworkImage(ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = row.name)
+            if (checked != null) {
+                Box(Modifier.fillMaxSize().background(colors.overArt), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .size(20.dp)
+                            .background(if (checked) colors.ink else Color.Transparent, PillShape)
+                            .then(if (checked) Modifier else Modifier.border(1.5.dp, colors.onMediaCircleBorder, PillShape)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (checked) {
+                            Icon(
+                                painterResource(R.drawable.rg_ic_check),
+                                contentDescription = "Picked",
+                                tint = colors.ground,
+                                modifier = Modifier.size(12.dp),
+                            )
+                        }
+                    }
+                }
+            }
         }
         Spacer(Modifier.width(Spacing.s12))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -825,7 +1027,7 @@ private fun DeviceRowView(row: DeviceRow, minHeight: androidx.compose.ui.unit.Dp
                 style = TextStyles.meta, color = if (row.status == TransferStatus.DONE) colors.metadata else colors.body, maxLines = 2,
             )
         }
-        if (action != null) {
+        if (action != null && checked == null) {
             Spacer(Modifier.width(Spacing.s12))
             Text(
                 action, style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.ink,

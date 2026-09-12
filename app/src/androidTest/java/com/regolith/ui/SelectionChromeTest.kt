@@ -209,6 +209,52 @@ class SelectionChromeTest {
         assertEquals(1, toggled)
     }
 
+    @Test
+    fun theBarCanCarryADestructiveAction() {
+        // The On-this-device page reuses the bar to REMOVE copies, so the
+        // gesture reads the same wherever it is used and only the word and
+        // the confirm change.
+        var removed = 0
+        compose.setContent {
+            RegolithTheme {
+                SelectionBar(
+                    summary = "3 videos · 6.3 GB",
+                    detail = "The share keeps them — this frees the space here",
+                    actionText = "Remove",
+                    destructive = true,
+                    onAction = { removed++ },
+                    onCancel = { },
+                    testTag = "device_select_bar",
+                )
+            }
+        }
+        compose.onNodeWithText("Remove").assertIsDisplayed()
+        compose.onNodeWithTag("device_select_bar_download").performClick()
+        assertEquals(1, removed)
+    }
+
+    @Test
+    fun aDestructiveActionStillRefusesWhenNothingIsPicked() {
+        var removed = 0
+        compose.setContent {
+            RegolithTheme {
+                SelectionBar(
+                    summary = "Nothing picked",
+                    detail = "Hold or tap a copy to start",
+                    actionText = "Remove",
+                    destructive = true,
+                    actionEnabled = false,
+                    onAction = { removed++ },
+                    onCancel = { },
+                    testTag = "device_select_bar",
+                )
+            }
+        }
+        compose.onNodeWithTag("device_select_bar_download").assertIsNotEnabled()
+        compose.onNodeWithTag("device_select_bar_download").performClick()
+        assertEquals(0, removed)
+    }
+
     // ── The bar ────────────────────────────────────────────────────────
 
     @Test

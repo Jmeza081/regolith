@@ -9,6 +9,7 @@ import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.File
 import javax.inject.Inject
@@ -158,7 +159,33 @@ class TransferRepository @Inject constructor(
     /** "Remove from this device": the copy goes, the share is untouched. */
     suspend fun remove(fileId: Long) = cancel(fileId)
 
-    /** "Clear all" under Failed. */
+    /**
+     * Remove several copies at once: the On-this-device page's multi-delete.
+     *
+     * The share is untouched — this only deletes what was copied here, and
+     * the row with it, so the title goes back to streaming.
+     */
+    suspend fun removeAll(fileIds: Collection<Long>) {
+        fileIds.distinct().forEach { cancel(it) }
+    }
+
+    /**
+     * "Clear all" on the On-this-device page: nothing stays on the phone.
+     *
+     * Takes the arriving ones with it, which is the honest reading of a page
+     * that lists them together — a Clear all that left a download running
+     * would be refilling the page it just emptied. Stops the queue first so
+     * the worker is not mid-write into a file being deleted.
+     */
+    suspend fun removeEverything() {
+        picks.clear()
+        scheduler.cancelAll()
+        val all = transfers.observeAll().first()
+        all.forEach { store.delete(it.localPath) }
+        all.forEach { transfers.deleteForFile(it.fileId) }
+    }
+
+    /** "Clear failed": the rows that gave up, and whatever they had copied. */
     suspend fun clearFailed() {
         transfers.allWith(TransferStatus.FAILED.name).forEach { store.delete(it.localPath) }
         transfers.deleteFailed()

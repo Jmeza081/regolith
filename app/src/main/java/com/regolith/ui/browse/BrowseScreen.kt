@@ -153,9 +153,12 @@ private fun BrowseContent(
         // While selecting, the bar becomes the selection's own: the count for a
         // title, and the back arrow doubles as cancel beside the explicit one.
         if (selecting) {
+            // No back arrow, exactly as the resting bar has none: on Browse the
+            // pill and the system gesture do the navigating. An arrow that
+            // cancelled would also be the third different thing "back" means
+            // on this screen.
             TopBar(
                 title = if (selection!!.itemCount == 1) "1 selected" else "${selection.itemCount} selected",
-                onBack = viewModel::cancelSelection,
                 modifier = Modifier.testTag("browse_selection_topbar"),
                 actions = listOf(
                     TopBarAction(R.drawable.rg_ic_check, "Select all", "browse_select_all_button", viewModel::selectAllHere),
