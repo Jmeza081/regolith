@@ -412,6 +412,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onCancel = { backStack.removeLastOrNull() },
                                 onOpenTitle = { openTitle(it) },
                                 onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
+                                // A point of interest opens the player at that time (P9).
+                                onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                             )
                         }
                         entry<RegolithKey.Browse>(metadata = tabScreen + listPaneMeta) { key ->

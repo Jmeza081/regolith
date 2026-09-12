@@ -54,6 +54,8 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.util.formatClock
+import com.regolith.ui.components.Tag
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -82,6 +84,8 @@ fun SearchScreen(
     onCancel: () -> Unit,
     onOpenTitle: (fileId: Long) -> Unit,
     onOpenFolder: (folderId: Long) -> Unit,
+    /** A point of interest: play this film from this time. */
+    onPlayAt: (fileId: Long, startMs: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -177,6 +181,21 @@ fun SearchScreen(
                     }
                 }
             }
+            // Points of interest first, under their own eyebrow, so a red
+            // match in a chapter's name is never mistaken for one in a
+            // file's. They are places, not files: no selection, no download.
+            if (state.searched && state.moments.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        Eyebrow("Points of interest", muted = true, modifier = Modifier.testTag("search_moments"))
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                            state.moments.forEach { hit ->
+                                HitRow(hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt)
+                            }
+                        }
+                    }
+                }
+            }
             if (state.searched && state.hits.isNotEmpty()) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
@@ -194,7 +213,7 @@ fun SearchScreen(
                     }
                 }
             }
-            if (state.searched && state.hits.isEmpty()) {
+            if (state.searched && state.hits.isEmpty() && state.moments.isEmpty()) {
                 item {
                     Column(
                         Modifier.fillMaxWidth().background(colors.surface, RoundedCornerShape(18.dp)).border(1.dp, colors.hairline, RoundedCornerShape(18.dp)).padding(Spacing.s18).testTag("search_empty_card"),
@@ -278,6 +297,7 @@ private fun HitRow(
     selection: SelectionUiState? = null,
     onToggle: (SearchHit) -> Unit = {},
     onLongPress: (SearchHit) -> Unit = {},
+    onPlayAt: (Long, Long) -> Unit = { _, _ -> },
 ) {
     val colors = RegolithTheme.colors
     val selecting = selection != null
@@ -290,6 +310,7 @@ private fun HitRow(
             (selection?.coversFile(hit.shareId, hit.relPath) == true && selection.excludedFiles.contains(hit.fileId).not())
         is SearchHit.File -> selection?.pickedFiles?.contains(hit.fileId) == true ||
             (selection?.coversFile(hit.shareId, hit.relPath) == true && selection.excludedFiles.contains(hit.fileId).not())
+        is SearchHit.Moment -> false
     }
     val picked = coming
     val covered = false
@@ -308,9 +329,10 @@ private fun HitRow(
                     Modifier.combinedClickable(
                         interactionSource = null,
                         indication = null,
-                        onLongClick = { onLongPress(hit) },
+                        onLongClick = { if (hit !is SearchHit.Moment) onLongPress(hit) },
                     ) {
                         when {
+                            hit is SearchHit.Moment -> { remember(); onPlayAt(hit.fileId, hit.startMs) }
                             selecting -> onToggle(hit)
                             else -> {
                                 remember()
@@ -318,6 +340,7 @@ private fun HitRow(
                                     is SearchHit.Title -> onOpenTitle(hit.fileId)
                                     is SearchHit.File -> onOpenTitle(hit.fileId)
                                     is SearchHit.Folder -> onOpenFolder(hit.folderId)
+                                    is SearchHit.Moment -> Unit
                                 }
                             }
                         }
@@ -348,6 +371,15 @@ private fun HitRow(
                 }
                 is SearchHit.Title -> ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
                 is SearchHit.File -> ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
+                // The film's thumb with the time over it: the picture says
+                // which film, the clock says where in it.
+                is SearchHit.Moment -> Box(Modifier.fillMaxSize()) {
+                    ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.meta)
+                    Text(
+                        formatClock(hit.startMs), style = TextStyles.meta, color = colors.inkSoft,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(3.dp).background(colors.overArt, PillShape).padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
             }
         }
         Spacer(Modifier.width(Spacing.s12))
@@ -371,6 +403,7 @@ private fun HitRow(
         ) {
             Text(highlight(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(hit.meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (hit is SearchHit.Moment) Tag("Point of interest", Modifier.padding(top = Spacing.s2))
         }
         if (picked) {
             Spacer(Modifier.width(Spacing.s12))
