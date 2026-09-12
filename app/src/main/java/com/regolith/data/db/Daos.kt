@@ -2,6 +2,7 @@ package com.regolith.data.db
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
@@ -191,6 +192,17 @@ interface MediaFileDao {
 
     @Query("SELECT * FROM media_files WHERE id = :id")
     fun byIdBlocking(id: Long): MediaFileEntity?
+
+    /**
+     * Every present file directly inside any of [folderIds].
+     *
+     * Called per chunk by `LibraryRepository.filesUnder`, because SQLite
+     * caps a statement at 999 bound variables and a share can have
+     * thousands of folders. `missing = 0` keeps rows a rescan flagged as
+     * gone off the share out of a download.
+     */
+    @Query("SELECT * FROM media_files WHERE folderId IN (:folderIds) AND missing = 0 ORDER BY name COLLATE NOCASE")
+    suspend fun inFolders(folderIds: List<Long>): List<MediaFileEntity>
 
     @Query("SELECT * FROM media_files WHERE shareId = :shareId AND relPath = :relPath")
     suspend fun byPath(shareId: Long, relPath: String): MediaFileEntity?
@@ -419,4 +431,72 @@ interface TransferDao {
     /** Rows a dead process left RUNNING; WorkManager re-runs the work, so they become QUEUED. */
     @Query("UPDATE transfers SET status = 'QUEUED' WHERE status = 'RUNNING'")
     suspend fun requeueRunning()
+
+    /**
+     * The next row to copy, oldest first.
+     *
+     * PAUSED counts as pending: the share dropped out mid-copy and the file
+     * resumes from its `.part` length, so it is waiting for a turn like
+     * anything else. The queue worker re-asks this after every file rather
+     * than taking a snapshot, which is what lets rows added mid-drain join
+     * the batch already running.
+     */
+    @Query("SELECT * FROM transfers WHERE status IN ('QUEUED', 'PAUSED') ORDER BY createdAtMs, id LIMIT 1")
+    suspend fun nextQueued(): TransferEntity?
+
+    /** How many rows are still owed: the notification's "of 34". */
+    @Query("SELECT COUNT(*) FROM transfers WHERE status IN ('QUEUED', 'PAUSED', 'RUNNING')")
+    suspend fun activeCount(): Int
+
+    @Query("SELECT COUNT(*) FROM transfers WHERE status IN ('QUEUED', 'PAUSED', 'RUNNING')")
+    fun observeActiveCount(): Flow<Int>
+
+    /** Bytes owed and bytes copied across everything pending, for the batch progress bar. */
+    @Query(
+        "SELECT COALESCE(SUM(totalBytes), 0) AS total, COALESCE(SUM(bytesDone), 0) AS done " +
+            "FROM transfers WHERE status IN ('QUEUED', 'PAUSED', 'RUNNING')",
+    )
+    suspend fun activeBytes(): ByteTally
+
+    /**
+     * Stop everything pending. FAILED with CANCELLED rather than deleted,
+     * so a stopped batch lands in the design's "Failed · N" section with
+     * its "Try again" instead of vanishing, and the bytes already copied
+     * stay on disk for the resume.
+     */
+    @Query(
+        "UPDATE transfers SET status = 'FAILED', cause = 'CANCELLED', updatedAtMs = :now " +
+            "WHERE status IN ('QUEUED', 'PAUSED', 'RUNNING')",
+    )
+    suspend fun cancelActive(now: Long)
+
+    /** File ids already on the device, so a selection can say "3 already here". */
+    @Query("SELECT fileId FROM transfers WHERE status = 'DONE'")
+    fun observeDoneFileIds(): Flow<List<Long>>
+}
+
+/** Two sums from one query. Room maps the column names onto the constructor. */
+data class ByteTally(val total: Long, val done: Long)
+
+@Dao
+interface DownloadPickDao {
+    /** The next picked folder still needing a walk, oldest first. */
+    @Query("SELECT * FROM download_picks WHERE discovered = 0 ORDER BY createdAtMs, id LIMIT 1")
+    suspend fun nextUndiscovered(): DownloadPickEntity?
+
+    @Query("SELECT COUNT(*) FROM download_picks WHERE discovered = 0")
+    suspend fun pendingCount(): Int
+
+    @Query("SELECT COUNT(*) FROM download_picks WHERE discovered = 0")
+    fun observePendingCount(): Flow<Int>
+
+    /** IGNORE, not REPLACE: picking the same folder twice is one job, and the unique index says so. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(pick: DownloadPickEntity)
+
+    @Query("UPDATE download_picks SET discovered = 1, filesFound = :found WHERE id = :id")
+    suspend fun markDiscovered(id: Long, found: Int)
+
+    @Query("DELETE FROM download_picks")
+    suspend fun clear()
 }

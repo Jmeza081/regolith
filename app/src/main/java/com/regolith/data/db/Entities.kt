@@ -266,3 +266,37 @@ data class TransferEntity(
     val updatedAtMs: Long,
     val finishedAtMs: Long?,
 )
+
+/**
+ * Schema v6: a folder the user picked for download, waiting to be walked.
+ *
+ * A selection is transient and lives in memory, but a PICKED FOLDER is not
+ * the same thing as a selection: by the time the user has tapped Download
+ * the app has promised to fetch everything inside it, and that promise has
+ * to survive the process being killed mid-walk. A folder that was never
+ * scanned has no `media_files` rows to expand into, so the walk over SMB is
+ * the only way to learn what is in it — and a walk that forgot its own
+ * queue on a restart would leave the download half-done with nothing
+ * recording what was still owed.
+ *
+ * Rows are written by `TransferRepository.addFolderPicks`, consumed by
+ * `TransferQueueWorker`'s discovery phase, and cleared when the queue
+ * drains. Web analogy: a job table, not a shopping cart.
+ */
+@Entity(
+    tableName = "download_picks",
+    foreignKeys = [ForeignKey(FolderEntity::class, ["id"], ["folderId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["folderId"], unique = true)],
+)
+data class DownloadPickEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val folderId: Long,
+    val shareId: Long,
+    /** `/`-separated, no leading slash. Kept so the walk can honour the share's roots. */
+    val relPath: String,
+    /** False until the subtree has been listed off the share. */
+    val discovered: Boolean = false,
+    /** How many playable files the walk found. Meaningless until [discovered]. */
+    val filesFound: Int = 0,
+    val createdAtMs: Long,
+)

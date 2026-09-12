@@ -1,6 +1,7 @@
 package com.regolith.domain.model
 
 import com.regolith.domain.smb.SmbHost
+import com.regolith.domain.transfer.pathCoveredBy
 
 /** How a stored server authenticates. The password itself is in the CredentialStore. */
 enum class AuthMode { GUEST, PASSWORD }
@@ -46,9 +47,15 @@ data class Share(
  * folder may be read off the share at all, and a folder that is only on the
  * WAY to a chosen one is not: it gets a row so the tree keeps its shape,
  * and nothing more.
+ *
+ * The path test itself is [pathCoveredBy], shared with the download
+ * selection. The difference is what EMPTY means, and it is the whole
+ * difference: no chosen folders is a statement about a library's shape and
+ * takes everything, where nothing picked is a statement about a selection
+ * and takes nothing.
  */
 fun rootsCover(roots: List<String>, relPath: String): Boolean =
-    roots.isEmpty() || roots.any { relPath == it || relPath.startsWith("$it/") }
+    roots.isEmpty() || pathCoveredBy(roots.toSet(), relPath)
 
 /** A row on the Browse screen: a folder or a playable file. */
 sealed interface BrowseItem {
@@ -59,6 +66,11 @@ sealed interface BrowseItem {
         override val name: String,
         val fileCount: Int,
         val byteCount: Long,
+        val shareId: Long = 0,
+        /** `/`-joined path inside the share. What makes "is this inside a pick" a string test. */
+        val relPath: String = "",
+        /** False when the folder has never been listed, so its counts mean nothing yet. */
+        val listed: Boolean = true,
     ) : BrowseItem
 
     data class File(
@@ -72,5 +84,8 @@ sealed interface BrowseItem {
         /** Picture size once something has opened the file; null until then. */
         val width: Int? = null,
         val height: Int? = null,
+        val shareId: Long = 0,
+        /** The relPath of the folder holding it, so ancestor coverage is a string test. */
+        val folderRelPath: String = "",
     ) : BrowseItem
 }

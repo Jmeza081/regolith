@@ -2,6 +2,7 @@ package com.regolith.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,10 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.ThumbShape
 import com.regolith.ui.theme.scaledDp
 
+/**
+ * What sits at the right of a row. [Checked] is both "this is the chosen
+ * one" (the share picker) and "this is picked" (a download selection).
+ */
 enum class RowTrailing { Chevron, Checked, None }
 
 /** What sits at the left of a row. */
@@ -74,6 +79,14 @@ fun ListRow(
     minHeight: androidx.compose.ui.unit.Dp = 56.scaledDp(),
     /** Text drawn at the right instead of a glyph, e.g. "2.4 TB free". */
     trailingText: String? = null,
+    /**
+     * Hold to start a multi-selection (Browse, Library, Search). Null means
+     * the row has nothing to hold for. The platform's own ~500 ms timeout
+     * applies, which is the reflex every other Android app has trained;
+     * [com.regolith.ui.components.SELECT_HOLD_MS] is where that is written
+     * down and how it would be changed.
+     */
+    onLongClick: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     Row(
@@ -81,7 +94,7 @@ fun ListRow(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = minHeight)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag(testTag),
     ) {
         when (leading) {

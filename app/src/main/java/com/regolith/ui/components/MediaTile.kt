@@ -3,6 +3,7 @@ package com.regolith.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -121,9 +122,27 @@ fun MediaTile(
     shape: Shape = TileShape,
     /** Wide window only: this is the title open in the detail pane beside the wall. */
     selected: Boolean = false,
+    /** Hold to start a multi-selection. Null means the tile has nothing to hold for. */
+    onLongClick: (() -> Unit)? = null,
+    /**
+     * Selection mode: null when not selecting, false when pickable, true
+     * when picked.
+     *
+     * Drawn as a ring PLUS a filled check rather than a ring alone. Over
+     * artwork a white ring on its own reads as a highlight — it is what the
+     * detail pane already uses — so the check is the second channel that
+     * says "picked" and not "open". The pane's own ring is suppressed while
+     * selecting, upstream, so one ring never means two things.
+     */
+    checked: Boolean? = null,
 ) {
     val colors = RegolithTheme.colors
-    Column(modifier.clickable(interactionSource = null, indication = null, onClick = onClick).testTag(testTag)) {
+    val picked = checked == true
+    Column(
+        modifier
+            .combinedClickable(interactionSource = null, indication = null, onClick = onClick, onLongClick = onLongClick)
+            .testTag(testTag),
+    ) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -132,8 +151,8 @@ fun MediaTile(
                 // the content, so anything drawn over it would be read as
                 // part of the picture. Outside the clip so the ring is not
                 // shaved by the tile's own corners.
-                .then(if (selected) Modifier.border(2.dp, colors.ink, shape) else Modifier)
-                .padding(if (selected) 4.dp else 0.dp)
+                .then(if (selected || picked) Modifier.border(2.dp, colors.ink, shape) else Modifier)
+                .padding(if (selected || picked) 4.dp else 0.dp)
                 .clip(shape)
                 .background(colors.surface)
                 .alpha(if (dimmed) 0.45f else 1f),
@@ -142,7 +161,9 @@ fun MediaTile(
             if (count != null) {
                 CollectionBadge(count, Modifier.align(Alignment.TopStart).padding(6.dp))
             }
-            if (unwatched && count == null) {
+            if (checked != null) {
+                TilePick(picked, Modifier.align(Alignment.TopEnd).padding(7.dp))
+            } else if (unwatched && count == null) {
                 UnwatchedDot(Modifier.align(Alignment.TopEnd).padding(5.dp))
             }
             if (resolution != null) {
@@ -160,6 +181,34 @@ fun MediaTile(
         )
         if (meta != null) {
             Text(meta, style = TextStyles.tileMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * The pick marker on a tile in selection mode: a filled ink circle with a
+ * dark check when picked, a hollow ring when not.
+ *
+ * 20dp, which is the [UnwatchedDot]'s corner grown to a hit-free marker —
+ * the tile itself is the target, so this only has to be legible.
+ */
+@Composable
+private fun TilePick(picked: Boolean, modifier: Modifier = Modifier) {
+    val colors = RegolithTheme.colors
+    Box(
+        modifier
+            .size(20.dp)
+            .background(if (picked) colors.ink else colors.overArt, PillShape)
+            .then(if (picked) Modifier else Modifier.border(1.5.dp, colors.onMediaCircleBorder, PillShape)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (picked) {
+            Icon(
+                painterResource(R.drawable.rg_ic_check),
+                contentDescription = "Picked",
+                tint = colors.ground,
+                modifier = Modifier.size(12.dp),
+            )
         }
     }
 }

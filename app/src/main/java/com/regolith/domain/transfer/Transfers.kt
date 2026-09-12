@@ -43,3 +43,37 @@ object StorageCheck {
     fun shortfall(freeBytes: Long, totalBytes: Long, bytesDone: Long): Long =
         (remaining(totalBytes, bytesDone) + RESERVE_BYTES - freeBytes).coerceAtLeast(0)
 }
+
+/**
+ * What the batch notification and the Settings row say about a queue of
+ * downloads. Pure so the arithmetic is unit-tested rather than eyeballed in
+ * a notification shade.
+ */
+object QueueProgress {
+    /**
+     * How far through the batch, in permille (0..1000).
+     *
+     * Measured in BYTES, not files, and that is the point: a batch whose
+     * first file is 40 GB and whose other eleven are 200 MB each would sit
+     * at "1 of 12" for an hour if files were the unit, which reads as a
+     * stalled download. Permille rather than percent because
+     * `NotificationCompat.setProgress` takes an integer max and a 1000-step
+     * bar moves visibly on a large file where a 100-step one looks stuck.
+     */
+    fun permille(bytesDone: Long, bytesTotal: Long): Int {
+        if (bytesTotal <= 0L) return 0
+        val done = bytesDone.coerceIn(0L, bytesTotal)
+        return ((done * 1000L) / bytesTotal).toInt()
+    }
+
+    /** "3 of 12". [done] is one-based: the file being copied, not the count finished. */
+    fun label(done: Int, total: Int): String = "${done.coerceIn(1, maxOf(total, 1))} of ${maxOf(total, 1)}"
+
+    /**
+     * What the notification says while a picked folder is still being
+     * walked. The count climbs as the walk finds files, because the total
+     * genuinely is not known yet — a folder that was never scanned has no
+     * rows to count.
+     */
+    fun discovering(found: Int): String = if (found <= 0) "Finding files…" else "Finding files… $found"
+}

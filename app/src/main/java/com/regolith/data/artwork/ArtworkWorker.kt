@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.regolith.R
+import com.regolith.data.RegolithNotifications
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.artwork.ArtworkOwner
 import dagger.assisted.Assisted
@@ -101,8 +102,8 @@ class ArtworkWorker @AssistedInject constructor(
 
     private fun foregroundInfo(done: Int, total: Int): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Artwork", NotificationManager.IMPORTANCE_LOW))
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+        manager.createNotificationChannel(NotificationChannel(RegolithNotifications.CHANNEL_ARTWORK, "Artwork", NotificationManager.IMPORTANCE_LOW))
+        val notification = NotificationCompat.Builder(applicationContext, RegolithNotifications.CHANNEL_ARTWORK)
             .setSmallIcon(R.drawable.ic_splash_wordmark)
             .setContentTitle("Preparing artwork")
             .setContentText(if (total > 0) "$done of $total" else "Working out what needs a picture")
@@ -113,7 +114,7 @@ class ArtworkWorker @AssistedInject constructor(
             // at the notification is the person best placed to say "not now".
             .addAction(0, "Stop", WorkManager.getInstance(applicationContext).createCancelPendingIntent(id))
             .build()
-        return ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        return ForegroundInfo(RegolithNotifications.ARTWORK_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     companion object {
@@ -121,7 +122,5 @@ class ArtworkWorker @AssistedInject constructor(
         const val KEY_DONE = "done"
         const val KEY_TOTAL = "total"
         private const val TAG = "Regolith/Artwork"
-        private const val CHANNEL_ID = "artwork"
-        private const val NOTIFICATION_ID = 42
     }
 }

@@ -3,6 +3,7 @@ package com.regolith.ui.browse
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -52,6 +54,10 @@ import com.regolith.ui.components.MediaTile
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
+import androidx.activity.compose.BackHandler
+import com.regolith.ui.components.SelectionBar
+import com.regolith.ui.components.SELECTION_BAR_HEIGHT
+import com.regolith.ui.components.TopBarAction
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -131,15 +137,37 @@ private fun BrowseContent(
 ) {
     val colors = RegolithTheme.colors
     var playAllOpen by remember { mutableStateOf(false) }
-    Column(modifier.fillMaxSize().testTag("browse_screen")) {
+    val selection = state.selection
+    val selecting = selection != null
+
+    // System back leaves the SELECTION before it leaves the folder: a reflex
+    // press while picking should not also lose your place in the tree.
+    BackHandler(enabled = selecting) { viewModel.cancelSelection() }
+
+    Box(modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().testTag("browse_screen")) {
         // No back arrow (design frame 25): the pill and the system back gesture do the navigating, and the breadcrumb says where you are.
         // The title is "Browse" at the root and the folder's own name inside one.
-        TopBar(
-            title = state.title,
-            subtitle = state.breadcrumb,
-            subtitleMuted = true,
-            actions = listOf(viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode)),
-        )
+        // While selecting, the bar becomes the selection's own: the count for a
+        // title, and the back arrow doubles as cancel beside the explicit one.
+        if (selecting) {
+            TopBar(
+                title = if (selection!!.itemCount == 1) "1 selected" else "${selection.itemCount} selected",
+                onBack = viewModel::cancelSelection,
+                modifier = Modifier.testTag("browse_selection_topbar"),
+                actions = listOf(
+                    TopBarAction(R.drawable.rg_ic_check, "Select all", "browse_select_all_button", viewModel::selectAllHere),
+                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "browse_select_cancel_button", viewModel::cancelSelection),
+                ),
+            )
+        } else {
+            TopBar(
+                title = state.title,
+                subtitle = state.breadcrumb,
+                subtitleMuted = true,
+                actions = listOf(viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode)),
+            )
+        }
 
         if (state.loaded && state.noSource) {
             NoSourceContent(onAddServer = onAddServer)
@@ -152,7 +180,7 @@ private fun BrowseContent(
 
         // The folder's own CTA, above the list and only where there is
         // something to play: a folder of folders has nothing to queue.
-        if (onPlayAll != null && files.isNotEmpty()) {
+        if (onPlayAll != null && files.isNotEmpty() && !selecting) {
             PlayAllButton(
                 onClick = { playAllOpen = true },
                 modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
@@ -190,6 +218,9 @@ private fun BrowseContent(
             }
         }
         val showEmpty = state.loaded && state.rows.isEmpty() && offline == null
+        // The bar floats over the pill, so the last row has to clear both.
+        val bottomPadding = LocalNavPillInsets.current.calculateBottomPadding() +
+            if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp
         // Shares are never tiles: a share has no artwork, and at the root the
         // question is "which share", not "which film".
         val shareSection = @Composable {
@@ -211,7 +242,7 @@ private fun BrowseContent(
         if (state.viewMode == ViewMode.ROWS) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().testTag("browse_grid"),
-                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = bottomPadding),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s12),
             ) {
                 if (offline != null) item { offlineCard() }
@@ -220,11 +251,26 @@ private fun BrowseContent(
                     item {
                         Section(formatFolderCount(folders.size), dimmed = offline != null) {
                             folders.forEach { row ->
+                                val picked = selection?.pickedFolders?.contains(row.folderId) == true
+                                val covered = selection?.coveredFolders?.contains(row.folderId) == true
                                 ListRow(
                                     title = row.name,
-                                    meta = if (row.fileCount > 0) "${formatFileCount(row.fileCount)} · ${formatBytes(row.byteCount)}" else null,
+                                    meta = folderMeta(row, covered),
                                     leading = RowLeading.IconBox(R.drawable.rg_ic_browse),
-                                    onClick = { onOpenFolder(row.folderId) },
+                                    // Covered by a picked ancestor: checked, and inert. The
+                                    // "Choose folders" picker's own rule — the parent owns it.
+                                    onClick = when {
+                                        covered -> { {} }
+                                        selecting -> { { viewModel.toggleSelection(row) } }
+                                        else -> { { onOpenFolder(row.folderId) } }
+                                    },
+                                    onLongClick = { viewModel.beginSelection(row) },
+                                    trailing = when {
+                                        picked || covered -> RowTrailing.Checked
+                                        selecting -> RowTrailing.None
+                                        else -> RowTrailing.Chevron
+                                    },
+                                    modifier = if (covered) Modifier.alpha(0.5f) else Modifier,
                                     testTag = row.testTag,
                                 )
                             }
@@ -235,13 +281,20 @@ private fun BrowseContent(
                     item {
                         Section(formatFileCount(files.size), dimmed = offline != null) {
                             files.forEach { row ->
+                                val filePicked = selection?.pickedFiles?.contains(row.fileId) == true
+                                val fileCovered = selection?.coversFile(row.shareId, row.folderRelPath) == true
                                 ListRow(
                                     title = row.name,
                                     meta = fileMeta(row),
                                     leading = RowLeading.Thumb(row.artwork, fallbackLabel = row.name),
-                                    trailing = RowTrailing.None,
+                                    trailing = if (filePicked || fileCovered) RowTrailing.Checked else RowTrailing.None,
                                     compact = true,
-                                    onClick = { onOpenFile(row.fileId) },
+                                    onClick = when {
+                                        fileCovered -> { {} }
+                                        selecting -> { { viewModel.toggleSelection(row) } }
+                                        else -> { { onOpenFile(row.fileId) } }
+                                    },
+                                    onLongClick = { viewModel.beginSelection(row) },
                                     testTag = row.testTag,
                                     // A row has no art to ring, so the open one is lifted a step.
                                     // The Library's rows lift onto `surface` from the ground; these
@@ -262,7 +315,7 @@ private fun BrowseContent(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().testTag("browse_tiles"),
-                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = bottomPadding),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s12),
             ) {
@@ -271,14 +324,22 @@ private fun BrowseContent(
                 if (folders.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { Eyebrow(formatFolderCount(folders.size), muted = true) }
                     items(folders, key = { it.testTag }) { row ->
+                        val picked = selection?.pickedFolders?.contains(row.folderId) == true
+                        val covered = selection?.coveredFolders?.contains(row.folderId) == true
                         MediaTile(
                             artwork = row.artwork,
                             kind = ArtworkKind.THUMB,
                             title = row.name,
-                            meta = if (row.fileCount > 0) "${formatFileCount(row.fileCount)} · ${formatBytes(row.byteCount)}" else null,
+                            meta = folderMeta(row, covered),
                             count = row.fileCount.takeIf { it > 0 },
-                            dimmed = offline != null,
-                            onClick = { onOpenFolder(row.folderId) },
+                            dimmed = offline != null || covered,
+                            onClick = when {
+                                covered -> { {} }
+                                selecting -> { { viewModel.toggleSelection(row) } }
+                                else -> { { onOpenFolder(row.folderId) } }
+                            },
+                            onLongClick = { viewModel.beginSelection(row) },
+                            checked = if (selecting) picked || covered else null,
                             testTag = row.testTag,
                         )
                     }
@@ -286,6 +347,8 @@ private fun BrowseContent(
                 if (files.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { Eyebrow(formatFileCount(files.size), muted = true) }
                     items(files, key = { it.testTag }) { row ->
+                        val filePicked = selection?.pickedFiles?.contains(row.fileId) == true
+                        val fileCovered = selection?.coversFile(row.shareId, row.folderRelPath) == true
                         MediaTile(
                             artwork = row.artwork,
                             kind = ArtworkKind.THUMB,
@@ -295,8 +358,16 @@ private fun BrowseContent(
                             progress = row.fraction,
                             dimmed = offline != null,
                             fallbackLabel = row.name,
-                            selected = row.fileId == selectedFileId,
-                            onClick = { onOpenFile(row.fileId) },
+                            // The pane's ring stands down while selecting, so one
+                            // ring never means both "open" and "picked".
+                            selected = !selecting && row.fileId == selectedFileId,
+                            onClick = when {
+                                fileCovered -> { {} }
+                                selecting -> { { viewModel.toggleSelection(row) } }
+                                else -> { { onOpenFile(row.fileId) } }
+                            },
+                            onLongClick = { viewModel.beginSelection(row) },
+                            checked = if (selecting) filePicked || fileCovered else null,
                             testTag = row.testTag,
                         )
                     }
@@ -305,6 +376,36 @@ private fun BrowseContent(
             }
         }
     }
+
+        // Over the list rather than in it, so the count stays put while the
+        // list scrolls under it. Sits above the nav pill on a phone and at
+        // the foot of the pane on a wide window, from the same insets.
+        if (selection != null) {
+            SelectionBar(
+                summary = selection.summary,
+                detail = selection.detail,
+                actionEnabled = selection.canDownload,
+                onAction = viewModel::downloadSelection,
+                onCancel = viewModel::cancelSelection,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = Spacing.s18,
+                        end = Spacing.s18,
+                        bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+                    ),
+            )
+        }
+    }
+}
+
+/** A folder's "9 files · 18.4 GB", or what it is doing in a selection instead. */
+private fun folderMeta(row: BrowseRow.FolderRow, covered: Boolean): String? = when {
+    covered -> "Already inside your pick"
+    !row.listed -> "Not listed yet"
+    row.fileCount > 0 -> "${formatFileCount(row.fileCount)} · ${formatBytes(row.byteCount)}"
+    else -> null
 }
 
 /** The tree's first line sits on the top bar's own baseline rather than the screen's edge. */

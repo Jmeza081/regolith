@@ -7,8 +7,11 @@ import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.model.BrowseItem
+import com.regolith.domain.transfer.FilePick
+import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
+import com.regolith.ui.util.SelectionPresenter
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -36,6 +39,7 @@ class BrowseViewModel @AssistedInject constructor(
     private val library: LibraryRepository,
     private val sources: SourceRepository,
     private val prefs: AppPreferences,
+    private val selection: SelectionPresenter,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -50,6 +54,7 @@ class BrowseViewModel @AssistedInject constructor(
         if (folderId == null) observeRoot() else observeFolder(folderId)
         viewModelScope.launch { prefs.browseViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         observeTree()
+        viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
         _uiState.update { it.copy(currentFolderId = folderId) }
     }
 
@@ -138,8 +143,53 @@ class BrowseViewModel @AssistedInject constructor(
         viewModelScope.launch { onReady(library.rootFolder(shareId).id) }
     }
 
+    // ── Multi-selection ────────────────────────────────────────────────
+    //
+    // The picks live in the app-scoped SelectionStore behind
+    // SelectionPresenter, not here: this ViewModel is created per folderId,
+    // so drilling into a subfolder builds a new one and anything held here
+    // would be lost on exactly the gesture the feature exists for.
+
+    /** Long press: arm selection mode and pick what was held, in one gesture. */
+    fun beginSelection(row: BrowseRow) {
+        selection.begin()
+        toggleSelection(row)
+    }
+
+    fun toggleSelection(row: BrowseRow) {
+        when (row) {
+            is BrowseRow.FolderRow -> selection.toggleFolder(row.toPick())
+            is BrowseRow.FileRow -> selection.toggleFile(row.toPick())
+            // A selection lives inside one share, so the root's share rows are not pickable.
+            is BrowseRow.ShareRow -> Unit
+        }
+    }
+
+    /** Everything on this screen, leaving picks made elsewhere alone. */
+    fun selectAllHere() {
+        val rows = _uiState.value.rows
+        selection.begin()
+        selection.addAll(
+            folders = rows.filterIsInstance<BrowseRow.FolderRow>().map { it.toPick() },
+            files = rows.filterIsInstance<BrowseRow.FileRow>().map { it.toPick() },
+        )
+    }
+
+    fun cancelSelection() = selection.cancel()
+
+    /** Queue the batch and leave selection mode. */
+    fun downloadSelection() {
+        viewModelScope.launch { selection.download() }
+    }
+
+    private fun BrowseRow.FolderRow.toPick() =
+        FolderPick(folderId = folderId, shareId = shareId, relPath = relPath, fileCount = fileCount, byteCount = byteCount, listed = listed)
+
+    private fun BrowseRow.FileRow.toPick() =
+        FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
+
     private fun BrowseItem.toRow(): BrowseRow = when (this) {
-        is BrowseItem.Folder -> BrowseRow.FolderRow(id, name, fileCount, byteCount)
+        is BrowseItem.Folder -> BrowseRow.FolderRow(id, name, fileCount, byteCount, shareId, relPath, listed)
         is BrowseItem.File -> BrowseRow.FileRow(
             fileId = id,
             name = name,
@@ -148,6 +198,8 @@ class BrowseViewModel @AssistedInject constructor(
             progressMs = progressMs,
             durationMs = durationMs,
             resolutionLabel = VideoInfo.resolutionLabelFor(width, height),
+            shareId = shareId,
+            folderRelPath = folderRelPath,
         )
     }
 }
