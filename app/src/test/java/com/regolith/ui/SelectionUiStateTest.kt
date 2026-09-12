@@ -106,4 +106,55 @@ class SelectionUiStateTest {
     fun `coversFile says no when nothing is picked`() {
         assertFalse(SelectionUiState().coversFile(1, "Films"))
     }
+
+    // ── picksInside: the signpost down to a deep pick ───────────────────
+
+    @Test
+    fun `a folder reports the picks below it`() {
+        // What makes deep picking legible: walk into Series, pick a season,
+        // walk back out, and Series still says something happened in there.
+        val state = SelectionUiState(pickedPaths = mapOf(1L to setOf("Series/Severance/Season 01")))
+        assertEquals(1, state.picksInside(1, "Series"))
+        assertEquals(1, state.picksInside(1, "Series/Severance"))
+    }
+
+    @Test
+    fun `a folder does not count itself as a pick inside it`() {
+        // It is picked in its own right and its row already says so; counting
+        // it again here would read as "something deeper is picked too".
+        val state = SelectionUiState(pickedPaths = mapOf(1L to setOf("Films")))
+        assertEquals(0, state.picksInside(1, "Films"))
+    }
+
+    @Test
+    fun `picked files count towards the folder holding them`() {
+        val state = SelectionUiState(
+            pickedFileFolders = mapOf(1L to listOf("Series/Severance/Season 01", "Series/Severance/Season 01")),
+        )
+        assertEquals(2, state.picksInside(1, "Series"))
+        assertEquals(2, state.picksInside(1, "Series/Severance/Season 01"))
+    }
+
+    @Test
+    fun `a sibling branch reports nothing`() {
+        val state = SelectionUiState(pickedPaths = mapOf(1L to setOf("Series/Severance/Season 01")))
+        assertEquals(0, state.picksInside(1, "Films"))
+        // And a name that merely starts the same is a different branch.
+        assertEquals(0, state.picksInside(1, "Series Archive"))
+    }
+
+    @Test
+    fun `the share root sees every pick in the share`() {
+        val state = SelectionUiState(
+            pickedPaths = mapOf(1L to setOf("Films", "Series/Severance")),
+            pickedFileFolders = mapOf(1L to listOf("Home videos")),
+        )
+        assertEquals(3, state.picksInside(1, ""))
+    }
+
+    @Test
+    fun `another share is another tree`() {
+        val state = SelectionUiState(pickedPaths = mapOf(1L to setOf("Films/Arrival (2016)")))
+        assertEquals(0, state.picksInside(2, "Films"))
+    }
 }

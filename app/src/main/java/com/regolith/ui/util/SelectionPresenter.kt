@@ -35,6 +35,8 @@ data class SelectionUiState(
      * without the presenter having to know which rows are on screen.
      */
     val pickedPaths: Map<Long, Set<String>> = emptyMap(),
+    /** The folders holding picked FILES, per share, for the same tests. */
+    val pickedFileFolders: Map<Long, List<String>> = emptyMap(),
     /** The folder being looked at is itself inside a pick, so everything here is along for the ride. */
     val insideCovered: Boolean = false,
     /** What the contextual bar counts: picks, not the files they expand to. */
@@ -78,6 +80,21 @@ data class SelectionUiState(
 
     /** Download only goes red when tapping it would actually do something. */
     val canDownload: Boolean get() = itemCount > 0 && hasRoom
+
+    /**
+     * How many picks sit strictly below [relPath].
+     *
+     * The signpost down to a deep pick, borrowed from the Choose-folders
+     * picker for the same reason it needed one: once picking and walking are
+     * different taps, a folder you walked into and picked inside looks
+     * identical to an empty branch when you come back up.
+     */
+    fun picksInside(shareId: Long, relPath: String): Int {
+        val prefix = if (relPath.isEmpty()) "" else "$relPath/"
+        val folders = (pickedPaths[shareId] ?: emptySet()).count { it != relPath && it.startsWith(prefix) }
+        val files = (pickedFileFolders[shareId] ?: emptyList()).count { it == relPath || it.startsWith(prefix) }
+        return folders + files
+    }
 
     /**
      * Is a file in [folderRelPath] already coming, because one of its
@@ -171,6 +188,7 @@ class SelectionPresenter @Inject constructor(
             coveredFolders = covered,
             pickedFiles = sel.files.map { it.fileId }.toSet(),
             pickedPaths = sel.folders.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.relPath }.toSet() },
+            pickedFileFolders = sel.files.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.folderRelPath } },
             itemCount = sel.itemCount,
             fileCount = fileCount,
             byteCount = byteCount,

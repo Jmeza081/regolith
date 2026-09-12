@@ -91,8 +91,8 @@ fun SearchScreen(
 
     val selection = state.selection
     val selecting = selection != null
-    // Back leaves the selection before it leaves Search.
-    BackHandler(enabled = selecting) { viewModel.cancelSelection() }
+    // No BackHandler: back leaves Search, and NavGraph clears the selection
+    // when the top of the stack is somewhere that cannot act on it.
 
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("search_screen")) {
@@ -290,32 +290,57 @@ private fun HitRow(
         is SearchHit.Folder -> selection?.coveredFolders?.contains(hit.folderId) == true
         else -> selection?.coversFile(hit.shareId, hit.relPath) == true
     }
+    // A folder result is a way into Browse, so while selecting it keeps two
+    // targets: the thumb picks it, the rest opens it. A file has nowhere to
+    // walk into, so the whole row picks.
+    val folderHit = hit is SearchHit.Folder
+    val splitTargets = selecting && folderHit && !covered
     Row(
         Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                interactionSource = null,
-                indication = null,
-                onLongClick = { onLongPress(hit) },
-            ) {
-                when {
-                    covered -> Unit
-                    selecting -> onToggle(hit)
-                    else -> {
-                        remember()
-                        when (hit) {
-                            is SearchHit.Title -> onOpenTitle(hit.fileId)
-                            is SearchHit.File -> onOpenTitle(hit.fileId)
-                            is SearchHit.Folder -> onOpenFolder(hit.folderId)
+            .then(
+                if (splitTargets) {
+                    Modifier
+                } else {
+                    Modifier.combinedClickable(
+                        interactionSource = null,
+                        indication = null,
+                        onLongClick = { onLongPress(hit) },
+                    ) {
+                        when {
+                            covered -> Unit
+                            selecting -> onToggle(hit)
+                            else -> {
+                                remember()
+                                when (hit) {
+                                    is SearchHit.Title -> onOpenTitle(hit.fileId)
+                                    is SearchHit.File -> onOpenTitle(hit.fileId)
+                                    is SearchHit.Folder -> onOpenFolder(hit.folderId)
+                                }
+                            }
                         }
                     }
-                }
-            }
+                },
+            )
             .alpha(if (covered) 0.5f else 1f)
             .testTag(hit.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(82.scaledDp()).aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp))) {
+        Box(
+            Modifier
+                .width(82.scaledDp())
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(10.dp))
+                .then(
+                    if (splitTargets) {
+                        Modifier
+                            .clickable(interactionSource = null, indication = null) { onToggle(hit) }
+                            .testTag("${hit.testTag}_pick")
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             when (hit) {
                 is SearchHit.Folder -> Box(Modifier.fillMaxSize().background(colors.surface).border(1.dp, colors.hairline, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
                     Icon(painterResource(R.drawable.rg_ic_folder_small), contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.dp))
@@ -325,7 +350,24 @@ private fun HitRow(
             }
         }
         Spacer(Modifier.width(Spacing.s12))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .then(
+                    if (splitTargets) {
+                        Modifier
+                            .combinedClickable(
+                                interactionSource = null,
+                                indication = null,
+                                onLongClick = { onLongPress(hit) },
+                            ) { (hit as SearchHit.Folder).let { onOpenFolder(it.folderId) } }
+                            .testTag("${hit.testTag}_open")
+                    } else {
+                        Modifier
+                    },
+                ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+        ) {
             Text(highlight(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 if (covered) "Already inside your pick" else hit.meta,

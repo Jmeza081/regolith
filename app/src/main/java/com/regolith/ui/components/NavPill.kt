@@ -213,15 +213,16 @@ private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, dot: Boole
         Box {
             Icon(painter = painterResource(tab.icon), contentDescription = tab.label, tint = ink, modifier = Modifier.size(19.scaledDp()))
             if (dot) {
-                // The existing UnwatchedDot, offset onto the glyph's corner.
-                // Accent rather than ink: white would read as "selected",
-                // which is the one thing this must not say.
-                UnwatchedDot(
-                    modifier = Modifier
+                // Red, not white: on a nav cell white is what "you are here"
+                // means, and a dot must not say that. The accent is the
+                // app's one attention colour and this is attention.
+                Box(
+                    Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 3.dp, y = (-2).dp)
+                        .offset(x = 4.dp, y = (-2).dp)
+                        .size(6.dp)
+                        .background(colors.accent, PillShape)
                         .testTag("${tab.testTag}_dot"),
-                    size = 5.dp,
                 )
             }
         }

@@ -135,6 +135,14 @@ fun MediaTile(
      * selecting, upstream, so one ring never means two things.
      */
     checked: Boolean? = null,
+    /**
+     * A separate tap target on the pick marker, so the tile itself can still
+     * be opened while selecting. Same split as [ListRow]'s `onLeadingClick`,
+     * and for the same reason: a collection tile is a way in, and picking it
+     * swallows everything inside. Null leaves the whole tile as one target,
+     * which is right for a title — there is nowhere to walk into.
+     */
+    onCheckClick: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val picked = checked == true
@@ -162,7 +170,11 @@ fun MediaTile(
                 CollectionBadge(count, Modifier.align(Alignment.TopStart).padding(6.dp))
             }
             if (checked != null) {
-                TilePick(picked, Modifier.align(Alignment.TopEnd).padding(7.dp))
+                TilePick(
+                    picked = picked,
+                    onClick = onCheckClick,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
             } else if (unwatched && count == null) {
                 UnwatchedDot(Modifier.align(Alignment.TopEnd).padding(5.dp))
             }
@@ -189,26 +201,41 @@ fun MediaTile(
  * The pick marker on a tile in selection mode: a filled ink circle with a
  * dark check when picked, a hollow ring when not.
  *
- * 20dp, which is the [UnwatchedDot]'s corner grown to a hit-free marker —
- * the tile itself is the target, so this only has to be legible.
+ * The mark is 20dp and its target is 38: a tap this consequential — picking
+ * a collection can add a hundred files — should not need aiming, and the
+ * padding buys the room without growing the drawing. When [onClick] is null
+ * the whole tile is the target instead, which is right for a title.
  */
 @Composable
-private fun TilePick(picked: Boolean, modifier: Modifier = Modifier) {
+private fun TilePick(picked: Boolean, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val colors = RegolithTheme.colors
     Box(
         modifier
-            .size(20.dp)
-            .background(if (picked) colors.ink else colors.overArt, PillShape)
-            .then(if (picked) Modifier else Modifier.border(1.5.dp, colors.onMediaCircleBorder, PillShape)),
+            .size(38.dp)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(interactionSource = null, indication = null, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        if (picked) {
-            Icon(
-                painterResource(R.drawable.rg_ic_check),
-                contentDescription = "Picked",
-                tint = colors.ground,
-                modifier = Modifier.size(12.dp),
-            )
+        Box(
+            Modifier
+                .size(20.dp)
+                .background(if (picked) colors.ink else colors.overArt, PillShape)
+                .then(if (picked) Modifier else Modifier.border(1.5.dp, colors.onMediaCircleBorder, PillShape)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (picked) {
+                Icon(
+                    painterResource(R.drawable.rg_ic_check),
+                    contentDescription = "Picked",
+                    tint = colors.ground,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
         }
     }
 }

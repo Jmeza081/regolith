@@ -140,9 +140,11 @@ private fun BrowseContent(
     val selection = state.selection
     val selecting = selection != null
 
-    // System back leaves the SELECTION before it leaves the folder: a reflex
-    // press while picking should not also lose your place in the tree.
-    BackHandler(enabled = selecting) { viewModel.cancelSelection() }
+    // No BackHandler here on purpose. Back walks UP a folder and the
+    // selection comes with it — picking things that are not on one screen is
+    // the whole feature, and a back press that dropped them would make a
+    // deep pick impossible. Leaving selection is the X in the bar above or
+    // Cancel in the bar below; leaving Browse entirely clears it (NavGraph).
 
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().testTag("browse_screen")) {
@@ -253,23 +255,34 @@ private fun BrowseContent(
                             folders.forEach { row ->
                                 val picked = selection?.pickedFolders?.contains(row.folderId) == true
                                 val covered = selection?.coveredFolders?.contains(row.folderId) == true
+                                // Two targets while selecting: the box picks, the
+                                // rest still walks in. Picking a folder swallows
+                                // everything under it, so a row that both picked
+                                // and opened would make the first tap the last —
+                                // the exact trap the Choose-folders picker names.
                                 ListRow(
                                     title = row.name,
-                                    meta = folderMeta(row, covered),
-                                    leading = RowLeading.IconBox(R.drawable.rg_ic_browse),
-                                    // Covered by a picked ancestor: checked, and inert. The
-                                    // "Choose folders" picker's own rule — the parent owns it.
-                                    onClick = when {
-                                        covered -> { {} }
-                                        selecting -> { { viewModel.toggleSelection(row) } }
-                                        else -> { { onOpenFolder(row.folderId) } }
+                                    meta = folderMeta(row, covered, selection?.picksInside(row.shareId, row.relPath) ?: 0),
+                                    leading = if (selecting) {
+                                        RowLeading.PickBox(R.drawable.rg_ic_browse, picked = picked, locked = covered)
+                                    } else {
+                                        RowLeading.IconBox(R.drawable.rg_ic_browse)
+                                    },
+                                    onClick = { onOpenFolder(row.folderId) },
+                                    onLeadingClick = if (selecting) {
+                                        { viewModel.toggleSelection(row) }
+                                    } else {
+                                        null
+                                    },
+                                    leadingDescription = when {
+                                        covered -> "${row.name}, already inside your pick"
+                                        picked -> "${row.name}, picked"
+                                        else -> "Pick ${row.name}"
                                     },
                                     onLongClick = { viewModel.beginSelection(row) },
-                                    trailing = when {
-                                        picked || covered -> RowTrailing.Checked
-                                        selecting -> RowTrailing.None
-                                        else -> RowTrailing.Chevron
-                                    },
+                                    // The chevron stays: the row is still a way in,
+                                    // and dropping it would say otherwise.
+                                    trailing = RowTrailing.Chevron,
                                     modifier = if (covered) Modifier.alpha(0.5f) else Modifier,
                                     testTag = row.testTag,
                                 )
@@ -326,20 +339,23 @@ private fun BrowseContent(
                     items(folders, key = { it.testTag }) { row ->
                         val picked = selection?.pickedFolders?.contains(row.folderId) == true
                         val covered = selection?.coveredFolders?.contains(row.folderId) == true
+                        // The marker picks, the tile still opens: a folder is a
+                        // way in, and picking it takes everything inside.
                         MediaTile(
                             artwork = row.artwork,
                             kind = ArtworkKind.THUMB,
                             title = row.name,
-                            meta = folderMeta(row, covered),
+                            meta = folderMeta(row, covered, selection?.picksInside(row.shareId, row.relPath) ?: 0),
                             count = row.fileCount.takeIf { it > 0 },
                             dimmed = offline != null || covered,
-                            onClick = when {
-                                covered -> { {} }
-                                selecting -> { { viewModel.toggleSelection(row) } }
-                                else -> { { onOpenFolder(row.folderId) } }
-                            },
+                            onClick = { onOpenFolder(row.folderId) },
                             onLongClick = { viewModel.beginSelection(row) },
                             checked = if (selecting) picked || covered else null,
+                            onCheckClick = if (selecting && !covered) {
+                                { viewModel.toggleSelection(row) }
+                            } else {
+                                null
+                            },
                             testTag = row.testTag,
                         )
                     }
@@ -400,9 +416,17 @@ private fun BrowseContent(
     }
 }
 
-/** A folder's "9 files · 18.4 GB", or what it is doing in a selection instead. */
-private fun folderMeta(row: BrowseRow.FolderRow, covered: Boolean): String? = when {
+/**
+ * A folder's "9 files · 18.4 GB", or what it is doing in a selection instead.
+ *
+ * The "N picked inside" line is the one that makes deep picking legible:
+ * without it, a folder you walked into and picked inside is indistinguishable
+ * from one you never opened.
+ */
+private fun folderMeta(row: BrowseRow.FolderRow, covered: Boolean, inside: Int): String? = when {
     covered -> "Already inside your pick"
+    inside == 1 -> "1 picked inside"
+    inside > 1 -> "$inside picked inside"
     !row.listed -> "Not listed yet"
     row.fileCount > 0 -> "${formatFileCount(row.fileCount)} · ${formatBytes(row.byteCount)}"
     else -> null

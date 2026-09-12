@@ -135,8 +135,9 @@ fun LibraryScreen(
 
     val selection = state.selection
     val selecting = selection != null
-    // Back leaves the selection before it leaves the wall.
-    BackHandler(enabled = selecting) { viewModel.cancelSelection() }
+    // No BackHandler: back walks out of the collection and the selection
+    // comes with it, so a pick can span a wall and the folders under it.
+    // Leaving selection is the X above or Cancel below.
 
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().testTag("library_screen")) {
@@ -361,6 +362,9 @@ private fun TileView(
         is LibraryTile.Collection -> {
             val picked = selection?.pickedFolders?.contains(tile.folderId) == true
             val covered = selection?.coveredFolders?.contains(tile.folderId) == true
+            // A collection is a way in, so the tile keeps opening it and the
+            // marker does the picking — otherwise picking one would be the
+            // last thing you could do to it.
             MediaTile(
                 artwork = tile.artwork,
                 kind = ArtworkKind.POSTER,
@@ -369,13 +373,14 @@ private fun TileView(
                 count = tile.fileCount,
                 resolution = tile.resolutionLabel.ifEmpty { null },
                 dimmed = dimmed || covered,
-                onClick = when {
-                    covered -> { {} }
-                    selecting -> { { onToggle(tile) } }
-                    else -> { { onOpenCollection(tile.folderId) } }
-                },
+                onClick = { onOpenCollection(tile.folderId) },
                 onLongClick = { onLongPress(tile) },
                 checked = if (selecting) picked || covered else null,
+                onCheckClick = if (selecting && !covered) {
+                    { onToggle(tile) }
+                } else {
+                    null
+                },
                 testTag = tile.testTag,
             )
         }
@@ -441,17 +446,25 @@ private fun TileRow(
                 } else {
                     listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · ")
                 },
-                leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.name),
-                minHeight = 64.scaledDp(),
-                trailing = when {
-                    picked || covered -> RowTrailing.Checked
-                    selecting -> RowTrailing.None
-                    else -> RowTrailing.Chevron
+                // While selecting the poster gives way to the pick box, so the
+                // row has a target that picks and a target that opens.
+                leading = if (selecting) {
+                    RowLeading.PickBox(R.drawable.rg_ic_browse, picked = picked, locked = covered)
+                } else {
+                    RowLeading.Poster(tile.artwork, fallbackLabel = tile.name)
                 },
-                onClick = when {
-                    covered -> { {} }
-                    selecting -> { { onToggle(tile) } }
-                    else -> { { onOpenCollection(tile.folderId) } }
+                minHeight = 64.scaledDp(),
+                trailing = RowTrailing.Chevron,
+                onClick = { onOpenCollection(tile.folderId) },
+                onLeadingClick = if (selecting) {
+                    { onToggle(tile) }
+                } else {
+                    null
+                },
+                leadingDescription = when {
+                    covered -> "${tile.name}, already inside your pick"
+                    picked -> "${tile.name}, picked"
+                    else -> "Pick ${tile.name}"
                 },
                 onLongClick = { onLongPress(tile) },
                 testTag = tile.testTag,

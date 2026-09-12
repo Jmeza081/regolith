@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import com.regolith.ui.components.ListRow
+import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.SelectionBar
 import com.regolith.ui.theme.RegolithTheme
@@ -129,6 +130,83 @@ class SelectionChromeTest {
         compose.onNodeWithTag("browse_folder_2").performClick()
         compose.onNodeWithText("Already inside your pick").assertIsDisplayed()
         assertEquals("the covered row's own tap is inert", 0, acted)
+    }
+
+    // ── Two targets on a folder row ─────────────────────────────────────
+    //
+    // The regression this guards is the one the owner hit: with the whole
+    // row picking, walking down to a folder three levels in meant picking
+    // every folder on the way, and a picked folder swallows everything
+    // under it — so the first tap made the rest unreachable.
+
+    @Test
+    fun aFolderRowPicksFromTheBoxAndStillOpensFromTheRow() {
+        var picked = 0
+        var opened = 0
+        compose.setContent {
+            RegolithTheme {
+                ListRow(
+                    title = "Severance",
+                    meta = "2 folders",
+                    leading = RowLeading.PickBox(android.R.drawable.ic_menu_more, picked = false),
+                    onClick = { opened++ },
+                    onLeadingClick = { picked++ },
+                    onLongClick = { },
+                    trailing = RowTrailing.Chevron,
+                    testTag = "browse_folder_7",
+                )
+            }
+        }
+
+        compose.onNodeWithTag("browse_folder_7_pick").performClick()
+        assertEquals("the box picks", 1, picked)
+        assertEquals("and does not walk in", 0, opened)
+
+        compose.onNodeWithTag("browse_folder_7_open").performClick()
+        assertEquals("the row still walks in while selecting", 1, opened)
+        assertEquals("and does not pick", 1, picked)
+    }
+
+    @Test
+    fun aCoveredFolderBoxTakesNoTapsButTheRowStillOpens() {
+        // You can look inside a folder that is already coming; you just
+        // cannot pick it again, because its ancestor owns it.
+        var picked = 0
+        var opened = 0
+        compose.setContent {
+            RegolithTheme {
+                ListRow(
+                    title = "Extras",
+                    meta = "Already inside your pick",
+                    leading = RowLeading.PickBox(android.R.drawable.ic_menu_more, picked = true, locked = true),
+                    onClick = { opened++ },
+                    onLeadingClick = { picked++ },
+                    testTag = "browse_folder_8",
+                )
+            }
+        }
+        compose.onNodeWithTag("browse_folder_8_pick").performClick()
+        assertEquals("a locked box is inert", 0, picked)
+        compose.onNodeWithTag("browse_folder_8_open").performClick()
+        assertEquals("but you can still look inside", 1, opened)
+    }
+
+    @Test
+    fun aFileRowIsOneTargetBecauseThereIsNowhereToWalkInto() {
+        var toggled = 0
+        compose.setContent {
+            RegolithTheme {
+                ListRow(
+                    title = "S01E01.mkv",
+                    onClick = { toggled++ },
+                    onLongClick = { },
+                    trailing = RowTrailing.Checked,
+                    testTag = "browse_file_9",
+                )
+            }
+        }
+        compose.onNodeWithTag("browse_file_9").performClick()
+        assertEquals(1, toggled)
     }
 
     // ── The bar ────────────────────────────────────────────────────────

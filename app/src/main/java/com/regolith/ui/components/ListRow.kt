@@ -1,6 +1,7 @@
 package com.regolith.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -51,6 +52,24 @@ sealed interface RowLeading {
     /** A 34dp-wide 2:3 poster with 7dp corners (Library in rows mode). */
     data class Poster(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
 
+    /**
+     * Selection mode on a row you can still walk into: a 38dp box holding
+     * the check when picked and [icon] when not.
+     *
+     * Paired with [ListRow]'s `onLeadingClick`, this is the split the
+     * Choose-folders picker already proved necessary — see that screen's
+     * `FolderRow`. With the whole row picking, walking down to a folder
+     * three levels in means selecting every folder on the way, and a
+     * picked folder swallows everything under it, so the first tap makes
+     * the rest unreachable. Opening is the common act and keeps the big
+     * target; picking is the deliberate one and gets a box that looks like
+     * what it is.
+     *
+     * [locked] is the covered case: in, but not by its own doing, so the
+     * box is grey with a grey check and takes no taps.
+     */
+    data class PickBox(val icon: Int, val picked: Boolean, val locked: Boolean = false) : RowLeading
+
     data object None : RowLeading
 }
 
@@ -87,6 +106,15 @@ fun ListRow(
      * down and how it would be changed.
      */
     onLongClick: (() -> Unit)? = null,
+    /**
+     * A separate tap target on the leading slot, for a [RowLeading.PickBox]:
+     * this picks the row while [onClick] still opens it. Null leaves the
+     * whole row as one target, which is right for a file — there is nowhere
+     * to walk into.
+     */
+    onLeadingClick: (() -> Unit)? = null,
+    /** Spoken for the pick box, e.g. "Choose Films" / "Films, picked". */
+    leadingDescription: String? = null,
 ) {
     val colors = RegolithTheme.colors
     Row(
@@ -94,7 +122,15 @@ fun ListRow(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = minHeight)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            // With a pick box the row is two targets: the box picks, this
+            // opens. Without one it is a single target, as it always was.
+            .then(
+                if (onLeadingClick == null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier
+                },
+            )
             .testTag(testTag),
     ) {
         when (leading) {
@@ -108,10 +144,46 @@ fun ListRow(
             is RowLeading.Poster -> Box(Modifier.width(34.scaledDp()).aspectRatio(2f / 3f).clip(ThumbShape)) {
                 ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(34.scaledDp(), 51.scaledDp()))
             }
+            is RowLeading.PickBox -> Box(
+                Modifier
+                    .size(38.scaledDp())
+                    .clip(BoxShape)
+                    .background(if (leading.picked) colors.ink else colors.disabledBg)
+                    .then(if (leading.locked) Modifier.border(1.dp, colors.hairline, BoxShape) else Modifier)
+                    .then(
+                        if (onLeadingClick != null && !leading.locked) {
+                            Modifier.clickable(interactionSource = null, indication = null, onClick = onLeadingClick)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .testTag("${testTag}_pick"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painterResource(if (leading.picked || leading.locked) R.drawable.rg_ic_check else leading.icon),
+                    contentDescription = leadingDescription,
+                    tint = if (leading.picked) colors.ground else colors.metadata,
+                    modifier = Modifier.size(18.scaledDp()),
+                )
+            }
             RowLeading.None -> Unit
         }
         if (leading != RowLeading.None) Spacer(Modifier.width(Spacing.s12))
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .then(
+                    if (onLeadingClick != null) {
+                        Modifier.combinedClickable(
+                            interactionSource = null, indication = null,
+                            onClick = onClick, onLongClick = onLongClick,
+                        ).testTag("${testTag}_open")
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             Text(title, style = if (compact) TextStyles.rowLabelSmall else TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (meta != null) {
                 Text(meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)

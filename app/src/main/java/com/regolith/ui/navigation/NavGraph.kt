@@ -241,6 +241,19 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         appViewModel.openedExternal()
     }
 
+    // A selection survives walking the tree — that is the whole point of the
+    // shared store, and a pick three folders deep needs it. What ends it is
+    // arriving somewhere that cannot act on it: only Browse, Library and
+    // Search draw the bar, so anywhere else the picks would be invisible and
+    // unreachable. One rule covers back, the nav pill and a push into the
+    // player, where three separate ones drifted apart.
+    val canSelectHere = currentTab == MainTab.BROWSE ||
+        currentTab == MainTab.LIBRARY ||
+        topKey is RegolithKey.Search
+    LaunchedEffect(canSelectHere) {
+        if (!canSelectHere) appViewModel.clearSelection()
+    }
+
     // The download notification was tapped. Downloads have no destination of
     // their own by design, so this is Library's own device tab.
     val openDownloads by appViewModel.openDownloads.collectAsStateWithLifecycle()
@@ -286,11 +299,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
 
     fun navigateToTab(tab: MainTab, force: Boolean = false) {
         if (tab == currentTab && !force) return
-        // A selection belongs to the wall it was made on. Walking back WITHIN
-        // Browse keeps it (that is the whole point of the shared store);
-        // leaving for another tab ends it, because the bar would then be
-        // counting picks the user can no longer see.
-        appViewModel.clearSelection()
         backStack.clear()
         if (tab != MainTab.HOME) backStack.add(RegolithKey.Home)
         backStack.add(tab.key)
