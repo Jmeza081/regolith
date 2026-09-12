@@ -35,8 +35,9 @@ asks first.
 
 Chapters can be yours (P9). Every file has chapters — the container's own
 markers, or an even split — and the player's Chapters sheet now has a
-pencil: mark a place at the playhead, name it, nudge it, drag its flag on
-the timeline, and Done makes those the film's chapters, winning over
+pencil: mark a place at the playhead, open it, name it, type or nudge its
+start time or drag its handle on the marks strip, and Done makes those the
+film's chapters, winning over
 whatever it came with. The scrubber draws chapters as segments and names
 the part under your finger; Search lists chapter names as points of
 interest and opens the film at that moment; Revert on the sheet takes a

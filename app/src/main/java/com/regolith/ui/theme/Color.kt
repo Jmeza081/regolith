@@ -22,6 +22,8 @@ val Red = Color(0xFFE11B17)         // THE accent. One filled red per screen.
 val RedTint = Color(0x14E11B17)     // 8% red: error card tint, never a fill
 val NavIdle = Color(0xFF8A8A8A)     // unselected nav labels and segmented tabs
 val NavDimmed = Color(0x38FFFFFF)   // rgba(255,255,255,.22): tabs with nothing behind them
+val Lifted = Color(0xFF1C1C1C)      // the one card that is open for editing, a step above surface
+val LiftedBorder = Color(0xFF3A3A3A) // its hairline, a step above raised
 val BadgeBg = Color(0xFF1A1A1A)     // count badge in a segmented tab, folder icon box
 val DisabledBg = Color(0xFF161616)  // disabled button fill, off switch (disabled)
 val DisabledInk = Color(0xFF4A4A4A)
@@ -62,6 +64,8 @@ data class RegolithColors(
     val navIdle: Color = NavIdle,
     val navDimmed: Color = NavDimmed,
     val badgeBg: Color = BadgeBg,
+    val lifted: Color = Lifted,
+    val liftedBorder: Color = LiftedBorder,
     val disabledBg: Color = DisabledBg,
     val disabledInk: Color = DisabledInk,
     val noticeBg: Color = NoticeBg,

@@ -473,8 +473,6 @@ fun PlayerScreen(
         onPrevious = state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
         onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
         onChapters = { if (draft == null) sheet = Sheet.Chapters },
-        onMarkTap = viewModel::selectMark,
-        onMarkDrag = viewModel::moveMark,
         onCycleRotation = {
             viewModel.setOrientation(PlayerOrientation.entries[(orientation.ordinal + 1) % PlayerOrientation.entries.size])
             controlsVisible = true
@@ -770,9 +768,6 @@ private class ChromeCallbacks(
     val onPrevious: (() -> Unit)?,
     val onNext: (() -> Unit)?,
     val onChapters: () -> Unit,
-    /** Editor only: a flag on the timeline was tapped / is being dragged. */
-    val onMarkTap: (Int) -> Unit,
-    val onMarkDrag: (Int, Long) -> Unit,
     /** Steps the rotation lock on one: Auto -> Portrait -> Landscape -> Auto. */
     val onCycleRotation: () -> Unit,
     /** Start, or retry, the download of this file. */
@@ -818,8 +813,6 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
                     Scrubber(
                         positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
                         loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
-                        marks = draft?.marksMs.orEmpty(), selectedMark = draft?.selected,
-                        onMarkTap = if (draft != null) cb.onMarkTap else null, onMarkDrag = if (draft != null) cb.onMarkDrag else null,
                         onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                         trackHeight = 3.dp, showKnob = false, modifier = Modifier.weight(1f),
                     )
@@ -899,8 +892,6 @@ private fun BoxScope.FullChrome(
                         Scrubber(
                             positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
                             loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
-                        marks = draft?.marksMs.orEmpty(), selectedMark = draft?.selected,
-                        onMarkTap = if (draft != null) cb.onMarkTap else null, onMarkDrag = if (draft != null) cb.onMarkDrag else null,
                             onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                             trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
                         )
@@ -1607,8 +1598,6 @@ private fun FlexDeck(
             Scrubber(
                 positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
                 loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
-                        marks = draft?.marksMs.orEmpty(), selectedMark = draft?.selected,
-                        onMarkTap = if (draft != null) cb.onMarkTap else null, onMarkDrag = if (draft != null) cb.onMarkDrag else null,
                 onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                 trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
             )

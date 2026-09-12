@@ -83,6 +83,19 @@ data class ChapterDraft(
 
     fun select(index: Int?): ChapterDraft = copy(selected = index?.takeIf { it in marks.indices })
 
+    /**
+     * Where mark [index] may sit: a second clear of its neighbours and of
+     * the end. Null for the start mark, which does not move. What the
+     * editor's Start field checks a typed time against, so the message can
+     * name the nearest allowed times.
+     */
+    fun bounds(index: Int): LongRange? {
+        if (index <= 0 || index >= marks.size) return null
+        val lo = marks[index - 1].startMs + MIN_GAP_MS
+        val hi = (marks.getOrNull(index + 1)?.startMs ?: durationMs) - MIN_GAP_MS
+        return if (lo > hi) null else lo..hi
+    }
+
     companion object {
         /** Two marks closer than this are one place, not two. */
         const val MIN_GAP_MS = 1_000L
@@ -91,6 +104,30 @@ data class ChapterDraft(
         const val MAX_MARKS = 200
 
         const val NAME_MAX = 80
+
+        /** Half a second and five seconds: the two nudge sizes the editor offers. */
+        const val NUDGE_FINE_MS = 500L
+        const val NUDGE_COARSE_MS = 5_000L
+
+        /**
+         * A typed clock — `12:30`, `0:12:30`, `1:02:15.5`, or bare seconds —
+         * as milliseconds, or null when it is not one. Tenths are the finest
+         * it reads: the scrubber and the nudges do not go finer either.
+         */
+        fun parseClock(text: String): Long? {
+            val t = text.trim()
+            if (!Regex("""\d{1,3}(:\d{1,2}){0,2}(\.\d)?""").matches(t)) return null
+            val whole = t.substringBefore('.')
+            val tenth = t.substringAfter('.', "").toIntOrNull() ?: 0
+            val parts = whole.split(':').map { it.toLong() }
+            if (parts.drop(1).any { it > 59 }) return null
+            val seconds = when (parts.size) {
+                1 -> parts[0]
+                2 -> parts[0] * 60 + parts[1]
+                else -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+            }
+            return seconds * 1000 + tenth * 100L
+        }
 
         /**
          * Start editing from [chapters] — the even split, the file's own, or

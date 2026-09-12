@@ -86,6 +86,27 @@ class ChapterDraftTest {
     }
 
     @Test
+    fun `bounds keep a mark a second clear of its neighbours`() {
+        val d = ChapterDraft.seed(7, listOf(Chapter(0, null), Chapter(600_000, "A"), Chapter(1_200_000, "B")), hour)
+        assertNull(d.bounds(0))
+        assertEquals(1_000L..1_199_000L, d.bounds(1))
+        assertEquals(601_000L..(hour - 1_000), d.bounds(2))
+        assertNull(d.bounds(9))
+    }
+
+    @Test
+    fun `a typed clock reads the ways people write one`() {
+        assertEquals(750_000L, ChapterDraft.parseClock("12:30"))
+        assertEquals(750_000L, ChapterDraft.parseClock("0:12:30"))
+        assertEquals(3_735_500L, ChapterDraft.parseClock("1:02:15.5"))
+        assertEquals(45_000L, ChapterDraft.parseClock(" 45 "))
+        assertNull(ChapterDraft.parseClock("12:75"))
+        assertNull(ChapterDraft.parseClock("twelve"))
+        assertNull(ChapterDraft.parseClock("1:2:3:4"))
+        assertNull(ChapterDraft.parseClock(""))
+    }
+
+    @Test
     fun `selecting past the end clears`() {
         assertNull(seeded().select(99).selected)
     }

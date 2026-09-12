@@ -346,6 +346,14 @@ What a web developer would not guess:
   under the picture in portrait and in the unfolded column; in landscape or
   half-open, where there is no column, it is a sheet with a timeline of its
   own. Edit pauses the film and steps out of a chosen full screen first.
+- **Marks move on a strip of their own, one at a time.** The first build put
+  draggable flags on the 3dp scrubber and the owner found them finicky: a
+  miss by a few pixels scrubbed instead of moving the mark. Round two gives
+  the editor a 64dp `MarksTimeline` with 30×40dp handles, and the picture's
+  scrubber only scrubs. Opening a row is a lock — every other handle is
+  inert and every other row dims — and the open row lifts to a lighter card
+  with the name, a typed Start time (`ChapterDraft.parseClock`, checked
+  against `bounds`), and ±0.5 s / ±5 s nudges.
 - **Only names are searchable.** The FTS index is over `title`; an unnamed
   mark has no words to find. A hit is a `SearchHit.Moment` — a place, not a
   file: its own eyebrow above the file matches, a tag on the row, no part in
@@ -533,6 +541,7 @@ What a web developer would not guess:
 | 2026-09-12 | The scrubber draws chapters as segments with a 2dp gap, and the preview names the part | Ticks over one bar said "there is a boundary here"; segments say "you are in this part", and the finger's segment growing (YouTube's gesture) says it before the preview's name does. Every layer — buffered, loop, fill — respects the gaps, so the timeline reads as one drawing. Even divisions keep saying "Part n", the way the sheet does. |
 | 2026-09-12 | Points of interest are their own Search group, above the files, and never part of a selection | A red match inside "The heist" under a film's thumbnail must not be mistaken for a match in a filename, so the group has its own eyebrow and each row a tag. A moment is a place, not a file: nothing to download, so long-press does nothing on it and it only shows under "All" — the other filters are about the file. A tap opens the player at that time via `Player(fileId, startMs)`, a key that already existed. |
 | 2026-09-12 | `ConfirmDialog` is one component, and it sets `testTagsAsResourceId` itself | The Disconnect dialog was about to be copied three times (revert, discard, clear all); CLAUDE.md calls two copies a bug. Promoting it also surfaced that a Compose `Dialog` is a window of its own, which the root Scaffold's `testTagsAsResourceId` never reached — so no dialog button had ever had a resource id. |
+| 2026-09-12 | **Reverses the scrubber-flags half of the row above.** Marks are moved on the editor's own 64dp strip with 30×40dp handles; the picture's scrubber only scrubs; one mark is editable at a time | Owner feedback on the first APK: "dragging start points is very finicky and easy to mess up". A flag on a 3dp track competes with the scrub gesture, so a near miss scrubbed. Big handles on a strip that exists only to hold them cannot be missed, and locking every other mark while one row is open (the owner's must-have) means a drag can only ever move the thing you opened. The typed Start field is the precise path; it commits on Done or on losing focus, never per keystroke, and names the allowed range when refused. The open row lifts to `lifted` #1C1C1C with a `liftedBorder` hairline so it reads apart from the list. Mock approved as-is. |
 
 ## Phase plan
 
@@ -559,7 +568,7 @@ What a web developer would not guess:
 | P3 | Full-screen player restructured (Spotify order), seek keys removed, shuffle and repeat added | `RepeatMode`, `PlaybackState.shuffled`/`repeat`/`upNext`/`upPrevious`, `Transport(modes)` |
 | P8 | Multi-select in Browse, Library and Search; one batched download behind a queue worker, with an SMB discovery walk, an aggregate progress notification and a Settings dot | `SelectionStore`, `Selection`/`pathCoveredBy`/`coversFileIn`, `SelectionPresenter`, `download_picks` (schema v6), `TransferQueueWorker`, `QueueProgress`, `RegolithNotifications`, `NavPill(dots)` |
 | P2 | Library roots inside a share: the Choose folders drill-down at any depth, on a skeleton of unlisted rows that keeps the share's real tree | `share_roots` (schema v5), `Share.roots`, `rootsCover`, `refreshSkeleton`, `RegolithKey.AddServer.Folders` |
-| P9 | User chapters: mark and name chapters in the player, segments and names on the scrubber, points of interest in Search, clear-all in Settings | `user_chapters` + `user_chapter_fts` (schema v8), `UserChapterRepository`, `ChapterDraft`, `ChapterSource`, `PlaybackState.userChapters`/`chapterSource`, `ChapterEditorContent`, `SearchHit.Moment`, `ConfirmDialog` |
+| P9 | User chapters: mark and name chapters in the player (marks on their own strip, one open at a time, typed start time), segments and names on the scrubber, points of interest in Search, clear-all in Settings | `user_chapters` + `user_chapter_fts` (schema v8), `UserChapterRepository`, `ChapterDraft`, `ChapterSource`, `PlaybackState.userChapters`/`chapterSource`, `ChapterEditorContent`/`MarksTimeline`, `ChapterDraft.parseClock`/`bounds`, `SearchHit.Moment`, `ConfirmDialog` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

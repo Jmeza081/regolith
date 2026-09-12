@@ -49,17 +49,12 @@ import com.regolith.R
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
-import com.regolith.domain.playback.ChapterDraft
 import com.regolith.domain.playback.ChapterMarks
 import com.regolith.domain.playback.ChapterSource
 import androidx.compose.ui.platform.LocalConfiguration
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
-import com.regolith.ui.components.PrimaryButton
-import com.regolith.ui.components.RegolithTextField
 import com.regolith.ui.components.RowAction
-import com.regolith.ui.components.Scrubber
-import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.theme.CardShape
@@ -380,118 +375,6 @@ fun ChaptersSheetContent(
     }
 }
 
-/**
- * The chapter editor (P9): where you write the chapters for this film.
- *
- * It sits where the A–B loop panel sits — under the picture in portrait
- * and in the unfolded column — and in landscape or half-open it is a sheet
- * with a timeline of its own ([showScrubber]), so marking works there too.
- * The film is paused while it is open.
- *
- * One verb: Mark, at the playhead. Scrub to the place, mark it, then open
- * the row to name it, nudge it by half a second, or delete it; drag its
- * flag on the timeline to move it further. The first mark is the start of
- * the film and can only be named. Done saves the set; Cancel throws the
- * draft away (after a confirm, when it changed).
- */
-@Composable
-fun ChapterEditorContent(
-    draft: ChapterDraft,
-    positionMs: Long,
-    durationMs: Long,
-    bufferedMs: Long,
-    showScrubber: Boolean,
-    onMark: () -> Unit,
-    onSelect: (Int?) -> Unit,
-    onMove: (Int, Long) -> Unit,
-    onNudge: (Int, Long) -> Unit,
-    onRename: (Int, String) -> Unit,
-    onRemove: (Int) -> Unit,
-    onDone: () -> Unit,
-    onCancel: () -> Unit,
-    onScrubStart: () -> Unit,
-    onScrub: (Float) -> Unit,
-    onScrubEnd: (Float) -> Unit,
-) {
-    val colors = RegolithTheme.colors
-    Column(Modifier.fillMaxWidth().testTag("player_chapter_editor"), verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            // "Chapters" in the display face, like the sheet it came from;
-            // "Edit chapters" set in Michroma wrapped to two lines beside
-            // the two buttons and read as a broken header.
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-                DisplayText("Chapters")
-                Text(
-                    "Editing · " + (if (draft.marks.size == 1) "1 mark" else "${draft.marks.size} marks"),
-                    style = TextStyles.meta12, color = colors.metadata, maxLines = 1,
-                )
-            }
-            SecondaryButton("Cancel", onCancel, "player_chapter_cancel_button", compact = true)
-            PrimaryButton("Done", onDone, "player_chapter_done_button", compact = true)
-        }
-        if (showScrubber) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                Text(formatClock(positionMs), style = TextStyles.buttonSmall, color = colors.ink)
-                Scrubber(
-                    positionMs = positionMs, durationMs = durationMs, bufferedMs = bufferedMs,
-                    onScrubStart = onScrubStart, onScrub = onScrub, onScrubEnd = onScrubEnd,
-                    chapters = draft.chapters, marks = draft.marksMs, selectedMark = draft.selected,
-                    onMarkTap = { onSelect(it) }, onMarkDrag = onMove,
-                    modifier = Modifier.weight(1f), testTag = "player_chapter_editor_scrubber",
-                )
-                Text(formatClock(durationMs), style = TextStyles.buttonSmall, color = colors.body)
-            }
-        }
-        PrimaryButton(
-            "Mark at ${formatClock(positionMs)}", onMark, "player_chapter_mark_button",
-            modifier = Modifier.fillMaxWidth(), leadingIcon = painterResource(LucideR.drawable.lucide_ic_plus),
-        )
-        Text("Scrub to a place and mark it. Tap a row to name it; drag its flag on the timeline to move it.", style = TextStyles.meta, color = colors.metadata)
-        Column(Modifier.fillMaxWidth().background(colors.surface, CardShape).border(1.dp, colors.hairline, CardShape).padding(horizontal = Spacing.s12)) {
-            draft.marks.forEachIndexed { index, mark ->
-                val open = index == draft.selected
-                Column(
-                    Modifier.fillMaxWidth()
-                        .clickable(interactionSource = null, indication = null) { onSelect(if (open) null else index) }
-                        .testTag("player_chapter_row_$index"),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12),
-                        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp),
-                    ) {
-                        Text("${index + 1}", style = TextStyles.meta, color = if (open) colors.accent else colors.metadata, modifier = Modifier.width(18.dp))
-                        Text(formatClock(mark.startMs), style = TextStyles.meta, color = colors.body)
-                        Text(
-                            mark.label(index), style = TextStyles.rowLabelMedium,
-                            color = if (mark.title.isNullOrBlank()) colors.metadata else colors.ink,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (open) {
-                        Column(Modifier.padding(bottom = Spacing.s8), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                            RegolithTextField(
-                                value = mark.title ?: "", onValueChange = { onRename(index, it) },
-                                label = "Name", placeholder = "Part ${index + 1}", testTag = "player_chapter_name_field",
-                            )
-                            if (index > 0) {
-                                NudgeRow("Starts at", formatClock(mark.startMs), onMinus = { onNudge(index, -AbLoop.NUDGE_MS) }, onPlus = { onNudge(index, AbLoop.NUDGE_MS) }, tag = "mark", prefix = "player_chapter_")
-                                Box(
-                                    Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
-                                        .clickable(interactionSource = null, indication = null) { onRemove(index) }
-                                        .testTag("player_chapter_delete_button"),
-                                    contentAlignment = Alignment.CenterStart,
-                                ) { Text("Delete this chapter", style = TextStyles.buttonTertiary, color = colors.accent) }
-                            } else {
-                                Text("The film starts here; this one stays.", style = TextStyles.meta, color = colors.metadata)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun ChapterCard(
     chapter: Chapter,
@@ -626,7 +509,7 @@ fun AbLoopSheetContent(
 }
 
 @Composable
-private fun NudgeRow(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, tag: String, prefix: String = "player_loop_") {
+private fun NudgeRow(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit, tag: String) {
     val colors = RegolithTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
@@ -636,12 +519,12 @@ private fun NudgeRow(label: String, value: String, onMinus: () -> Unit, onPlus: 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             Box(
                 Modifier.size(44.dp, 36.dp).clip(RoundedCornerShape(topStart = 9.dp, bottomStart = 9.dp, topEnd = 3.dp, bottomEnd = 3.dp)).background(colors.disabledBg)
-                    .clickable(interactionSource = null, indication = null, onClick = onMinus).testTag("${prefix}${tag}_minus"),
+                    .clickable(interactionSource = null, indication = null, onClick = onMinus).testTag("player_loop_${tag}_minus"),
                 contentAlignment = Alignment.Center,
             ) { Text("−0.5s", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.inkSoft) }
             Box(
                 Modifier.size(44.dp, 36.dp).clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 9.dp, bottomEnd = 9.dp)).background(colors.disabledBg)
-                    .clickable(interactionSource = null, indication = null, onClick = onPlus).testTag("${prefix}${tag}_plus"),
+                    .clickable(interactionSource = null, indication = null, onClick = onPlus).testTag("player_loop_${tag}_plus"),
                 contentAlignment = Alignment.Center,
             ) { Text("+0.5s", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.inkSoft) }
         }
