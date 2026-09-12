@@ -436,22 +436,24 @@ private fun TileView(
     when (tile) {
         is LibraryTile.Collection -> {
             val picked = selection?.pickedFolders?.contains(tile.folderId) == true
-            val covered = selection?.coveredFolders?.contains(tile.folderId) == true
+            val coming = picked || selection?.coversFolder(tile.shareId, tile.relPath) == true
+            val out = selection?.leftOutInside(tile.shareId, tile.relPath) ?: 0
             // A collection is a way in, so the tile keeps opening it and the
             // marker does the picking — otherwise picking one would be the
-            // last thing you could do to it.
+            // last thing you could do to it. Inside a pick the marker is
+            // still live: it takes this collection back out.
             MediaTile(
                 artwork = tile.artwork,
                 kind = ArtworkKind.POSTER,
                 title = tile.name,
-                meta = if (covered) "Already inside your pick" else formatFileCount(tile.fileCount),
+                meta = if (out > 0) "All but $out" else formatFileCount(tile.fileCount),
                 count = tile.fileCount,
                 resolution = tile.resolutionLabel.ifEmpty { null },
-                dimmed = dimmed || covered,
+                dimmed = dimmed,
                 onClick = { onOpenCollection(tile.folderId) },
                 onLongClick = { onLongPress(tile) },
-                checked = if (selecting) picked || covered else null,
-                onCheckClick = if (selecting && !covered) {
+                checked = if (selecting) coming else null,
+                onCheckClick = if (selecting) {
                     { onToggle(tile) }
                 } else {
                     null
@@ -460,8 +462,8 @@ private fun TileView(
             )
         }
         is LibraryTile.Title -> {
-            val picked = selection?.pickedFiles?.contains(tile.fileId) == true
-            val covered = selection?.coversFile(tile.shareId, tile.folderRelPath) == true
+            val coming = selection?.pickedFiles?.contains(tile.fileId) == true ||
+                (selection?.coversFile(tile.shareId, tile.folderRelPath) == true && selection.excludedFiles.contains(tile.fileId).not())
             MediaTile(
                 artwork = tile.artwork,
                 kind = ArtworkKind.POSTER,
@@ -476,13 +478,13 @@ private fun TileView(
                 progress = tile.progress,
                 dimmed = dimmed,
                 selected = selected,
-                onClick = when {
-                    covered -> { {} }
-                    selecting -> { { onToggle(tile) } }
-                    else -> { { onOpenTitle(tile.fileId) } }
+                onClick = if (selecting) {
+                    { onToggle(tile) }
+                } else {
+                    { onOpenTitle(tile.fileId) }
                 },
                 onLongClick = { onLongPress(tile) },
-                checked = if (selecting) picked || covered else null,
+                checked = if (selecting) coming else null,
                 testTag = tile.testTag,
             )
         }
@@ -513,18 +515,19 @@ private fun TileRow(
     when (tile) {
         is LibraryTile.Collection -> {
             val picked = selection?.pickedFolders?.contains(tile.folderId) == true
-            val covered = selection?.coveredFolders?.contains(tile.folderId) == true
+            val coming = picked || selection?.coversFolder(tile.shareId, tile.relPath) == true
+            val out = selection?.leftOutInside(tile.shareId, tile.relPath) ?: 0
             ListRow(
                 title = tile.name,
-                meta = if (covered) {
-                    "Already inside your pick"
+                meta = if (out > 0) {
+                    "All but $out"
                 } else {
                     listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · ")
                 },
                 // While selecting the poster gives way to the pick box, so the
                 // row has a target that picks and a target that opens.
                 leading = if (selecting) {
-                    RowLeading.PickBox(R.drawable.rg_ic_browse, picked = picked, locked = covered)
+                    RowLeading.PickBox(R.drawable.rg_ic_browse, picked = coming)
                 } else {
                     RowLeading.Poster(tile.artwork, fallbackLabel = tile.name)
                 },
@@ -536,33 +539,29 @@ private fun TileRow(
                 } else {
                     null
                 },
-                leadingDescription = when {
-                    covered -> "${tile.name}, already inside your pick"
-                    picked -> "${tile.name}, picked"
-                    else -> "Pick ${tile.name}"
-                },
+                leadingDescription = if (coming) "${tile.name}, coming" else "Pick ${tile.name}",
                 onLongClick = { onLongPress(tile) },
                 testTag = tile.testTag,
-                modifier = Modifier.alpha(if (covered) 0.5f else alpha),
+                modifier = Modifier.alpha(alpha),
             )
         }
         is LibraryTile.Title -> {
-            val picked = selection?.pickedFiles?.contains(tile.fileId) == true
-            val covered = selection?.coversFile(tile.shareId, tile.folderRelPath) == true
+            val coming = selection?.pickedFiles?.contains(tile.fileId) == true ||
+                (selection?.coversFile(tile.shareId, tile.folderRelPath) == true && selection.excludedFiles.contains(tile.fileId).not())
             ListRow(
                 title = if (tile.matched) tile.name else tile.fileName,
                 meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
                 leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.fileName),
-                trailing = if (picked || covered) RowTrailing.Checked else RowTrailing.None,
+                trailing = if (coming) RowTrailing.Checked else RowTrailing.None,
                 minHeight = 64.scaledDp(),
-                onClick = when {
-                    covered -> { {} }
-                    selecting -> { { onToggle(tile) } }
-                    else -> { { onOpenTitle(tile.fileId) } }
+                onClick = if (selecting) {
+                    { onToggle(tile) }
+                } else {
+                    { onOpenTitle(tile.fileId) }
                 },
                 onLongClick = { onLongPress(tile) },
                 testTag = tile.testTag,
-                modifier = selectedBg.alpha(if (covered) 0.5f else alpha),
+                modifier = selectedBg.alpha(alpha),
             )
         }
     }

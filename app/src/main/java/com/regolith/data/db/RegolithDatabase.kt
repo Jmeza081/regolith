@@ -23,6 +23,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  5. `share_roots`: folders chosen inside a share as the library's roots.
  *  6. `download_picks`: folders picked for download, waiting to be
  *     walked over SMB. Additive.
+ *  7. `download_picks.excludedFileIds` / `excludedPaths`: what to leave
+ *     out of a picked folder. Additive.
  */
 @Database(
     entities = [
@@ -40,7 +42,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ShareRootEntity::class,
         DownloadPickEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -48,6 +50,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

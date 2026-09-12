@@ -168,27 +168,28 @@ class SelectionChromeTest {
     }
 
     @Test
-    fun aCoveredFolderBoxTakesNoTapsButTheRowStillOpens() {
-        // You can look inside a folder that is already coming; you just
-        // cannot pick it again, because its ancestor owns it.
-        var picked = 0
+    fun aFolderInsideAPickIsStillLiveInBothDirections() {
+        // A folder that is coming because its parent is picked shows a check —
+        // and the box stays live, because tapping it is how you take that
+        // subtree back OUT. The row still opens, so you can look inside.
+        var toggled = 0
         var opened = 0
         compose.setContent {
             RegolithTheme {
                 ListRow(
                     title = "Extras",
-                    meta = "Already inside your pick",
-                    leading = RowLeading.PickBox(android.R.drawable.ic_menu_more, picked = true, locked = true),
+                    meta = "Coming with the folder above",
+                    leading = RowLeading.PickBox(android.R.drawable.ic_menu_more, picked = true),
                     onClick = { opened++ },
-                    onLeadingClick = { picked++ },
+                    onLeadingClick = { toggled++ },
                     testTag = "browse_folder_8",
                 )
             }
         }
         compose.onNodeWithTag("browse_folder_8_pick").performClick()
-        assertEquals("a locked box is inert", 0, picked)
+        assertEquals("the box takes the subtree back out", 1, toggled)
         compose.onNodeWithTag("browse_folder_8_open").performClick()
-        assertEquals("but you can still look inside", 1, opened)
+        assertEquals("and the row still opens", 1, opened)
     }
 
     @Test

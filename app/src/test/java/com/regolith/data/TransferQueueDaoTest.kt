@@ -231,4 +231,29 @@ class TransferQueueDaoTest {
         db.folderDao().deleteChildrenNotIn(folderId, emptyList())
         assertEquals(0, db.downloadPickDao().pendingCount())
     }
+
+    @Test
+    fun `a pick carries what to leave out, and an old-shaped pick leaves out nothing`() = runTest {
+        val films = folder("Films")
+        db.downloadPickDao().insert(
+            DownloadPickEntity(
+                folderId = films, shareId = shareId, relPath = "Films", createdAtMs = 100,
+                excludedFileIds = "10,11", excludedPaths = "Films/Extras\nFilms/Trailers",
+            ),
+        )
+        val pick = db.downloadPickDao().nextUndiscovered()!!
+        assertEquals("10,11", pick.excludedFileIds)
+        assertEquals("Films/Extras\nFilms/Trailers", pick.excludedPaths)
+
+        // The worker's own parse, so the two agree on the separators.
+        assertEquals(setOf(10L, 11L), pick.excludedFileIds.split(',').mapNotNull { it.trim().toLongOrNull() }.toSet())
+        assertEquals(setOf("Films/Extras", "Films/Trailers"), pick.excludedPaths.split('\n').filter { it.isNotEmpty() }.toSet())
+
+        // Defaults: a pick made without exclusions parses to nothing to skip.
+        db.downloadPickDao().clear()
+        pick(folder("Series"), "Series", created = 200)
+        val plain = db.downloadPickDao().nextUndiscovered()!!
+        assertEquals(emptySet<Long>(), plain.excludedFileIds.split(',').mapNotNull { it.trim().toLongOrNull() }.toSet())
+        assertEquals(emptySet<String>(), plain.excludedPaths.split('\n').filter { it.isNotEmpty() }.toSet())
+    }
 }

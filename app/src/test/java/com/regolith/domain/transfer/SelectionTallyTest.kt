@@ -56,10 +56,13 @@ class SelectionTallyTest {
     }
 
     @Test
-    fun `a file inside a picked folder is not added on top of it`() {
+    fun `a file already picked is not counted again when its folder is picked over it`() {
+        // The double-count guard. (Tapping a file INSIDE an existing folder
+        // pick is a different act — it takes the file out; see
+        // SelectionTallyExclusionTest.)
         val tally = Selection()
-            .toggleFolder(folder(1, "Films", files = 9, bytes = 18_400_000_000))
             .toggleFile(file(10, 2_100_000_000, folderPath = "Films"))
+            .toggleFolder(folder(1, "Films", files = 9, bytes = 18_400_000_000))
             .tally()
         assertEquals(9, tally.fileCount)
         assertEquals(18_400_000_000, tally.byteCount)
@@ -108,5 +111,48 @@ class SelectionTallyTest {
     fun `a file not in the selection does not count as already kept`() {
         val tally = Selection().toggleFile(file(10, 1_000)).tally(doneFileIds = setOf(99L))
         assertEquals(0, tally.alreadyKept)
+    }
+}
+
+class SelectionTallyExclusionTest {
+    private fun folder(id: Long, path: String, files: Int, bytes: Long) =
+        FolderPick(folderId = id, shareId = 1, relPath = path, fileCount = files, byteCount = bytes)
+    private fun file(id: Long, folderPath: String, bytes: Long) =
+        FilePick(fileId = id, shareId = 1, folderRelPath = folderPath, sizeBytes = bytes)
+
+    @Test
+    fun `a file taken out of a pick comes off the total`() {
+        val tally = Selection()
+            .toggleFolder(folder(1, "Season 01", files = 9, bytes = 9_000))
+            .toggleFile(file(10, "Season 01", bytes = 1_000))
+            .tally()
+        assertEquals(8, tally.fileCount)
+        assertEquals(8_000L, tally.byteCount)
+        assertEquals(1, tally.leftOut)
+    }
+
+    @Test
+    fun `an excluded subfolder is reported but its counts are the presenter's to remove`() {
+        // The domain tally only knows a pick's OWN direct counts; a subfolder's
+        // rows live in Room and the presenter skips them. Here it is counted
+        // as left out and nothing is subtracted, so the total never goes below
+        // what the pick itself holds.
+        val tally = Selection()
+            .toggleFolder(folder(1, "Series", files = 2, bytes = 2_000))
+            .toggleFolder(folder(2, "Series/Extras", files = 4, bytes = 4_000))
+            .tally()
+        assertEquals(2, tally.fileCount)
+        assertEquals(1, tally.leftOut)
+    }
+
+    @Test
+    fun `the total never goes negative`() {
+        // A file excluded from a folder whose counts are stale at zero.
+        val tally = Selection()
+            .toggleFolder(folder(1, "Season 01", files = 0, bytes = 0))
+            .toggleFile(file(10, "Season 01", bytes = 1_000))
+            .tally()
+        assertEquals(0, tally.fileCount)
+        assertEquals(0L, tally.byteCount)
     }
 }

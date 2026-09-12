@@ -157,4 +157,49 @@ class SelectionUiStateTest {
         val state = SelectionUiState(pickedPaths = mapOf(1L to setOf("Films/Arrival (2016)")))
         assertEquals(0, state.picksInside(2, "Films"))
     }
+
+    // ── exclusions: "this folder, minus these" ──────────────────────────
+
+    @Test
+    fun `coversFile stops at an excluded subtree`() {
+        val state = SelectionUiState(
+            pickedPaths = mapOf(1L to setOf("Series")),
+            excludedPaths = mapOf(1L to setOf("Series/Extras")),
+        )
+        assertTrue(state.coversFile(1, "Series/Season 01"))
+        assertFalse(state.coversFile(1, "Series/Extras"))
+        assertFalse(state.coversFile(1, "Series/Extras/Deleted scenes"))
+    }
+
+    @Test
+    fun `coversFolder respects exclusions the same way`() {
+        val state = SelectionUiState(
+            pickedPaths = mapOf(1L to setOf("Series")),
+            excludedPaths = mapOf(1L to setOf("Series/Extras")),
+        )
+        assertTrue(state.coversFolder(1, "Series/Season 01"))
+        assertFalse(state.coversFolder(1, "Series/Extras"))
+    }
+
+    @Test
+    fun `leftOutInside counts what a folder has lost beneath it`() {
+        // From the level above, a pick with holes in it must not look like
+        // one without: this is what "All but 3" is drawn from.
+        val state = SelectionUiState(
+            pickedPaths = mapOf(1L to setOf("Series")),
+            excludedPaths = mapOf(1L to setOf("Series/Extras")),
+            excludedFileFolders = mapOf(1L to listOf("Series/Season 01", "Series/Season 01")),
+        )
+        assertEquals(3, state.leftOutInside(1, "Series"))
+        assertEquals(2, state.leftOutInside(1, "Series/Season 01"))
+        assertEquals(0, state.leftOutInside(1, "Series/Season 02"))
+        assertEquals(0, state.leftOutInside(1, "Films"))
+    }
+
+    @Test
+    fun `the detail line reports what was left out`() {
+        val state = SelectionUiState(itemCount = 1, fileCount = 7, byteCount = 1, leftOut = 2)
+        assertEquals("2 left out", state.detail)
+        assertEquals("1 left out", state.copy(leftOut = 1).detail)
+    }
 }

@@ -25,7 +25,8 @@ came with that round and works on the phone too.
 Downloads take a batch: hold any video or folder in Browse, Library or
 Search to start picking, tap the rest, and one red Download queues the lot
 — picking a folder takes everything inside it, including folders the app
-has never scanned, which it walks over SMB as the download runs. A
+has never scanned, which it walks over SMB as the download runs; drill in
+and uncheck anything you don't want, and the folder comes minus those. A
 foreground notification carries the progress across the whole batch and a
 red dot on the Settings tab says it started; the copies themselves live
 where they always have, under Library › On this device — which has the same

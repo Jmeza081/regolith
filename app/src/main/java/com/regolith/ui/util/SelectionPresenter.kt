@@ -9,6 +9,7 @@ import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.transfer.Selection
 import com.regolith.domain.transfer.StorageCheck
 import com.regolith.domain.transfer.coveredByAncestor
+import com.regolith.domain.transfer.exclusionsUnder
 import com.regolith.domain.transfer.pathCoveredBy
 import com.regolith.domain.transfer.tally
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,6 +38,16 @@ data class SelectionUiState(
     val pickedPaths: Map<Long, Set<String>> = emptyMap(),
     /** The folders holding picked FILES, per share, for the same tests. */
     val pickedFileFolders: Map<Long, List<String>> = emptyMap(),
+    /** Files taken back out of a picked folder: drawn unchecked, tap to put back. */
+    val excludedFiles: Set<Long> = emptySet(),
+    /** Subfolders taken back out, subtree and all. */
+    val excludedFolders: Set<Long> = emptySet(),
+    /** Excluded subfolder paths per share, so [coversFile] can stop at them. */
+    val excludedPaths: Map<Long, Set<String>> = emptyMap(),
+    /** Files and subfolders taken back out, for the detail line. */
+    val leftOut: Int = 0,
+    /** The folders holding EXCLUDED files, per share, for [leftOutInside]. */
+    val excludedFileFolders: Map<Long, List<String>> = emptyMap(),
     /** The folder being looked at is itself inside a pick, so everything here is along for the ride. */
     val insideCovered: Boolean = false,
     /** What the contextual bar counts: picks, not the files they expand to. */
@@ -74,6 +85,7 @@ data class SelectionUiState(
                     add(if (unlistedFolders == 1) "1 folder not listed yet" else "$unlistedFolders folders not listed yet")
                 }
                 if (alreadyKept > 0) add("$alreadyKept already here")
+                if (leftOut > 0) add(if (leftOut == 1) "1 left out" else "$leftOut left out")
             }
             return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         }
@@ -103,10 +115,27 @@ data class SelectionUiState(
      */
     fun coversFile(shareId: Long, folderRelPath: String): Boolean {
         val paths = pickedPaths[shareId] ?: return false
-        // Inclusive: a file directly inside a picked folder is coming too.
+        // Inclusive: a file directly inside a picked folder is coming too —
+        // unless its folder sits inside a subtree the user took back out.
         // Same rule as Selection.coversFileIn, which gates the toggle.
-        return pathCoveredBy(paths, folderRelPath)
+        return pathCoveredBy(paths, folderRelPath) && !pathCoveredBy(excludedPaths[shareId] ?: emptySet(), folderRelPath)
     }
+
+    /**
+     * How many things were taken back out at or below [relPath]. The
+     * counterpart of [picksInside]: a picked folder with holes in it looks
+     * exactly like one without, from the level above.
+     */
+    fun leftOutInside(shareId: Long, relPath: String): Int {
+        val prefix = if (relPath.isEmpty()) "" else "$relPath/"
+        val folders = (excludedPaths[shareId] ?: emptySet()).count { it != relPath && it.startsWith(prefix) }
+        val files = (excludedFileFolders[shareId] ?: emptyList()).count { it == relPath || it.startsWith(prefix) }
+        return folders + files
+    }
+
+    /** Is this folder coming, once picks AND exclusions are applied? */
+    fun coversFolder(shareId: Long, relPath: String): Boolean =
+        pathCoveredBy(pickedPaths[shareId] ?: emptySet(), relPath) && !pathCoveredBy(excludedPaths[shareId] ?: emptySet(), relPath)
 }
 
 /**
@@ -166,9 +195,13 @@ class SelectionPresenter @Inject constructor(
         var unlisted = 0
         for (share in sel.folders.map { it.shareId }.distinct()) {
             val paths = sel.folders.filter { it.shareId == share }.map { it.relPath }.toSet()
+            val outPaths = sel.excludedFolders.filter { it.shareId == share }.map { it.relPath }.toSet()
             for (folder in folders) {
                 if (folder.shareId != share) continue
                 if (!pathCoveredBy(paths, folder.relPath)) continue
+                // A subtree the user took back out is not coming, and neither
+                // is anything under it.
+                if (pathCoveredBy(outPaths, folder.relPath)) continue
                 if (folder.id !in pickedIds) covered += folder.id
                 // Sum EVERY folder in the covered subtree, picked or not: a pick's own
                 // fileCount is its direct files only, so the children carry the rest.
@@ -180,6 +213,12 @@ class SelectionPresenter @Inject constructor(
         val fileTally = sel.tally(doneFileIds)
         fileCount += sel.files.size
         byteCount += sel.files.sumOf { it.sizeBytes }
+        // Every excluded file sits directly in a folder counted above, so it
+        // comes straight off. (Excluded subfolders were skipped, not counted.)
+        fileCount -= sel.excludedFiles.size
+        byteCount -= sel.excludedFiles.sumOf { it.sizeBytes }
+        fileCount = fileCount.coerceAtLeast(0)
+        byteCount = byteCount.coerceAtLeast(0)
 
         val storage = transfers.storage()
         val hasRoom = StorageCheck.hasRoom(storage.freeBytes, byteCount, 0)
@@ -189,6 +228,11 @@ class SelectionPresenter @Inject constructor(
             pickedFiles = sel.files.map { it.fileId }.toSet(),
             pickedPaths = sel.folders.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.relPath }.toSet() },
             pickedFileFolders = sel.files.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.folderRelPath } },
+            excludedFiles = sel.excludedFiles.map { it.fileId }.toSet(),
+            excludedFolders = sel.excludedFolders.map { it.folderId }.toSet(),
+            excludedPaths = sel.excludedFolders.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.relPath }.toSet() },
+            leftOut = sel.excludedFiles.size + sel.excludedFolders.size,
+            excludedFileFolders = sel.excludedFiles.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.folderRelPath } },
             itemCount = sel.itemCount,
             fileCount = fileCount,
             byteCount = byteCount,
@@ -227,7 +271,7 @@ class SelectionPresenter @Inject constructor(
     suspend fun download(): Int {
         val sel = selection.snapshot() ?: return 0
         val queued = transfers.startAll(sel.files.map { it.fileId })
-        transfers.addFolderPicks(sel.folders)
+        transfers.addFolderPicks(sel.folders.associateWith { sel.exclusionsUnder(it) })
         selection.clear()
         return queued
     }

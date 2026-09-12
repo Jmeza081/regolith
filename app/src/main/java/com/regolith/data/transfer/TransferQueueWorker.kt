@@ -28,6 +28,7 @@ import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import com.regolith.domain.transfer.QueueProgress
+import com.regolith.domain.transfer.pathCoveredBy
 import com.regolith.domain.transfer.StorageCheck
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
@@ -100,6 +101,10 @@ class TransferQueueWorker @AssistedInject constructor(
         while (pending > 0) {
             if (isStopped) return@withContext stopped()
             val pick = picks.nextUndiscovered() ?: break
+            // "This folder, minus these": files the user took back out are
+            // not queued, and subtrees they took out are not even listed.
+            val skipIds = pick.excludedFileIds.split(',').mapNotNull { it.trim().toLongOrNull() }.toSet()
+            val skipPaths = pick.excludedPaths.split('\n').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             try {
                 library.listSubtree(
                     folderId = pick.folderId,
@@ -107,7 +112,8 @@ class TransferQueueWorker @AssistedInject constructor(
                         progress = progress.copy(found = found)
                         notify()
                     },
-                    onFolderListed = { files -> queueRows(files.map { it.id }) },
+                    onFolderListed = { files -> queueRows(files.filterNot { it.id in skipIds }.map { it.id }) },
+                    prune = { relPath -> pathCoveredBy(skipPaths, relPath) },
                 )
             } catch (e: SmbFailure) {
                 // The share went quiet mid-walk. Keep the pick so the retry resumes it.

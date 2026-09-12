@@ -3,6 +3,8 @@ package com.regolith.data.transfer
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.transfer.Selection
+import com.regolith.domain.transfer.includeFile
+import com.regolith.domain.transfer.includeFolder
 import com.regolith.domain.transfer.toggleFile
 import com.regolith.domain.transfer.toggleFolder
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,9 +74,11 @@ class SelectionStore @Inject constructor() {
      */
     fun addAll(folders: List<FolderPick>, files: List<FilePick>) {
         _state.update { current ->
+            // include*, not toggle*: on a screen full of rows that a picked
+            // folder already covers, toggling would take them all OUT.
             var next = current ?: Selection()
-            folders.forEach { pick -> if (!next.folders.any { it.folderId == pick.folderId }) next = next.toggleFolder(pick) }
-            files.forEach { pick -> if (!next.files.any { it.fileId == pick.fileId }) next = next.toggleFile(pick) }
+            folders.forEach { next = next.includeFolder(it) }
+            files.forEach { next = next.includeFile(it) }
             next
         }
     }

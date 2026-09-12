@@ -334,6 +334,8 @@ class LibraryRepository @Inject constructor(
         folderId: Long,
         onProgress: suspend (found: Int) -> Unit = {},
         onFolderListed: suspend (List<MediaFileEntity>) -> Unit = {},
+        /** True for a subfolder relPath the walk should not enter: a subtree the user left out. */
+        prune: (relPath: String) -> Boolean = { false },
     ): List<MediaFileEntity> {
         val seen = LinkedHashMap<Long, MediaFileEntity>()
         val queue = ArrayDeque<Long>().apply { add(folderId) }
@@ -342,7 +344,7 @@ class LibraryRepository @Inject constructor(
             val id = queue.removeFirst()
             if (!walked.add(id)) continue
             val outcome = refreshFolder(id)
-            queue.addAll(outcome.subfolders.map { it.id })
+            queue.addAll(outcome.subfolders.filterNot { prune(it.relPath) }.map { it.id })
             val files = mediaFileDao.inFolders(listOf(id))
             val fresh = files.filter { it.id !in seen }
             fresh.forEach { seen[it.id] = it }

@@ -1,5 +1,6 @@
 package com.regolith.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Fts4
@@ -299,4 +300,13 @@ data class DownloadPickEntity(
     /** How many playable files the walk found. Meaningless until [discovered]. */
     val filesFound: Int = 0,
     val createdAtMs: Long,
+    // --- Schema v7: "this folder, minus these".
+    /**
+     * File ids the user took back out of this pick, comma-joined. A column
+     * rather than a child table because a pick lives for one drain and is
+     * then deleted; a table would outlive the only thing it describes.
+     */
+    @ColumnInfo(defaultValue = "") val excludedFileIds: String = "",
+    /** Subfolder relPaths taken back out, newline-joined. The walk does not enter them. */
+    @ColumnInfo(defaultValue = "") val excludedPaths: String = "",
 )

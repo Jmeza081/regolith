@@ -5,6 +5,7 @@ import com.regolith.data.db.DownloadPickEntity
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.TransferDao
 import com.regolith.data.db.TransferEntity
+import com.regolith.domain.transfer.FolderExclusions
 import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
@@ -82,14 +83,16 @@ class TransferRepository @Inject constructor(
      * folder the user never opened has no rows — so each pick becomes a
      * `download_picks` job for the queue worker to walk over SMB.
      */
-    suspend fun addFolderPicks(folderPicks: Collection<FolderPick>) {
+    suspend fun addFolderPicks(folderPicks: Map<FolderPick, FolderExclusions>) {
         if (folderPicks.isEmpty()) return
         val now = System.currentTimeMillis()
-        folderPicks.forEach { pick ->
+        folderPicks.forEach { (pick, out) ->
             picks.insert(
                 DownloadPickEntity(
                     folderId = pick.folderId, shareId = pick.shareId, relPath = pick.relPath,
                     discovered = false, filesFound = 0, createdAtMs = now,
+                    excludedFileIds = out.fileIds.joinToString(","),
+                    excludedPaths = out.paths.joinToString("\n"),
                 ),
             )
         }

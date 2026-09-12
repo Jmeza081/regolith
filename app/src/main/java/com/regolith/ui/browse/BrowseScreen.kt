@@ -56,6 +56,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
 import com.regolith.ui.components.SelectionBar
+import com.regolith.ui.util.SelectionUiState
 import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.components.TopBarAction
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -257,17 +258,19 @@ private fun BrowseContent(
                         Section(formatFolderCount(folders.size), dimmed = offline != null) {
                             folders.forEach { row ->
                                 val picked = selection?.pickedFolders?.contains(row.folderId) == true
-                                val covered = selection?.coveredFolders?.contains(row.folderId) == true
+                                val coming = picked || selection?.coversFolder(row.shareId, row.relPath) == true
                                 // Two targets while selecting: the box picks, the
                                 // rest still walks in. Picking a folder swallows
                                 // everything under it, so a row that both picked
                                 // and opened would make the first tap the last —
                                 // the exact trap the Choose-folders picker names.
+                                // Inside a pick the box is still live: tapping it
+                                // takes this subtree back OUT.
                                 ListRow(
                                     title = row.name,
-                                    meta = folderMeta(row, covered, selection?.picksInside(row.shareId, row.relPath) ?: 0),
+                                    meta = folderMeta(row, selection, coming && !picked),
                                     leading = if (selecting) {
-                                        RowLeading.PickBox(R.drawable.rg_ic_browse, picked = picked, locked = covered)
+                                        RowLeading.PickBox(R.drawable.rg_ic_browse, picked = coming)
                                     } else {
                                         RowLeading.IconBox(R.drawable.rg_ic_browse)
                                     },
@@ -277,16 +280,11 @@ private fun BrowseContent(
                                     } else {
                                         null
                                     },
-                                    leadingDescription = when {
-                                        covered -> "${row.name}, already inside your pick"
-                                        picked -> "${row.name}, picked"
-                                        else -> "Pick ${row.name}"
-                                    },
+                                    leadingDescription = if (coming) "${row.name}, coming" else "Pick ${row.name}",
                                     onLongClick = { viewModel.beginSelection(row) },
                                     // The chevron stays: the row is still a way in,
                                     // and dropping it would say otherwise.
                                     trailing = RowTrailing.Chevron,
-                                    modifier = if (covered) Modifier.alpha(0.5f) else Modifier,
                                     testTag = row.testTag,
                                 )
                             }
@@ -297,18 +295,22 @@ private fun BrowseContent(
                     item {
                         Section(formatFileCount(files.size), dimmed = offline != null) {
                             files.forEach { row ->
-                                val filePicked = selection?.pickedFiles?.contains(row.fileId) == true
-                                val fileCovered = selection?.coversFile(row.shareId, row.folderRelPath) == true
+                                // Coming if picked itself, or inside a picked folder and
+                                // not taken back out. Either way the tap toggles: a checked
+                                // row inside a pick unchecks by EXCLUDING the file, which
+                                // is what tapping it means.
+                                val fileComing = selection?.pickedFiles?.contains(row.fileId) == true ||
+                                    (selection?.coversFile(row.shareId, row.folderRelPath) == true && selection.excludedFiles.contains(row.fileId).not())
                                 ListRow(
                                     title = row.name,
                                     meta = fileMeta(row),
                                     leading = RowLeading.Thumb(row.artwork, fallbackLabel = row.name),
-                                    trailing = if (filePicked || fileCovered) RowTrailing.Checked else RowTrailing.None,
+                                    trailing = if (fileComing) RowTrailing.Checked else RowTrailing.None,
                                     compact = true,
-                                    onClick = when {
-                                        fileCovered -> { {} }
-                                        selecting -> { { viewModel.toggleSelection(row) } }
-                                        else -> { { onOpenFile(row.fileId) } }
+                                    onClick = if (selecting) {
+                                        { viewModel.toggleSelection(row) }
+                                    } else {
+                                        { onOpenFile(row.fileId) }
                                     },
                                     onLongClick = { viewModel.beginSelection(row) },
                                     testTag = row.testTag,
@@ -341,20 +343,20 @@ private fun BrowseContent(
                     item(span = { GridItemSpan(maxLineSpan) }) { Eyebrow(formatFolderCount(folders.size), muted = true) }
                     items(folders, key = { it.testTag }) { row ->
                         val picked = selection?.pickedFolders?.contains(row.folderId) == true
-                        val covered = selection?.coveredFolders?.contains(row.folderId) == true
+                        val coming = picked || selection?.coversFolder(row.shareId, row.relPath) == true
                         // The marker picks, the tile still opens: a folder is a
                         // way in, and picking it takes everything inside.
                         MediaTile(
                             artwork = row.artwork,
                             kind = ArtworkKind.THUMB,
                             title = row.name,
-                            meta = folderMeta(row, covered, selection?.picksInside(row.shareId, row.relPath) ?: 0),
+                            meta = folderMeta(row, selection, coming && !picked),
                             count = row.fileCount.takeIf { it > 0 },
-                            dimmed = offline != null || covered,
+                            dimmed = offline != null,
                             onClick = { onOpenFolder(row.folderId) },
                             onLongClick = { viewModel.beginSelection(row) },
-                            checked = if (selecting) picked || covered else null,
-                            onCheckClick = if (selecting && !covered) {
+                            checked = if (selecting) coming else null,
+                            onCheckClick = if (selecting) {
                                 { viewModel.toggleSelection(row) }
                             } else {
                                 null
@@ -366,8 +368,8 @@ private fun BrowseContent(
                 if (files.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { Eyebrow(formatFileCount(files.size), muted = true) }
                     items(files, key = { it.testTag }) { row ->
-                        val filePicked = selection?.pickedFiles?.contains(row.fileId) == true
-                        val fileCovered = selection?.coversFile(row.shareId, row.folderRelPath) == true
+                        val fileComing = selection?.pickedFiles?.contains(row.fileId) == true ||
+                            (selection?.coversFile(row.shareId, row.folderRelPath) == true && selection.excludedFiles.contains(row.fileId).not())
                         MediaTile(
                             artwork = row.artwork,
                             kind = ArtworkKind.THUMB,
@@ -380,13 +382,13 @@ private fun BrowseContent(
                             // The pane's ring stands down while selecting, so one
                             // ring never means both "open" and "picked".
                             selected = !selecting && row.fileId == selectedFileId,
-                            onClick = when {
-                                fileCovered -> { {} }
-                                selecting -> { { viewModel.toggleSelection(row) } }
-                                else -> { { onOpenFile(row.fileId) } }
+                            onClick = if (selecting) {
+                                { viewModel.toggleSelection(row) }
+                            } else {
+                                { onOpenFile(row.fileId) }
                             },
                             onLongClick = { viewModel.beginSelection(row) },
-                            checked = if (selecting) filePicked || fileCovered else null,
+                            checked = if (selecting) fileComing else null,
                             testTag = row.testTag,
                         )
                     }
@@ -426,13 +428,20 @@ private fun BrowseContent(
  * without it, a folder you walked into and picked inside is indistinguishable
  * from one you never opened.
  */
-private fun folderMeta(row: BrowseRow.FolderRow, covered: Boolean, inside: Int): String? = when {
-    covered -> "Already inside your pick"
-    inside == 1 -> "1 picked inside"
-    inside > 1 -> "$inside picked inside"
-    !row.listed -> "Not listed yet"
-    row.fileCount > 0 -> "${formatFileCount(row.fileCount)} · ${formatBytes(row.byteCount)}"
-    else -> null
+private fun folderMeta(row: BrowseRow.FolderRow, selection: SelectionUiState?, coveredByParent: Boolean): String? {
+    val inside = selection?.picksInside(row.shareId, row.relPath) ?: 0
+    val out = selection?.leftOutInside(row.shareId, row.relPath) ?: 0
+    return when {
+        // A pick with holes in it says so; from the level above it would
+        // otherwise look exactly like one without.
+        out > 0 -> if (out == 1) "All but 1" else "All but $out"
+        coveredByParent -> "Coming with the folder above"
+        inside == 1 -> "1 picked inside"
+        inside > 1 -> "$inside picked inside"
+        !row.listed -> "Not listed yet"
+        row.fileCount > 0 -> "${formatFileCount(row.fileCount)} · ${formatBytes(row.byteCount)}"
+        else -> null
+    }
 }
 
 /** The tree's first line sits on the top bar's own baseline rather than the screen's edge. */

@@ -75,17 +75,17 @@ class SelectionTest {
     }
 
     @Test
-    fun `a folder covered by an ancestor cannot be picked`() {
+    fun `a folder covered by an ancestor never becomes a second pick`() {
         val selection = Selection()
             .toggleFolder(folder(1, "Films"))
             .toggleFolder(folder(2, "Films/Arrival (2016)"))
-        // The row is drawn inert for exactly this reason, so the toggle is a
-        // no-op rather than a second pick.
+        // Tapping it takes it OUT (SelectionExclusionTest); what it must never
+        // do is add a nested pick that would count the same files twice.
         assertEquals(setOf("Films"), selection.folders.map { it.relPath }.toSet())
     }
 
     @Test
-    fun `a file covered by an ancestor cannot be picked`() {
+    fun `a file covered by an ancestor never becomes a second pick`() {
         val selection = Selection()
             .toggleFolder(folder(1, "Films"))
             .toggleFile(file(10, "Films/Arrival (2016)"))
@@ -147,5 +147,139 @@ class SelectionTest {
         assertTrue(selection.hasFile(10))
         assertFalse(selection.hasFolder(2))
         assertFalse(selection.hasFile(11))
+    }
+}
+
+/**
+ * "This folder, minus these." The rules that let a checked row inside a
+ * picked folder be unchecked — the owner's report was that it could not.
+ */
+class SelectionExclusionTest {
+
+    private fun folder(id: Long, path: String, share: Long = 1) = FolderPick(folderId = id, shareId = share, relPath = path)
+    private fun file(id: Long, folderPath: String, share: Long = 1, bytes: Long = 0) =
+        FilePick(fileId = id, shareId = share, folderRelPath = folderPath, sizeBytes = bytes)
+
+    @Test
+    fun `tapping a file inside a picked folder takes it out, not in`() {
+        // The bug: this used to be a no-op, so the only way to leave one
+        // episode behind was to unpick the season and re-pick the rest.
+        val sel = Selection().toggleFolder(folder(1, "Season 01")).toggleFile(file(10, "Season 01"))
+        assertTrue(sel.hasFolder(1))
+        assertTrue(sel.isExcludedFile(10))
+        assertFalse(sel.hasFile(10))
+        assertFalse("an excluded file is not coming", sel.coversFileIn(1, "Season 01") && !sel.isExcludedFile(10))
+    }
+
+    @Test
+    fun `tapping an excluded file puts it back`() {
+        val sel = Selection().toggleFolder(folder(1, "Season 01")).toggleFile(file(10, "Season 01")).toggleFile(file(10, "Season 01"))
+        assertFalse(sel.isExcludedFile(10))
+        assertTrue("back to coming with the folder, not a direct pick", sel.hasFolder(1) && !sel.hasFile(10))
+    }
+
+    @Test
+    fun `tapping a subfolder inside a picked folder takes its subtree out`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).toggleFolder(folder(2, "Series/Extras"))
+        assertTrue(sel.isExcludedFolder(2))
+        assertFalse("a file under the excluded subtree is no longer coming", sel.coversFileIn(1, "Series/Extras"))
+        assertFalse(sel.coversFileIn(1, "Series/Extras/Deleted scenes"))
+        assertTrue("a sibling still is", sel.coversFileIn(1, "Series/Season 01"))
+    }
+
+    @Test
+    fun `a file under an excluded subtree can be picked back directly`() {
+        // Excluded the Extras folder, then wanted one thing from it after all.
+        val sel = Selection()
+            .toggleFolder(folder(1, "Series"))
+            .toggleFolder(folder(2, "Series/Extras"))
+            .toggleFile(file(10, "Series/Extras"))
+        assertTrue("it becomes a direct pick rather than an un-exclusion", sel.hasFile(10))
+        assertTrue(sel.isExcludedFolder(2))
+    }
+
+    @Test
+    fun `unpicking the folder drops its exclusions`() {
+        // They were only ever "minus these" against a pick that is now gone.
+        val sel = Selection()
+            .toggleFolder(folder(1, "Series"))
+            .toggleFile(file(10, "Series"))
+            .toggleFolder(folder(2, "Series/Extras"))
+            .toggleFolder(folder(1, "Series"))
+        assertTrue(sel.isEmpty)
+        assertEquals(0, sel.excludedFiles.size + sel.excludedFolders.size)
+    }
+
+    @Test
+    fun `picking a folder afresh means all of it`() {
+        // Exclusions made under a NARROWER pick go when a broader one arrives.
+        val sel = Selection()
+            .toggleFolder(folder(2, "Series/Season 01"))
+            .toggleFile(file(10, "Series/Season 01"))
+            .toggleFolder(folder(1, "Series"))
+        assertEquals(setOf("Series"), sel.folders.map { it.relPath }.toSet())
+        assertFalse(sel.isExcludedFile(10))
+    }
+
+    @Test
+    fun `exclusions do not count as picks`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).toggleFile(file(10, "Series")).toggleFolder(folder(2, "Series/Extras"))
+        assertEquals(1, sel.itemCount)
+    }
+
+    @Test
+    fun `exclusions in one share do not reach another`() {
+        val sel = Selection()
+            .toggleFolder(folder(1, "Series", share = 1))
+            .toggleFolder(folder(2, "Series", share = 2))
+            .toggleFolder(folder(3, "Series/Extras", share = 1))
+        assertTrue(sel.coversFileIn(2, "Series/Extras"))
+        assertFalse(sel.coversFileIn(1, "Series/Extras"))
+    }
+
+    // ── select all never excludes ──────────────────────────────────────
+
+    @Test
+    fun `includeFile on a covered row is a no-op, not an exclusion`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).includeFile(file(10, "Series"))
+        assertFalse(sel.isExcludedFile(10))
+        assertFalse(sel.hasFile(10))
+    }
+
+    @Test
+    fun `includeFile on an excluded row puts it back`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).toggleFile(file(10, "Series")).includeFile(file(10, "Series"))
+        assertFalse(sel.isExcludedFile(10))
+    }
+
+    @Test
+    fun `includeFolder on an excluded subtree puts it back`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).toggleFolder(folder(2, "Series/Extras")).includeFolder(folder(2, "Series/Extras"))
+        assertFalse(sel.isExcludedFolder(2))
+        assertTrue(sel.coversFolder(1, "Series/Extras"))
+    }
+
+    // ── what the download job is handed ────────────────────────────────
+
+    @Test
+    fun `exclusionsUnder resolves only this pick's own`() {
+        val sel = Selection()
+            .toggleFolder(folder(1, "Series"))
+            .toggleFolder(folder(5, "Films"))
+            .toggleFile(file(10, "Series"))
+            .toggleFolder(folder(2, "Series/Extras"))
+            .toggleFile(file(20, "Films"))
+        val series = sel.exclusionsUnder(folder(1, "Series"))
+        assertEquals(setOf(10L), series.fileIds)
+        assertEquals(setOf("Series/Extras"), series.paths)
+        val films = sel.exclusionsUnder(folder(5, "Films"))
+        assertEquals(setOf(20L), films.fileIds)
+        assertTrue(films.paths.isEmpty())
+    }
+
+    @Test
+    fun `a pick with nothing left out hands over nothing`() {
+        val sel = Selection().toggleFolder(folder(1, "Series"))
+        assertTrue(sel.exclusionsUnder(folder(1, "Series")).isEmpty)
     }
 }

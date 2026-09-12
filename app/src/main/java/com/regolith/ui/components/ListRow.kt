@@ -65,10 +65,11 @@ sealed interface RowLeading {
      * target; picking is the deliberate one and gets a box that looks like
      * what it is.
      *
-     * [locked] is the covered case: in, but not by its own doing, so the
-     * box is grey with a grey check and takes no taps.
+     * There is no inert state. A folder inside a pick is checked because it
+     * is coming, and tapping its box takes it back OUT — "this folder, minus
+     * that one" — so the box is always live.
      */
-    data class PickBox(val icon: Int, val picked: Boolean, val locked: Boolean = false) : RowLeading
+    data class PickBox(val icon: Int, val picked: Boolean) : RowLeading
 
     data object None : RowLeading
 }
@@ -149,9 +150,8 @@ fun ListRow(
                     .size(38.scaledDp())
                     .clip(BoxShape)
                     .background(if (leading.picked) colors.ink else colors.disabledBg)
-                    .then(if (leading.locked) Modifier.border(1.dp, colors.hairline, BoxShape) else Modifier)
                     .then(
-                        if (onLeadingClick != null && !leading.locked) {
+                        if (onLeadingClick != null) {
                             Modifier.clickable(interactionSource = null, indication = null, onClick = onLeadingClick)
                         } else {
                             Modifier
@@ -161,7 +161,7 @@ fun ListRow(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painterResource(if (leading.picked || leading.locked) R.drawable.rg_ic_check else leading.icon),
+                    painterResource(if (leading.picked) R.drawable.rg_ic_check else leading.icon),
                     contentDescription = leadingDescription,
                     tint = if (leading.picked) colors.ground else colors.metadata,
                     modifier = Modifier.size(18.scaledDp()),

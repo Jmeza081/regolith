@@ -281,20 +281,23 @@ private fun HitRow(
 ) {
     val colors = RegolithTheme.colors
     val selecting = selection != null
-    val picked = when (hit) {
-        is SearchHit.Folder -> selection?.pickedFolders?.contains(hit.folderId) == true
-        is SearchHit.Title -> selection?.pickedFiles?.contains(hit.fileId) == true
-        is SearchHit.File -> selection?.pickedFiles?.contains(hit.fileId) == true
+    // Coming: picked itself, or inside a pick and not taken back out.
+    // Nothing is inert — tapping a checked row inside a pick excludes it.
+    val coming = when (hit) {
+        is SearchHit.Folder -> selection?.pickedFolders?.contains(hit.folderId) == true ||
+            selection?.coversFolder(hit.shareId, hit.relPath) == true
+        is SearchHit.Title -> selection?.pickedFiles?.contains(hit.fileId) == true ||
+            (selection?.coversFile(hit.shareId, hit.relPath) == true && selection.excludedFiles.contains(hit.fileId).not())
+        is SearchHit.File -> selection?.pickedFiles?.contains(hit.fileId) == true ||
+            (selection?.coversFile(hit.shareId, hit.relPath) == true && selection.excludedFiles.contains(hit.fileId).not())
     }
-    val covered = when (hit) {
-        is SearchHit.Folder -> selection?.coveredFolders?.contains(hit.folderId) == true
-        else -> selection?.coversFile(hit.shareId, hit.relPath) == true
-    }
+    val picked = coming
+    val covered = false
     // A folder result is a way into Browse, so while selecting it keeps two
     // targets: the thumb picks it, the rest opens it. A file has nowhere to
     // walk into, so the whole row picks.
     val folderHit = hit is SearchHit.Folder
-    val splitTargets = selecting && folderHit && !covered
+    val splitTargets = selecting && folderHit
     Row(
         Modifier
             .fillMaxWidth()
@@ -308,7 +311,6 @@ private fun HitRow(
                         onLongClick = { onLongPress(hit) },
                     ) {
                         when {
-                            covered -> Unit
                             selecting -> onToggle(hit)
                             else -> {
                                 remember()
@@ -322,7 +324,6 @@ private fun HitRow(
                     }
                 },
             )
-            .alpha(if (covered) 0.5f else 1f)
             .testTag(hit.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -369,17 +370,14 @@ private fun HitRow(
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             Text(highlight(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                if (covered) "Already inside your pick" else hit.meta,
-                style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            Text(hit.meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (picked || covered) {
+        if (picked) {
             Spacer(Modifier.width(Spacing.s12))
             Icon(
                 painterResource(R.drawable.rg_ic_check),
-                contentDescription = "Picked",
-                tint = if (covered) colors.metadata else colors.ink,
+                contentDescription = "Coming",
+                tint = colors.ink,
                 modifier = Modifier.size(18.scaledDp()),
             )
         }
