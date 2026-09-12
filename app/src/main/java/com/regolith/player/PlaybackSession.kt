@@ -20,10 +20,12 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.PlaybackRepository
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.media.ChapterRepository
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMarks
+import com.regolith.domain.playback.ChapterSource
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -99,6 +101,11 @@ data class PlaybackState(
      */
     val containerChapters: List<Chapter> = emptyList(),
     /**
+     * The chapters the user wrote for this file, observed from
+     * `user_chapters` for as long as it is loaded. Read [chapters] instead.
+     */
+    val userChapters: List<Chapter> = emptyList(),
+    /**
      * False until the container has actually been read. Without it there is
      * no way to tell "this file has no chapters" from "we have not looked
      * yet", and the sheet would open on even divisions and then reshuffle
@@ -116,10 +123,15 @@ data class PlaybackState(
      * which arrives from the player a moment after the file does.
      */
     val chapters: List<Chapter>
-        get() = containerChapters.ifEmpty { ChapterMarks.evenly(durationMs) }
+        get() = userChapters.ifEmpty { containerChapters.ifEmpty { ChapterMarks.evenly(durationMs) } }
 
     /** True when a person named these; false when they are even divisions. */
-    val chaptersFromContainer: Boolean get() = containerChapters.isNotEmpty()
+    val chapterSource: ChapterSource
+        get() = when {
+            userChapters.isNotEmpty() -> ChapterSource.USER
+            containerChapters.isNotEmpty() -> ChapterSource.CONTAINER
+            else -> ChapterSource.EVEN
+        }
 
     /**
      * Settled: the container has been read AND the runtime is known, so the
@@ -129,10 +141,14 @@ data class PlaybackState(
     val chaptersReady: Boolean get() = chaptersScanned && durationMs > 0 && chapters.isNotEmpty()
 
     /** Just the starts, for the ticks [com.regolith.ui.components.Scrubber] draws. */
-    val chapterTicks: List<Long> get() = chapters.map { it.startMs }
-
     /** The chapter the playhead is inside, or null when the file has none. */
     fun chapterAt(ms: Long): Chapter? = chapters.lastOrNull { it.startMs <= ms }
+
+    /** What the scrub preview says: the chapter's name, or "Part n" for an unnamed one; null when the file has none. */
+    fun chapterLabelAt(ms: Long): String? {
+        val index = chapters.indexOfLast { it.startMs <= ms }
+        return if (index < 0) null else chapters[index].label(index)
+    }
 
     /**
      * What plays after this one — what Next does, and what autoplay reaches
@@ -172,6 +188,7 @@ class PlaybackSession @Inject constructor(
     private val frames: FrameSourceFactory,
     private val local: LocalMedia,
     private val chapterSource: ChapterRepository,
+    private val userChapters: UserChapterRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(PlaybackState())
@@ -186,6 +203,8 @@ class PlaybackSession @Inject constructor(
     val scrubThumbnails: StateFlow<ScrubThumbnails> = _scrubThumbnails.asStateFlow()
 
     private var ticker: Job? = null
+    /** Follows `user_chapters` for the loaded file, so a save in the editor lands on the scrubber at once. */
+    private var userChapterJob: Job? = null
     private var lastSavedPositionMs = -1L
     private var currentFile: MediaFileEntity? = null
     /** file:// for a copy on this device, regolith:// for the share. */
@@ -309,6 +328,7 @@ class PlaybackSession @Inject constructor(
         }
         saveProgress()
         _state.value = PlaybackState(fileId = fileId, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding)
+        followUserChapters(fileId)
         scope.launch {
             val hardware = prefs.hardwareDecoding.first()
             if (hardware != _state.value.hardwareDecoding) {
@@ -363,6 +383,7 @@ class PlaybackSession @Inject constructor(
     fun loadExternal(uri: android.net.Uri, title: String) {
         Log.d(TAG, "loadExternal($uri)")
         saveProgress()
+        userChapterJob?.cancel()
         activeQueue = emptyList()
         currentFile = null
         currentUri = uri
@@ -601,6 +622,7 @@ class PlaybackSession @Inject constructor(
         Log.d(TAG, "stop() file=${_state.value.fileId}")
         saveProgress()
         ticker?.cancel()
+        userChapterJob?.cancel()
         _player.value?.let {
             it.stop()
             it.clearMediaItems()
@@ -612,6 +634,20 @@ class PlaybackSession @Inject constructor(
         _scrubThumbnails.value.close()
         _scrubThumbnails.value = ScrubThumbnails.None
         _state.value = PlaybackState(speed = 1f, hardwareDecoding = _state.value.hardwareDecoding)
+    }
+
+    /**
+     * Keep [PlaybackState.userChapters] in step with the table while
+     * [fileId] is loaded. One collector per load; the guard drops a late
+     * emission for a file that has since been swapped out.
+     */
+    private fun followUserChapters(fileId: Long) {
+        userChapterJob?.cancel()
+        userChapterJob = scope.launch {
+            userChapters.observe(fileId).collect { marks ->
+                if (_state.value.fileId == fileId) _state.update { it.copy(userChapters = marks) }
+            }
+        }
     }
 
     private fun startTicker() {

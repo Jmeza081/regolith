@@ -49,6 +49,7 @@ import com.regolith.R
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMarks
+import com.regolith.domain.playback.ChapterSource
 import androidx.compose.ui.platform.LocalConfiguration
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
@@ -308,7 +309,7 @@ fun ChaptersSheetContent(
     frames: Map<Long, android.graphics.Bitmap?>,
     positionMs: Long,
     durationMs: Long,
-    fromContainer: Boolean,
+    source: ChapterSource,
     onSeek: (Long) -> Unit,
 ) {
     val colors = RegolithTheme.colors
@@ -316,10 +317,16 @@ fun ChaptersSheetContent(
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
         DisplayText("Chapters")
         // Which kind you are looking at, because it changes what the names
-        // mean: "Act one" was written by someone, "Part 3" is arithmetic.
+        // mean: "Act one" was written by someone, "Part 3" is arithmetic,
+        // and "Yours" is the one you can change.
         Text(
-            if (fromContainer) "${chapters.size} marked in this file" else everyLabel(ChapterMarks.intervalFor(durationMs)),
+            when (source) {
+                ChapterSource.USER -> "Yours · " + if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters"
+                ChapterSource.CONTAINER -> "${chapters.size} marked in this file"
+                ChapterSource.EVEN -> everyLabel(ChapterMarks.intervalFor(durationMs))
+            },
             style = TextStyles.meta12, color = colors.metadata,
+            modifier = Modifier.testTag("player_chapters_source"),
         )
     }
     BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {

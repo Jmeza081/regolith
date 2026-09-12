@@ -669,7 +669,7 @@ fun PlayerScreen(
                 frames = chapterFrames,
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
-                fromContainer = state.chaptersFromContainer,
+                source = state.chapterSource,
                 onSeek = { ms -> viewModel.seekTo(ms); sheet = null },
             )
         }
@@ -742,12 +742,12 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
             IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
             Transport(state, cb, gap = Spacing.s18, circle = 48.dp, glyph = 26.dp, modifier = Modifier.align(Alignment.Center))
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
-                scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
+                scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.ink, modifier = Modifier.testTag("player_position"))
                     Scrubber(
                         positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                        loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chapterTicks,
+                        loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = state.chapters,
                         onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                         trackHeight = 3.dp, showKnob = false, modifier = Modifier.weight(1f),
                     )
@@ -820,12 +820,12 @@ private fun BoxScope.FullChrome(
                             style = TextStyles.meta12, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f) }
+                    scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                         Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
                         Scrubber(
                             positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                            loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chapterTicks,
+                            loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = state.chapters,
                             onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                             trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
                         )
@@ -1321,24 +1321,30 @@ private fun NextInFolder(state: PlaybackState, onPlayNext: (Long) -> Unit, empty
 
 /**
  * The frame under the finger while scrubbing, riding above the playhead
- * and clamped to the track, with the time in a pill beneath. The slot
- * keeps its height either way so the track does not jump.
+ * and clamped to the track, with the chapter's name and the time in pills
+ * beneath — the name is what tells you where you are; the clock is how
+ * far. The slot keeps its height either way so the track does not jump.
  */
 @Composable
-private fun ScrubPreview(ms: Long, frame: android.graphics.Bitmap?, fraction: Float) {
+private fun ScrubPreview(ms: Long, frame: android.graphics.Bitmap?, fraction: Float, chapter: String? = null) {
     val colors = RegolithTheme.colors
     val previewW = 160.dp
     val previewH = 90.dp
-    BoxWithConstraints(Modifier.fillMaxWidth().height(previewH + 28.dp)) {
-        val width = if (frame != null) previewW else 80.dp
+    BoxWithConstraints(Modifier.fillMaxWidth().height(previewH + 50.dp)) {
+        val width = if (frame != null || chapter != null) previewW else 80.dp
         val left = (maxWidth * fraction - width / 2).coerceIn(0.dp, (maxWidth - width).coerceAtLeast(0.dp))
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.BottomStart).offset(x = left).width(width)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s4), modifier = Modifier.align(Alignment.BottomStart).offset(x = left).width(width)) {
             if (frame != null) {
                 Image(
                     bitmap = frame.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.size(previewW, previewH).clip(CardShape).border(1.dp, colors.onMediaCircleBorder, CardShape).testTag("player_scrub_preview"),
                 )
-                Spacer(Modifier.height(Spacing.s4))
+            }
+            if (chapter != null) {
+                Text(
+                    chapter, style = TextStyles.buttonSmall, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.background(colors.overArt, PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2).testTag("player_scrub_chapter"),
+                )
             }
             Text(formatClock(ms), style = TextStyles.chipOverArt, color = colors.ink, modifier = Modifier.background(colors.overArt, PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2).testTag("player_scrub_time"))
         }
@@ -1513,9 +1519,14 @@ private fun FlexDeck(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
             Text(formatClock(here), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
+            // The filmstrip is this deck's preview, so the chapter's name
+            // goes beside the clock rather than in a floating card.
+            if (scrubPreviewMs != null) state.chapterLabelAt(here)?.let { label ->
+                Text(label, style = TextStyles.buttonSmall, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp).testTag("player_scrub_chapter"))
+            }
             Scrubber(
                 positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                loop = state.loop, pendingAMs = state.loopPendingAMs, chaptersMs = state.chapterTicks,
+                loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = state.chapters,
                 onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                 trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
             )
