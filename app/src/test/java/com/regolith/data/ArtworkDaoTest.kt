@@ -46,7 +46,7 @@ class ArtworkDaoTest {
     }
 
     @Test
-    fun `version 1 database migrates to 7 with its files intact and indexed`() {
+    fun `version 1 database migrates to 8 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->
             v1.execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
@@ -59,7 +59,7 @@ class ArtworkDaoTest {
         }
         // Every step of the chain, up to the current version: the whole point
         // of exporting schemas is that an old install can still be opened.
-        val v3 = migrations.runMigrationsAndValidate(name, 7, true)
+        val v3 = migrations.runMigrationsAndValidate(name, 8, true)
         v3.query("SELECT name, width, probedAtMs, titleParsed FROM media_files").use { c ->
             assertEquals(true, c.moveToFirst())
             assertEquals("a.mkv", c.getString(0))
@@ -87,6 +87,15 @@ class ArtworkDaoTest {
             assertEquals(0, c.getInt(0))
             assertEquals("", c.getString(1))
             assertEquals("", c.getString(2))
+        }
+        // v8: no chapters written yet, and the index over them exists and is empty.
+        v3.query("SELECT COUNT(*) FROM user_chapters").use { c ->
+            c.moveToFirst()
+            assertEquals(0, c.getInt(0))
+        }
+        v3.query("SELECT COUNT(*) FROM user_chapter_fts WHERE user_chapter_fts MATCH '\"a\"*'").use { c ->
+            c.moveToFirst()
+            assertEquals(0, c.getInt(0))
         }
         // The full-text index was rebuilt from the rows that already existed.
         v3.query("SELECT COUNT(*) FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid WHERE media_fts MATCH '\"a\"*'").use { c ->

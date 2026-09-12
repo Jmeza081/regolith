@@ -14,6 +14,7 @@ import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareRootDao
 import com.regolith.data.db.TransferDao
+import com.regolith.data.db.UserChapterDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -44,4 +45,5 @@ object DatabaseModule {
     @Provides fun provideTransferDao(db: RegolithDatabase): TransferDao = db.transferDao()
     @Provides fun provideShareRootDao(db: RegolithDatabase): ShareRootDao = db.shareRootDao()
     @Provides fun provideDownloadPickDao(db: RegolithDatabase): DownloadPickDao = db.downloadPickDao()
+    @Provides fun provideUserChapterDao(db: RegolithDatabase): UserChapterDao = db.userChapterDao()
 }

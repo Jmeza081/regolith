@@ -377,11 +377,19 @@ class LibraryRepository @Inject constructor(
         /** SQLite binds at most 999 variables per statement; 900 leaves room for the rest of the query. */
         private const val FILES_CHUNK = 900
 
-        /** `samou rai` -> `"samou"* "rai"*`; null when there is nothing to search for. */
+        /**
+         * `samou rai` -> `"samou*" "rai*"`; null when there is nothing to search for.
+         *
+         * The star sits INSIDE the quotes: that is FTS3/4's prefix syntax
+         * (`"lin* ope*"`). Outside them — FTS5's syntax — SQLite 3.44 quietly
+         * treats the term as a whole word, which is what the first version
+         * of this did, so "samou" never found "Samouraï" (fixed in P9).
+         * Quoting each word keeps `or`, `not` and `-` from acting as operators.
+         */
         fun ftsMatch(query: String): String? {
-            val words = query.split(Regex("""[\s.\-_/]+""")).map { it.trim().replace("\"", "").lowercase() }.filter { it.isNotEmpty() }
+            val words = query.split(Regex("""[\s.\-_/]+""")).map { it.trim().replace("\"", "").replace("*", "").lowercase() }.filter { it.isNotEmpty() }
             if (words.isEmpty()) return null
-            return words.joinToString(" ") { "\"$it\"*" }
+            return words.joinToString(" ") { "\"$it*\"" }
         }
     }
 

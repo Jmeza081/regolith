@@ -310,3 +310,38 @@ data class DownloadPickEntity(
     /** Subfolder relPaths taken back out, newline-joined. The walk does not enter them. */
     @ColumnInfo(defaultValue = "") val excludedPaths: String = "",
 )
+
+/**
+ * Schema v8: one chapter the user wrote for one file.
+ *
+ * Keyed by the file's Room id, which is stable across rescans (guardrail
+ * G3) and goes away with the share — the same footing as playback
+ * progress. A file's chapters are always written as a set (see
+ * [UserChapterDao.replaceForFile]); there is no editing one row in place,
+ * because a chapter's meaning depends on its neighbours.
+ */
+@Entity(
+    tableName = "user_chapters",
+    foreignKeys = [ForeignKey(MediaFileEntity::class, ["id"], ["fileId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["fileId", "startMs"], unique = true)],
+)
+data class UserChapterEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val fileId: Long,
+    val startMs: Long,
+    /** Null when the user placed a mark without naming it; shows as "Part n". */
+    val title: String?,
+    val updatedAtMs: Long,
+)
+
+/**
+ * Full-text index over the names the user gave their chapters, so Search
+ * can find a film by a moment in it ("the heist"). External content like
+ * [MediaFtsEntity]; only the title is indexed, so an unnamed mark is not
+ * findable — it has no words to find.
+ */
+@Fts4(contentEntity = UserChapterEntity::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
+@Entity(tableName = "user_chapter_fts")
+data class UserChapterFtsEntity(
+    val title: String?,
+)
