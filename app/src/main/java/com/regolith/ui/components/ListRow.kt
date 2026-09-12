@@ -1,7 +1,9 @@
 package com.regolith.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +32,10 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.ThumbShape
 import com.regolith.ui.theme.scaledDp
 
+/**
+ * What sits at the right of a row. [Checked] is both "this is the chosen
+ * one" (the share picker) and "this is picked" (a download selection).
+ */
 enum class RowTrailing { Chevron, Checked, None }
 
 /** What sits at the left of a row. */
@@ -45,6 +51,25 @@ sealed interface RowLeading {
 
     /** A 34dp-wide 2:3 poster with 7dp corners (Library in rows mode). */
     data class Poster(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
+
+    /**
+     * Selection mode on a row you can still walk into: a 38dp box holding
+     * the check when picked and [icon] when not.
+     *
+     * Paired with [ListRow]'s `onLeadingClick`, this is the split the
+     * Choose-folders picker already proved necessary — see that screen's
+     * `FolderRow`. With the whole row picking, walking down to a folder
+     * three levels in means selecting every folder on the way, and a
+     * picked folder swallows everything under it, so the first tap makes
+     * the rest unreachable. Opening is the common act and keeps the big
+     * target; picking is the deliberate one and gets a box that looks like
+     * what it is.
+     *
+     * There is no inert state. A folder inside a pick is checked because it
+     * is coming, and tapping its box takes it back OUT — "this folder, minus
+     * that one" — so the box is always live.
+     */
+    data class PickBox(val icon: Int, val picked: Boolean) : RowLeading
 
     data object None : RowLeading
 }
@@ -74,6 +99,23 @@ fun ListRow(
     minHeight: androidx.compose.ui.unit.Dp = 56.scaledDp(),
     /** Text drawn at the right instead of a glyph, e.g. "2.4 TB free". */
     trailingText: String? = null,
+    /**
+     * Hold to start a multi-selection (Browse, Library, Search). Null means
+     * the row has nothing to hold for. The platform's own ~500 ms timeout
+     * applies, which is the reflex every other Android app has trained;
+     * [com.regolith.ui.components.SELECT_HOLD_MS] is where that is written
+     * down and how it would be changed.
+     */
+    onLongClick: (() -> Unit)? = null,
+    /**
+     * A separate tap target on the leading slot, for a [RowLeading.PickBox]:
+     * this picks the row while [onClick] still opens it. Null leaves the
+     * whole row as one target, which is right for a file — there is nowhere
+     * to walk into.
+     */
+    onLeadingClick: (() -> Unit)? = null,
+    /** Spoken for the pick box, e.g. "Choose Films" / "Films, picked". */
+    leadingDescription: String? = null,
 ) {
     val colors = RegolithTheme.colors
     Row(
@@ -81,7 +123,15 @@ fun ListRow(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = minHeight)
-            .clickable(onClick = onClick)
+            // With a pick box the row is two targets: the box picks, this
+            // opens. Without one it is a single target, as it always was.
+            .then(
+                if (onLeadingClick == null) {
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                } else {
+                    Modifier
+                },
+            )
             .testTag(testTag),
     ) {
         when (leading) {
@@ -95,10 +145,45 @@ fun ListRow(
             is RowLeading.Poster -> Box(Modifier.width(34.scaledDp()).aspectRatio(2f / 3f).clip(ThumbShape)) {
                 ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(34.scaledDp(), 51.scaledDp()))
             }
+            is RowLeading.PickBox -> Box(
+                Modifier
+                    .size(38.scaledDp())
+                    .clip(BoxShape)
+                    .background(if (leading.picked) colors.ink else colors.disabledBg)
+                    .then(
+                        if (onLeadingClick != null) {
+                            Modifier.clickable(interactionSource = null, indication = null, onClick = onLeadingClick)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .testTag("${testTag}_pick"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painterResource(if (leading.picked) R.drawable.rg_ic_check else leading.icon),
+                    contentDescription = leadingDescription,
+                    tint = if (leading.picked) colors.ground else colors.metadata,
+                    modifier = Modifier.size(18.scaledDp()),
+                )
+            }
             RowLeading.None -> Unit
         }
         if (leading != RowLeading.None) Spacer(Modifier.width(Spacing.s12))
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .then(
+                    if (onLeadingClick != null) {
+                        Modifier.combinedClickable(
+                            interactionSource = null, indication = null,
+                            onClick = onClick, onLongClick = onLongClick,
+                        ).testTag("${testTag}_open")
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             Text(title, style = if (compact) TextStyles.rowLabelSmall else TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (meta != null) {
                 Text(meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)

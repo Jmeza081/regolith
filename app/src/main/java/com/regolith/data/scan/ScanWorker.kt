@@ -11,6 +11,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.regolith.R
+import com.regolith.data.RegolithNotifications
 import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.ScanRunEntity
@@ -99,21 +100,19 @@ class ScanWorker @AssistedInject constructor(
 
     private fun foregroundInfo(): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Library scan", NotificationManager.IMPORTANCE_LOW))
-        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+        manager.createNotificationChannel(NotificationChannel(RegolithNotifications.CHANNEL_SCAN, "Library scan", NotificationManager.IMPORTANCE_LOW))
+        val notification = NotificationCompat.Builder(applicationContext, RegolithNotifications.CHANNEL_SCAN)
             .setSmallIcon(R.drawable.ic_splash_wordmark)
             .setContentTitle("Reading the share")
             .setContentText("Regolith keeps the list on this device. Nothing is copied off the share.")
             .setOngoing(true)
             .build()
-        return ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        return ForegroundInfo(RegolithNotifications.SCAN_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     companion object {
         const val KEY_SHARE_ID = "shareId"
         private const val TAG = "Regolith/Scan"
-        private const val CHANNEL_ID = "scan"
-        private const val NOTIFICATION_ID = 41
         private const val PROGRESS_INTERVAL_MS = 400L
     }
 }

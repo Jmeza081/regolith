@@ -21,6 +21,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *     fill the new indexes from rows that already exist.
  *  4. Phase 5: `transfers` table; `servers.unreachableSinceMs`.
  *  5. `share_roots`: folders chosen inside a share as the library's roots.
+ *  6. `download_picks`: folders picked for download, waiting to be
+ *     walked over SMB. Additive.
+ *  7. `download_picks.excludedFileIds` / `excludedPaths`: what to leave
+ *     out of a picked folder. Additive.
  */
 @Database(
     entities = [
@@ -36,14 +40,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RecentSearchEntity::class,
         TransferEntity::class,
         ShareRootEntity::class,
+        DownloadPickEntity::class,
     ],
-    version = 5,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = RegolithDatabase.RebuildFts::class),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -57,6 +64,7 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun recentSearchDao(): RecentSearchDao
     abstract fun transferDao(): TransferDao
     abstract fun shareRootDao(): ShareRootDao
+    abstract fun downloadPickDao(): DownloadPickDao
 
     /** An external-content FTS table starts empty; `rebuild` indexes what the content table already holds. */
     class RebuildFts : AutoMigrationSpec {

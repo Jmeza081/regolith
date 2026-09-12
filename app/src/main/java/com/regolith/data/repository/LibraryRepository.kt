@@ -74,13 +74,20 @@ class LibraryRepository @Inject constructor(
                             durationMs = p?.durationMs ?: f.durationMs,
                             width = f.width,
                             height = f.height,
+                            shareId = f.shareId,
+                            folderRelPath = f.relPath.substringBeforeLast('/', ""),
                         )
                     }
                 }
             }
         }
         return combine(folders, filesWithProgress) { dirs, fs ->
-            dirs.map { BrowseItem.Folder(id = it.id, name = it.name, fileCount = it.fileCount, byteCount = it.byteCount) } + fs
+            dirs.map {
+                BrowseItem.Folder(
+                    id = it.id, name = it.name, fileCount = it.fileCount, byteCount = it.byteCount,
+                    shareId = it.shareId, relPath = it.relPath, listed = it.lastListedAtMs != null,
+                )
+            } + fs
         }
     }
 
@@ -291,6 +298,63 @@ class LibraryRepository @Inject constructor(
     }
 
     /**
+     * Every playable file in the subtree of [folderId], as Room knows it.
+     *
+     * Chunked because SQLite caps a statement at 999 bound variables and a
+     * share can have thousands of folders. This is the exact expansion a
+     * download uses once the subtree has been listed; [listSubtree] is what
+     * lists it first when it has not.
+     */
+    suspend fun filesUnder(folderId: Long): List<MediaFileEntity> =
+        descendants(folderId).map { it.id }.chunked(FILES_CHUNK).flatMap { mediaFileDao.inFolders(it) }
+
+    /** Folders in the subtree that have never been listed off the share, so their counts mean nothing. */
+    suspend fun unlistedUnder(folderId: Long): Int = descendants(folderId).count { it.lastListedAtMs == null }
+
+    /**
+     * List the whole subtree of [folderId] off the share, then return every
+     * playable file in it.
+     *
+     * The same breadth-first walk the scan does, scoped to one folder: it
+     * is the only way to download a folder the user has never opened, since
+     * a folder nobody listed has no file rows to expand into. Each listing
+     * goes through [refreshFolder], so a share narrowed to chosen folders
+     * stays narrowed — a download cannot widen the library.
+     *
+     * [onProgress] is called with the running file count as folders are
+     * listed, which is what the notification's "Finding files… 34" reports.
+     * Breadth-first matters for more than tidiness: [onFolderListed] hands
+     * back each folder's files as they are found, so copying can start
+     * after the FIRST folder rather than after the last.
+     *
+     * Throws [SmbFailure] if the share stops answering, which the caller
+     * turns into a paused batch rather than a failed one.
+     */
+    suspend fun listSubtree(
+        folderId: Long,
+        onProgress: suspend (found: Int) -> Unit = {},
+        onFolderListed: suspend (List<MediaFileEntity>) -> Unit = {},
+        /** True for a subfolder relPath the walk should not enter: a subtree the user left out. */
+        prune: (relPath: String) -> Boolean = { false },
+    ): List<MediaFileEntity> {
+        val seen = LinkedHashMap<Long, MediaFileEntity>()
+        val queue = ArrayDeque<Long>().apply { add(folderId) }
+        val walked = mutableSetOf<Long>()
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            if (!walked.add(id)) continue
+            val outcome = refreshFolder(id)
+            queue.addAll(outcome.subfolders.filterNot { prune(it.relPath) }.map { it.id })
+            val files = mediaFileDao.inFolders(listOf(id))
+            val fresh = files.filter { it.id !in seen }
+            fresh.forEach { seen[it.id] = it }
+            if (fresh.isNotEmpty()) onFolderListed(fresh)
+            onProgress(seen.size)
+        }
+        return seen.values.toList()
+    }
+
+    /**
      * Prefix search over filenames, parsed titles and paths. The query is
      * turned into an FTS MATCH expression: every word must match as a
      * prefix, so "samou" finds "Le.Samourai.1967" and "Samouraï cuts".
@@ -310,6 +374,9 @@ class LibraryRepository @Inject constructor(
     suspend fun clearRecentSearches() = recentSearchDao.clear()
 
     companion object {
+        /** SQLite binds at most 999 variables per statement; 900 leaves room for the rest of the query. */
+        private const val FILES_CHUNK = 900
+
         /** `samou rai` -> `"samou"* "rai"*`; null when there is nothing to search for. */
         fun ftsMatch(query: String): String? {
             val words = query.split(Regex("""[\s.\-_/]+""")).map { it.trim().replace("\"", "").lowercase() }.filter { it.isNotEmpty() }

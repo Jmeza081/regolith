@@ -4,6 +4,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ViewMode
+import com.regolith.ui.util.SelectionUiState
 
 /** One entry on the Browse screen: a row at the root, a tile inside a folder. */
 sealed interface BrowseRow {
@@ -14,7 +15,17 @@ sealed interface BrowseRow {
         override val testTag get() = "browse_share_$shareId"
     }
 
-    data class FolderRow(val folderId: Long, val name: String, val fileCount: Int, val byteCount: Long) : BrowseRow {
+    data class FolderRow(
+        val folderId: Long,
+        val name: String,
+        val fileCount: Int,
+        val byteCount: Long,
+        val shareId: Long = 0,
+        /** `/`-joined path inside the share; what a download pick is keyed on. */
+        val relPath: String = "",
+        /** False when never listed, so a selection knows its counts are a floor. */
+        val listed: Boolean = true,
+    ) : BrowseRow {
         override val testTag get() = "browse_folder_$folderId"
         val artwork get() = ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.THUMB)
     }
@@ -28,6 +39,9 @@ sealed interface BrowseRow {
         val durationMs: Long?,
         /** "4K", "1080p" once the file has been opened; empty until then. */
         val resolutionLabel: String,
+        val shareId: Long = 0,
+        /** The folder holding it, so a selection can tell if an ancestor is picked. */
+        val folderRelPath: String = "",
     ) : BrowseRow {
         override val testTag get() = "browse_file_$fileId"
         val artwork get() = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB)
@@ -72,4 +86,6 @@ data class BrowseUiState(
     val tree: List<TreeNode> = emptyList(),
     /** Which tree line is the folder on screen. */
     val currentFolderId: Long? = null,
+    /** Non-null while a multi-selection is running (the contextual bar is up). */
+    val selection: SelectionUiState? = null,
 )

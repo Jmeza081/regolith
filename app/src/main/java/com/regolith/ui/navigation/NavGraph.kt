@@ -121,6 +121,7 @@ import dev.chrisbanes.haze.hazeSource
 fun RegolithNavGraph(appViewModel: AppViewModel) {
     val start by appViewModel.startDestination.collectAsStateWithLifecycle()
     val dimmedTabs by appViewModel.dimmedTabs.collectAsStateWithLifecycle()
+    val tabDots by appViewModel.tabDots.collectAsStateWithLifecycle()
     // null = preferences still loading; the system splash is covering us.
     val startKey = start ?: return
 
@@ -238,6 +239,30 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         val video = external ?: return@LaunchedEffect
         backStack.add(RegolithKey.Player.external(video.uri, video.title))
         appViewModel.openedExternal()
+    }
+
+    // A selection survives walking the tree — that is the whole point of the
+    // shared store, and a pick three folders deep needs it. What ends it is
+    // arriving somewhere that cannot act on it: only Browse, Library and
+    // Search draw the bar, so anywhere else the picks would be invisible and
+    // unreachable. One rule covers back, the nav pill and a push into the
+    // player, where three separate ones drifted apart.
+    val canSelectHere = currentTab == MainTab.BROWSE ||
+        currentTab == MainTab.LIBRARY ||
+        topKey is RegolithKey.Search
+    LaunchedEffect(canSelectHere) {
+        if (!canSelectHere) appViewModel.clearSelection()
+    }
+
+    // The download notification was tapped. Downloads have no destination of
+    // their own by design, so this is Library's own device tab.
+    val openDownloads by appViewModel.openDownloads.collectAsStateWithLifecycle()
+    LaunchedEffect(openDownloads) {
+        if (!openDownloads) return@LaunchedEffect
+        backStack.clear()
+        backStack.add(RegolithKey.Home)
+        backStack.add(RegolithKey.Library(onDevice = true))
+        appViewModel.openedDownloads()
     }
 
     val listPaneMeta = ListDetailSceneStrategy.listPane(detailPlaceholder = { NoTitleChosen() })
@@ -428,7 +453,18 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         }
                         entry<RegolithKey.Settings>(metadata = tabScreen) {
                             tabContent {
-                                SettingsScreen(viewModel = hiltViewModel(), onAddServer = { backStack.add(RegolithKey.AddServer.Search) })
+                                SettingsScreen(
+                                    viewModel = hiltViewModel(),
+                                    onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                                    // Inline rather than navigateToTab, which cannot carry the
+                                    // onDevice argument. Downloads have no destination of their
+                                    // own by design; Library › On this device is where they live.
+                                    onOpenDownloads = {
+                                        backStack.clear()
+                                        backStack.add(RegolithKey.Home)
+                                        backStack.add(RegolithKey.Library(onDevice = true))
+                                    },
+                                )
                             }
                         }
 
@@ -496,6 +532,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         NavRailSpine(
                             selected = currentTab,
                             dimmed = dimmedTabs,
+                            dots = tabDots,
                             hazeState = hazeState,
                             onExpand = {
                                 if (railHidden) appViewModel.setRailHidden(false) else railIdle = false
@@ -529,6 +566,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onSelect = { navigateToTab(it) },
                                 hazeState = hazeState,
                                 dimmed = dimmedTabs,
+                                dots = tabDots,
                                 vertical = windowShape.wide,
                             )
                             if (windowShape.wide) {

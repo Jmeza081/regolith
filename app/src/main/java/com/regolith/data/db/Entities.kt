@@ -1,5 +1,6 @@
 package com.regolith.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Fts4
@@ -265,4 +266,47 @@ data class TransferEntity(
     val createdAtMs: Long,
     val updatedAtMs: Long,
     val finishedAtMs: Long?,
+)
+
+/**
+ * Schema v6: a folder the user picked for download, waiting to be walked.
+ *
+ * A selection is transient and lives in memory, but a PICKED FOLDER is not
+ * the same thing as a selection: by the time the user has tapped Download
+ * the app has promised to fetch everything inside it, and that promise has
+ * to survive the process being killed mid-walk. A folder that was never
+ * scanned has no `media_files` rows to expand into, so the walk over SMB is
+ * the only way to learn what is in it — and a walk that forgot its own
+ * queue on a restart would leave the download half-done with nothing
+ * recording what was still owed.
+ *
+ * Rows are written by `TransferRepository.addFolderPicks`, consumed by
+ * `TransferQueueWorker`'s discovery phase, and cleared when the queue
+ * drains. Web analogy: a job table, not a shopping cart.
+ */
+@Entity(
+    tableName = "download_picks",
+    foreignKeys = [ForeignKey(FolderEntity::class, ["id"], ["folderId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["folderId"], unique = true)],
+)
+data class DownloadPickEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val folderId: Long,
+    val shareId: Long,
+    /** `/`-separated, no leading slash. Kept so the walk can honour the share's roots. */
+    val relPath: String,
+    /** False until the subtree has been listed off the share. */
+    val discovered: Boolean = false,
+    /** How many playable files the walk found. Meaningless until [discovered]. */
+    val filesFound: Int = 0,
+    val createdAtMs: Long,
+    // --- Schema v7: "this folder, minus these".
+    /**
+     * File ids the user took back out of this pick, comma-joined. A column
+     * rather than a child table because a pick lives for one drain and is
+     * then deleted; a table would outlive the only thing it describes.
+     */
+    @ColumnInfo(defaultValue = "") val excludedFileIds: String = "",
+    /** Subfolder relPaths taken back out, newline-joined. The walk does not enter them. */
+    @ColumnInfo(defaultValue = "") val excludedPaths: String = "",
 )

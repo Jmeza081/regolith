@@ -3,6 +3,7 @@ package com.regolith.di
 import android.content.Context
 import androidx.room.Room
 import com.regolith.data.db.ArtworkDao
+import com.regolith.data.db.DownloadPickDao
 import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.PlaybackProgressDao
@@ -42,4 +43,5 @@ object DatabaseModule {
     @Provides fun provideRecentSearchDao(db: RegolithDatabase): RecentSearchDao = db.recentSearchDao()
     @Provides fun provideTransferDao(db: RegolithDatabase): TransferDao = db.transferDao()
     @Provides fun provideShareRootDao(db: RegolithDatabase): ShareRootDao = db.shareRootDao()
+    @Provides fun provideDownloadPickDao(db: RegolithDatabase): DownloadPickDao = db.downloadPickDao()
 }

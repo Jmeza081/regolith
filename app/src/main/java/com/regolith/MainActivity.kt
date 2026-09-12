@@ -12,6 +12,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.regolith.ui.navigation.RegolithNavGraph
 import com.regolith.ui.theme.RegolithTheme
 import dagger.hilt.android.AndroidEntryPoint
+import com.regolith.data.transfer.TransferQueueWorker
 
 /**
  * The single Activity. Android needs at least one "window" to draw into; in
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
 
         super.onCreate(savedInstanceState)
         handleViewIntent(intent)
+        handleDownloadsIntent(intent)
         // Draw under the status and navigation bars; the design runs content
         // beneath the floating nav pill with no hard edges.
         enableEdgeToEdge()
@@ -51,6 +53,21 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleViewIntent(intent)
+        handleDownloadsIntent(intent)
+    }
+
+    /**
+     * The download notification was tapped: go to where downloads live.
+     *
+     * Handed to the ViewModel for the same reason as the VIEW intent below —
+     * a rotation brings this Activity back with the same intent attached,
+     * and acting on it here would yank the user to the downloads list every
+     * time they turned the phone.
+     */
+    private fun handleDownloadsIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(TransferQueueWorker.EXTRA_OPEN_DOWNLOADS, false) != true) return
+        intent.removeExtra(TransferQueueWorker.EXTRA_OPEN_DOWNLOADS)
+        appViewModel.requestDownloads()
     }
 
     /**

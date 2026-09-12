@@ -40,6 +40,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.regolith.domain.transfer.FilePick
+import com.regolith.domain.transfer.FolderPick
+import com.regolith.ui.util.SelectionPresenter
 
 /**
  * The poster wall (design section 05). Reads only from Room; the scan
@@ -61,6 +64,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val scans: ScanRepository,
     private val prefs: AppPreferences,
     private val transfers: TransferRepository,
+    private val selection: SelectionPresenter,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -78,6 +82,7 @@ class LibraryViewModel @AssistedInject constructor(
     init {
         viewModelScope.launch { prefs.librarySort.collect { sort -> _uiState.update { it.copy(sort = sort, tiles = sorted(unsorted, sort)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
+        viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
         viewModelScope.launch {
             val shares = sources.observeEnabledShares()
             val servers = sources.observeServers()
@@ -109,9 +114,8 @@ class LibraryViewModel @AssistedInject constructor(
                 build(shareList, serverList, parentList, childList, fileList, progressList, runs)
             }.collect { state ->
                 unsorted = state.tiles
-                _uiState.update {
-                    state.copy(sort = it.sort, sortSheetOpen = it.sortSheetOpen, viewMode = it.viewMode, tiles = sorted(state.tiles, it.sort), device = it.device, checkingReachability = it.checkingReachability)
-                }
+                // Onto the live state, never the other way: see withWall.
+                _uiState.update { it.withWall(state, sorted(state.tiles, it.sort)) }
             }
         }
         viewModelScope.launch {
@@ -120,7 +124,8 @@ class LibraryViewModel @AssistedInject constructor(
             val progress = rows.flatMapLatest { rs -> library.observeProgress(rs.map { it.fileId }) }
             combine(rows, files, progress) { rs, fs, ps -> Triple(rs, fs, ps) }.collect { (rs, fs, ps) ->
                 val storage = withContext(Dispatchers.IO) { transfers.storage() }
-                _uiState.update { it.copy(device = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage)) }
+                val built = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage)
+                _uiState.update { it.copy(device = it.device.withRows(built)) }
             }
         }
     }
@@ -205,6 +210,11 @@ class LibraryViewModel @AssistedInject constructor(
                         sizeBytes = beneath.sumOf { it.sizeBytes },
                         durationMs = beneath.mapNotNull { it.durationMs }.takeIf { it.isNotEmpty() }?.sum(),
                         height = beneath.mapNotNull { it.height }.maxOrNull(),
+                        shareId = folder.shareId,
+                        relPath = folder.relPath,
+                        directFileCount = folder.fileCount,
+                        directByteCount = folder.byteCount,
+                        listed = folder.lastListedAtMs != null,
                     )
                 }
             }
@@ -235,6 +245,53 @@ class LibraryViewModel @AssistedInject constructor(
         )
     }
 
+    // ── Multi-selection ────────────────────────────────────────────────
+    // Same store as Browse and Search, so a wall and a folder tree can
+    // contribute to one batch. See SelectionStore for why it is not here.
+
+    /** Long press: arm selection mode and pick what was held. */
+    fun beginSelection(tile: LibraryTile) {
+        selection.begin()
+        toggleSelection(tile)
+    }
+
+    fun toggleSelection(tile: LibraryTile) {
+        when (tile) {
+            is LibraryTile.Collection -> selection.toggleFolder(tile.toPick())
+            is LibraryTile.Title -> selection.toggleFile(tile.toPick())
+        }
+    }
+
+    /** Everything on this wall, leaving picks made on other screens alone. */
+    fun selectAllHere() {
+        val tiles = _uiState.value.tiles
+        selection.begin()
+        selection.addAll(
+            folders = tiles.filterIsInstance<LibraryTile.Collection>().map { it.toPick() },
+            files = tiles.filterIsInstance<LibraryTile.Title>().map { it.toPick() },
+        )
+    }
+
+    fun cancelSelection() = selection.cancel()
+
+    fun downloadSelection() {
+        viewModelScope.launch { selection.download() }
+    }
+
+    /**
+     * A collection's pick carries its DIRECT counts, not the subtree's.
+     * `fileCount` on the tile is everything beneath it, which is what the
+     * wall shows; the tally sums every folder in the covered subtree
+     * separately, so handing it the subtree total here would count twice.
+     */
+    private fun LibraryTile.Collection.toPick() = FolderPick(
+        folderId = folderId, shareId = shareId, relPath = relPath,
+        fileCount = directFileCount, byteCount = directByteCount, listed = listed,
+    )
+
+    private fun LibraryTile.Title.toPick() =
+        FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
+
     private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, folderName: ParsedName?): LibraryTile.Title {
         val parsed = folderName ?: ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
         val matched = parsed.matched
@@ -253,6 +310,8 @@ class LibraryViewModel @AssistedInject constructor(
             sizeBytes = file.sizeBytes,
             durationMs = duration,
             height = file.height,
+            shareId = file.shareId,
+            folderRelPath = file.relPath.substringBeforeLast('/', ""),
         )
     }
 
@@ -298,5 +357,59 @@ class LibraryViewModel @AssistedInject constructor(
     fun toggleShowAllFailed() {
         showAllFailed = !showAllFailed
         _uiState.update { it.copy(device = it.device.copy(showAllFailed = showAllFailed)) }
+    }
+
+    // --- device tab: picking copies to remove
+    //
+    // Held on the UiState rather than in SelectionStore. The download
+    // selection is app-scoped because a pick three folders deep has to
+    // survive walking the tree; this one cannot leave the tab it is on, and
+    // one store for both would let a batch mean "download these" and
+    // "delete these" in the same breath.
+
+    private fun updateDevice(block: (DeviceUiState) -> DeviceUiState) =
+        _uiState.update { it.copy(device = block(it.device)) }
+
+    /** Long press on a copy: start picking, and pick the one held. */
+    fun beginDeviceSelection(fileId: Long) = updateDevice { d ->
+        d.copy(picked = (d.picked ?: emptySet()) + fileId)
+    }
+
+    fun toggleDeviceSelection(fileId: Long) = updateDevice { d ->
+        val current = d.picked ?: emptySet()
+        d.copy(picked = if (fileId in current) current - fileId else current + fileId)
+    }
+
+    fun selectAllOnDevice() = updateDevice { d -> d.copy(picked = d.allFileIds.toSet()) }
+
+    fun cancelDeviceSelection() = updateDevice { d -> d.copy(picked = null) }
+
+    /** Ask before removing: the files go, and getting them back is another download. */
+    fun askRemovePicked() = updateDevice { d ->
+        if (d.picked.isNullOrEmpty()) d else d.copy(confirmRemove = RemoveTarget.PICKED)
+    }
+
+    /** "Clear all": ask about everything the page lists. */
+    fun askRemoveAll() = updateDevice { d ->
+        if (d.allFileIds.isEmpty()) d else d.copy(confirmRemove = RemoveTarget.EVERYTHING)
+    }
+
+    fun dismissRemoveConfirm() = updateDevice { d -> d.copy(confirmRemove = null) }
+
+    /** Confirmed. Acts on what the dialog said it was about, not on what is picked now. */
+    fun confirmRemove() {
+        val device = _uiState.value.device
+        val target = device.confirmRemove ?: return
+        val picked = device.picked.orEmpty()
+        viewModelScope.launch {
+            when (target) {
+                RemoveTarget.EVERYTHING -> transfers.removeEverything()
+                // Guarded again here: the dialog cannot open on an empty
+                // selection, and if it somehow did this does nothing rather
+                // than falling through to "everything".
+                RemoveTarget.PICKED -> if (picked.isNotEmpty()) transfers.removeAll(picked)
+            }
+            updateDevice { d -> d.copy(picked = null, confirmRemove = null) }
+        }
     }
 }

@@ -27,6 +27,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.regolith.ui.util.formatFileCount
+import com.regolith.domain.transfer.FilePick
+import com.regolith.domain.transfer.FolderPick
+import com.regolith.ui.util.SelectionPresenter
+import com.regolith.ui.util.SelectionUiState
 
 enum class SearchFilter(val label: String) { ALL("All"), UNWATCHED("Unwatched"), UHD("4K"), ON_DEVICE("On device") }
 
@@ -36,15 +40,44 @@ sealed interface SearchHit {
     val primary: String
     val meta: String
 
-    data class Title(val fileId: Long, override val primary: String, override val meta: String) : SearchHit {
+    /** What a download pick needs: which share, and where in it. */
+    val shareId: Long
+    val relPath: String
+
+    data class Title(
+        val fileId: Long,
+        override val primary: String,
+        override val meta: String,
+        override val shareId: Long = 0,
+        /** The folder holding the file. */
+        override val relPath: String = "",
+        val sizeBytes: Long = 0,
+    ) : SearchHit {
         override val testTag get() = "search_title_$fileId"
     }
 
-    data class File(val fileId: Long, override val primary: String, override val meta: String) : SearchHit {
+    data class File(
+        val fileId: Long,
+        override val primary: String,
+        override val meta: String,
+        override val shareId: Long = 0,
+        override val relPath: String = "",
+        val sizeBytes: Long = 0,
+    ) : SearchHit {
         override val testTag get() = "search_file_$fileId"
     }
 
-    data class Folder(val folderId: Long, val browsable: Boolean, override val primary: String, override val meta: String) : SearchHit {
+    data class Folder(
+        val folderId: Long,
+        val browsable: Boolean,
+        override val primary: String,
+        override val meta: String,
+        override val shareId: Long = 0,
+        override val relPath: String = "",
+        val fileCount: Int = 0,
+        val byteCount: Long = 0,
+        val listed: Boolean = true,
+    ) : SearchHit {
         override val testTag get() = "search_folder_$folderId"
     }
 }
@@ -58,6 +91,8 @@ data class SearchUiState(
     val scanningPath: String? = null,
     /** The user has typed something and results have been computed for it. */
     val searched: Boolean = false,
+    /** Non-null while a multi-selection is running. */
+    val selection: SelectionUiState? = null,
 )
 
 /**
@@ -71,6 +106,7 @@ class SearchViewModel @Inject constructor(
     private val library: LibraryRepository,
     sources: SourceRepository,
     scans: ScanRepository,
+    private val selection: SelectionPresenter,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -89,7 +125,7 @@ class SearchViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8),
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(),
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -104,6 +140,7 @@ class SearchViewModel @Inject constructor(
         val runs = values[4] as List<ScanRunEntity>
         @Suppress("UNCHECKED_CAST")
         val recent = (values[5] as List<com.regolith.data.db.RecentSearchEntity>).map { it.query }
+        val sel = values[6] as SelectionUiState?
 
         val hits = mutableListOf<SearchHit>()
         for (file in files) {
@@ -119,9 +156,23 @@ class SearchViewModel @Inject constructor(
             val res = VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null }
             val folderName = file.relPath.substringBeforeLast('/', "").substringAfterLast('/')
             if (parsed.matched) {
-                hits += SearchHit.Title(file.id, parsed.display, listOfNotNull(res, file.durationMs?.let { formatDurationShort(it) }, folderName.ifEmpty { null }).joinToString(" · "))
+                hits += SearchHit.Title(
+                    fileId = file.id,
+                    primary = parsed.display,
+                    meta = listOfNotNull(res, file.durationMs?.let { formatDurationShort(it) }, folderName.ifEmpty { null }).joinToString(" · "),
+                    shareId = file.shareId,
+                    relPath = file.relPath.substringBeforeLast('/', ""),
+                    sizeBytes = file.sizeBytes,
+                )
             }
-            hits += SearchHit.File(file.id, file.name, listOfNotNull(res, formatBytes(file.sizeBytes), "/" + file.relPath.substringBeforeLast('/', "")).joinToString(" · "))
+            hits += SearchHit.File(
+                fileId = file.id,
+                primary = file.name,
+                meta = listOfNotNull(res, formatBytes(file.sizeBytes), "/" + file.relPath.substringBeforeLast('/', "")).joinToString(" · "),
+                shareId = file.shareId,
+                relPath = file.relPath.substringBeforeLast('/', ""),
+                sizeBytes = file.sizeBytes,
+            )
         }
         if (f == SearchFilter.ALL) {
             for (folder in folders) {
@@ -131,6 +182,11 @@ class SearchViewModel @Inject constructor(
                     browsable = true,
                     primary = folder.name,
                     meta = listOfNotNull(if (kind == FolderKind.TITLE) "title" else "folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
+                    shareId = folder.shareId,
+                    relPath = folder.relPath,
+                    fileCount = folder.fileCount,
+                    byteCount = folder.byteCount,
+                    listed = folder.lastListedAtMs != null,
                 )
             }
         }
@@ -141,6 +197,7 @@ class SearchViewModel @Inject constructor(
             recent = recent,
             scanningPath = runs.firstOrNull { it.status == ScanRunEntity.RUNNING }?.let { "/" + it.currentPath.ifEmpty { "…" } },
             searched = searched,
+            selection = sel,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUiState())
 
@@ -160,6 +217,61 @@ class SearchViewModel @Inject constructor(
 
     fun clearRecent() {
         viewModelScope.launch { library.clearRecentSearches() }
+    }
+
+    // ── Multi-selection ────────────────────────────────────────────────
+    // The same store Browse and Library use, so a search result can be added
+    // to a batch that started on a folder three screens ago.
+
+    /** Long press: arm selection mode and pick what was held. */
+    fun beginSelection(hit: SearchHit) {
+        selection.begin()
+        toggleSelection(hit)
+    }
+
+    fun toggleSelection(hit: SearchHit) {
+        when (hit) {
+            is SearchHit.Folder -> selection.toggleFolder(
+                FolderPick(
+                    folderId = hit.folderId, shareId = hit.shareId, relPath = hit.relPath,
+                    fileCount = hit.fileCount, byteCount = hit.byteCount, listed = hit.listed,
+                ),
+            )
+            is SearchHit.Title -> selection.toggleFile(
+                FilePick(fileId = hit.fileId, shareId = hit.shareId, folderRelPath = hit.relPath, sizeBytes = hit.sizeBytes),
+            )
+            is SearchHit.File -> selection.toggleFile(
+                FilePick(fileId = hit.fileId, shareId = hit.shareId, folderRelPath = hit.relPath, sizeBytes = hit.sizeBytes),
+            )
+        }
+    }
+
+    /**
+     * Every result on screen. Title and File hits can name the SAME file —
+     * a matched video appears as both — and the store keys files by id, so
+     * the duplicate collapses rather than being picked twice.
+     */
+    fun selectAllHere() {
+        val hits = uiState.value.hits
+        selection.begin()
+        selection.addAll(
+            folders = hits.filterIsInstance<SearchHit.Folder>().map {
+                FolderPick(it.folderId, it.shareId, it.relPath, it.fileCount, it.byteCount, it.listed)
+            },
+            files = hits.mapNotNull { hit ->
+                when (hit) {
+                    is SearchHit.Title -> FilePick(hit.fileId, hit.shareId, hit.relPath, hit.sizeBytes)
+                    is SearchHit.File -> FilePick(hit.fileId, hit.shareId, hit.relPath, hit.sizeBytes)
+                    is SearchHit.Folder -> null
+                }
+            }.distinctBy { it.fileId },
+        )
+    }
+
+    fun cancelSelection() = selection.cancel()
+
+    fun downloadSelection() {
+        viewModelScope.launch { selection.download() }
     }
 
     private companion object {
