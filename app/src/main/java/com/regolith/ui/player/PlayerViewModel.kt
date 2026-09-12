@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.regolith.data.prefs.AppPreferences
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.ChapterDraft
 import com.regolith.ui.titledetail.TransferView
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -46,6 +48,7 @@ class PlayerViewModel @AssistedInject constructor(
     private val session: PlaybackSession,
     private val prefs: AppPreferences,
     private val transfers: TransferRepository,
+    private val userChapters: UserChapterRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -198,7 +201,71 @@ class PlayerViewModel @AssistedInject constructor(
         viewModelScope.launch { transfers.remove(id) }
     }
 
+    // --- The chapter editor (P9)
+
+    /**
+     * The chapters being edited, or null when the editor is closed. Editing
+     * state, not playback state, so it belongs here rather than in the
+     * session (G4) — and it survives a rotation, which is why it is not a
+     * `remember` in the screen. It is thrown away if the film changes
+     * underneath it (autoplay), because a draft belongs to one file.
+     */
+    val chapterDraft: StateFlow<ChapterDraft?> get() = _chapterDraft
+    private val _chapterDraft = MutableStateFlow<ChapterDraft?>(null)
+
+    /** True when the film on screen can carry chapters: it has a library row, and its runtime is known. */
+    fun canEditChapters(): Boolean {
+        val s = state.value
+        return s.fileId != null && s.fileId != RegolithKey.Player.EXTERNAL && s.chaptersReady
+    }
+
+    /**
+     * Open the editor on the chapters showing now — the even split, the
+     * file's own, or a previous edit — and pause, so the playhead holds
+     * still for marking.
+     */
+    fun beginChapterEdit() {
+        if (!canEditChapters()) return
+        val s = state.value
+        if (s.isPlaying) session.togglePlayPause()
+        _chapterDraft.value = ChapterDraft.seed(s.fileId!!, s.chapters, s.durationMs)
+    }
+
+    fun markChapterAtPlayhead() = editDraft { it.mark(state.value.positionMs) }
+    fun selectMark(index: Int?) = editDraft { it.select(index) }
+    fun moveMark(index: Int, ms: Long) = editDraft { it.move(index, ms) }
+    fun nudgeMark(index: Int, deltaMs: Long) = editDraft { it.nudge(index, deltaMs) }
+    fun renameMark(index: Int, title: String) = editDraft { it.rename(index, title) }
+    fun removeMark(index: Int) = editDraft { it.remove(index) }
+
+    /** Done: the set is written and the editor closes. The session follows the table, so the scrubber updates on its own. */
+    fun saveChapters() {
+        val draft = _chapterDraft.value ?: return
+        _chapterDraft.value = null
+        viewModelScope.launch { userChapters.save(draft.fileId, draft.chapters) }
+    }
+
+    fun discardChapterEdit() {
+        _chapterDraft.value = null
+    }
+
+    /** Delete the user's chapters for this film; the file's own markers or the even split come back. */
+    fun revertChapters() {
+        val id = state.value.fileId?.takeIf { it != RegolithKey.Player.EXTERNAL } ?: return
+        viewModelScope.launch { userChapters.clear(id) }
+    }
+
+    private inline fun editDraft(edit: (ChapterDraft) -> ChapterDraft) {
+        _chapterDraft.value = _chapterDraft.value?.let(edit)
+    }
+
     init {
+        // A draft belongs to one file: when autoplay moves on, it goes.
+        viewModelScope.launch {
+            state.map { it.fileId }.distinctUntilChanged().collect { id ->
+                if (_chapterDraft.value?.let { it.fileId != id } == true) _chapterDraft.value = null
+            }
+        }
         val external = key.externalUri
         if (external != null) {
             session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())

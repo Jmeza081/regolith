@@ -97,6 +97,8 @@ import com.regolith.domain.transfer.TransferStatus
 import com.regolith.player.PlaybackState
 import com.regolith.ui.titledetail.TransferView
 import com.composables.icons.lucide.R as LucideR
+import com.regolith.domain.playback.ChapterDraft
+import com.regolith.domain.playback.ChapterSource
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.player.NextItem
@@ -106,6 +108,7 @@ import com.regolith.ui.components.ErrorCard
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.Scrubber
 import com.regolith.ui.theme.CardShape
@@ -172,6 +175,7 @@ fun PlayerScreen(
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
     val brightness by viewModel.brightness.collectAsStateWithLifecycle()
     val transfer by viewModel.transfer.collectAsStateWithLifecycle()
+    val draft by viewModel.chapterDraft.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -238,6 +242,10 @@ fun PlayerScreen(
 
     // Wherever full screen was a choice, back un-chooses it before it leaves the player.
     BackHandler(enabled = fullscreen && !forcedFullscreen) { fullscreen = false }
+    // The editor is a level of its own: back closes it (asking first if the draft changed).
+    var confirmRevert by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
+    BackHandler(enabled = draft != null) { if (draft?.dirty == true) confirmDiscard = true else viewModel.discardChapterEdit() }
 
     // Save progress when the app goes to the background mid-playback.
     DisposableEffect(lifecycleOwner) {
@@ -338,9 +346,12 @@ fun PlayerScreen(
     val stacker = remember { SeekStacker() }
     val showGestureMap = gesturesSeen == false
 
-    // Controls auto-hide 3 s after the last interaction while playing, never mid-scrub.
-    LaunchedEffect(controlsVisible, state.playWhenReady, sheet, scrubPreviewMs != null) {
-        if (controlsVisible && state.playWhenReady && sheet == null && scrubPreviewMs == null) {
+    // Controls auto-hide 3 s after the last interaction while playing, never
+    // mid-scrub — and never while the chapter editor is open, because the
+    // timeline is where its flags live.
+    val editing = draft != null
+    LaunchedEffect(controlsVisible, state.playWhenReady, sheet, scrubPreviewMs != null, editing) {
+        if (controlsVisible && state.playWhenReady && sheet == null && scrubPreviewMs == null && !editing) {
             delay(3_000)
             controlsVisible = false
         }
@@ -461,7 +472,9 @@ fun PlayerScreen(
         // that changes width as you walk a folder is worse than a dead key.
         onPrevious = state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
         onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
-        onChapters = { sheet = Sheet.Chapters },
+        onChapters = { if (draft == null) sheet = Sheet.Chapters },
+        onMarkTap = viewModel::selectMark,
+        onMarkDrag = viewModel::moveMark,
         onCycleRotation = {
             viewModel.setOrientation(PlayerOrientation.entries[(orientation.ordinal + 1) % PlayerOrientation.entries.size])
             controlsVisible = true
@@ -473,6 +486,21 @@ fun PlayerScreen(
     )
     // The rotation lock, where locking would do anything (see [rotationLockable]).
     val lockable = rotationLockable()
+
+    // The editor, built once and shown in two places: the details column
+    // (portrait, unfolded) or a sheet of its own with a timeline inside it
+    // (landscape, half-open), where there is no column to put it in.
+    val editor: @Composable (ChapterDraft, Boolean) -> Unit = { d, withScrubber ->
+        ChapterEditorContent(
+            draft = d, positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs, showScrubber = withScrubber,
+            onMark = viewModel::markChapterAtPlayhead, onSelect = viewModel::selectMark, onMove = viewModel::moveMark,
+            onNudge = viewModel::nudgeMark, onRename = viewModel::renameMark, onRemove = viewModel::removeMark,
+            onDone = viewModel::saveChapters,
+            onCancel = { if (d.dirty) confirmDiscard = true else viewModel.discardChapterEdit() },
+            onScrubStart = chromeCallbacks.onScrubStart, onScrub = chromeCallbacks.onScrub, onScrubEnd = chromeCallbacks.onScrubEnd,
+        )
+    }
+    val editorPanel: (@Composable () -> Unit)? = draft?.let { d -> { editor(d, false) } }
     val pillOrientation = orientation.takeIf { lockable }
 
     val video = @Composable {
@@ -503,9 +531,9 @@ fun PlayerScreen(
                 // The collapse glyph only appears when full screen was a
                 // choice; in landscape it is the rotation, so there is
                 // nothing for a button to undo.
-                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer)
+                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft)
             } else {
-                PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks)
+                PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft)
             }
             if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
             drag?.let { DragRail(it) }
@@ -553,6 +581,7 @@ fun PlayerScreen(
                 scrubPreviewMs = scrubPreviewMs,
                 cb = chromeCallbacks,
                 onPlayNext = viewModel::playNext,
+                draft = draft,
                 modifier = Modifier.fillMaxWidth().weight(1f).background(RegolithTheme.colors.ground),
             )
         }
@@ -602,6 +631,7 @@ fun PlayerScreen(
                         onNudgeB = viewModel::nudgeLoopB,
                         onPlayNext = viewModel::playNext,
                         showNext = false,
+                        chapterEditor = editorPanel,
                     )
                 }
                 Column(
@@ -638,6 +668,7 @@ fun PlayerScreen(
                 onNudgeB = viewModel::nudgeLoopB,
                 onPlayNext = viewModel::playNext,
                 showNext = true,
+                chapterEditor = editorPanel,
             )
         }
         }
@@ -671,6 +702,14 @@ fun PlayerScreen(
                 durationMs = state.durationMs,
                 source = state.chapterSource,
                 onSeek = { ms -> viewModel.seekTo(ms); sheet = null },
+                // Editing happens under the picture, so a chosen full screen
+                // is stepped out of first — the same thing back would do.
+                onEdit = if (viewModel.canEditChapters()) {
+                    { sheet = null; if (!forcedFullscreen) fullscreen = false; controlsVisible = true; viewModel.beginChapterEdit() }
+                } else null,
+                onRevert = if (state.chapterSource == ChapterSource.USER) {
+                    { sheet = null; confirmRevert = true }
+                } else null,
             )
         }
         Sheet.AbLoop -> state.loop?.let { loop ->
@@ -686,6 +725,34 @@ fun PlayerScreen(
             }
         }
         null -> Unit
+    }
+    // Landscape and half-open have no column under the picture, so the
+    // editor is a sheet there, with its own timeline to mark on.
+    draft?.let { d ->
+        if (immersive || flex) {
+            PlayerSheetHost(onDismiss = { if (d.dirty) confirmDiscard = true else viewModel.discardChapterEdit() }, testTag = "player_chapter_editor_sheet") {
+                editor(d, true)
+            }
+        }
+    }
+    if (confirmRevert) {
+        val n = state.chapters.size
+        ConfirmDialog(
+            title = "Revert chapters?",
+            body = "Your " + (if (n == 1) "chapter" else "$n chapters") + " on this film go. It goes back to its own markers, or the even split.",
+            confirmLabel = "Revert", keepLabel = "Keep mine",
+            onConfirm = { viewModel.revertChapters(); confirmRevert = false }, onKeep = { confirmRevert = false },
+            testTag = "player_chapters_revert",
+        )
+    }
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = "Discard changes?",
+            body = "What you marked and named since Edit goes. The film keeps the chapters it had.",
+            confirmLabel = "Discard", keepLabel = "Keep editing",
+            onConfirm = { viewModel.discardChapterEdit(); confirmDiscard = false }, onKeep = { confirmDiscard = false },
+            testTag = "player_chapter_discard",
+        )
     }
 }
 
@@ -703,6 +770,9 @@ private class ChromeCallbacks(
     val onPrevious: (() -> Unit)?,
     val onNext: (() -> Unit)?,
     val onChapters: () -> Unit,
+    /** Editor only: a flag on the timeline was tapped / is being dragged. */
+    val onMarkTap: (Int) -> Unit,
+    val onMarkDrag: (Int, Long) -> Unit,
     /** Steps the rotation lock on one: Auto -> Portrait -> Landscape -> Auto. */
     val onCycleRotation: () -> Unit,
     /** Start, or retry, the download of this file. */
@@ -733,7 +803,7 @@ private fun ChromeScrim(landscape: Boolean) {
  * along the bottom with 14dp side padding.
  */
 @Composable
-private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks) {
+private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks, draft: ChapterDraft?) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -747,7 +817,9 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
                     Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.ink, modifier = Modifier.testTag("player_position"))
                     Scrubber(
                         positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                        loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = state.chapters,
+                        loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
+                        marks = draft?.marksMs.orEmpty(), selectedMark = draft?.selected,
+                        onMarkTap = if (draft != null) cb.onMarkTap else null, onMarkDrag = if (draft != null) cb.onMarkDrag else null,
                         onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                         trackHeight = 3.dp, showKnob = false, modifier = Modifier.weight(1f),
                     )
@@ -781,6 +853,7 @@ private fun BoxScope.FullChrome(
     canCollapse: Boolean,
     orientation: PlayerOrientation?,
     transfer: TransferView?,
+    draft: ChapterDraft?,
 ) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -825,7 +898,9 @@ private fun BoxScope.FullChrome(
                         Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
                         Scrubber(
                             positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                            loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = state.chapters,
+                            loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
+                        marks = draft?.marksMs.orEmpty(), selectedMark = draft?.selected,
+                        onMarkTap = if (draft != null) cb.onMarkTap else null, onMarkDrag = if (draft != null) cb.onMarkDrag else null,
                             onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                             trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
                         )
@@ -1169,19 +1244,23 @@ private fun PlayerDetails(
     onPlayNext: (Long) -> Unit,
     /** False where the folder has a column of its own beside the picture. */
     showNext: Boolean,
+    /** The chapter editor while it is open; it takes the loop's slot, and the loop's precedence. */
+    chapterEditor: (@Composable () -> Unit)? = null,
 ) {
     val loop = state.loop
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s18)
-            .testTag(if (loop != null) "player_loop_panel" else "player_details"),
+            .testTag(if (chapterEditor != null) "player_chapter_editor_panel" else if (loop != null) "player_loop_panel" else "player_details"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s12),
     ) {
-        if (loop != null) {
-            AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = cb.onLoopClear)
-        } else {
-            TitleBlock(state)
-            PillRow(state, cb, onMedia = false, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
+        when {
+            chapterEditor != null -> chapterEditor()
+            loop != null -> AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = cb.onLoopClear)
+            else -> {
+                TitleBlock(state)
+                PillRow(state, cb, onMedia = false, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
+            }
         }
         // The folder still follows a loop — the loop is about this film, not
         // about what comes after it.
@@ -1494,6 +1573,7 @@ private fun FlexDeck(
     scrubPreviewMs: Long?,
     cb: ChromeCallbacks,
     onPlayNext: (fileId: Long) -> Unit,
+    draft: ChapterDraft?,
     modifier: Modifier = Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -1526,7 +1606,9 @@ private fun FlexDeck(
             }
             Scrubber(
                 positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
-                loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = state.chapters,
+                loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
+                        marks = draft?.marksMs.orEmpty(), selectedMark = draft?.selected,
+                        onMarkTap = if (draft != null) cb.onMarkTap else null, onMarkDrag = if (draft != null) cb.onMarkDrag else null,
                 onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
                 trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
             )

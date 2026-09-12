@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.BuildConfig
 import com.regolith.R
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
@@ -345,33 +346,13 @@ fun SettingsScreen(
     }
 
     state.confirmDisconnect?.let { row ->
-        DisconnectDialog(name = row.name, onConfirm = { viewModel.disconnect(row) }, onKeep = { viewModel.askDisconnect(null) })
-    }
-}
-
-/**
- * "DISCONNECT TOWER?" (design: the one destructive confirm): a #0F0F0F
- * card at 20dp corners with a #2E2E2E hairline over a 72% scrim, the
- * title in Michroma 15, body copy, red Disconnect over a frosted Keep it.
- */
-@Composable
-private fun DisconnectDialog(name: String, onConfirm: () -> Unit, onKeep: () -> Unit) {
-    val colors = RegolithTheme.colors
-    Dialog(onDismissRequest = onKeep) {
-        Column(
-            Modifier.fillMaxWidth().background(colors.surface, DialogShape).border(1.dp, colors.raised, DialogShape).padding(Spacing.s18).testTag("settings_disconnect_dialog"),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s12),
-        ) {
-            DisplayText("Disconnect $name?", style = TextStyles.dialogTitle)
-            Text(
-                "The media list is removed from this device. Nothing on the share is touched, and you can add it back with the same address.",
-                style = TextStyles.body, color = colors.body,
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                DestructiveButton(text = "Disconnect", onClick = onConfirm, testTag = "settings_disconnect_confirm_button", modifier = Modifier.fillMaxWidth().height(48.scaledDp()))
-                SecondaryButton(text = "Keep it", onClick = onKeep, testTag = "settings_disconnect_keep_button", modifier = Modifier.fillMaxWidth())
-            }
-        }
+        ConfirmDialog(
+            title = "Disconnect ${row.name}?",
+            body = "The media list is removed from this device. Nothing on the share is touched, and you can add it back with the same address.",
+            confirmLabel = "Disconnect", keepLabel = "Keep it",
+            onConfirm = { viewModel.disconnect(row) }, onKeep = { viewModel.askDisconnect(null) },
+            testTag = "settings_disconnect",
+        )
     }
 }
 
