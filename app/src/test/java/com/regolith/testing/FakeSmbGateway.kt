@@ -16,12 +16,56 @@ import com.regolith.domain.smb.SmbShareInfo
  */
 class FakeSmbGateway : SmbGateway {
     val files = mutableMapOf<String, MutableMap<String, ByteArray>>() // share -> relPath -> bytes
+    /** Modified times, share -> relPath -> ms; [DEFAULT_MTIME] when unset. */
+    val mtimes = mutableMapOf<String, MutableMap<String, Long>>()
     var acceptedCredentials: SmbCredentials? = null
     var reachable = true
     var openCount = 0
+    /** Every write, rename and delete fails with [SmbFailure.Forbidden], the way a read-only share answers. */
+    var readOnly = false
+    /** A server that refuses to rename onto an existing name (some NAS do); the writer must delete first. */
+    var renameOverExistingFails = false
+    /** Each write's clock: the next write gets this time, then it advances by a second. */
+    var clockMs = DEFAULT_MTIME + 1_000
+    val writes = mutableListOf<String>()
 
-    fun addFile(share: String, relPath: String, bytes: ByteArray) {
+    fun addFile(share: String, relPath: String, bytes: ByteArray, modifiedAtMs: Long = DEFAULT_MTIME) {
         files.getOrPut(share) { mutableMapOf() }[relPath] = bytes
+        mtimes.getOrPut(share) { mutableMapOf() }[relPath] = modifiedAtMs
+    }
+
+    fun mtime(share: String, relPath: String): Long = mtimes[share]?.get(relPath) ?: DEFAULT_MTIME
+
+    private fun checkWritable(host: SmbHost, credentials: SmbCredentials, share: String) {
+        check(host, credentials)
+        if (!files.containsKey(share)) throw SmbFailure.NotFound(share)
+        if (readOnly) throw SmbFailure.Forbidden("$share is read-only")
+    }
+
+    override suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long {
+        checkWritable(host, credentials, share)
+        val at = clockMs
+        clockMs += 1_000
+        files.getValue(share)[relPath] = bytes.copyOf()
+        mtimes.getOrPut(share) { mutableMapOf() }[relPath] = at
+        writes += "$share/$relPath"
+        return at
+    }
+
+    override suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String) {
+        checkWritable(host, credentials, share)
+        val all = files.getValue(share)
+        val bytes = all[fromRelPath] ?: throw SmbFailure.NotFound("$share/$fromRelPath")
+        if (renameOverExistingFails && all.containsKey(toRelPath)) throw SmbFailure.Other("$toRelPath exists")
+        all.remove(fromRelPath); all[toRelPath] = bytes
+        val m = mtimes.getOrPut(share) { mutableMapOf() }
+        m[toRelPath] = m.remove(fromRelPath) ?: DEFAULT_MTIME
+    }
+
+    override suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) {
+        checkWritable(host, credentials, share)
+        files.getValue(share).remove(relPath)
+        mtimes[share]?.remove(relPath)
     }
 
     private fun check(host: SmbHost, credentials: SmbCredentials) {
@@ -45,12 +89,12 @@ class FakeSmbGateway : SmbGateway {
             val rest = path.removePrefix(prefix)
             val slash = rest.indexOf('/')
             if (slash < 0) {
-                entries += SmbEntry(rest, isDirectory = false, sizeBytes = bytes.size.toLong(), modifiedAtMs = 1_700_000_000_000)
+                entries += SmbEntry(rest, isDirectory = false, sizeBytes = bytes.size.toLong(), modifiedAtMs = mtime(share, path))
             } else {
                 dirs += rest.substring(0, slash)
             }
         }
-        entries += dirs.map { SmbEntry(it, isDirectory = true, sizeBytes = 0, modifiedAtMs = 1_700_000_000_000) }
+        entries += dirs.map { SmbEntry(it, isDirectory = true, sizeBytes = 0, modifiedAtMs = DEFAULT_MTIME) }
         return entries
     }
 
@@ -77,5 +121,9 @@ class FakeSmbGateway : SmbGateway {
         override fun close() {
             closed = true
         }
+    }
+
+    companion object {
+        const val DEFAULT_MTIME = 1_700_000_000_000L
     }
 }

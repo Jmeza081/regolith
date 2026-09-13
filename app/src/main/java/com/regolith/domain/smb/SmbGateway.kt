@@ -23,4 +23,18 @@ interface SmbGateway {
 
     /** Open one file for random-access reads. Caller closes it. */
     fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource
+
+    // --- Writing (P10). The share was read-only to this app until chapter
+    // sidecars; these three exist for them and are called from one place,
+    // `SidecarWriter`, which only ever names `<basename>.chapters.txt` and
+    // its `.part`. Keep it that way: nothing else on a share is Regolith's.
+
+    /** Create or replace one file with [bytes]. Returns the file's modified time afterwards. */
+    suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long
+
+    /** Rename within the share. Fails with [SmbFailure.Forbidden] or [SmbFailure.Other] if the target exists and the server refuses. */
+    suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String)
+
+    /** Delete one file. Deleting a file that is not there is not an error. */
+    suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String)
 }
