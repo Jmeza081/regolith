@@ -1,11 +1,14 @@
 package com.regolith.ui.player
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -92,6 +95,14 @@ fun rememberSmoothProgress(player: Player?): SmoothProgress {
  * An elapsed-time readout. Reading [ms] here rather than in the caller keeps
  * each second's change to this one [Text] instead of the whole row of chrome
  * it sits in.
+ *
+ * The readout sits left of the timeline, which takes the width that is left
+ * over, so a clock that grows a digit — 9:59 to 10:00, or 59:59 to 1:00:00 —
+ * would shorten the track under the playhead mid-film. [reserveForMs] holds
+ * the cell at the width of the longest clock this film can reach: pass the
+ * runtime, since the elapsed time never formats wider than the duration it
+ * is counting towards. An unknown runtime reserves nothing and the cell
+ * falls back to fitting whatever it is showing.
  */
 @Composable
 fun PositionClock(
@@ -99,6 +110,23 @@ fun PositionClock(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
+    reserveForMs: Long = 0,
 ) {
-    Text(formatClock(ms()), style = style, color = color, modifier = modifier)
+    // The box sizes to its widest child; [modifier] stays on the readout
+    // itself so a caller's testTag still names the text a test reads.
+    Box(contentAlignment = Alignment.CenterStart) {
+        // Sets the floor for the cell's width and nothing else. Drawn rather
+        // than measured because Compose has no "lay out as if this string
+        // were here" and a second invisible line is cheaper than a text
+        // measurer held across recompositions. It is cleared from the
+        // semantics tree so TalkBack does not read the film's runtime out as
+        // if it were the position.
+        if (reserveForMs > 0) {
+            Text(
+                formatClock(reserveForMs), style = style, color = Color.Transparent, maxLines = 1,
+                modifier = Modifier.clearAndSetSemantics {},
+            )
+        }
+        Text(formatClock(ms()), style = style, color = color, maxLines = 1, modifier = modifier)
+    }
 }

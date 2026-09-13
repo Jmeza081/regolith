@@ -119,7 +119,7 @@ fun ChapterEditorContent(
         }
         if (showScrubber) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                PositionClock(smooth::clockMs, TextStyles.buttonSmall, colors.ink)
+                PositionClock(smooth::clockMs, TextStyles.buttonSmall, colors.ink, reserveForMs = durationMs)
                 Scrubber(
                     progress = smooth::fraction, durationMs = durationMs, buffered = smooth::buffered,
                     onScrubStart = onScrubStart, onScrub = onScrub, onScrubEnd = onScrubEnd,

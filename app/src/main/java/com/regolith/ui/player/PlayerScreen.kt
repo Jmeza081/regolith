@@ -832,7 +832,7 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
                 scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.eyebrow.copy(letterSpacing = 0.sp), colors.ink, Modifier.testTag("player_position"))
+                    PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.eyebrow.copy(letterSpacing = 0.sp), colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
                     Scrubber(
                         progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
                         loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
@@ -912,7 +912,7 @@ private fun BoxScope.FullChrome(
                     }
                     scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                        PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"))
+                        PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
                         Scrubber(
                             progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
                             loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
@@ -1614,7 +1614,7 @@ private fun FlexDeck(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-            PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"))
+            PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
             // The filmstrip is this deck's preview, so the chapter's name
             // goes beside the clock rather than in a floating card.
             if (scrubPreviewMs != null) state.chapterLabelAt(here)?.let { label ->
