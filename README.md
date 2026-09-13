@@ -36,9 +36,11 @@ has never scanned, which it walks over SMB as the download runs; drill in
 and uncheck anything you don't want, and the folder comes minus those. A
 foreground notification carries the progress across the whole batch and a
 red dot on the Settings tab says it started; the copies themselves live
-where they always have, under Library › On this device — which has the same
-hold-to-pick gesture for removing several at once, and a Clear all that
-asks first.
+where they always have, under Library › On this device — which lists them
+as rows or as a grid (the switch in the top bar, remembered separately from
+the network wall's), and has the same hold-to-pick gesture for removing
+several at once and a Clear all that asks first. Home shows the first few
+of them in a row of their own, beside "All".
 
 Chapters can be yours (P9). Every file has chapters — the container's own
 markers, or an even split — and the player's Chapters sheet now has a

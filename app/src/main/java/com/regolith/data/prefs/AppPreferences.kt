@@ -34,6 +34,7 @@ class AppPreferences @Inject constructor(
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
+        val deviceViewMode = stringPreferencesKey("device_view_mode")
         val autoplayNext = booleanPreferencesKey("autoplay_next")
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
@@ -46,6 +47,17 @@ class AppPreferences @Inject constructor(
     }
 
     /** Settings › Privacy: ask for a fingerprint, face or screen lock before showing the library. */
+    /**
+     * Library › On this device. Its own key beside [libraryViewMode] for the
+     * same reason Browse has one: this list is about copies and their state,
+     * so it starts as rows, and the choice should not follow the wall's.
+     */
+    val deviceViewMode: Flow<ViewMode> = store.data.map { it[Keys.deviceViewMode].toViewMode(ViewMode.ROWS) }
+
+    suspend fun setDeviceViewMode(mode: ViewMode) {
+        store.edit { it[Keys.deviceViewMode] = mode.name }
+    }
+
     val appLock: Flow<Boolean> = store.data.map { it[Keys.appLock] ?: false }
 
     suspend fun setAppLock(enabled: Boolean) {

@@ -41,18 +41,36 @@ class HomeViewModel @Inject constructor(
     private val shares = sources.observeEnabledShares()
     private val runs = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
 
+    // The finished copies AND the rows behind them: a tile needs a name and
+    // a poster, which live on the file, not on the transfer.
     private val downloads = transfers.observeAll()
+        .flatMapLatest { rows ->
+            val ready = rows.filter { it.status == TransferStatus.DONE.name }
+                .sortedByDescending { it.finishedAtMs ?: it.updatedAtMs }
+            library.observeFilesByIds(ready.map { it.fileId }).map { files -> ready to files }
+        }
 
     private val newest = library.observeNewest(NEW_LIMIT)
         .flatMapLatest { files -> library.observeProgress(files.map { it.id }).map { p -> files to p } }
 
     val uiState: StateFlow<HomeUiState> = combine(
         combine(sources.observeServers(), shares, ::Pair), resume, newest, runs, downloads,
-    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, downloadRows ->
+    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (ready, deviceFiles) ->
         val running = runList.filter { it.status == ScanRunEntity.RUNNING }
-        val ready = downloadRows.filter { it.status == TransferStatus.DONE.name }
         val progressById = newestProgress.associateBy { it.fileId }
+        val deviceById = deviceFiles.associateBy { it.id }
         HomeUiState(
+            onDevice = ready.mapNotNull { deviceById[it.fileId] }.take(DEVICE_LIMIT).map { f ->
+                val parsed = ParsedName(f.titleParsed ?: f.name.substringBeforeLast('.'), f.year, f.season, f.episode)
+                NewItem(
+                    fileId = f.id,
+                    name = if (parsed.matched) parsed.display else f.name.substringBeforeLast('.'),
+                    artwork = ArtworkRequest(ArtworkOwner.File(f.id), ArtworkKind.POSTER),
+                    meta = VideoInfo.resolutionLabelFor(f.width, f.height),
+                    unwatched = false,
+                    tag = "home_device",
+                )
+            },
             downloadsReady = ready.size,
             downloadsBytes = ready.sumOf { it.totalBytes },
             loaded = true,
@@ -81,6 +99,9 @@ class HomeViewModel @Inject constructor(
 
     private companion object {
         const val RESUME_LIMIT = 10
+        /** Films in the "On this device" row. The rest are a tap away on the page itself. */
+        const val DEVICE_LIMIT = 12
+
         const val NEW_LIMIT = 12
     }
 }

@@ -196,7 +196,12 @@ fun LibraryScreen(
                 actions = listOf(
                     TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
                     TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
-                    viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
+                    // One button, two lists: it toggles whichever tab you are on.
+                    if (tab == LibraryTab.ON_DEVICE) {
+                        viewModeAction(state.device.viewMode, "library_view_mode_button", viewModel::toggleDeviceViewMode)
+                    } else {
+                        viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode)
+                    },
                 ),
             )
         }
@@ -911,8 +916,35 @@ private fun DeviceTab(
                             )
                         }
                     }
-                    SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
-                        state.ready.forEach { row -> deviceRow(row, 64.dp, null, {}, false) }
+                    if (state.viewMode == ViewMode.GRID) {
+                        // Chunked rows rather than a LazyVerticalGrid: this is
+                        // already inside a LazyColumn, which cannot give a
+                        // nested lazy grid a height to work with.
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                            state.ready.chunked(DEVICE_COLUMNS).forEach { rowOfTiles ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                    rowOfTiles.forEach { row ->
+                                        MediaTile(
+                                            artwork = ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.POSTER),
+                                            title = row.name,
+                                            meta = row.meta,
+                                            onClick = { if (selecting) onToggle(row.fileId) else onOpenTitle(row.fileId) },
+                                            onLongClick = { onLongPress(row.fileId) },
+                                            checked = if (selecting) row.fileId in picked!! else null,
+                                            onCheckClick = { onToggle(row.fileId) },
+                                            selected = selecting && row.fileId in picked!!,
+                                            testTag = row.testTag,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    repeat(DEVICE_COLUMNS - rowOfTiles.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                    } else {
+                        SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                            state.ready.forEach { row -> deviceRow(row, 64.dp, null, {}, false) }
+                        }
                     }
                 }
             }
@@ -1035,3 +1067,9 @@ private fun DeviceRowView(
         }
     }
 }
+
+/**
+ * Tiles across the On this device grid. Three, like the Library wall, so
+ * the two tabs read as the same kind of page at the same size.
+ */
+private const val DEVICE_COLUMNS = 3

@@ -144,15 +144,7 @@ fun HomeScreen(
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
                 if (state.resume.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Row(Modifier.padding(horizontal = Spacing.s18), verticalAlignment = Alignment.Bottom) {
-                            Eyebrow("Continue watching", Modifier.weight(1f))
-                            Text(
-                                "All", style = TextStyles.link, color = colors.ink,
-                                modifier = Modifier
-                                    .clickable(interactionSource = null, indication = null, onClick = onOpenContinueWatching)
-                                    .testTag("home_resume_all"),
-                            )
-                        }
+                        SectionHeader("Continue watching", onAll = onOpenContinueWatching, allTestTag = "home_resume_all")
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = Spacing.s18),
                             horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
@@ -210,21 +202,25 @@ fun HomeScreen(
                     }
                 }
 
-                if (state.downloadsReady > 0) {
-                    Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("On this device")
-                        SurfaceCard(
-                            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDevice).testTag("home_on_device_row"),
-                            contentPadding = PaddingValues(Spacing.s12),
+                // What is already here, as the films themselves rather than a
+                // card counting them. Same tile as Newly added; the size the
+                // card used to carry moves into the header, where it is still
+                // the answer to "how much of the phone is this using".
+                if (state.onDevice.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        SectionHeader(
+                            title = "On this device",
+                            onAll = onOpenDevice,
+                            allTestTag = "home_device_all",
+                            meta = formatBytes(state.downloadsBytes),
+                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = Spacing.s18),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                            modifier = Modifier.testTag("home_on_device_row"),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(painterResource(R.drawable.rg_ic_download), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.scaledDp()))
-                                Spacer(Modifier.width(Spacing.s12))
-                                Text(
-                                    "${state.downloadsReady} download" + (if (state.downloadsReady == 1) " ready" else "s ready"),
-                                    style = TextStyles.rowLabelSmall, color = colors.ink, modifier = Modifier.weight(1f),
-                                )
-                                Text(formatBytes(state.downloadsBytes), style = TextStyles.meta, color = colors.metadata)
+                            items(state.onDevice, key = { it.fileId }) { item ->
+                                NewPoster(item, onOpenTitle, Modifier.width(NEW_POSTER_WIDTH))
                             }
                         }
                     }
@@ -244,6 +240,35 @@ private val RESUME_CARD_WIDTH = 256.dp
 
 /** Posters across on the wide Home wall (the inner-display frame). */
 private const val WALL_COLUMNS = 6
+
+/**
+ * A row's title, with the way to see all of it on the right and an
+ * optional quiet fact between them. Two rows on Home end in "All", and a
+ * third nearly did before this existed.
+ */
+@Composable
+private fun SectionHeader(
+    title: String,
+    onAll: () -> Unit,
+    allTestTag: String,
+    meta: String? = null,
+) {
+    val colors = RegolithTheme.colors
+    Row(
+        Modifier.padding(horizontal = Spacing.s18),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+    ) {
+        Eyebrow(title, Modifier.weight(1f))
+        meta?.let { Text(it, style = TextStyles.meta, color = colors.metadata) }
+        Text(
+            "All", style = TextStyles.link, color = colors.ink,
+            modifier = Modifier
+                .clickable(interactionSource = null, indication = null, onClick = onAll)
+                .testTag(allTestTag),
+        )
+    }
+}
 
 /** One "Newly added" poster: 2:3 art with the unwatched dot. The row and the wall draw the same one. */
 @Composable
