@@ -8,7 +8,9 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareEntity
+import com.regolith.data.db.TransferEntity
 import com.regolith.data.db.UserChapterEntity
+import com.regolith.data.transfer.DownloadStore
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.smb.CredentialSource
@@ -39,6 +41,7 @@ class ChapterSyncRepositoryTest {
     private var shareId = 0L
     private var folderId = 0L
     private var heat = 0L
+    private val store = DownloadStore(ApplicationProvider.getApplicationContext())
 
     @Before
     fun setUp() = runTest {
@@ -59,6 +62,8 @@ class ChapterSyncRepositoryTest {
             credentials = object : CredentialSource { override suspend fun credentialsFor(serverId: Long) = SmbCredentials.Guest },
             writer = SidecarWriter(gateway),
             scheduler = object : ChapterSyncScheduler { override fun enqueue() { enqueued++ } },
+            transfers = db.transferDao(),
+            store = store,
         )
     }
 
@@ -166,6 +171,32 @@ class ChapterSyncRepositoryTest {
         assertTrue(gateway.files.getValue("media").containsKey("Films/Heat.1995.chapters.txt"))
         listFilms()
         assertEquals(1, rows().size) // and the scan brings them back from the file
+    }
+
+    @Test
+    fun `a downloaded film keeps a chapter file beside its copy, written at once and cleared with the cache`() = runTest {
+        db.transferDao().insert(
+            TransferEntity(
+                fileId = heat, status = "DONE", bytesDone = 1, totalBytes = 1, localPath = "$heat.mkv", cause = null, causeBytes = null,
+                createdAtMs = 1, updatedAtMs = 1, finishedAtMs = 1,
+            ),
+        )
+        val local = store.sidecarFor("$heat.mkv")
+        gateway.readOnly = true // the share cannot take it, the phone still has it
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Offline edit", at = 10_000))
+        repo.markDirty(heat)
+        assertTrue(local.exists())
+        assertTrue(local.readText().contains("Offline edit"))
+        // Downloading brings the share's file along when the phone has nothing yet.
+        db.userChapterDao().deleteForFile(heat); db.chapterSyncDao().delete(heat); local.delete()
+        gateway.readOnly = false
+        gateway.addFile("media", "Films/Heat.1995.chapters.txt", sidecar.toByteArray(), modifiedAtMs = 5_000)
+        repo.onDownloaded(heat, host, SmbCredentials.Guest, "media", "Films", "Heat.1995.mkv")
+        assertEquals(listOf("Intro", "The heist"), rows().map { it.title })
+        assertEquals(sidecar, local.readText())
+        repo.clearLocal()
+        assertFalse(local.exists())
+        assertEquals(0, rows().size)
     }
 
     @Test

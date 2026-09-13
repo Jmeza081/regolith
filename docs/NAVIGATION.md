@@ -136,3 +136,11 @@ them on the way out.
 
 Bottom sheets (sort, playback, A–B loop) and the disconnect confirm are not
 routes; they are state in the owning screen's `UiState`.
+
+## Tapping the current tab
+
+A tab cell switches tabs. The *current* tab's cell brings its stack back to
+the top: `Library(folderId)` three levels deep becomes `Library`. Already at
+the top, the tap does nothing, so the screen is not rebuilt.
+`navigateToTab` decides this by comparing the stack's top with the tab's
+root key, not by comparing tabs.

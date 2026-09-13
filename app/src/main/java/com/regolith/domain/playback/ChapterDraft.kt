@@ -83,6 +83,11 @@ data class ChapterDraft(
 
     fun select(index: Int?): ChapterDraft = copy(selected = index?.takeIf { it in marks.indices })
 
+    /** Start fresh: only the start mark stays, unnamed. Cancel still undoes it. */
+    fun clearAll(): ChapterDraft =
+        if (marks.size == 1 && marks[0].title == null) this
+        else copy(marks = listOf(Chapter(0, null)), dirty = true, selected = null)
+
     /**
      * Where mark [index] may sit: a second clear of its neighbours and of
      * the end. Null for the start mark, which does not move. What the

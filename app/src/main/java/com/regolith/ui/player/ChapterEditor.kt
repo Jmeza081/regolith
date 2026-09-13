@@ -97,6 +97,8 @@ fun ChapterEditorContent(
     onScrubStart: () -> Unit,
     onScrub: (Float) -> Unit,
     onScrubEnd: (Float) -> Unit,
+    /** "Remove all chapters": start again from a single unnamed mark. */
+    onClearAll: () -> Unit = {},
 ) {
     val colors = RegolithTheme.colors
     val open = draft.selected
@@ -152,6 +154,17 @@ fun ChapterEditorContent(
                     onSelect = onSelect, onMove = onMove, onNudge = onNudge, onRename = onRename, onRemove = onRemove,
                 )
             }
+        }
+        // The way to start from nothing. No confirm: it is a draft, and
+        // Cancel still throws the whole thing away.
+        if (draft.marks.size > 1 || draft.marks[0].title != null) {
+            Box(
+                Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
+                    .alpha(if (open != null) LOCKED_ALPHA else 1f)
+                    .clickable(interactionSource = null, indication = null, enabled = open == null, onClick = onClearAll)
+                    .testTag("player_chapter_clear_all_button"),
+                contentAlignment = Alignment.CenterStart,
+            ) { Text("Remove all chapters", style = TextStyles.buttonTertiary, color = colors.accent) }
         }
     }
 }

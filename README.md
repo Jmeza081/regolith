@@ -49,9 +49,14 @@ file beside it on the share, `Heat.1995.chapters.txt`, in the format
 mkvmerge reads, and the next scan picks up any such file whether Regolith,
 a desktop tool or you wrote it. The phone keeps a copy so search stays
 instant and offline play has chapters; when both changed, the newer wins.
-A read-only share keeps chapters on the phone and says so. Revert removes
-the file too; Settings › Clear only empties the phone's copy, and the
-next scan brings back whatever the share has. `docs/CHAPTERS.md` is the
+A read-only share keeps chapters on the phone and says so. A downloaded
+film brings its chapter file along and keeps a copy beside it, rewritten
+on every edit, so an edit made offline is safe on the phone and reaches
+the share when it can. Revert removes the file too; Settings › Clear only
+empties the phone's copies, and the next scan brings back whatever the
+share has. In the editor, "Remove all chapters" starts a film over from a
+single unnamed mark; tapping the current tab's cell in the nav pill brings
+that tab back to its top. `docs/CHAPTERS.md` is the
 file's specification.
 
 ## Build and run

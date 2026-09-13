@@ -5,6 +5,8 @@ import com.regolith.data.db.ChapterSyncDao
 import com.regolith.data.db.ChapterSyncEntity
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
+import com.regolith.data.db.TransferDao
+import com.regolith.data.transfer.DownloadStore
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.UserChapterDao
 import com.regolith.data.db.UserChapterEntity
@@ -56,6 +58,8 @@ class ChapterSyncRepository @Inject constructor(
     private val credentials: CredentialSource,
     private val writer: SidecarWriter,
     private val scheduler: ChapterSyncScheduler,
+    private val transfers: TransferDao,
+    private val store: DownloadStore,
 ) {
     /** The sheet's state for one film, live. */
     fun observe(fileId: Long): Flow<ChapterSync> {
@@ -67,7 +71,12 @@ class ChapterSyncRepository @Inject constructor(
         }
     }
 
-    /** After an edit on this phone: remember that the share is behind, and ask the worker to catch it up. */
+    /**
+     * After an edit on this phone: remember that the share is behind, and
+     * ask the worker to catch it up. A downloaded film gets its local
+     * chapter file rewritten right now, so an edit made offline is on disk
+     * beside the copy before the share ever hears of it.
+     */
     suspend fun markDirty(fileId: Long) {
         val row = syncDao.byFile(fileId)
         syncDao.upsert(
@@ -75,7 +84,46 @@ class ChapterSyncRepository @Inject constructor(
                 fileId = fileId, shareMtimeMs = row?.shareMtimeMs, dirty = true, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis(),
             ),
         )
+        mirrorLocal(fileId, ChapterSidecar.format(chapterDao.forFile(fileId).map { Chapter(it.startMs, it.title) }))
         scheduler.enqueue()
+    }
+
+    /**
+     * A copy just finished downloading: fetch the sidecar beside the film
+     * on the share, if there is one, and keep it beside the copy. When the
+     * phone has no rows for the film yet, they come from it too. Never
+     * fails the download: a missing file is the common case.
+     */
+    suspend fun onDownloaded(fileId: Long, host: SmbHost, creds: SmbCredentials, share: String, folderRelPath: String, videoName: String) {
+        val name = ChapterSidecar.sidecarNameFor(videoName) ?: return
+        val prefix = if (folderRelPath.isEmpty()) "" else "$folderRelPath/"
+        val text = try {
+            writer.read(host, creds, share, prefix + name)
+        } catch (e: SmbFailure.NotFound) {
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "sidecar for downloaded $videoName not read: $e"); null
+        } ?: return
+        mirrorLocal(fileId, text)
+        if (chapterDao.forFile(fileId).isEmpty()) {
+            val chapters = ChapterSidecar.parse(text, mediaFileDao.byId(fileId)?.durationMs ?: 0L)
+            val now = System.currentTimeMillis()
+            chapterDao.replaceForFile(fileId, chapters.map { UserChapterEntity(fileId = fileId, startMs = it.startMs, title = it.title, updatedAtMs = now) })
+            // No modified time in hand: the next listing will read the file once more and record it.
+            syncDao.upsert(ChapterSyncEntity(fileId, shareMtimeMs = null, dirty = false, origin = ORIGIN_SHARE, note = null, updatedAtMs = now))
+        }
+    }
+
+    /** The chapter file beside a downloaded copy, or null when the film is not on this device. */
+    private suspend fun localSidecar(fileId: Long): java.io.File? = transfers.doneForFile(fileId)?.let { store.sidecarFor(it.localPath) }
+
+    private suspend fun mirrorLocal(fileId: Long, text: String) {
+        val file = localSidecar(fileId) ?: return
+        runCatching { file.parentFile?.mkdirs(); file.writeText(text, Charsets.UTF_8) }.onFailure { Log.w(TAG, "local sidecar for $fileId not written: $it") }
+    }
+
+    private suspend fun dropLocal(fileId: Long) {
+        localSidecar(fileId)?.delete()
     }
 
     /**
@@ -97,6 +145,7 @@ class ChapterSyncRepository @Inject constructor(
                     if (row != null && row.shareMtimeMs != null && !row.dirty) {
                         chapterDao.deleteForFile(video.id)
                         syncDao.delete(video.id)
+                        dropLocal(video.id)
                     }
                     continue
                 }
@@ -112,6 +161,7 @@ class ChapterSyncRepository @Inject constructor(
                 val now = System.currentTimeMillis()
                 chapterDao.replaceForFile(video.id, chapters.map { UserChapterEntity(fileId = video.id, startMs = it.startMs, title = it.title, updatedAtMs = now) })
                 syncDao.upsert(ChapterSyncEntity(video.id, shareMtimeMs = entry.modifiedAtMs, dirty = false, origin = ORIGIN_SHARE, note = note, updatedAtMs = now))
+                mirrorLocal(video.id, text)
                 Log.d(TAG, "imported ${chapters.size} chapters for ${video.relPath}")
             } catch (e: Exception) {
                 Log.w(TAG, "sidecar import for ${video.relPath} failed: $e")
@@ -165,6 +215,7 @@ class ChapterSyncRepository @Inject constructor(
      */
     suspend fun revert(fileId: Long) {
         chapterDao.deleteForFile(fileId)
+        dropLocal(fileId)
         val row = syncDao.byFile(fileId)
         if (row == null || (row.shareMtimeMs == null && !row.dirty)) { syncDao.delete(fileId); return }
         val file = mediaFileDao.byId(fileId) ?: run { syncDao.delete(fileId); return }
@@ -184,6 +235,7 @@ class ChapterSyncRepository @Inject constructor(
     suspend fun clearLocal() {
         chapterDao.deleteAll()
         syncDao.deleteAll()
+        store.sidecars().forEach { it.delete() }
     }
 
     /** The one-time note has been shown. */

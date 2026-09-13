@@ -297,8 +297,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         backStack.add(RegolithKey.TitleDetail(fileId))
     }
 
+    /**
+     * A tab cell switches tabs; the CURRENT tab's cell brings its stack back
+     * to the top — Library three folders deep becomes Library. Already at
+     * the top, it does nothing, so a stray tap does not rebuild the screen.
+     */
     fun navigateToTab(tab: MainTab, force: Boolean = false) {
-        if (tab == currentTab && !force) return
+        if (backStack.lastOrNull() == tab.key && !force) return
         backStack.clear()
         if (tab != MainTab.HOME) backStack.add(RegolithKey.Home)
         backStack.add(tab.key)

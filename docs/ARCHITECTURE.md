@@ -395,6 +395,12 @@ What a web developer would not guess:
   is one unique WorkManager job with a network constraint and backoff, and
   a scan finishing enqueues it too, so a write refused while the share was
   read-only is retried without anyone asking.
+- **A downloaded film carries its chapter file too.** The download worker
+  fetches `<basename>.chapters.txt` beside the film once the copy lands and
+  keeps it as `<fileId>.<ext>.chapters.txt` in the downloads directory;
+  every edit rewrites that local copy at once (so an offline edit is on
+  disk before the share hears of it), every import refreshes it, and the
+  copy's removal takes it away. Playback itself still reads the rows.
 - **Settings never touches the share.** Clear empties the phone's cache;
   the next scan re-imports every film that has a file. Revert is the one
   action that deletes a file, after a confirm that names it, and on a
@@ -584,6 +590,8 @@ What a web developer would not guess:
 | 2026-09-12 | **Reverses the scrubber-flags half of the row above.** Marks are moved on the editor's own 64dp strip with 30×40dp handles; the picture's scrubber only scrubs; one mark is editable at a time | Owner feedback on the first APK: "dragging start points is very finicky and easy to mess up". A flag on a 3dp track competes with the scrub gesture, so a near miss scrubbed. Big handles on a strip that exists only to hold them cannot be missed, and locking every other mark while one row is open (the owner's must-have) means a drag can only ever move the thing you opened. The typed Start field is the precise path; it commits on Done or on losing focus, never per keystroke, and names the allowed range when refused. The open row lifts to `lifted` #1C1C1C with a `liftedBorder` hairline so it reads apart from the list. Mock approved as-is. |
 | 2026-09-12 | User chapters live in a sidecar next to the film (`<basename>.chapters.txt`, mkvmerge simple format); the phone's table is its cache and index | The owner wants the chapters to travel with the film and to be written by a desktop app later. mkvmerge's format is what a text editor, a desktop tool and `mkvpropedit` all understand; not dot-prefixed because listings hide dot-files; not inside the container because rewriting a multi-gigabyte MKV over SMB in place is how a film gets corrupted. `docs/CHAPTERS.md` is the specification. |
 | 2026-09-12 | The sync rule is newest-wins, whole; writes are rows first, file in the background; Settings › Clear is the phone only | A merge of two chapter lists is nonsense, and a prompt is a question nobody can answer well; a lost edit is rare, visible (the sheet says the share replaced it) and easy to redo. Done waiting on a sleeping NAS would make Done fail. The owner's rule for Settings: it clears the local cache and never the share; Revert on the sheet is the one action that deletes a file, and it says so. |
+| 2026-09-13 | A downloaded film gets a local copy of its chapter file, rewritten on every edit | The owner's rule: an edit on a downloaded film updates the local and the network copy. The rows already served offline play; the file beside the copy makes the phone's copy durable and readable by anything that can see the downloads directory, and the download step fetches the share's file so a fresh download is complete. Removing the copy removes the file; Settings › Clear removes every local one, since it clears the phone. |
+| 2026-09-13 | Tapping the current tab's cell brings that tab back to its top | Library three folders deep, tap Library: the expectation from every tab bar since iOS 2, and the app used to do nothing. `navigateToTab` now checks whether the stack's top is the tab's root key rather than whether the tab is current, so a stray tap at the top still does nothing. |
 | 2026-09-12 | ACCESS_DENIED maps to `Forbidden`, even though jcifs raises it as an auth exception | Seen on the first write against the fixture's read-only share: "Sign-in failed" for an account that had just listed and read the share. `Forbidden` was already documented as "signed in, refused this request"; it is now what the status actually produces, so a read-only share reads as read-only. |
 
 ## Phase plan

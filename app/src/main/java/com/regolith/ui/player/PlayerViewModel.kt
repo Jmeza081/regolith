@@ -237,6 +237,8 @@ class PlayerViewModel @AssistedInject constructor(
     fun nudgeMark(index: Int, deltaMs: Long) = editDraft { it.nudge(index, deltaMs) }
     fun renameMark(index: Int, title: String) = editDraft { it.rename(index, title) }
     fun removeMark(index: Int) = editDraft { it.remove(index) }
+    /** "Remove all chapters": back to a single unnamed start mark. Cancel still undoes it. */
+    fun clearAllMarks() = editDraft { it.clearAll() }
 
     /** Done: the set is written and the editor closes. The session follows the table, so the scrubber updates on its own. */
     fun saveChapters() {

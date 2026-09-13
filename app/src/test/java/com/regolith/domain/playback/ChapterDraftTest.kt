@@ -107,6 +107,14 @@ class ChapterDraftTest {
     }
 
     @Test
+    fun `remove all keeps only an unnamed start`() {
+        val d = seeded().rename(0, "Intro").select(2).clearAll()
+        assertEquals(listOf(Chapter(0, null)), d.marks)
+        assertNull(d.selected)
+        assertTrue(d.dirty)
+    }
+
+    @Test
     fun `selecting past the end clears`() {
         assertNull(seeded().select(99).selected)
     }

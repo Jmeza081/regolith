@@ -498,6 +498,7 @@ fun PlayerScreen(
             onNudge = viewModel::nudgeMark, onRename = viewModel::renameMark, onRemove = viewModel::removeMark,
             onDone = viewModel::saveChapters,
             onCancel = { if (d.dirty) confirmDiscard = true else viewModel.discardChapterEdit() },
+            onClearAll = viewModel::clearAllMarks,
             onScrubStart = chromeCallbacks.onScrubStart, onScrub = chromeCallbacks.onScrub, onScrubEnd = chromeCallbacks.onScrubEnd,
         )
     }
