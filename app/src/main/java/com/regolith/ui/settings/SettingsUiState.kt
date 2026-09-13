@@ -49,6 +49,8 @@ data class SettingsUiState(
     val userChapters: UserChapterStats = UserChapterStats(),
     /** The "Clear chapters?" confirm is open. */
     val confirmClearChapters: Boolean = false,
+    /** One switch per enabled share: does Done write a chapter file beside each film there (P10). */
+    val shareWrites: List<ShareWriteRow> = emptyList(),
     // --- Demo library (BuildConfig.DEMO_LIBRARY builds only).
     /** True while the demo server exists; the row offers the opposite action. */
     val demoInstalled: Boolean = false,
@@ -57,6 +59,11 @@ data class SettingsUiState(
     /** What the demo's clips occupy on the device. */
     val demoBytes: Long = 0,
 )
+
+/** "Write to media on TOWER": one enabled share and whether chapter files go to it. */
+data class ShareWriteRow(val shareId: Long, val label: String, val enabled: Boolean) {
+    val testTag get() = "settings_share_write_$shareId"
+}
 
 /**
  * The download queue as the Settings row reports it.

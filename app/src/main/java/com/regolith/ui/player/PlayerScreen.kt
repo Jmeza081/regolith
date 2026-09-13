@@ -99,6 +99,7 @@ import com.regolith.ui.titledetail.TransferView
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.ChapterDraft
 import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.player.NextItem
@@ -334,6 +335,8 @@ fun PlayerScreen(
     // the sheet is open, and a list of the last film's chapters over the next
     // one is worse than no list.
     LaunchedEffect(state.fileId) { if (sheet == Sheet.Chapters) sheet = null }
+    // A sync note is read once: it goes when the sheet that showed it closes.
+    LaunchedEffect(sheet) { if (sheet != Sheet.Chapters && state.chapterSyncNote != null) viewModel.clearChapterNote() }
     // Pictures cost a key-frame seek each, so they are only asked for once
     // the sheet is actually open — and again if the film changes under it.
     LaunchedEffect(sheet, state.fileId, state.durationMs) {
@@ -699,6 +702,8 @@ fun PlayerScreen(
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
                 source = state.chapterSource,
+                sync = state.chapterSync,
+                syncNote = state.chapterSyncNote,
                 onSeek = { ms -> viewModel.seekTo(ms); sheet = null },
                 // Editing happens under the picture, so a chosen full screen
                 // is stepped out of first — the same thing back would do.
@@ -737,7 +742,9 @@ fun PlayerScreen(
         val n = state.chapters.size
         ConfirmDialog(
             title = "Revert chapters?",
-            body = "Your " + (if (n == 1) "chapter" else "$n chapters") + " on this film go. It goes back to its own markers, or the even split.",
+            body = "Your " + (if (n == 1) "chapter" else "$n chapters") + " on this film go" +
+                (if (state.chapterSync == ChapterSyncState.ON_SHARE || state.chapterSync == ChapterSyncState.FROM_SHARE || state.chapterSync == ChapterSyncState.WAITING) ", and the chapter file beside it on the share" else "") +
+                ". It goes back to its own markers, or the even split.",
             confirmLabel = "Revert", keepLabel = "Keep mine",
             onConfirm = { viewModel.revertChapters(); confirmRevert = false }, onKeep = { confirmRevert = false },
             testTag = "player_chapters_revert",

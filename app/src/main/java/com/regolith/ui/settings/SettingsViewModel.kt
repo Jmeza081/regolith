@@ -103,6 +103,14 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch { userChapters.stats().collect { c -> _uiState.update { it.copy(userChapters = c) } } }
         viewModelScope.launch {
+            combine(sources.observeServers(), sources.observeEnabledShares()) { servers, shares ->
+                shares.map { share ->
+                    val serverName = servers.firstOrNull { it.id == share.serverId }?.name ?: "?"
+                    ShareWriteRow(share.id, "${share.name} on $serverName", share.writeChapters)
+                }
+            }.collect { rows -> _uiState.update { it.copy(shareWrites = rows) } }
+        }
+        viewModelScope.launch {
             artwork.observeCount().collect { count ->
                 val bytes = withContext(Dispatchers.IO) { artwork.cacheSizeBytes() }
                 _uiState.update { it.copy(artworkCount = count, artworkBytes = bytes) }
@@ -141,7 +149,10 @@ class SettingsViewModel @Inject constructor(
     /** Settings › Chapters › Clear: asks first, because there is no getting them back. */
     fun askClearChapters(open: Boolean) = _uiState.update { it.copy(confirmClearChapters = open) }
 
-    /** Every chapter the user wrote, on every film. Open players follow the table and update on their own. */
+    /** Settings › Chapters: whether chapter files are written to one share (P10). */
+    fun setShareWriteChapters(shareId: Long, enabled: Boolean) = viewModelScope.launch { sources.setShareWriteChapters(shareId, enabled) }.let { }
+
+    /** Every chapter kept on this phone. The share is never touched from here; films with a file there get theirs back at the next scan. */
     fun clearChapters() {
         _uiState.update { it.copy(confirmClearChapters = false) }
         viewModelScope.launch { userChapters.clearAll() }

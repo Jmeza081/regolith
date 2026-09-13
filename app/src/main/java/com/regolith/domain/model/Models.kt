@@ -32,6 +32,8 @@ data class Share(
      * paths. Empty means the whole share — the only choice there used to be.
      */
     val roots: List<String> = emptyList(),
+    /** P10: whether Done writes a chapter file beside each film on this share. */
+    val writeChapters: Boolean = true,
 ) {
     /** True when [relPath] is one of the roots or sits inside one. Empty roots take everything. */
     fun includes(relPath: String): Boolean = rootsCover(roots, relPath)

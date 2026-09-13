@@ -249,7 +249,13 @@ class PlayerViewModel @AssistedInject constructor(
         _chapterDraft.value = null
     }
 
-    /** Delete the user's chapters for this film; the file's own markers or the even split come back. */
+    /** The one-time sync line on the Chapters sheet has been seen. */
+    fun clearChapterNote() {
+        val id = state.value.fileId?.takeIf { it != RegolithKey.Player.EXTERNAL } ?: return
+        viewModelScope.launch { userChapters.clearNote(id) }
+    }
+
+    /** Delete the user's chapters for this film — and the chapter file on the share; the file's own markers or the even split come back. */
     fun revertChapters() {
         val id = state.value.fileId?.takeIf { it != RegolithKey.Player.EXTERNAL } ?: return
         viewModelScope.launch { userChapters.clear(id) }

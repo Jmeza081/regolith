@@ -326,8 +326,8 @@ fun SettingsScreen(
                             Text("Your chapters", style = TextStyles.settingLabel, color = colors.ink)
                             Text(
                                 state.userChapters.let { c ->
-                                    if (c.isEmpty) "None yet · mark them from the player's Chapters sheet"
-                                    else (if (c.chapters == 1) "1 chapter" else "${c.chapters} chapters") + " on " + (if (c.files == 1) "1 video" else "${c.files} videos")
+                                    if (c.isEmpty) "None on this phone yet · mark them from the player's Chapters sheet"
+                                    else (if (c.chapters == 1) "1 chapter" else "${c.chapters} chapters") + " on " + (if (c.files == 1) "1 video" else "${c.files} videos") + " kept on this phone"
                                 },
                                 style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.testTag("settings_chapters_meta"),
                             )
@@ -336,6 +336,15 @@ fun SettingsScreen(
                         SecondaryButton(
                             text = "Clear", onClick = { viewModel.askClearChapters(true) }, compact = true,
                             enabled = !state.userChapters.isEmpty, testTag = "settings_clear_chapters_button",
+                        )
+                    }
+                    // P10: one switch per share. Off keeps that share's chapters
+                    // on the phone; the files already there are left alone.
+                    state.shareWrites.forEach { row ->
+                        RegolithSwitch(
+                            label = "Write to ${row.label}",
+                            note = if (row.enabled) "Chapters are saved as a text file beside each film, so other devices and tools can read them." else "Chapters for this share stay on this phone.",
+                            checked = row.enabled, onCheckedChange = { viewModel.setShareWriteChapters(row.shareId, it) }, testTag = row.testTag,
                         )
                     }
                 }
@@ -375,7 +384,7 @@ fun SettingsScreen(
         val c = state.userChapters
         ConfirmDialog(
             title = "Clear chapters?",
-            body = "Every chapter you wrote — " + (if (c.chapters == 1) "1" else "${c.chapters}") + " on " + (if (c.files == 1) "1 video" else "${c.files} videos") + " — goes. The films keep their own markers or the even split.",
+            body = "Clears the " + (if (c.chapters == 1) "1 chapter" else "${c.chapters} chapters") + " kept on this phone. Nothing on the share is touched: films with a chapter file there get theirs back at the next scan; the rest go back to their own markers or the even split.",
             confirmLabel = "Clear chapters", keepLabel = "Keep them",
             onConfirm = viewModel::clearChapters, onKeep = { viewModel.askClearChapters(false) },
             testTag = "settings_clear_chapters",

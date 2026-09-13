@@ -185,6 +185,9 @@ class SourceRepository @Inject constructor(
     }
 
     /** Credentials for a stored server: this session's, else the saved password, else guest. */
+    /** Settings › Chapters: whether Done writes `<basename>.chapters.txt` to this share (P10). */
+    suspend fun setShareWriteChapters(shareId: Long, enabled: Boolean) = shareDao.setWriteChapters(shareId, enabled)
+
     override suspend fun credentialsFor(serverId: Long): SmbCredentials {
         sessionCredentials[serverId]?.let { return it }
         val server = serverDao.byId(serverId) ?: return SmbCredentials.Guest
@@ -241,5 +244,5 @@ class SourceRepository @Inject constructor(
     )
 
     private fun ShareEntity.toDomain(roots: List<String> = emptyList()) =
-        Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs, roots = roots)
+        Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs, roots = roots, writeChapters = writeChapters)
 }

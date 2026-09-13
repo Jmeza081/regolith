@@ -51,6 +51,8 @@ import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMarks
 import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterSyncNote
+import com.regolith.domain.playback.ChapterSyncState
 import androidx.compose.ui.platform.LocalConfiguration
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
@@ -313,6 +315,10 @@ fun ChaptersSheetContent(
     durationMs: Long,
     source: ChapterSource,
     onSeek: (Long) -> Unit,
+    /** Where the user's chapters stand against the share (P10); null unless [source] is [ChapterSource.USER]. */
+    sync: ChapterSyncState? = null,
+    /** A one-time line about the last sync, shown under the subtitle. */
+    syncNote: ChapterSyncNote? = null,
     /** Opens the editor; null for a film with no library row to keep chapters on. */
     onEdit: (() -> Unit)? = null,
     /** Deletes the user's chapters; null unless [source] is [ChapterSource.USER]. */
@@ -328,13 +334,32 @@ fun ChaptersSheetContent(
         // and "Yours" is the one you can change.
         Text(
             when (source) {
-                ChapterSource.USER -> "Yours · " + if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters"
+                ChapterSource.USER -> {
+                    val count = if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters"
+                    when (sync) {
+                        ChapterSyncState.ON_SHARE -> "Yours · on the share · $count"
+                        ChapterSyncState.WAITING -> "Yours · waiting to write · $count"
+                        ChapterSyncState.READ_ONLY -> "Yours · on this phone (read-only share) · $count"
+                        ChapterSyncState.FROM_SHARE -> "From the share · $count"
+                        ChapterSyncState.PHONE_ONLY, null -> "Yours · on this phone · $count"
+                    }
+                }
                 ChapterSource.CONTAINER -> "${chapters.size} marked in this file"
                 ChapterSource.EVEN -> everyLabel(ChapterMarks.intervalFor(durationMs))
             },
             style = TextStyles.meta12, color = colors.metadata,
             modifier = Modifier.testTag("player_chapters_source"),
         )
+        syncNote?.let { note ->
+            Text(
+                when (note) {
+                    ChapterSyncNote.REPLACED_BY_SHARE -> "The share had a newer chapter file; it replaced this phone's copy."
+                    ChapterSyncNote.FILE_STAYS -> "The share is read-only, so its chapter file stays and comes back at the next scan."
+                    ChapterSyncNote.WRITE_FAILED -> "The last write to the share failed; it will be tried again at the next scan."
+                },
+                style = TextStyles.meta, color = colors.accent, modifier = Modifier.testTag("player_chapters_sync_note"),
+            )
+        }
     }
     if (onEdit != null) RowAction(LucideR.drawable.lucide_ic_pencil, "Edit chapters", onEdit, "player_chapters_edit_button")
     }
