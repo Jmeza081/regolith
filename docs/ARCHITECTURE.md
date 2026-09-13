@@ -360,6 +360,46 @@ What a web developer would not guess:
   multi-select, and a tap that opens the player at that time through the
   Player key's existing `startMs`.
 
+## Chapter sidecars (P10)
+
+P9 kept the chapters you write in a Room table on the phone. P10 puts the
+durable copy next to the film on the share — `<basename>.chapters.txt`, in
+mkvmerge's simple format (`docs/CHAPTERS.md` is the contract, written so a
+desktop editor can produce the same file) — and turns the table into a
+cache of it, which is also the search index.
+
+```
+Done ── UserChapterRepository.save ── user_chapters (rows first) ── ChapterSyncRepository.markDirty ── chapter_sync.dirty
+                                                                       └─ ChapterSyncScheduler ── ChapterSyncWorker ── syncDirty ── SidecarWriter.write (.part, rename over) ── SmbGateway.write/rename/delete
+Scan / Browse ── LibraryRepository.refreshFolder ── ChapterSyncRepository.onFolderListed ── newer file? ── SidecarWriter.read ── ChapterSidecar.parse ── replaceForFile
+ScanWorker done ── ChapterSyncScheduler.enqueue                                                              a refused write gets another go
+PlaybackSession ── observeSync ── PlaybackState.chapterSync / chapterSyncNote ── the sheet's subtitle
+Revert ── ChapterSyncRepository.revert ── rows AND the file          Settings › Clear ── clearLocal ── rows only, never the share
+```
+
+What a web developer would not guess:
+
+- **The gateway's first write, and its only one.** `SmbGateway.write`,
+  `rename` and `delete` exist for this, are called from `SidecarWriter`
+  alone, and name nothing but `<basename>.chapters.txt` and its `.part`.
+  The URL for a write drops the trailing slash `urlFor` adds, because jcifs
+  creates a new name as a directory when the URL ends in `/`.
+- **jcifs says "auth" when it means "denied".** ACCESS_DENIED arrives as
+  `SmbAuthException`; the gateway maps that status to `Forbidden` (signed
+  in, refused this request), which for a write is a read-only share. Reads
+  never cared; writes do.
+- **Newest wins, whole.** A sidecar whose modified time moved replaces the
+  rows unless the phone has a newer unsent edit, in which case the worker
+  writes over it. No merge: a chapter list is one value.
+- **Rows first, file later.** Done never waits on the network. The worker
+  is one unique WorkManager job with a network constraint and backoff, and
+  a scan finishing enqueues it too, so a write refused while the share was
+  read-only is retried without anyone asking.
+- **Settings never touches the share.** Clear empties the phone's cache;
+  the next scan re-imports every film that has a file. Revert is the one
+  action that deletes a file, after a confirm that names it, and on a
+  read-only share it leaves a note that the file will come back.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -542,6 +582,9 @@ What a web developer would not guess:
 | 2026-09-12 | Points of interest are their own Search group, above the files, and never part of a selection | A red match inside "The heist" under a film's thumbnail must not be mistaken for a match in a filename, so the group has its own eyebrow and each row a tag. A moment is a place, not a file: nothing to download, so long-press does nothing on it and it only shows under "All" — the other filters are about the file. A tap opens the player at that time via `Player(fileId, startMs)`, a key that already existed. |
 | 2026-09-12 | `ConfirmDialog` is one component, and it sets `testTagsAsResourceId` itself | The Disconnect dialog was about to be copied three times (revert, discard, clear all); CLAUDE.md calls two copies a bug. Promoting it also surfaced that a Compose `Dialog` is a window of its own, which the root Scaffold's `testTagsAsResourceId` never reached — so no dialog button had ever had a resource id. |
 | 2026-09-12 | **Reverses the scrubber-flags half of the row above.** Marks are moved on the editor's own 64dp strip with 30×40dp handles; the picture's scrubber only scrubs; one mark is editable at a time | Owner feedback on the first APK: "dragging start points is very finicky and easy to mess up". A flag on a 3dp track competes with the scrub gesture, so a near miss scrubbed. Big handles on a strip that exists only to hold them cannot be missed, and locking every other mark while one row is open (the owner's must-have) means a drag can only ever move the thing you opened. The typed Start field is the precise path; it commits on Done or on losing focus, never per keystroke, and names the allowed range when refused. The open row lifts to `lifted` #1C1C1C with a `liftedBorder` hairline so it reads apart from the list. Mock approved as-is. |
+| 2026-09-12 | User chapters live in a sidecar next to the film (`<basename>.chapters.txt`, mkvmerge simple format); the phone's table is its cache and index | The owner wants the chapters to travel with the film and to be written by a desktop app later. mkvmerge's format is what a text editor, a desktop tool and `mkvpropedit` all understand; not dot-prefixed because listings hide dot-files; not inside the container because rewriting a multi-gigabyte MKV over SMB in place is how a film gets corrupted. `docs/CHAPTERS.md` is the specification. |
+| 2026-09-12 | The sync rule is newest-wins, whole; writes are rows first, file in the background; Settings › Clear is the phone only | A merge of two chapter lists is nonsense, and a prompt is a question nobody can answer well; a lost edit is rare, visible (the sheet says the share replaced it) and easy to redo. Done waiting on a sleeping NAS would make Done fail. The owner's rule for Settings: it clears the local cache and never the share; Revert on the sheet is the one action that deletes a file, and it says so. |
+| 2026-09-12 | ACCESS_DENIED maps to `Forbidden`, even though jcifs raises it as an auth exception | Seen on the first write against the fixture's read-only share: "Sign-in failed" for an account that had just listed and read the share. `Forbidden` was already documented as "signed in, refused this request"; it is now what the status actually produces, so a read-only share reads as read-only. |
 
 ## Phase plan
 
@@ -569,6 +612,7 @@ What a web developer would not guess:
 | P8 | Multi-select in Browse, Library and Search; one batched download behind a queue worker, with an SMB discovery walk, an aggregate progress notification and a Settings dot | `SelectionStore`, `Selection`/`pathCoveredBy`/`coversFileIn`, `SelectionPresenter`, `download_picks` (schema v6), `TransferQueueWorker`, `QueueProgress`, `RegolithNotifications`, `NavPill(dots)` |
 | P2 | Library roots inside a share: the Choose folders drill-down at any depth, on a skeleton of unlisted rows that keeps the share's real tree | `share_roots` (schema v5), `Share.roots`, `rootsCover`, `refreshSkeleton`, `RegolithKey.AddServer.Folders` |
 | P9 | User chapters: mark and name chapters in the player (marks on their own strip, one open at a time, typed start time), segments and names on the scrubber, points of interest in Search, clear-all in Settings | `user_chapters` + `user_chapter_fts` (schema v8), `UserChapterRepository`, `ChapterDraft`, `ChapterSource`, `PlaybackState.userChapters`/`chapterSource`, `ChapterEditorContent`/`MarksTimeline`, `ChapterDraft.parseClock`/`bounds`, `SearchHit.Moment`, `ConfirmDialog` |
+| P10 | Chapter sidecars: the durable copy of a film's user chapters is `<basename>.chapters.txt` beside it on the share; the scan imports, Done writes, newest wins; Settings clears the phone only | `ChapterSidecar`, `SmbGateway.write/rename/delete`, `SidecarWriter`, `chapter_sync` + `shares.writeChapters` (schema v9), `ChapterSyncRepository`, `ChapterSyncWorker`, `CredentialSource`, `ChapterSyncState` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not
