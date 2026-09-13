@@ -2,6 +2,7 @@ package com.regolith.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,8 +15,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.ui.theme.PillShape
@@ -62,6 +66,55 @@ fun Chip(
             modifier = modifier.height(36.scaledDp()).background(colors.accent, PillShape).padding(horizontal = Spacing.s18),
         ) {
             Text(text, style = TextStyles.chipSelected, color = Color.White)
+        }
+    }
+}
+
+/**
+ * A chip you can turn on and off: Search's filters, and the points of
+ * interest beside them. Red and white when on, frosted with a hairline
+ * when off — the "Selected" style above, given an unselected state and a
+ * tap. 34dp so a row of them clears the touch target minimum with the
+ * row's own spacing.
+ */
+@Composable
+fun FilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    /** A 14dp glyph before the label: the sliders on a chip that opens a sheet. */
+    icon: Int? = null,
+) {
+    val colors = RegolithTheme.colors
+    Box(
+        modifier
+            .height(34.scaledDp())
+            .clip(PillShape)
+            .background(if (selected) colors.accent else colors.frostBg)
+            .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .padding(horizontal = Spacing.s12)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    painterResource(icon), contentDescription = null,
+                    tint = if (selected) Color.White else colors.inkSoft,
+                    modifier = Modifier.size(14.scaledDp()),
+                )
+                Spacer(Modifier.width(Spacing.s4))
+            }
+            Text(
+                text,
+                style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()),
+                color = if (selected) Color.White else colors.inkSoft,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

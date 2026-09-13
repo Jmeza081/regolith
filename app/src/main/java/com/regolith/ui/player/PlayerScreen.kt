@@ -169,6 +169,9 @@ fun PlayerScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val player by viewModel.player.collectAsStateWithLifecycle()
+    // The timeline and the clocks run off this rather than off
+    // state.positionMs, which is only refreshed four times a second.
+    val smooth = rememberSmoothProgress(player)
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val ambientLight by viewModel.ambientLight.collectAsStateWithLifecycle()
@@ -499,7 +502,7 @@ fun PlayerScreen(
     // (landscape, half-open), where there is no column to put it in.
     val editor: @Composable (ChapterDraft, Boolean) -> Unit = { d, withScrubber ->
         ChapterEditorContent(
-            draft = d, positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs, showScrubber = withScrubber,
+            draft = d, positionMs = state.positionMs, durationMs = state.durationMs, showScrubber = withScrubber, smooth = smooth,
             onMark = viewModel::markChapterAtPlayhead, onSelect = viewModel::selectMark, onMove = viewModel::moveMark,
             onNudge = viewModel::nudgeMark, onRename = viewModel::renameMark, onRemove = viewModel::removeMark,
             onDone = viewModel::saveChapters,
@@ -535,14 +538,14 @@ fun PlayerScreen(
             if (flex) {
                 // Above the fold there is only the header: the timeline and the
                 // transport live in the deck below, where the hands are.
-                FlexChrome(state, controlsVisible && drag == null, chromeCallbacks, transfer)
+                FlexChrome(state, controlsVisible && drag == null, chromeCallbacks, transfer, smooth)
             } else if (immersive) {
                 // The collapse glyph only appears when full screen was a
                 // choice; in landscape it is the rotation, so there is
                 // nothing for a button to undo.
-                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft)
+                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft, smooth = smooth)
             } else {
-                PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft)
+                PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft, smooth)
             }
             if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
             drag?.let { DragRail(it) }
@@ -591,6 +594,7 @@ fun PlayerScreen(
                 cb = chromeCallbacks,
                 onPlayNext = viewModel::playNext,
                 draft = draft,
+                smooth = smooth,
                 modifier = Modifier.fillMaxWidth().weight(1f).background(RegolithTheme.colors.ground),
             )
             RegolithSnackbarHost(snackbar)
@@ -817,7 +821,7 @@ private fun ChromeScrim(landscape: Boolean) {
  * along the bottom with 14dp side padding.
  */
 @Composable
-private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks, draft: ChapterDraft?) {
+private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scrubPreviewMs: Long?, scrubFrame: android.graphics.Bitmap?, cb: ChromeCallbacks, draft: ChapterDraft?, smooth: SmoothProgress) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -828,12 +832,12 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
                 scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.ink, modifier = Modifier.testTag("player_position"))
+                    PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.eyebrow.copy(letterSpacing = 0.sp), colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
                     Scrubber(
-                        positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
+                        progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
                         loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
                         onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
-                        trackHeight = 3.dp, showKnob = false, modifier = Modifier.weight(1f),
+                        trackHeight = 3.dp, showKnob = false, onTrackWidth = smooth::onTrackWidth, modifier = Modifier.weight(1f),
                     )
                     Text(formatClock(state.durationMs), style = TextStyles.eyebrow.copy(letterSpacing = 0.sp), color = colors.body, modifier = Modifier.testTag("player_duration"))
                 }
@@ -866,6 +870,7 @@ private fun BoxScope.FullChrome(
     orientation: PlayerOrientation?,
     transfer: TransferView?,
     draft: ChapterDraft?,
+    smooth: SmoothProgress,
 ) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
@@ -907,12 +912,12 @@ private fun BoxScope.FullChrome(
                     }
                     scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                        Text(formatClock(scrubPreviewMs ?: state.positionMs), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
+                        PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
                         Scrubber(
-                            positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
+                            progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
                             loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
                             onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
-                            trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
+                            trackHeight = 4.dp, showKnob = true, onTrackWidth = smooth::onTrackWidth, modifier = Modifier.weight(1f),
                         )
                         Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
                     }
@@ -1541,7 +1546,7 @@ private fun GestureZone(icon: Int, gesture: String, does: String, hint: String, 
  * hands are when the device is standing on a table.
  */
 @Composable
-private fun BoxScope.FlexChrome(state: PlaybackState, visible: Boolean, cb: ChromeCallbacks, transfer: TransferView?) {
+private fun BoxScope.FlexChrome(state: PlaybackState, visible: Boolean, cb: ChromeCallbacks, transfer: TransferView?, smooth: SmoothProgress) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -1584,6 +1589,7 @@ private fun FlexDeck(
     cb: ChromeCallbacks,
     onPlayNext: (fileId: Long) -> Unit,
     draft: ChapterDraft?,
+    smooth: SmoothProgress,
     modifier: Modifier = Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -1608,17 +1614,17 @@ private fun FlexDeck(
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-            Text(formatClock(here), style = TextStyles.buttonSmall, color = colors.ink, modifier = Modifier.testTag("player_position"))
+            PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
             // The filmstrip is this deck's preview, so the chapter's name
             // goes beside the clock rather than in a floating card.
             if (scrubPreviewMs != null) state.chapterLabelAt(here)?.let { label ->
                 Text(label, style = TextStyles.buttonSmall, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp).testTag("player_scrub_chapter"))
             }
             Scrubber(
-                positionMs = state.positionMs, durationMs = state.durationMs, bufferedMs = state.bufferedMs,
+                progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
                 loop = state.loop, pendingAMs = state.loopPendingAMs, chapters = draft?.chapters ?: state.chapters,
                 onScrubStart = cb.onScrubStart, onScrub = cb.onScrub, onScrubEnd = cb.onScrubEnd,
-                trackHeight = 4.dp, showKnob = true, modifier = Modifier.weight(1f),
+                trackHeight = 4.dp, showKnob = true, onTrackWidth = smooth::onTrackWidth, modifier = Modifier.weight(1f),
             )
             Text(formatClock(state.durationMs), style = TextStyles.buttonSmall, color = colors.body, modifier = Modifier.testTag("player_duration"))
         }

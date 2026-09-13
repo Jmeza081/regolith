@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -45,12 +46,19 @@ import com.regolith.ui.theme.RegolithTheme
  * fraction (the preview frame follows it) and [onScrubEnd] with the final
  * one. Tap to jump. Nothing on it can be grabbed by mistake: chapter marks
  * are moved on the editor's own timeline, not here.
+ *
+ * [progress] and [buffered] are read once per frame *inside the draw block*,
+ * not in composition. A moving playhead then repaints this Canvas and
+ * nothing else — pass them from
+ * [com.regolith.ui.player.SmoothProgress], which updates them about once per
+ * pixel of travel, and tell it how wide the track turned out to be through
+ * [onTrackWidth].
  */
 @Composable
 fun Scrubber(
-    positionMs: Long,
+    progress: () -> Float,
     durationMs: Long,
-    bufferedMs: Long,
+    buffered: () -> Float,
     onScrubStart: () -> Unit,
     onScrub: (fraction: Float) -> Unit,
     onScrubEnd: (fraction: Float) -> Unit,
@@ -60,20 +68,18 @@ fun Scrubber(
     chapters: List<Chapter> = emptyList(),
     trackHeight: Dp = 4.dp,
     showKnob: Boolean = true,
+    onTrackWidth: (Int) -> Unit = {},
     testTag: String = "player_scrubber",
 ) {
     val colors = RegolithTheme.colors
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
-    val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val buffered = if (durationMs > 0) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
-    val shown = if (dragging) dragFraction else fraction
-
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(36.dp)
-            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f) }
+            .onSizeChanged { onTrackWidth(it.width) }
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(if (dragging) dragFraction else progress(), 0f..1f) }
             .testTag(testTag)
             .pointerInput(durationMs) {
                 detectTapGestures { offset ->
@@ -103,6 +109,10 @@ fun Scrubber(
                 )
             },
     ) {
+        // Both reads happen here, in the draw phase: a tick repaints the
+        // track and skips composition and layout entirely.
+        val shown = if (dragging) dragFraction else progress()
+        val buffered = buffered()
         val trackH = trackHeight.toPx()
         val hotH = trackH * HOT_SCALE
         val y = size.height / 2

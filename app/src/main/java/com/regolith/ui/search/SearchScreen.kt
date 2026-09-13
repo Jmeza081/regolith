@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -29,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +59,7 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.FilterChip
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.SurfaceCard
@@ -95,6 +101,16 @@ fun SearchScreen(
 
     val selection = state.selection
     val selecting = selection != null
+    // Screen state, not ViewModel state: whether a sheet is open dies with
+    // the screen, unlike the filter it sets.
+    var momentSheet by remember { mutableStateOf(false) }
+    // The chip row scrolls, and the moment chip is at the end of it. Picking
+    // a moment from the sheet has to bring it into view, or the one chip
+    // that says a filter is on would be the one you cannot see.
+    val chipScroll = rememberScrollState()
+    LaunchedEffect(state.poi) {
+        if (state.poi != null) chipScroll.animateScrollTo(chipScroll.maxValue)
+    }
     // No BackHandler: back leaves Search, and NavGraph clears the selection
     // when the top of the stack is somewhere that cannot act on it.
 
@@ -163,21 +179,35 @@ fun SearchScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
             // The filter chips leave with the results: with no matches the empty card sits under the field (design frame 24).
-            if (!(state.searched && state.hits.isEmpty())) item {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            // A point of interest that narrowed to nothing is the exception —
+            // the chips have to stay or there is no way to turn one off.
+            if (!(state.searched && state.hits.isEmpty()) || state.poi != null) item {
+                // One row, the moment chip in it like any other: five chips
+                // do not fit a 411dp portrait, so the row scrolls. It opens a
+                // sheet rather than toggling, because the names are the
+                // library's and there can be two of them or forty — and it
+                // wears the one in force, so the row says what is filtering.
+                Row(
+                    Modifier.horizontalScroll(chipScroll),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                ) {
                     SearchFilter.entries.forEach { f ->
-                        val selected = f == state.filter
-                        Box(
-                            Modifier.height(34.scaledDp()).clip(PillShape)
-                                .background(if (selected) colors.accent else colors.frostBg)
-                                .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
-                                .clickable(interactionSource = null, indication = null) { viewModel.setFilter(f) }
-                                .padding(horizontal = Spacing.s12)
-                                .testTag("search_filter_${f.name.lowercase()}"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(f.label, style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = if (selected) Color.White else colors.inkSoft)
-                        }
+                        FilterChip(
+                            text = f.label,
+                            selected = f == state.filter,
+                            onClick = { viewModel.setFilter(f) },
+                            testTag = "search_filter_${f.name.lowercase()}",
+                        )
+                    }
+                    if (state.facets.isNotEmpty()) {
+                        FilterChip(
+                            text = state.poi ?: "Moment",
+                            selected = state.poi != null,
+                            onClick = { momentSheet = true },
+                            testTag = "search_filter_moment",
+                            icon = R.drawable.rg_ic_sliders,
+                            modifier = Modifier.widthIn(max = 160.dp),
+                        )
                     }
                 }
             }
@@ -281,6 +311,14 @@ fun SearchScreen(
                         end = Spacing.s18,
                         bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
                     ),
+            )
+        }
+        if (momentSheet) {
+            MomentFilterSheet(
+                facets = state.facets,
+                selected = state.poi,
+                onPick = { viewModel.setPoi(it); momentSheet = false },
+                onDismiss = { momentSheet = false },
             )
         }
     }

@@ -66,7 +66,6 @@ fun PlayAllButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
  * is the file "In order" would start with, so the choice is concrete rather
  * than abstract. [onPlay] is called with true for shuffle.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayAllSheet(
     fileCount: Int,
@@ -75,48 +74,29 @@ fun PlayAllSheet(
     onPlay: (shuffle: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = RegolithTheme.colors
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        shape = SheetShape,
-        containerColor = colors.surface,
-        contentColor = colors.ink,
-        dragHandle = null,
+    RegolithSheet(
+        title = "Play all",
+        subtitle = listOfNotNull(
+            "$fileCount file" + if (fileCount == 1) "" else "s",
+            totalMs?.takeIf { it > 0 }?.let { formatDurationShort(it) },
+        ).joinToString(" · "),
+        onDismiss = onDismiss,
+        testTag = "play_all_sheet",
     ) {
-        Column(
-            Modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12)
-                .navigationBarsPadding().testTag("play_all_sheet"),
-        ) {
-            Box(Modifier.align(Alignment.CenterHorizontally).size(38.dp, 4.dp).background(colors.raised, RoundedCornerShape(2.dp)))
-            Spacer(Modifier.height(Spacing.s12))
-            DisplayText("Play all", style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()))
-            Text(
-                listOfNotNull(
-                    "$fileCount file" + if (fileCount == 1) "" else "s",
-                    totalMs?.takeIf { it > 0 }?.let { formatDurationShort(it) },
-                ).joinToString(" · "),
-                style = TextStyles.meta12,
-                color = colors.metadata,
-                modifier = Modifier.padding(top = Spacing.s2).testTag("play_all_meta"),
-            )
-            Spacer(Modifier.height(Spacing.s8))
-            SheetChoice(
-                icon = R.drawable.rg_ic_play,
-                label = "In order",
-                note = firstName?.let { "Starts with $it." },
-                testTag = "play_all_in_order",
-                onClick = { onPlay(false) },
-            )
-            SheetChoice(
-                icon = R.drawable.rg_ic_shuffle,
-                label = "Shuffle",
-                note = "All $fileCount in a random order.",
-                testTag = "play_all_shuffle",
-                onClick = { onPlay(true) },
-            )
-            Spacer(Modifier.height(Spacing.s12))
-        }
+        SheetChoice(
+            icon = R.drawable.rg_ic_play,
+            label = "In order",
+            note = firstName?.let { "Starts with $it." },
+            testTag = "play_all_in_order",
+            onClick = { onPlay(false) },
+        )
+        SheetChoice(
+            icon = R.drawable.rg_ic_shuffle,
+            label = "Shuffle",
+            note = "All $fileCount in a random order.",
+            testTag = "play_all_shuffle",
+            onClick = { onPlay(true) },
+        )
     }
 }
 
