@@ -20,6 +20,12 @@ data class ChapterMatch(
     val fileRelPath: String,
 )
 
+/**
+ * A point of interest that recurs across the library: a chapter name and
+ * the number of films carrying it. Search offers these as filter chips.
+ */
+data class ChapterFacet(val title: String, val films: Int)
+
 /** How much the user has written, for Settings › Chapters. */
 data class UserChapterStats(
     val chapters: Int = 0,

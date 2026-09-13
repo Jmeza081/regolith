@@ -518,6 +518,12 @@ data class UserChapterHitRow(
 /** `COUNT(*)` and `COUNT(DISTINCT fileId)` in one read. */
 data class UserChapterTally(val chapters: Int, val files: Int)
 
+/**
+ * A chapter name that recurs across the library, with how many films carry
+ * it. A name on one film filters nothing, so only repeats are counted.
+ */
+data class UserChapterFacetRow(val title: String, val films: Int)
+
 @Dao
 interface UserChapterDao {
     @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
@@ -567,6 +573,46 @@ interface UserChapterDao {
             "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
     )
     fun search(match: String, limit: Int): Flow<List<UserChapterHitRow>>
+
+    /**
+     * The chapter names shared by more than one film, commonest first. The
+     * names arrive from both directions — typed in the editor, or imported
+     * from a `.chapters.txt` beside the film — because both land in this
+     * table, so this sees the whole library without reading a share.
+     *
+     * `COLLATE NOCASE` on the grouping so "The Heist" and "the heist" are
+     * one chip; `MIN(title)` picks a stable spelling to show.
+     */
+    @Query(
+        "SELECT MIN(user_chapters.title) AS title, COUNT(DISTINCT user_chapters.fileId) AS films " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE user_chapters.title IS NOT NULL AND user_chapters.title != '' AND media_files.missing = 0 " +
+            "GROUP BY user_chapters.title COLLATE NOCASE " +
+            "HAVING films > 1 ORDER BY films DESC, title COLLATE NOCASE LIMIT :limit",
+    )
+    fun observeFacets(limit: Int): Flow<List<UserChapterFacetRow>>
+
+    /** The films carrying a chapter of this exact name, for a chip's own listing. */
+    @Query(
+        "SELECT media_files.* FROM media_files JOIN user_chapters ON user_chapters.fileId = media_files.id " +
+            "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
+            "GROUP BY media_files.id ORDER BY media_files.name LIMIT :limit",
+    )
+    fun filesWithChapter(title: String, limit: Int): Flow<List<MediaFileEntity>>
+
+    /**
+     * Every occurrence of one point of interest, so a chip can list the
+     * moments themselves rather than the files holding them. Same shape as
+     * [search], matched on the exact name instead of through the index.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
+            "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
+    )
+    fun occurrencesOf(title: String, limit: Int): Flow<List<UserChapterHitRow>>
 }
 
 @Dao

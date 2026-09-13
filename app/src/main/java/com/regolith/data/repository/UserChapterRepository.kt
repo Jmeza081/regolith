@@ -1,10 +1,13 @@
 package com.regolith.data.repository
 
+import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.UserChapterDao
+import com.regolith.data.db.UserChapterHitRow
 import com.regolith.data.db.UserChapterEntity
 import com.regolith.data.media.ChapterSyncRepository
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.UserChapterStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -57,16 +60,30 @@ class UserChapterRepository @Inject constructor(
 
     fun stats(): Flow<UserChapterStats> = dao.observeTally().map { UserChapterStats(chapters = it.chapters, files = it.files) }
 
+    /**
+     * The points of interest worth filtering by: chapter names carried by
+     * more than one film, commonest first. Free of the share — the sidecar
+     * import already put every name in this table when the folder was
+     * listed (see `ChapterSyncRepository.onFolderListed`).
+     */
+    fun facets(limit: Int): Flow<List<ChapterFacet>> =
+        dao.observeFacets(limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
+
+    /** The films carrying a point of interest, for a chip standing on its own. */
+    fun filesWith(title: String, limit: Int): Flow<List<MediaFileEntity>> = dao.filesWithChapter(title, limit)
+
+    /** Every occurrence of one point of interest, newest-listed film first. */
+    fun occurrences(title: String, limit: Int): Flow<List<ChapterMatch>> =
+        dao.occurrencesOf(title, limit).map { rows -> rows.map { it.toMatch() } }
+
     /** Prefix search over chapter names, the same words-to-MATCH rule as the file search. */
     fun search(query: String, limit: Int): Flow<List<ChapterMatch>> {
         val match = LibraryRepository.ftsMatch(query) ?: return flowOf(emptyList())
-        return dao.search(match, limit).map { rows ->
-            rows.map {
-                ChapterMatch(
-                    fileId = it.fileId, startMs = it.startMs, title = it.title,
-                    fileName = it.fileName, fileTitle = it.fileTitle, shareId = it.shareId, fileRelPath = it.fileRelPath,
-                )
-            }
-        }
+        return dao.search(match, limit).map { rows -> rows.map { it.toMatch() } }
     }
+
+    private fun UserChapterHitRow.toMatch() = ChapterMatch(
+        fileId = fileId, startMs = startMs, title = title,
+        fileName = fileName, fileTitle = fileTitle, shareId = shareId, fileRelPath = fileRelPath,
+    )
 }

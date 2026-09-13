@@ -11,6 +11,7 @@ import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.ParsedName
+import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.ui.util.formatBytes
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -106,6 +108,10 @@ sealed interface SearchHit {
 data class SearchUiState(
     val query: String = "",
     val filter: SearchFilter = SearchFilter.ALL,
+    /** Points of interest offered as chips: names carried by more than one film. */
+    val facets: List<ChapterFacet> = emptyList(),
+    /** The chip currently on, if any. Narrows everything to films carrying it. */
+    val poi: String? = null,
     val hits: List<SearchHit> = emptyList(),
     /** Points of interest: chapters whose names match, shown above [hits]. */
     val moments: List<SearchHit.Moment> = emptyList(),
@@ -135,25 +141,47 @@ class SearchViewModel @Inject constructor(
 
     private val query = MutableStateFlow("")
     private val filter = MutableStateFlow(SearchFilter.ALL)
+    private val poi = MutableStateFlow<String?>(null)
 
-    private val results = query.debounce(150).flatMapLatest { q ->
-        if (q.isBlank()) {
-            flowOf(Triple(emptyList<MediaFileEntity>(), emptyList<FolderEntity>(), false))
-        } else {
-            combine(library.searchFiles(q, LIMIT), library.searchFolders(q, LIMIT)) { files, folders -> Triple(files, folders, true) }
+    // The chips themselves: free of the share, since the sidecar import put
+    // every chapter name in the table when the folder was listed.
+    private val facets = userChapters.facets(FACETS_LIMIT)
+
+    /**
+     * A point of interest narrows to the films carrying it, which is why it
+     * stands in for the query when there is none: a chip on its own is a
+     * search. Folders drop out while one is on — a folder has no chapters,
+     * so it can never carry the thing being asked for.
+     */
+    private val results = combine(query.debounce(150), poi) { q, p -> q to p }.flatMapLatest { (q, p) ->
+        when {
+            p != null && q.isBlank() ->
+                userChapters.filesWith(p, LIMIT).map { Triple(it, emptyList<FolderEntity>(), true) }
+            p != null ->
+                combine(library.searchFiles(q, LIMIT), userChapters.filesWith(p, LIMIT)) { files, carrying ->
+                    val ids = carrying.mapTo(HashSet()) { it.id }
+                    Triple(files.filter { it.id in ids }, emptyList<FolderEntity>(), true)
+                }
+            q.isBlank() -> flowOf(Triple(emptyList<MediaFileEntity>(), emptyList<FolderEntity>(), false))
+            else -> combine(library.searchFiles(q, LIMIT), library.searchFolders(q, LIMIT)) { files, folders -> Triple(files, folders, true) }
         }
     }
     private val progress = results.flatMapLatest { (files, _, _) -> library.observeProgress(files.map { it.id }) }
-    // Chapter names, through the same debounce and the same MATCH rule.
-    private val moments = query.debounce(150).flatMapLatest { q ->
-        if (q.isBlank()) flowOf(emptyList()) else userChapters.search(q, MOMENTS_LIMIT)
+    // Chapter names: every occurrence of the chip's name when one is on,
+    // otherwise whatever the query matches, through the same MATCH rule.
+    private val moments = combine(query.debounce(150), poi) { q, p -> q to p }.flatMapLatest { (q, p) ->
+        when {
+            p != null -> userChapters.occurrences(p, MOMENTS_LIMIT)
+            q.isBlank() -> flowOf(emptyList())
+            else -> userChapters.search(q, MOMENTS_LIMIT)
+        }
     }
     private val running = sources.observeEnabledShares().flatMapLatest { list ->
         if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id })
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments,
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi,
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -171,6 +199,9 @@ class SearchViewModel @Inject constructor(
         val sel = values[6] as SelectionUiState?
         @Suppress("UNCHECKED_CAST")
         val matches = values[7] as List<ChapterMatch>
+        @Suppress("UNCHECKED_CAST")
+        val facetList = values[8] as List<ChapterFacet>
+        val chip = values[9] as String?
 
         val hits = mutableListOf<SearchHit>()
         for (file in files) {
@@ -220,9 +251,13 @@ class SearchViewModel @Inject constructor(
                 )
             }
         }
-        // Points of interest only under "All": the other filters are about
-        // the file (watched, 4K, on device), and a moment is not a file.
-        val moments = if (f == SearchFilter.ALL) matches.map { m ->
+        // Without a chip, points of interest only under "All": the other
+        // filters are about the file (watched, 4K, on device), and a moment
+        // is not a file. With a chip they ARE the result, so they stay —
+        // narrowed to the films that survived the filter above.
+        val visible = files.mapTo(HashSet()) { it.id }
+        val shown = if (chip != null) matches.filter { it.fileId in visible } else matches
+        val moments = if (chip != null || f == SearchFilter.ALL) shown.map { m ->
             SearchHit.Moment(
                 fileId = m.fileId,
                 startMs = m.startMs,
@@ -235,6 +270,8 @@ class SearchViewModel @Inject constructor(
         SearchUiState(
             query = q,
             filter = f,
+            facets = facetList,
+            poi = chip,
             hits = hits,
             moments = moments,
             recent = recent,
@@ -250,6 +287,11 @@ class SearchViewModel @Inject constructor(
 
     fun setFilter(f: SearchFilter) {
         filter.value = f
+    }
+
+    /** Tapping the chip that is already on clears it. */
+    fun togglePoi(title: String) {
+        poi.value = if (poi.value.equals(title, ignoreCase = true)) null else title
     }
 
     /** Called when the user commits a query (opens a hit or hits enter). */
@@ -325,5 +367,8 @@ class SearchViewModel @Inject constructor(
 
         /** Points of interest are one group above the files; more than this and it becomes the list. */
         const val MOMENTS_LIMIT = 20
+
+        /** Chips for the commonest recurring names; past this the row is a wall, not a filter. */
+        const val FACETS_LIMIT = 12
     }
 }

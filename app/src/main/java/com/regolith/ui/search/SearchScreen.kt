@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -54,6 +57,7 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.FilterChip
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.SurfaceCard
@@ -163,25 +167,43 @@ fun SearchScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
             // The filter chips leave with the results: with no matches the empty card sits under the field (design frame 24).
-            if (!(state.searched && state.hits.isEmpty())) item {
+            // A point of interest that narrowed to nothing is the exception —
+            // the chips have to stay or there is no way to turn one off.
+            if (!(state.searched && state.hits.isEmpty()) || state.poi != null) item {
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     SearchFilter.entries.forEach { f ->
-                        val selected = f == state.filter
-                        Box(
-                            Modifier.height(34.scaledDp()).clip(PillShape)
-                                .background(if (selected) colors.accent else colors.frostBg)
-                                .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
-                                .clickable(interactionSource = null, indication = null) { viewModel.setFilter(f) }
-                                .padding(horizontal = Spacing.s12)
-                                .testTag("search_filter_${f.name.lowercase()}"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(f.label, style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = if (selected) Color.White else colors.inkSoft)
-                        }
+                        FilterChip(
+                            text = f.label,
+                            selected = f == state.filter,
+                            onClick = { viewModel.setFilter(f) },
+                            testTag = "search_filter_${f.name.lowercase()}",
+                        )
                     }
                 }
             }
-            // Points of interest first, under their own eyebrow, so a red
+            // Points of interest: the chapter names the library repeats,
+            // whether typed in the editor or imported from a .chapters.txt.
+            // A chip is a search in its own right, so this row stands even
+            // with an empty field.
+            if (state.facets.isNotEmpty()) item {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    Eyebrow("Filter by moment", muted = true)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        state.facets.forEach { facet ->
+                            FilterChip(
+                                text = facet.title,
+                                selected = facet.title.equals(state.poi, ignoreCase = true),
+                                onClick = { viewModel.togglePoi(facet.title) },
+                                testTag = "search_poi_${facet.title.lowercase().replace(' ', '_')}",
+                                modifier = Modifier.widthIn(max = 200.dp),
+                            )
+                        }
+                    }
+                }
+            }            // Points of interest first, under their own eyebrow, so a red
             // match in a chapter's name is never mistaken for one in a
             // file's. They are places, not files: no selection, no download.
             if (state.searched && state.moments.isNotEmpty()) {
