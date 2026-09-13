@@ -84,8 +84,9 @@ fun ChapterEditorContent(
     draft: ChapterDraft,
     positionMs: Long,
     durationMs: Long,
-    bufferedMs: Long,
     showScrubber: Boolean,
+    /** Drives the scrubber and the two clocks; see [SmoothProgress]. */
+    smooth: SmoothProgress,
     onMark: () -> Unit,
     onSelect: (Int?) -> Unit,
     onMove: (Int, Long) -> Unit,
@@ -118,17 +119,18 @@ fun ChapterEditorContent(
         }
         if (showScrubber) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                Text(formatClock(positionMs), style = TextStyles.buttonSmall, color = colors.ink)
+                PositionClock(smooth::clockMs, TextStyles.buttonSmall, colors.ink)
                 Scrubber(
-                    positionMs = positionMs, durationMs = durationMs, bufferedMs = bufferedMs,
+                    progress = smooth::fraction, durationMs = durationMs, buffered = smooth::buffered,
                     onScrubStart = onScrubStart, onScrub = onScrub, onScrubEnd = onScrubEnd,
-                    chapters = draft.chapters, modifier = Modifier.weight(1f), testTag = "player_chapter_editor_scrubber",
+                    chapters = draft.chapters, onTrackWidth = smooth::onTrackWidth,
+                    modifier = Modifier.weight(1f), testTag = "player_chapter_editor_scrubber",
                 )
                 Text(formatClock(durationMs), style = TextStyles.buttonSmall, color = colors.body)
             }
         }
         PrimaryButton(
-            "Mark at ${formatClock(positionMs)}", onMark, "player_chapter_mark_button",
+            "Mark at ${formatClock(smooth.clockMs())}", onMark, "player_chapter_mark_button",
             modifier = Modifier.fillMaxWidth(), enabled = open == null, leadingIcon = painterResource(LucideR.drawable.lucide_ic_plus),
         )
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
