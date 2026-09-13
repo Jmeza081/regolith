@@ -281,6 +281,10 @@ class JcifsGateway @Inject constructor() : SmbGateway {
     private inline fun <T> wrap(host: SmbHost, path: String, dialect: String, block: () -> T): T = try {
         block()
     } catch (e: SmbAuthException) {
+        // jcifs raises its auth exception for ACCESS_DENIED too — "signed in,
+        // but not allowed to do this" — which for a write is a read-only
+        // share, not a bad password.
+        if (e.ntStatus == NtStatus.NT_STATUS_ACCESS_DENIED) throw SmbFailure.Forbidden(path, e, detail(e, dialect))
         throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
         // The full cause chain: jcifs folds transport-thread failures into one status code.

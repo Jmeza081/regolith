@@ -41,6 +41,7 @@ class ScanWorker @AssistedInject constructor(
     private val library: LibraryRepository,
     private val scanRunDao: ScanRunDao,
     private val artwork: ArtworkPrefetcher,
+    private val chapterSync: com.regolith.data.media.ChapterSyncScheduler,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -80,6 +81,8 @@ class ScanWorker @AssistedInject constructor(
             // for. It skips whatever is already cached, so a rescan that
             // found nothing new costs a pass over the table and no network.
             artwork.enqueue(shareId)
+            // Chapters edited while the share was asleep or refusing writes get another go (P10).
+            chapterSync.enqueue()
             Result.success()
         } catch (e: CancellationException) {
             scanRunDao.update(run.copy(status = ScanRunEntity.CANCELLED, finishedAtMs = System.currentTimeMillis()))

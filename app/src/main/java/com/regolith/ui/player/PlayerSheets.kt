@@ -339,7 +339,7 @@ fun ChaptersSheetContent(
                     when (sync) {
                         ChapterSyncState.ON_SHARE -> "Yours · on the share · $count"
                         ChapterSyncState.WAITING -> "Yours · waiting to write · $count"
-                        ChapterSyncState.READ_ONLY -> "Yours · on this phone (read-only share) · $count"
+                        ChapterSyncState.READ_ONLY -> "Yours · read-only share · $count"
                         ChapterSyncState.FROM_SHARE -> "From the share · $count"
                         ChapterSyncState.PHONE_ONLY, null -> "Yours · on this phone · $count"
                     }

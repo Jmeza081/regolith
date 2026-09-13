@@ -144,6 +144,9 @@ class ChapterSyncRepository @Inject constructor(
                 syncDao.upsert(row.copy(dirty = false, shareMtimeMs = mtime, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis()))
             } catch (e: SmbFailure.Forbidden) {
                 syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
+            } catch (e: SmbFailure.AuthFailed) {
+                // The account can read but not write: the same thing as far as the sheet is concerned.
+                syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
             } catch (e: SmbFailure.Unreachable) {
                 reachable = false
             } catch (e: SmbFailure) {

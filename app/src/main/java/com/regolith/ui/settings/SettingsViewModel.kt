@@ -9,6 +9,7 @@ import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
+import com.regolith.domain.media.DemoSource
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
@@ -104,9 +105,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userChapters.stats().collect { c -> _uiState.update { it.copy(userChapters = c) } } }
         viewModelScope.launch {
             combine(sources.observeServers(), sources.observeEnabledShares()) { servers, shares ->
-                shares.map { share ->
-                    val serverName = servers.firstOrNull { it.id == share.serverId }?.name ?: "?"
-                    ShareWriteRow(share.id, "${share.name} on $serverName", share.writeChapters)
+                shares.mapNotNull { share ->
+                    val server = servers.firstOrNull { it.id == share.serverId } ?: return@mapNotNull null
+                    // The demo library has no share to write to; a switch for it would be a lie.
+                    if (DemoSource.isDemo(server.host.host)) return@mapNotNull null
+                    ShareWriteRow(share.id, "${share.name} on ${server.name}", share.writeChapters)
                 }
             }.collect { rows -> _uiState.update { it.copy(shareWrites = rows) } }
         }
