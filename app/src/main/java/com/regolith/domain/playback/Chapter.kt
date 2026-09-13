@@ -68,3 +68,18 @@ object ChapterMarks {
         return (if (remainder > intervalMs / 4) whole + 1 else whole).coerceAtLeast(1)
     }
 }
+
+/**
+ * Where a file's chapters came from. The player shows exactly one kind at
+ * a time, in this order of preference: what the user wrote beats what the
+ * container carries, which beats the even split. Reverting the user's rows
+ * lets the next kind down fill back in — nothing has to be "restored".
+ */
+enum class ChapterSource {
+    /** Written in the app's chapter editor (schema v8, `user_chapters`). */
+    USER,
+    /** Read from the container by [com.regolith.domain.media.ChapterParser]. */
+    CONTAINER,
+    /** [ChapterMarks.evenly]: arithmetic, no names. */
+    EVEN,
+}

@@ -9,6 +9,8 @@ import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
+import com.regolith.domain.media.DemoSource
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
@@ -45,6 +47,7 @@ class SettingsViewModel @Inject constructor(
     private val demo: DemoLibrary,
     private val prefetcher: ArtworkPrefetcher,
     private val transfers: TransferRepository,
+    private val userChapters: UserChapterRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -99,6 +102,17 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(demoInstalled = installed, demoBytes = bytes) }
             }
         }
+        viewModelScope.launch { userChapters.stats().collect { c -> _uiState.update { it.copy(userChapters = c) } } }
+        viewModelScope.launch {
+            combine(sources.observeServers(), sources.observeEnabledShares()) { servers, shares ->
+                shares.mapNotNull { share ->
+                    val server = servers.firstOrNull { it.id == share.serverId } ?: return@mapNotNull null
+                    // The demo library has no share to write to; a switch for it would be a lie.
+                    if (DemoSource.isDemo(server.host.host)) return@mapNotNull null
+                    ShareWriteRow(share.id, "${share.name} on ${server.name}", share.writeChapters)
+                }
+            }.collect { rows -> _uiState.update { it.copy(shareWrites = rows) } }
+        }
         viewModelScope.launch {
             artwork.observeCount().collect { count ->
                 val bytes = withContext(Dispatchers.IO) { artwork.cacheSizeBytes() }
@@ -134,6 +148,18 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun askDisconnect(row: ServerRow?) = _uiState.update { it.copy(confirmDisconnect = row) }
+
+    /** Settings › Chapters › Clear: asks first, because there is no getting them back. */
+    fun askClearChapters(open: Boolean) = _uiState.update { it.copy(confirmClearChapters = open) }
+
+    /** Settings › Chapters: whether chapter files are written to one share (P10). */
+    fun setShareWriteChapters(shareId: Long, enabled: Boolean) = viewModelScope.launch { sources.setShareWriteChapters(shareId, enabled) }.let { }
+
+    /** Every chapter kept on this phone. The share is never touched from here; films with a file there get theirs back at the next scan. */
+    fun clearChapters() {
+        _uiState.update { it.copy(confirmClearChapters = false) }
+        viewModelScope.launch { userChapters.clearAll() }
+    }
 
     /** "The media list is removed from this device. Nothing on the share is touched." */
     fun disconnect(row: ServerRow) {

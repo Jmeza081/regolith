@@ -25,6 +25,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *     walked over SMB. Additive.
  *  7. `download_picks.excludedFileIds` / `excludedPaths`: what to leave
  *     out of a picked folder. Additive.
+ *  8. `user_chapters` and its full-text index `user_chapter_fts`: the
+ *     chapters the user wrote (P9). Additive; the index starts empty
+ *     because the table does.
+ *  9. `chapter_sync` and `shares.writeChapters` (P10): where each film's
+ *     chapters stand against the sidecar file on the share, and whether a
+ *     share gets those files at all. Additive.
  */
 @Database(
     entities = [
@@ -41,8 +47,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TransferEntity::class,
         ShareRootEntity::class,
         DownloadPickEntity::class,
+        UserChapterEntity::class,
+        UserChapterFtsEntity::class,
+        ChapterSyncEntity::class,
     ],
-    version = 7,
+    version = 9,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -51,6 +60,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
         AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 8, to = 9),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -65,6 +76,8 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun transferDao(): TransferDao
     abstract fun shareRootDao(): ShareRootDao
     abstract fun downloadPickDao(): DownloadPickDao
+    abstract fun userChapterDao(): UserChapterDao
+    abstract fun chapterSyncDao(): ChapterSyncDao
 
     /** An external-content FTS table starts empty; `rebuild` indexes what the content table already holds. */
     class RebuildFts : AutoMigrationSpec {

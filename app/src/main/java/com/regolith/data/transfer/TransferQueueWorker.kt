@@ -72,6 +72,7 @@ class TransferQueueWorker @AssistedInject constructor(
     private val library: LibraryRepository,
     private val gateway: SmbGateway,
     private val store: DownloadStore,
+    private val chapterSync: com.regolith.data.media.ChapterSyncRepository,
 ) : CoroutineWorker(context, params) {
 
     /** How one file ended. Only [Paused] backs the whole batch off. */
@@ -247,6 +248,8 @@ class TransferQueueWorker @AssistedInject constructor(
                     updatedAtMs = System.currentTimeMillis(), finishedAtMs = System.currentTimeMillis(),
                 ),
             )
+            // The chapter file beside the film comes along (P10); its absence is the common case.
+            chapterSync.onDownloaded(fileId, host, credentials, share.name, file.relPath.substringBeforeLast('/', ""), file.name)
             Outcome.Done
         } catch (e: CancellationException) {
             // Stopped by WorkManager (the user tapped Stop, or the system reclaimed us).

@@ -7,9 +7,9 @@ import org.junit.Test
 
 class SearchMatchTest {
     @Test fun `words become prefix terms`() {
-        assertEquals("\"samou\"*", LibraryRepository.ftsMatch("samou"))
-        assertEquals("\"le\"* \"samourai\"* \"1967\"*", LibraryRepository.ftsMatch("Le.Samourai.1967"))
-        assertEquals("\"gh01\"*", LibraryRepository.ftsMatch("  gh01 "))
+        assertEquals("\"samou*\"", LibraryRepository.ftsMatch("samou"))
+        assertEquals("\"le*\" \"samourai*\" \"1967*\"", LibraryRepository.ftsMatch("Le.Samourai.1967"))
+        assertEquals("\"gh01*\"", LibraryRepository.ftsMatch("  gh01 "))
     }
 
     @Test fun `nothing to search for`() {
@@ -17,7 +17,8 @@ class SearchMatchTest {
         assertNull(LibraryRepository.ftsMatch(" . - "))
     }
 
-    @Test fun `quotes cannot break the expression`() {
-        assertEquals("\"tar\"*", LibraryRepository.ftsMatch("\"tar\""))
+    @Test fun `quotes and stars cannot break the expression`() {
+        assertEquals("\"tar*\"", LibraryRepository.ftsMatch("\"tar\""))
+        assertEquals("\"tar*\"", LibraryRepository.ftsMatch("ta*r*"))
     }
 }

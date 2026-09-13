@@ -7,11 +7,14 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.ParsedName
+import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.ui.util.formatBytes
+import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -67,6 +70,24 @@ sealed interface SearchHit {
         override val testTag get() = "search_file_$fileId"
     }
 
+    /**
+     * A chapter the user named, matched by that name: a PLACE in a film
+     * rather than a file. Never part of a download selection — the film
+     * is what you would download, and its own row is there for that.
+     */
+    data class Moment(
+        val fileId: Long,
+        val startMs: Long,
+        /** The chapter's name; the match is in here. */
+        override val primary: String,
+        /** The film's title and the time. */
+        override val meta: String,
+        override val shareId: Long = 0,
+        override val relPath: String = "",
+    ) : SearchHit {
+        override val testTag get() = "search_moment_${fileId}_$startMs"
+    }
+
     data class Folder(
         val folderId: Long,
         val browsable: Boolean,
@@ -86,6 +107,8 @@ data class SearchUiState(
     val query: String = "",
     val filter: SearchFilter = SearchFilter.ALL,
     val hits: List<SearchHit> = emptyList(),
+    /** Points of interest: chapters whose names match, shown above [hits]. */
+    val moments: List<SearchHit.Moment> = emptyList(),
     val recent: List<String> = emptyList(),
     /** "Still reading /media/archive — matches will keep arriving." */
     val scanningPath: String? = null,
@@ -107,6 +130,7 @@ class SearchViewModel @Inject constructor(
     sources: SourceRepository,
     scans: ScanRepository,
     private val selection: SelectionPresenter,
+    userChapters: UserChapterRepository,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -120,12 +144,16 @@ class SearchViewModel @Inject constructor(
         }
     }
     private val progress = results.flatMapLatest { (files, _, _) -> library.observeProgress(files.map { it.id }) }
+    // Chapter names, through the same debounce and the same MATCH rule.
+    private val moments = query.debounce(150).flatMapLatest { q ->
+        if (q.isBlank()) flowOf(emptyList()) else userChapters.search(q, MOMENTS_LIMIT)
+    }
     private val running = sources.observeEnabledShares().flatMapLatest { list ->
         if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id })
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(),
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments,
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -141,6 +169,8 @@ class SearchViewModel @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val recent = (values[5] as List<com.regolith.data.db.RecentSearchEntity>).map { it.query }
         val sel = values[6] as SelectionUiState?
+        @Suppress("UNCHECKED_CAST")
+        val matches = values[7] as List<ChapterMatch>
 
         val hits = mutableListOf<SearchHit>()
         for (file in files) {
@@ -190,10 +220,23 @@ class SearchViewModel @Inject constructor(
                 )
             }
         }
+        // Points of interest only under "All": the other filters are about
+        // the file (watched, 4K, on device), and a moment is not a file.
+        val moments = if (f == SearchFilter.ALL) matches.map { m ->
+            SearchHit.Moment(
+                fileId = m.fileId,
+                startMs = m.startMs,
+                primary = m.title,
+                meta = (m.fileTitle ?: m.fileName.substringBeforeLast('.')) + " · " + formatClock(m.startMs),
+                shareId = m.shareId,
+                relPath = m.fileRelPath.substringBeforeLast('/', ""),
+            )
+        } else emptyList()
         SearchUiState(
             query = q,
             filter = f,
             hits = hits,
+            moments = moments,
             recent = recent,
             scanningPath = runs.firstOrNull { it.status == ScanRunEntity.RUNNING }?.let { "/" + it.currentPath.ifEmpty { "…" } },
             searched = searched,
@@ -243,6 +286,8 @@ class SearchViewModel @Inject constructor(
             is SearchHit.File -> selection.toggleFile(
                 FilePick(fileId = hit.fileId, shareId = hit.shareId, folderRelPath = hit.relPath, sizeBytes = hit.sizeBytes),
             )
+            // A place, not a file: nothing to download.
+            is SearchHit.Moment -> Unit
         }
     }
 
@@ -263,6 +308,7 @@ class SearchViewModel @Inject constructor(
                     is SearchHit.Title -> FilePick(hit.fileId, hit.shareId, hit.relPath, hit.sizeBytes)
                     is SearchHit.File -> FilePick(hit.fileId, hit.shareId, hit.relPath, hit.sizeBytes)
                     is SearchHit.Folder -> null
+                    is SearchHit.Moment -> null
                 }
             }.distinctBy { it.fileId },
         )
@@ -276,5 +322,8 @@ class SearchViewModel @Inject constructor(
 
     private companion object {
         const val LIMIT = 40
+
+        /** Points of interest are one group above the files; more than this and it becomes the list. */
+        const val MOMENTS_LIMIT = 20
     }
 }

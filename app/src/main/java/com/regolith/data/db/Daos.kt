@@ -90,6 +90,9 @@ interface ShareDao {
 
     @Query("UPDATE shares SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: Long, enabled: Boolean)
+
+    @Query("UPDATE shares SET writeChapters = :enabled WHERE id = :id")
+    suspend fun setWriteChapters(id: Long, enabled: Boolean)
 }
 
 @Dao
@@ -499,4 +502,96 @@ interface DownloadPickDao {
 
     @Query("DELETE FROM download_picks")
     suspend fun clear()
+}
+
+/** One search hit over `user_chapter_fts`, joined to the file it belongs to. */
+data class UserChapterHitRow(
+    val fileId: Long,
+    val startMs: Long,
+    val title: String,
+    val fileName: String,
+    val fileTitle: String?,
+    val shareId: Long,
+    val fileRelPath: String,
+)
+
+/** `COUNT(*)` and `COUNT(DISTINCT fileId)` in one read. */
+data class UserChapterTally(val chapters: Int, val files: Int)
+
+@Dao
+interface UserChapterDao {
+    @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
+    fun observeForFile(fileId: Long): Flow<List<UserChapterEntity>>
+
+    @Insert
+    suspend fun insertAll(rows: List<UserChapterEntity>)
+
+    @Query("DELETE FROM user_chapters WHERE fileId = :fileId")
+    suspend fun deleteForFile(fileId: Long)
+
+    /**
+     * A file's chapters are one value, so they are written as one: the old
+     * set goes and the new one lands in the same transaction, and an
+     * observer sees either the whole old list or the whole new one.
+     */
+    @Transaction
+    suspend fun replaceForFile(fileId: Long, rows: List<UserChapterEntity>) {
+        deleteForFile(fileId)
+        if (rows.isNotEmpty()) insertAll(rows)
+    }
+
+    @Query("DELETE FROM user_chapters")
+    suspend fun deleteAll()
+
+    @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
+    suspend fun forFile(fileId: Long): List<UserChapterEntity>
+
+    /** When this film's rows were last written, for the newest-wins rule. */
+    @Query("SELECT MAX(updatedAtMs) FROM user_chapters WHERE fileId = :fileId")
+    suspend fun lastUpdated(fileId: Long): Long?
+
+    @Query("SELECT COUNT(*) AS chapters, COUNT(DISTINCT fileId) AS files FROM user_chapters")
+    fun observeTally(): Flow<UserChapterTally>
+
+    /**
+     * Named chapters whose name matches, on files that are still on the
+     * share. The film's name and parsed title ride along so the result can
+     * be shown without a second query per row.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "FROM user_chapters JOIN user_chapter_fts ON user_chapters.id = user_chapter_fts.rowid " +
+            "JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE user_chapter_fts MATCH :match AND user_chapters.title IS NOT NULL AND media_files.missing = 0 " +
+            "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
+    )
+    fun search(match: String, limit: Int): Flow<List<UserChapterHitRow>>
+}
+
+@Dao
+interface ChapterSyncDao {
+    @Query("SELECT * FROM chapter_sync WHERE fileId = :fileId")
+    suspend fun byFile(fileId: Long): ChapterSyncEntity?
+
+    @Query("SELECT * FROM chapter_sync WHERE fileId = :fileId")
+    fun observeForFile(fileId: Long): Flow<ChapterSyncEntity?>
+
+    @Query("SELECT * FROM chapter_sync WHERE dirty = 1")
+    suspend fun dirty(): List<ChapterSyncEntity>
+
+    @Query("SELECT COUNT(*) FROM chapter_sync JOIN media_files ON media_files.id = chapter_sync.fileId WHERE media_files.folderId = :folderId")
+    suspend fun countForFolder(folderId: Long): Int
+
+    @Upsert
+    suspend fun upsert(row: ChapterSyncEntity)
+
+    @Query("UPDATE chapter_sync SET note = NULL WHERE fileId = :fileId AND note != 'READ_ONLY'")
+    suspend fun clearNote(fileId: Long)
+
+    @Query("DELETE FROM chapter_sync WHERE fileId = :fileId")
+    suspend fun delete(fileId: Long)
+
+    @Query("DELETE FROM chapter_sync")
+    suspend fun deleteAll()
 }

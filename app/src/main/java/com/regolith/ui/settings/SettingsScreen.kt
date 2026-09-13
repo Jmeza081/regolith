@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.BuildConfig
 import com.regolith.R
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
@@ -314,7 +315,42 @@ fun SettingsScreen(
                 }
             }
             if (BuildConfig.DEMO_LIBRARY) {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                // The chapters the user wrote (P9), and the one way to clear
+            // them all. Per-film revert lives on the player's Chapters
+            // sheet; this is for starting over.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                Eyebrow("Chapters", muted = true)
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Your chapters", style = TextStyles.settingLabel, color = colors.ink)
+                            Text(
+                                state.userChapters.let { c ->
+                                    if (c.isEmpty) "None on this phone yet · mark them from the player's Chapters sheet"
+                                    else (if (c.chapters == 1) "1 chapter" else "${c.chapters} chapters") + " on " + (if (c.files == 1) "1 video" else "${c.files} videos") + " kept on this phone"
+                                },
+                                style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.testTag("settings_chapters_meta"),
+                            )
+                        }
+                        Spacer(Modifier.width(Spacing.s12))
+                        SecondaryButton(
+                            text = "Clear", onClick = { viewModel.askClearChapters(true) }, compact = true,
+                            enabled = !state.userChapters.isEmpty, testTag = "settings_clear_chapters_button",
+                        )
+                    }
+                    // P10: one switch per share. Off keeps that share's chapters
+                    // on the phone; the files already there are left alone.
+                    state.shareWrites.forEach { row ->
+                        RegolithSwitch(
+                            label = "Write to ${row.label}",
+                            note = if (row.enabled) "Chapters are saved as a text file beside each film, so other devices and tools can read them." else "Chapters for this share stay on this phone.",
+                            checked = row.enabled, onCheckedChange = { viewModel.setShareWriteChapters(row.shareId, it) }, testTag = row.testTag,
+                        )
+                    }
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                     Eyebrow("Demo", muted = true)
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                         Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
@@ -344,34 +380,24 @@ fun SettingsScreen(
         }
     }
 
-    state.confirmDisconnect?.let { row ->
-        DisconnectDialog(name = row.name, onConfirm = { viewModel.disconnect(row) }, onKeep = { viewModel.askDisconnect(null) })
+    if (state.confirmClearChapters) {
+        val c = state.userChapters
+        ConfirmDialog(
+            title = "Clear chapters?",
+            body = "Clears the " + (if (c.chapters == 1) "1 chapter" else "${c.chapters} chapters") + " kept on this phone. Nothing on the share is touched: films with a chapter file there get theirs back at the next scan; the rest go back to their own markers or the even split.",
+            confirmLabel = "Clear chapters", keepLabel = "Keep them",
+            onConfirm = viewModel::clearChapters, onKeep = { viewModel.askClearChapters(false) },
+            testTag = "settings_clear_chapters",
+        )
     }
-}
-
-/**
- * "DISCONNECT TOWER?" (design: the one destructive confirm): a #0F0F0F
- * card at 20dp corners with a #2E2E2E hairline over a 72% scrim, the
- * title in Michroma 15, body copy, red Disconnect over a frosted Keep it.
- */
-@Composable
-private fun DisconnectDialog(name: String, onConfirm: () -> Unit, onKeep: () -> Unit) {
-    val colors = RegolithTheme.colors
-    Dialog(onDismissRequest = onKeep) {
-        Column(
-            Modifier.fillMaxWidth().background(colors.surface, DialogShape).border(1.dp, colors.raised, DialogShape).padding(Spacing.s18).testTag("settings_disconnect_dialog"),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s12),
-        ) {
-            DisplayText("Disconnect $name?", style = TextStyles.dialogTitle)
-            Text(
-                "The media list is removed from this device. Nothing on the share is touched, and you can add it back with the same address.",
-                style = TextStyles.body, color = colors.body,
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                DestructiveButton(text = "Disconnect", onClick = onConfirm, testTag = "settings_disconnect_confirm_button", modifier = Modifier.fillMaxWidth().height(48.scaledDp()))
-                SecondaryButton(text = "Keep it", onClick = onKeep, testTag = "settings_disconnect_keep_button", modifier = Modifier.fillMaxWidth())
-            }
-        }
+    state.confirmDisconnect?.let { row ->
+        ConfirmDialog(
+            title = "Disconnect ${row.name}?",
+            body = "The media list is removed from this device. Nothing on the share is touched, and you can add it back with the same address.",
+            confirmLabel = "Disconnect", keepLabel = "Keep it",
+            onConfirm = { viewModel.disconnect(row) }, onKeep = { viewModel.askDisconnect(null) },
+            testTag = "settings_disconnect",
+        )
     }
 }
 

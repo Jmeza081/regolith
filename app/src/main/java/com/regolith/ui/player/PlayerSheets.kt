@@ -46,12 +46,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.regolith.R
+import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMarks
+import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterSyncNote
+import com.regolith.domain.playback.ChapterSyncState
 import androidx.compose.ui.platform.LocalConfiguration
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.theme.CardShape
@@ -308,19 +313,55 @@ fun ChaptersSheetContent(
     frames: Map<Long, android.graphics.Bitmap?>,
     positionMs: Long,
     durationMs: Long,
-    fromContainer: Boolean,
+    source: ChapterSource,
     onSeek: (Long) -> Unit,
+    /** Where the user's chapters stand against the share (P10); null unless [source] is [ChapterSource.USER]. */
+    sync: ChapterSyncState? = null,
+    /** A one-time line about the last sync, shown under the subtitle. */
+    syncNote: ChapterSyncNote? = null,
+    /** Opens the editor; null for a film with no library row to keep chapters on. */
+    onEdit: (() -> Unit)? = null,
+    /** Deletes the user's chapters; null unless [source] is [ChapterSource.USER]. */
+    onRevert: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val currentIndex = chapters.indexOfLast { it.startMs <= positionMs }
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
         DisplayText("Chapters")
         // Which kind you are looking at, because it changes what the names
-        // mean: "Act one" was written by someone, "Part 3" is arithmetic.
+        // mean: "Act one" was written by someone, "Part 3" is arithmetic,
+        // and "Yours" is the one you can change.
         Text(
-            if (fromContainer) "${chapters.size} marked in this file" else everyLabel(ChapterMarks.intervalFor(durationMs)),
+            when (source) {
+                ChapterSource.USER -> {
+                    val count = if (chapters.size == 1) "1 chapter" else "${chapters.size} chapters"
+                    when (sync) {
+                        ChapterSyncState.ON_SHARE -> "Yours · on the share · $count"
+                        ChapterSyncState.WAITING -> "Yours · waiting to write · $count"
+                        ChapterSyncState.READ_ONLY -> "Yours · read-only share · $count"
+                        ChapterSyncState.FROM_SHARE -> "From the share · $count"
+                        ChapterSyncState.PHONE_ONLY, null -> "Yours · on this phone · $count"
+                    }
+                }
+                ChapterSource.CONTAINER -> "${chapters.size} marked in this file"
+                ChapterSource.EVEN -> everyLabel(ChapterMarks.intervalFor(durationMs))
+            },
             style = TextStyles.meta12, color = colors.metadata,
+            modifier = Modifier.testTag("player_chapters_source"),
         )
+        syncNote?.let { note ->
+            Text(
+                when (note) {
+                    ChapterSyncNote.REPLACED_BY_SHARE -> "The share had a newer chapter file; it replaced this phone's copy."
+                    ChapterSyncNote.FILE_STAYS -> "The share is read-only, so its chapter file stays and comes back at the next scan."
+                    ChapterSyncNote.WRITE_FAILED -> "The last write to the share failed; it will be tried again at the next scan."
+                },
+                style = TextStyles.meta, color = colors.accent, modifier = Modifier.testTag("player_chapters_sync_note"),
+            )
+        }
+    }
+    if (onEdit != null) RowAction(LucideR.drawable.lucide_ic_pencil, "Edit chapters", onEdit, "player_chapters_edit_button")
     }
     BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {
         val columns = (maxWidth / CHAPTER_CARD_MIN).toInt().coerceIn(2, 4)
@@ -347,6 +388,14 @@ fun ChaptersSheetContent(
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+        }
+    }
+    // The way back to the file's own markers or the even split. Nothing to
+    // restore: the rows go, and the next kind down fills in (see
+    // `PlaybackState.chapters`).
+    if (onRevert != null) {
+        Box(Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp).clickable(interactionSource = null, indication = null, onClick = onRevert).testTag("player_chapters_revert_button"), contentAlignment = Alignment.CenterStart) {
+            Text("Revert to default chapters", style = TextStyles.buttonTertiary, color = colors.accent)
         }
     }
 }

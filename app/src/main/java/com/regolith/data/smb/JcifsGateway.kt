@@ -235,6 +235,37 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             JcifsByteSource(file.openRandomAccess("r"), file.length())
         }
 
+    // --- Writing (P10): three methods, one caller (`SidecarWriter`), one
+    // file name. The URL is built WITHOUT the trailing slash `urlFor` adds:
+    // jcifs reads an existing file through either form, but creates a new
+    // name as a directory when the URL ends in `/`.
+
+    override suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long =
+        withContext(Dispatchers.IO) {
+            withDialect(host, credentials, "$share/$relPath") { ctx ->
+                SmbFile(fileUrl(host, share, relPath), ctx).openOutputStream().use { it.write(bytes) }
+                // A fresh handle: the one that wrote may still carry cached attributes.
+                SmbFile(fileUrl(host, share, relPath), ctx).lastModified()
+            }
+        }
+
+    override suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String) =
+        withContext(Dispatchers.IO) {
+            withDialect(host, credentials, "$share/$fromRelPath") { ctx ->
+                SmbFile(fileUrl(host, share, fromRelPath), ctx).renameTo(SmbFile(fileUrl(host, share, toRelPath), ctx), true)
+            }
+        }
+
+    override suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) =
+        withContext(Dispatchers.IO) {
+            withDialect(host, credentials, "$share/$relPath") { ctx ->
+                val file = SmbFile(fileUrl(host, share, relPath), ctx)
+                if (file.exists()) file.delete()
+            }
+        }
+
+    private fun fileUrl(host: SmbHost, share: String, relPath: String): String = urlFor(host, share, relPath).trimEnd('/')
+
     /** Raw smb:// URL. jcifs-ng takes path characters as-is (no percent-decoding), so nothing is encoded. */
     private fun urlFor(host: SmbHost, share: String?, relPath: String): String = buildString {
         append("smb://").append(host.host)
@@ -250,6 +281,10 @@ class JcifsGateway @Inject constructor() : SmbGateway {
     private inline fun <T> wrap(host: SmbHost, path: String, dialect: String, block: () -> T): T = try {
         block()
     } catch (e: SmbAuthException) {
+        // jcifs raises its auth exception for ACCESS_DENIED too — "signed in,
+        // but not allowed to do this" — which for a write is a read-only
+        // share, not a bad password.
+        if (e.ntStatus == NtStatus.NT_STATUS_ACCESS_DENIED) throw SmbFailure.Forbidden(path, e, detail(e, dialect))
         throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
         // The full cause chain: jcifs folds transport-thread failures into one status code.

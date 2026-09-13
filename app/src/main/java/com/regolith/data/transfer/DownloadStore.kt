@@ -23,6 +23,12 @@ class DownloadStore @Inject constructor(@ApplicationContext context: Context) {
 
     fun partFor(relPath: String): File = File(root, "$relPath.part")
 
+    /** The chapter file kept beside a copy (P10): `12.mkv.chapters.txt`. */
+    fun sidecarFor(relPath: String): File = File(root, "$relPath.chapters.txt")
+
+    /** Every local chapter file, for Settings › Chapters › Clear. */
+    fun sidecars(): List<File> = root.listFiles()?.filter { it.isFile && it.name.endsWith(".chapters.txt") }.orEmpty()
+
     /** Bytes free on the volume that holds the directory. */
     fun freeBytes(): Long {
         root.mkdirs()
@@ -40,5 +46,6 @@ class DownloadStore @Inject constructor(@ApplicationContext context: Context) {
     fun delete(relPath: String) {
         fileFor(relPath).delete()
         partFor(relPath).delete()
+        sidecarFor(relPath).delete()
     }
 }

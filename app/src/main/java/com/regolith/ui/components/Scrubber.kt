@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.Chapter
 import com.regolith.ui.theme.RegolithTheme
 
 /**
@@ -35,9 +36,15 @@ import com.regolith.ui.theme.RegolithTheme
  * white flagged A and B in red, the red fill to the playhead, and in
  * landscape a 14dp red knob. Portrait draws the 3dp bar without a knob.
  *
+ * Chapters cut the track into segments with a 2dp gap between them, the
+ * way YouTube draws them, and the segment under the finger grows while
+ * scrubbing so you can see which part you are in before the preview says
+ * its name. Every layer — buffered, loop, fill — respects the gaps.
+ *
  * Drag anywhere on the track to scrub; [onScrub] fires with the live
  * fraction (the preview frame follows it) and [onScrubEnd] with the final
- * one. Tap to jump.
+ * one. Tap to jump. Nothing on it can be grabbed by mistake: chapter marks
+ * are moved on the editor's own timeline, not here.
  */
 @Composable
 fun Scrubber(
@@ -50,7 +57,7 @@ fun Scrubber(
     modifier: Modifier = Modifier,
     loop: AbLoop? = null,
     pendingAMs: Long? = null,
-    chaptersMs: List<Long> = emptyList(),
+    chapters: List<Chapter> = emptyList(),
     trackHeight: Dp = 4.dp,
     showKnob: Boolean = true,
     testTag: String = "player_scrubber",
@@ -97,25 +104,41 @@ fun Scrubber(
             },
     ) {
         val trackH = trackHeight.toPx()
+        val hotH = trackH * HOT_SCALE
         val y = size.height / 2
         val w = size.width
         fun x(f: Float) = f * w
         fun xMs(ms: Long) = if (durationMs > 0) x((ms.toFloat() / durationMs).coerceIn(0f, 1f)) else 0f
-        val radius = CornerRadius(trackH)
 
-        drawRoundRect(colors.trackWhite, Offset(0f, y - trackH / 2), Size(w, trackH), radius)
-        if (buffered > 0f) {
-            drawRoundRect(Color(0x6BFFFFFF), Offset(0f, y - trackH / 2), Size(x(buffered), trackH), radius)
+        // Segment edges in px: 0, every chapter start strictly inside the
+        // film, w. A film with no chapters is one segment — the old bar.
+        val edges = buildList {
+            add(0f)
+            if (durationMs > 0) chapters.map { it.startMs }.filter { it > 0 && it < durationMs }.sorted().forEach { add(xMs(it)) }
+            add(w)
         }
+        val gap = if (edges.size > 2) GAP.toPx() else 0f
+        val hotX = if (dragging) x(shown) else -1f
+
+        /** A run of colour from [fromX] to [toX], cut by the gaps and lifted where the finger is. */
+        fun span(color: Color, fromX: Float, toX: Float) {
+            for (i in 0 until edges.size - 1) {
+                val segStart = if (i == 0) edges[i] else edges[i] + gap / 2
+                val segEnd = if (i == edges.size - 2) edges[i + 1] else edges[i + 1] - gap / 2
+                val start = maxOf(fromX, segStart)
+                val end = minOf(toX, segEnd)
+                if (end <= start) continue
+                val h = if (hotX >= edges[i] && hotX < edges[i + 1]) hotH else trackH
+                drawRoundRect(color, Offset(start, y - h / 2), Size(end - start, h), CornerRadius(h / 2))
+            }
+        }
+
+        span(colors.trackWhite, 0f, w)
+        if (buffered > 0f) span(Color(0x6BFFFFFF), 0f, x(buffered))
         val a = loop?.aMs ?: pendingAMs
         val b = loop?.bMs
-        if (a != null && b != null) {
-            drawRoundRect(Color(0xCCFFFFFF), Offset(xMs(a), y - trackH / 2), Size(xMs(b) - xMs(a), trackH), radius)
-        }
-        drawRoundRect(colors.accent, Offset(0f, y - trackH / 2), Size(x(shown), trackH), radius)
-        for (c in chaptersMs) {
-            drawRect(colors.ground, Offset(xMs(c) - 1.dp.toPx(), y - trackH), Size(2.dp.toPx(), trackH * 2))
-        }
+        if (a != null && b != null) span(Color(0xCCFFFFFF), xMs(a), xMs(b))
+        span(colors.accent, 0f, x(shown))
         if (a != null) flag(this, xMs(a), y, "A", colors.accent)
         if (b != null) flag(this, xMs(b), y, "B", colors.accent)
         if (showKnob || dragging) {
@@ -139,3 +162,9 @@ private fun flag(scope: DrawScope, x: Float, y: Float, label: String, fill: Colo
     }
     drawContext.canvas.nativeCanvas.drawText(label, x, top + h - 3.dp.toPx(), paint)
 }
+
+/** The 2dp cut between chapters. */
+private val GAP = 2.dp
+
+/** How much the finger's segment grows while scrubbing. */
+private const val HOT_SCALE = 1.75f

@@ -33,6 +33,32 @@ where they always have, under Library › On this device — which has the same
 hold-to-pick gesture for removing several at once, and a Clear all that
 asks first.
 
+Chapters can be yours (P9). Every file has chapters — the container's own
+markers, or an even split — and the player's Chapters sheet now has a
+pencil: mark a place at the playhead, open it, name it, type or nudge its
+start time or drag its handle on the marks strip, and Done makes those the
+film's chapters, winning over
+whatever it came with. The scrubber draws chapters as segments and names
+the part under your finger; Search lists chapter names as points of
+interest and opens the film at that moment; Revert on the sheet takes a
+film back to its defaults, and Settings › Chapters clears everything you
+wrote.
+
+Those chapters travel with the film (P10): Save writes a small text file
+beside it on the share and says so at the bottom of the screen, `Heat.1995.chapters.txt`, in the format
+mkvmerge reads, and the next scan picks up any such file whether Regolith,
+a desktop tool or you wrote it. The phone keeps a copy so search stays
+instant and offline play has chapters; when both changed, the newer wins.
+A read-only share keeps chapters on the phone and says so. A downloaded
+film brings its chapter file along and keeps a copy beside it, rewritten
+on every edit, so an edit made offline is safe on the phone and reaches
+the share when it can. Revert removes the file too; Settings › Clear only
+empties the phone's copies, and the next scan brings back whatever the
+share has. In the editor, "Remove all chapters" starts a film over from a
+single unnamed mark; tapping the current tab's cell in the nav pill brings
+that tab back to its top. `docs/CHAPTERS.md` is the
+file's specification.
+
 ## Build and run
 
 Requirements: Android Studio 2026.1 (for its bundled JDK 21 and the SDK),

@@ -297,8 +297,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         backStack.add(RegolithKey.TitleDetail(fileId))
     }
 
+    /**
+     * A tab cell switches tabs; the CURRENT tab's cell brings its stack back
+     * to the top — Library three folders deep becomes Library. Already at
+     * the top, it does nothing, so a stray tap does not rebuild the screen.
+     */
     fun navigateToTab(tab: MainTab, force: Boolean = false) {
-        if (tab == currentTab && !force) return
+        if (backStack.lastOrNull() == tab.key && !force) return
         backStack.clear()
         if (tab != MainTab.HOME) backStack.add(RegolithKey.Home)
         backStack.add(tab.key)
@@ -412,6 +417,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onCancel = { backStack.removeLastOrNull() },
                                 onOpenTitle = { openTitle(it) },
                                 onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
+                                // A point of interest opens the player at that time (P9).
+                                onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                             )
                         }
                         entry<RegolithKey.Browse>(metadata = tabScreen + listPaneMeta) { key ->
