@@ -81,6 +81,7 @@ import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.library.LibraryViewModel
 import com.regolith.ui.search.SearchScreen
 import com.regolith.ui.onboarding.OnboardingScreen
+import com.regolith.ui.lock.LockScreen
 import com.regolith.ui.onboarding.SplashContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeOut
@@ -122,6 +123,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val start by appViewModel.startDestination.collectAsStateWithLifecycle()
     val dimmedTabs by appViewModel.dimmedTabs.collectAsStateWithLifecycle()
     val tabDots by appViewModel.tabDots.collectAsStateWithLifecycle()
+    val locked by appViewModel.locked.collectAsStateWithLifecycle()
     // null = preferences still loading; the system splash is covering us.
     val startKey = start ?: return
 
@@ -526,8 +528,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 )
 
                 AnimatedVisibility(visible = splash, exit = fadeOut(), modifier = Modifier.fillMaxSize()) { SplashContent() }
+                // The app lock, over everything including the splash: what it
+                // covers is the whole point of it.
+                AnimatedVisibility(visible = locked == true, exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+                    LockScreen(authenticate = appViewModel::authenticate, onUnlocked = appViewModel::unlocked)
+                }
 
-                if (currentTab != null && !splash) {
+                if (currentTab != null && !splash && locked != true) {
                     // On a wide window the rail and its spine occupy the same
                     // edge and swap: whichever is not showing has slid out.
                     AnimatedVisibility(

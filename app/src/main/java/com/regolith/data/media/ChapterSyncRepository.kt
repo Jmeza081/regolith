@@ -104,7 +104,7 @@ class ChapterSyncRepository @Inject constructor(
             null
         } catch (e: Exception) {
             Log.w(TAG, "sidecar for downloaded $videoName not read: $e"); null
-        } ?: return
+        }?.takeIf { it.isNotBlank() } ?: return
         mirrorLocal(fileId, text)
         if (chapterDao.forFile(fileId).isEmpty()) {
             val chapters = ChapterSidecar.parse(text, mediaFileDao.byId(fileId)?.durationMs ?: 0L)
@@ -120,7 +120,12 @@ class ChapterSyncRepository @Inject constructor(
 
     private suspend fun mirrorLocal(fileId: Long, text: String) {
         val file = localSidecar(fileId) ?: return
-        runCatching { file.parentFile?.mkdirs(); file.writeText(text, Charsets.UTF_8) }.onFailure { Log.w(TAG, "local sidecar for $fileId not written: $it") }
+        runCatching {
+            // No chapters is no file. Writing an empty one leaves a 0-byte
+            // `.chapters.txt` beside every copy that never had any, which is
+            // litter that reads like a mistake.
+            if (text.isBlank()) file.delete() else { file.parentFile?.mkdirs(); file.writeText(text, Charsets.UTF_8) }
+        }.onFailure { Log.w(TAG, "local sidecar for $fileId not written: $it") }
     }
 
     private suspend fun dropLocal(fileId: Long) {

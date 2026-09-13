@@ -82,6 +82,7 @@ class LibraryViewModel @AssistedInject constructor(
     init {
         viewModelScope.launch { prefs.librarySort.collect { sort -> _uiState.update { it.copy(sort = sort, tiles = sorted(unsorted, sort)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
+        viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
         viewModelScope.launch {
             val shares = sources.observeEnabledShares()
@@ -331,6 +332,11 @@ class LibraryViewModel @AssistedInject constructor(
     }
 
     /** Poster wall <-> rows. Written to preferences; the collector above puts it back on the state. */
+    /** The On this device tab's own tiles-or-rows switch. */
+    fun toggleDeviceViewMode() {
+        viewModelScope.launch { prefs.setDeviceViewMode(_uiState.value.device.viewMode.toggled()) }
+    }
+
     fun toggleViewMode() {
         viewModelScope.launch { prefs.setLibraryViewMode(_uiState.value.viewMode.toggled()) }
     }

@@ -9,6 +9,7 @@ import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
+import com.regolith.domain.security.LockAfter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -33,6 +34,7 @@ class AppPreferences @Inject constructor(
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
+        val deviceViewMode = stringPreferencesKey("device_view_mode")
         val autoplayNext = booleanPreferencesKey("autoplay_next")
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
@@ -40,6 +42,33 @@ class AppPreferences @Inject constructor(
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
         val ambientLight = booleanPreferencesKey("ambient_light")
+        val appLock = booleanPreferencesKey("app_lock")
+        val appLockAfter = stringPreferencesKey("app_lock_after")
+    }
+
+    /** Settings › Privacy: ask for a fingerprint, face or screen lock before showing the library. */
+    /**
+     * Library › On this device. Its own key beside [libraryViewMode] for the
+     * same reason Browse has one: this list is about copies and their state,
+     * so it starts as rows, and the choice should not follow the wall's.
+     */
+    val deviceViewMode: Flow<ViewMode> = store.data.map { it[Keys.deviceViewMode].toViewMode(ViewMode.ROWS) }
+
+    suspend fun setDeviceViewMode(mode: ViewMode) {
+        store.edit { it[Keys.deviceViewMode] = mode.name }
+    }
+
+    val appLock: Flow<Boolean> = store.data.map { it[Keys.appLock] ?: false }
+
+    suspend fun setAppLock(enabled: Boolean) {
+        store.edit { it[Keys.appLock] = enabled }
+    }
+
+    /** How long Regolith may sit in the background before it asks again. */
+    val appLockAfter: Flow<LockAfter> = store.data.map { LockAfter.of(it[Keys.appLockAfter]) }
+
+    suspend fun setAppLockAfter(after: LockAfter) {
+        store.edit { it[Keys.appLockAfter] = after.name }
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */

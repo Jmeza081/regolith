@@ -17,6 +17,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.regolith.data.security.BiometricGate
+import com.regolith.domain.security.AuthResult
+import com.regolith.domain.security.AppLock
+import com.regolith.domain.security.LockAfter
+import com.regolith.player.PlaybackSession
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -28,19 +34,100 @@ import javax.inject.Inject
  * A ViewModel is a store that survives rotation. This one is scoped to the
  * Activity, so it is created once per app session.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @HiltViewModel
 class AppViewModel @Inject constructor(
     private val prefs: AppPreferences,
     sources: SourceRepository,
     transfers: TransferRepository,
     private val selection: SelectionStore,
+    private val playback: PlaybackSession,
+    private val biometrics: BiometricGate,
 ) : ViewModel() {
+
+    // --- The app lock (fingerprint, face, or the screen lock).
+
+    /**
+     * Whether the lock screen is covering everything. Null until the
+     * preference has been read — the system splash covers that moment, the
+     * same way it waits for [startDestination], so the library is never
+     * drawn for a frame before the lock lands on top of it.
+     */
+    val locked: StateFlow<Boolean?> get() = _locked
+    private val _locked = MutableStateFlow<Boolean?>(null)
+
+    /** Whether the lock is switched on at all — the Activity reads it to blank the recents preview. */
+    val appLockEnabled: StateFlow<Boolean> = prefs.appLock.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** When the app last went to the background; null on a cold start, which always asks. */
+    private var leftAtMs: Long? = null
+    private var lockAfter = LockAfter.DEFAULT
+
+    /** The prompt itself. The Activity is passed in and never kept: the system needs a window to draw over. */
+    suspend fun authenticate(activity: android.app.Activity): AuthResult =
+        biometrics.authenticate(activity, title = "Unlock Regolith", subtitle = "Your library is locked.")
+
+    /**
+     * The app went to the background. Nothing is decided here: the clock is
+     * only read on the way back, so a long film in the background does not
+     * lock behind you while you watch it.
+     */
+    fun wentToBackground() {
+        if (_locked.value == false) leftAtMs = System.currentTimeMillis()
+    }
+
+    /** The app came back. [AppLock.shouldAsk] decides, and locking pauses whatever was playing. */
+    fun cameToForeground() {
+        if (_locked.value == null) return // still starting; the cold-start decision owns it
+        if (AppLock.shouldAsk(appLockEnabled.value, lockAfter, leftAtMs, System.currentTimeMillis())) lockNow()
+    }
+
+    /** Past the prompt. The grace clock starts again from here. */
+    fun unlocked() {
+        _locked.value = false
+        leftAtMs = null
+    }
+
+    private fun lockNow() {
+        if (_locked.value == true) return
+        if (standDown()) return
+        _locked.value = true
+        playback.pause()
+    }
+
+    /**
+     * Whether the lock has to step aside, and does.
+     *
+     * If the phone has no screen lock and no biometric left — the user took
+     * theirs off — there is nothing to check against and no way back in.
+     * Holding the library shut would protect nothing, because the phone
+     * itself now opens to anyone, and it would lock its owner out for good.
+     * So the lock opens the door and switches itself off, which is what
+     * Settings will then say.
+     */
+    private fun standDown(): Boolean {
+        if (!biometrics.availability().nothingToCheck) return false
+        _locked.value = false
+        viewModelScope.launch { prefs.setAppLock(false) }
+        return true
+    }
 
     init {
         // Rows a dead process left RUNNING have no worker behind them and
         // would read as "arriving" forever. Put them back in the queue once,
         // at startup, which is the only place that can know a restart happened.
         viewModelScope.launch { transfers.resumeInterrupted() }
+        viewModelScope.launch {
+            // The cold-start decision, made once and before anything draws.
+            lockAfter = prefs.appLockAfter.first()
+            _locked.value = false
+            if (prefs.appLock.first()) lockNow()
+            // Then follow the setting for the rest of the run: turning the
+            // lock off lets you straight back in, and turning it on applies
+            // from the next time you leave rather than this instant.
+            launch { prefs.appLock.collect { on -> if (!on) unlocked() } }
+            launch { prefs.appLockAfter.collect { lockAfter = it } }
+        }
     }
 
     /**

@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,15 @@ import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.RegolithSwitch
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SettingsRowHeight
+import androidx.activity.compose.LocalActivity
+import androidx.compose.ui.draw.alpha
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.regolith.domain.security.BiometricAvailability
+import com.regolith.domain.security.LockAfter
+import com.regolith.ui.components.Segment
+import com.regolith.ui.components.SegmentedTabs
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.TopBar
@@ -82,6 +92,13 @@ fun SettingsScreen(
     onOpenDownloads: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val activity = LocalActivity.current
+    // Enrolling a fingerprint happens in the system settings, so the answer
+    // can change while this screen is in the background.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.refreshBiometrics() }
+    }
     val colors = RegolithTheme.colors
     // Preparing artwork runs as a foreground job with a notification, and
     // Android 13+ only shows it once notifications are allowed. Asked on the
@@ -315,7 +332,50 @@ fun SettingsScreen(
                 }
             }
             if (BuildConfig.DEMO_LIBRARY) {
-                // The chapters the user wrote (P9), and the one way to clear
+                // Privacy (P11): the app lock. The switch is only usable when
+            // the device has something to check against; the note says which
+            // way it is short so the answer is not "it just does nothing".
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                Eyebrow("Privacy", muted = true)
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    RegolithSwitch(
+                        label = "Lock Regolith",
+                        note = when {
+                            state.biometrics == BiometricAvailability.NONE_ENROLLED ->
+                                "Set up a fingerprint, face unlock or a screen lock on this phone first."
+                            state.biometrics == BiometricAvailability.NO_HARDWARE ->
+                                "This device has no fingerprint reader, face unlock or screen lock."
+                            state.biometrics == BiometricAvailability.UNAVAILABLE && !state.appLock ->
+                                "The fingerprint reader is not answering just now."
+                            else -> "Ask for a fingerprint, face or screen lock before showing the library."
+                        },
+                        checked = state.appLock,
+                        onCheckedChange = { want -> activity?.let { viewModel.setAppLock(it, want) } },
+                        // Already on stays switchable off even if the reader has since gone quiet.
+                        enabled = state.appLock || state.biometrics.canEnable,
+                        testTag = "settings_app_lock_switch",
+                    )
+                    NestedRow {
+                        Column(
+                            Modifier.padding(vertical = Spacing.s12).alpha(if (state.appLock) 1f else DISABLED_ALPHA),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        ) {
+                            Text("Ask again", style = TextStyles.settingLabel, color = colors.ink)
+                            Text(
+                                "After you have left Regolith for this long.",
+                                style = TextStyles.settingMeta, color = colors.metadata,
+                            )
+                            SegmentedTabs(
+                                segments = LockAfter.entries.map { Segment(it.label, "settings_app_lock_after_${it.name.lowercase()}") },
+                                selected = LockAfter.entries.indexOf(state.appLockAfter),
+                                onSelect = { if (state.appLock) viewModel.setAppLockAfter(LockAfter.entries[it]) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // The chapters the user wrote (P9), and the one way to clear
             // them all. Per-film revert lives on the player's Chapters
             // sheet; this is for starting over.
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
@@ -414,3 +474,6 @@ private fun NestedRow(content: @Composable () -> Unit) {
         Box(Modifier.padding(start = Spacing.s12).weight(1f)) { content() }
     }
 }
+
+/** A nested control whose parent switch is off: readable, plainly not in play. */
+private const val DISABLED_ALPHA = 0.38f

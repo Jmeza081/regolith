@@ -114,6 +114,8 @@ data class DeviceRow(
 }
 
 data class DeviceUiState(
+    /** Tiles or rows. Its own choice, remembered apart from the network wall's. */
+    val viewMode: ViewMode = ViewMode.ROWS,
     val usedBytes: Long = 0,
     val totalBytes: Long = 0,
     val ready: List<DeviceRow> = emptyList(),

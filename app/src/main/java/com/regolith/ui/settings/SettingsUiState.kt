@@ -2,6 +2,8 @@ package com.regolith.ui.settings
 
 import com.regolith.data.artwork.PrefetchStatus
 import com.regolith.domain.playback.UserChapterStats
+import com.regolith.domain.security.BiometricAvailability
+import com.regolith.domain.security.LockAfter
 import com.regolith.domain.transfer.QueueProgress
 import com.regolith.ui.util.formatBytes
 
@@ -51,6 +53,11 @@ data class SettingsUiState(
     val confirmClearChapters: Boolean = false,
     /** One switch per enabled share: does Done write a chapter file beside each film there (P10). */
     val shareWrites: List<ShareWriteRow> = emptyList(),
+    // --- Privacy: the app lock (P11).
+    val appLock: Boolean = false,
+    val appLockAfter: LockAfter = LockAfter.DEFAULT,
+    /** What the device can do about biometrics; the switch is only usable when it is ready. */
+    val biometrics: BiometricAvailability = BiometricAvailability.UNAVAILABLE,
     // --- Demo library (BuildConfig.DEMO_LIBRARY builds only).
     /** True while the demo server exists; the row offers the opposite action. */
     val demoInstalled: Boolean = false,

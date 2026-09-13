@@ -16,15 +16,22 @@ data class ResumeItem(
     val fraction: Float get() = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
 }
 
-/** One poster in "Newly added". */
+/** One poster in "Newly added", and in "On this device", which draws the same tile. */
 data class NewItem(
     val fileId: Long,
     val name: String,
     val artwork: ArtworkRequest,
     val meta: String,
     val unwatched: Boolean = true,
+    /**
+     * What its test tag is built from. The two rows can hold the same film
+     * at once — something you downloaded is often something newly added —
+     * and two identical tags on one screen is a QA flow tapping whichever
+     * it finds first.
+     */
+    val tag: String = "home_new",
 ) {
-    val testTag get() = "home_new_$fileId"
+    val testTag get() = "${tag}_$fileId"
 }
 
 /**
@@ -40,7 +47,9 @@ data class HomeUiState(
     val refreshLine: String? = null,
     /** True until the first scan has finished on at least one share. */
     val neverScanned: Boolean = false,
-    /** Finished copies on this device, for the "On this device" summary. */
+    /** Finished copies on this device, newest first; the row shows the first few. */
+    val onDevice: List<NewItem> = emptyList(),
+    /** How many finished copies there are in total, and what they occupy. */
     val downloadsReady: Int = 0,
     val downloadsBytes: Long = 0,
 ) {
