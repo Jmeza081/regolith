@@ -22,6 +22,13 @@ Library and Browse walls beside a title-detail pane with a resettable
 divider, and the player's two-column and flex-mode layouts. Autoplay next
 came with that round and works on the phone too.
 
+Regolith can lock itself (P11). Settings › Privacy asks for a fingerprint,
+face or the phone's own screen lock before the library is shown, and you
+choose how long the app may sit in the background first — at once, after a
+minute, or after five. Backgrounding it blanks the preview in the app
+switcher, and locking pauses whatever was playing. If the phone loses its
+screen lock entirely the lock stands down rather than shutting you out.
+
 Downloads take a batch: hold any video or folder in Browse, Library or
 Search to start picking, tap the rest, and one red Download queues the lot
 — picking a folder takes everything inside it, including folders the app

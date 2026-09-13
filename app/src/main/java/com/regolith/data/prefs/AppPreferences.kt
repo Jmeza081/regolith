@@ -9,6 +9,7 @@ import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
+import com.regolith.domain.security.LockAfter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -40,6 +41,22 @@ class AppPreferences @Inject constructor(
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
         val ambientLight = booleanPreferencesKey("ambient_light")
+        val appLock = booleanPreferencesKey("app_lock")
+        val appLockAfter = stringPreferencesKey("app_lock_after")
+    }
+
+    /** Settings › Privacy: ask for a fingerprint, face or screen lock before showing the library. */
+    val appLock: Flow<Boolean> = store.data.map { it[Keys.appLock] ?: false }
+
+    suspend fun setAppLock(enabled: Boolean) {
+        store.edit { it[Keys.appLock] = enabled }
+    }
+
+    /** How long Regolith may sit in the background before it asks again. */
+    val appLockAfter: Flow<LockAfter> = store.data.map { LockAfter.of(it[Keys.appLockAfter]) }
+
+    suspend fun setAppLockAfter(after: LockAfter) {
+        store.edit { it[Keys.appLockAfter] = after.name }
     }
 
     /** The player's gesture map is shown once, the first time the player opens. */

@@ -406,6 +406,43 @@ What a web developer would not guess:
   action that deletes a file, after a confirm that names it, and on a
   read-only share it leaves a note that the file will come back.
 
+## App lock (P11)
+
+Regolith can ask for a fingerprint, face or the phone's own screen lock
+before it shows the library. Settings › Privacy switches it on and chooses
+how long the app may sit in the background first.
+
+```
+MainActivity ── ON_PAUSE ── FLAG_SECURE (blanks the recents thumbnail)   ON_RESUME ── clears it
+             ── ON_STOP ── AppViewModel.wentToBackground() ── remembers the clock
+             ── ON_START ── cameToForeground() ── AppLock.shouldAsk(pure) ── lockNow() ── PlaybackSession.pause()
+AppViewModel.locked: StateFlow<Boolean?>   null = preferences unread; the system splash waits on it, as it does for startDestination
+NavGraph ── AnimatedVisibility(locked == true) ── LockScreen ── BiometricGate.authenticate(activity) ── unlocked()
+Settings › Privacy ── setAppLock(activity, true) ── the prompt FIRST, then the preference
+```
+
+What a web developer would not guess:
+
+- **The platform prompt, not the support library.** `BiometricPrompt` from
+  `android.hardware.biometrics` does everything needed at API 30, and
+  minSdk here is 34. AndroidX's version would add a dependency and demand a
+  `FragmentActivity`, which this single-Activity app does not have. Zero new
+  dependencies; one new permission.
+- **`BIOMETRIC_STRONG or DEVICE_CREDENTIAL`.** A finger that will not read
+  is not a reason to lose your library, so the PIN is always a way in — and
+  it is what makes the lock testable on an emulator with no reader.
+- **The splash waits for the decision.** `locked` is `Boolean?`, null until
+  the preference has been read, and `setKeepOnScreenCondition` holds the
+  system splash for it. Otherwise the library is drawn for a frame before
+  the lock lands on top of it.
+- **The lock stands down when there is nothing to check against.** If the
+  phone has no screen lock and no biometric left, the lock opens the door
+  and switches itself off: it would protect nothing (the phone opens to
+  anyone) and it would shut its owner out for good. A sensor that is merely
+  busy or locked out is NOT this case, and keeps the door shut.
+- **Locking pauses the film.** A lock that hides the picture while the sound
+  carries on is not a lock.
+
 ## Decision log
 
 | Date | Decision | Why |
@@ -594,6 +631,10 @@ What a web developer would not guess:
 | 2026-09-13 | A downloaded film gets a local copy of its chapter file, rewritten on every edit | The owner's rule: an edit on a downloaded film updates the local and the network copy. The rows already served offline play; the file beside the copy makes the phone's copy durable and readable by anything that can see the downloads directory, and the download step fetches the share's file so a fresh download is complete. Removing the copy removes the file; Settings › Clear removes every local one, since it clears the phone. |
 | 2026-09-13 | Tapping the current tab's cell brings that tab back to its top | Library three folders deep, tap Library: the expectation from every tab bar since iOS 2, and the app used to do nothing. `navigateToTab` now checks whether the stack's top is the tab's root key rather than whether the tab is current, so a stray tap at the top still does nothing. |
 | 2026-09-12 | ACCESS_DENIED maps to `Forbidden`, even though jcifs raises it as an auth exception | Seen on the first write against the fixture's read-only share: "Sign-in failed" for an account that had just listed and read the share. `Forbidden` was already documented as "signed in, refused this request"; it is now what the status actually produces, so a read-only share reads as read-only. |
+| 2026-09-13 | The app lock uses the PLATFORM `BiometricPrompt`, with `DEVICE_CREDENTIAL` always allowed | Everything it needs landed in API 30 and minSdk is 34, so AndroidX would buy nothing and cost a dependency plus a `FragmentActivity` (its prompt has no `ComponentActivity` overload, and this app has one Activity, which is not one). Allowing the screen lock beside the biometric is what stops a cut finger or a dark room from costing someone their library — and it is the only reason the lock can be tested on an emulator with no reader. |
+| 2026-09-13 | `locked` is a `Boolean?` and the system splash waits on it, exactly as it waits on `startDestination` | Both answers come from preferences, which are read asynchronously. Guessing "unlocked" while waiting draws the library for a frame before the lock lands on top of it, which is the one thing the feature exists to prevent. |
+| 2026-09-13 | A lock with nothing to check against opens the door and switches itself off | Found on the emulator: with the lock on, removing the phone's screen lock left the app stuck on "No fingerprints enrolled" with no way in, ever. Refusing to open protects nothing at that point — the phone itself opens to anyone — so the only non-trapping answer is to stand down and say so in Settings. A sensor that is busy or locked out is deliberately not this case: that is temporary, and it keeps the door shut. |
+| 2026-09-13 | Turning the lock ON asks for the prompt first; turning it off does not | Switching it on is a promise that you can get back in, so it is worth proving the reader works before anyone relies on it. Switching it off is made by someone who is already past the lock, so asking again would be theatre. |
 
 ## Phase plan
 
@@ -622,6 +663,7 @@ What a web developer would not guess:
 | P2 | Library roots inside a share: the Choose folders drill-down at any depth, on a skeleton of unlisted rows that keeps the share's real tree | `share_roots` (schema v5), `Share.roots`, `rootsCover`, `refreshSkeleton`, `RegolithKey.AddServer.Folders` |
 | P9 | User chapters: mark and name chapters in the player (marks on their own strip, one open at a time, typed start time), segments and names on the scrubber, points of interest in Search, clear-all in Settings | `user_chapters` + `user_chapter_fts` (schema v8), `UserChapterRepository`, `ChapterDraft`, `ChapterSource`, `PlaybackState.userChapters`/`chapterSource`, `ChapterEditorContent`/`MarksTimeline`, `ChapterDraft.parseClock`/`bounds`, `SearchHit.Moment`, `ConfirmDialog` |
 | P10 | Chapter sidecars: the durable copy of a film's user chapters is `<basename>.chapters.txt` beside it on the share; the scan imports, Done writes, newest wins; Settings clears the phone only | `ChapterSidecar`, `SmbGateway.write/rename/delete`, `SidecarWriter`, `chapter_sync` + `shares.writeChapters` (schema v9), `ChapterSyncRepository`, `ChapterSyncWorker`, `CredentialSource`, `ChapterSyncState` |
+| P11 | App lock: a fingerprint, face or screen lock before the library, with a grace period, set up in Settings › Privacy | `AppLock`, `LockAfter`, `BiometricAvailability`, `BiometricGate` (platform `BiometricPrompt`), `AppViewModel.locked`, `LockScreen`, `FLAG_SECURE` on pause |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

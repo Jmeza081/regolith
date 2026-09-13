@@ -556,6 +556,15 @@ class PlaybackSession @Inject constructor(
         }
     }
 
+    /**
+     * Pause without asking what the user meant. The app lock uses this:
+     * a film whose sound carries on behind the lock screen is a film
+     * playing to whoever picked the phone up.
+     */
+    fun pause() {
+        if (_player.value?.playWhenReady == true) current().pause()
+    }
+
     fun seekTo(positionMs: Long) {
         val p = current()
         p.seekTo(positionMs.coerceIn(0, p.duration.coerceAtLeast(0)))

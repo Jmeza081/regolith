@@ -8,6 +8,10 @@ import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.demo.DemoLibrary
 import com.regolith.data.prefs.AppPreferences
+import android.app.Activity
+import com.regolith.data.security.BiometricGate
+import com.regolith.domain.security.AuthResult
+import com.regolith.domain.security.LockAfter
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.DemoSource
 import com.regolith.data.repository.UserChapterRepository
@@ -48,6 +52,7 @@ class SettingsViewModel @Inject constructor(
     private val prefetcher: ArtworkPrefetcher,
     private val transfers: TransferRepository,
     private val userChapters: UserChapterRepository,
+    private val biometrics: BiometricGate,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -103,6 +108,8 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch { userChapters.stats().collect { c -> _uiState.update { it.copy(userChapters = c) } } }
+        viewModelScope.launch { prefs.appLock.collect { v -> _uiState.update { it.copy(appLock = v) } } }
+        viewModelScope.launch { prefs.appLockAfter.collect { v -> _uiState.update { it.copy(appLockAfter = v) } } }
         viewModelScope.launch {
             combine(sources.observeServers(), sources.observeEnabledShares()) { servers, shares ->
                 shares.mapNotNull { share ->
@@ -151,6 +158,38 @@ class SettingsViewModel @Inject constructor(
 
     /** Settings › Chapters › Clear: asks first, because there is no getting them back. */
     fun askClearChapters(open: Boolean) = _uiState.update { it.copy(confirmClearChapters = open) }
+
+    /**
+     * Re-read what the device can do about biometrics. Called when Settings
+     * appears, because the answer changes while the app is in the
+     * background: enrolling a fingerprint happens in the system settings,
+     * and coming back to a stale "no fingerprint set up" would be wrong.
+     */
+    fun refreshBiometrics() {
+        _uiState.update { it.copy(biometrics = biometrics.availability()) }
+    }
+
+    /**
+     * Turning the app lock ON asks for the prompt first — proof the reader
+     * works and that the person switching it on is the person who can get
+     * back in. Turning it OFF does not: they are already past the lock.
+     *
+     * The Activity is a parameter rather than something this holds: the
+     * system prompt needs a window, and a ViewModel that kept one would
+     * leak it on every rotation.
+     */
+    fun setAppLock(activity: Activity, enabled: Boolean) {
+        if (!enabled) {
+            viewModelScope.launch { prefs.setAppLock(false) }
+            return
+        }
+        viewModelScope.launch {
+            val result = biometrics.authenticate(activity, title = "Lock Regolith", subtitle = "Check it works before you rely on it.")
+            if (result is AuthResult.Success) prefs.setAppLock(true)
+        }
+    }
+
+    fun setAppLockAfter(after: LockAfter) = viewModelScope.launch { prefs.setAppLockAfter(after) }.let { }
 
     /** Settings › Chapters: whether chapter files are written to one share (P10). */
     fun setShareWriteChapters(shareId: Long, enabled: Boolean) = viewModelScope.launch { sources.setShareWriteChapters(shareId, enabled) }.let { }

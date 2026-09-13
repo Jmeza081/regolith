@@ -4,6 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.view.WindowManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -32,7 +35,9 @@ class MainActivity : ComponentActivity() {
         // Keep the system splash (black + wedge) up until we know whether to
         // start on onboarding or Home. Design: two seconds at most.
         val splash = installSplashScreen()
-        splash.setKeepOnScreenCondition { appViewModel.startDestination.value == null }
+        // Both answers are read from preferences; neither may be guessed at,
+        // or the library flashes up for a frame before the lock lands on it.
+        splash.setKeepOnScreenCondition { appViewModel.startDestination.value == null || appViewModel.locked.value == null }
 
         super.onCreate(savedInstanceState)
         handleViewIntent(intent)
@@ -40,12 +45,43 @@ class MainActivity : ComponentActivity() {
         // Draw under the status and navigation bars; the design runs content
         // beneath the floating nav pill with no hard edges.
         enableEdgeToEdge()
+        watchForBackgrounding()
 
         setContent {
             RegolithTheme {
                 RegolithNavGraph(appViewModel = appViewModel)
             }
         }
+    }
+
+    /**
+     * The app lock's clock and its blindfold.
+     *
+     * ON_STOP/ON_START is a true "the app went away and came back" here
+     * because there is exactly one Activity, and the manifest turns
+     * rotation and folding into a recompose rather than a restart — so this
+     * never fires for a turn of the phone.
+     *
+     * FLAG_SECURE goes on at ON_PAUSE, which is before the system takes the
+     * thumbnail it shows in the app switcher: without it the lock hides the
+     * library from whoever is holding the phone while the recents card
+     * shows them what was on screen anyway. It comes off at ON_RESUME, so
+     * an ordinary screenshot of a film still works.
+     */
+    private fun watchForBackgrounding() {
+        lifecycle.addObserver(
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE -> if (appViewModel.appLockEnabled.value) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                    Lifecycle.Event.ON_STOP -> appViewModel.wentToBackground()
+                    Lifecycle.Event.ON_START -> appViewModel.cameToForeground()
+                    Lifecycle.Event.ON_RESUME -> window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    else -> Unit
+                }
+            },
+        )
     }
 
     /** Regolith is already running and something else handed it a film. */
