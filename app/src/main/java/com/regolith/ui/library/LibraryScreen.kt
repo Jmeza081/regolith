@@ -64,7 +64,9 @@ import com.regolith.ui.components.PlayAllButton
 import com.regolith.ui.components.PlayAllSheet
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.Segment
+import com.regolith.ui.components.RegolithSheet
 import com.regolith.ui.components.SegmentedTabs
+import com.regolith.ui.components.SheetOption
 import com.regolith.ui.components.Skeleton
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
@@ -656,37 +658,16 @@ private fun ScanLine() {
  * radius. The check is the only red on the screen."): a 38×4 handle,
  * "SORT BY" in Michroma 14, five 48dp rows at 500 15/20.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SortSheet(selected: LibrarySort, onSelect: (LibrarySort) -> Unit, onDismiss: () -> Unit) {
-    val colors = RegolithTheme.colors
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        shape = SheetShape,
-        containerColor = colors.surface,
-        contentColor = colors.ink,
-        dragHandle = null,
-    ) {
-        Column(Modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12).navigationBarsPadding().testTag("library_sort_sheet")) {
-            Box(Modifier.align(Alignment.CenterHorizontally).size(38.dp, 4.dp).background(colors.raised, RoundedCornerShape(2.dp)))
-            Spacer(Modifier.height(Spacing.s12))
-            DisplayText("Sort by", style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()))
-            Spacer(Modifier.height(Spacing.s4))
-            LibrarySort.entries.forEach { sort ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)
-                        .clickable(interactionSource = null, indication = null) { onSelect(sort) }
-                        .testTag("library_sort_${sort.name.lowercase()}"),
-                ) {
-                    Text(sort.label, style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = if (sort == selected) colors.ink else colors.inkSoft, modifier = Modifier.weight(1f))
-                    if (sort == selected) {
-                        Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.scaledDp()))
-                    }
-                }
-            }
-            Spacer(Modifier.height(Spacing.s12))
+    RegolithSheet(title = "Sort by", onDismiss = onDismiss, testTag = "library_sort_sheet") {
+        LibrarySort.entries.forEach { sort ->
+            SheetOption(
+                label = sort.label,
+                selected = sort == selected,
+                onClick = { onSelect(sort) },
+                testTag = "library_sort_${sort.name.lowercase()}",
+            )
         }
     }
 }

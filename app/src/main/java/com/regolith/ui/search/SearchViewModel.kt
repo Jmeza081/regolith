@@ -289,9 +289,9 @@ class SearchViewModel @Inject constructor(
         filter.value = f
     }
 
-    /** Tapping the chip that is already on clears it. */
-    fun togglePoi(title: String) {
-        poi.value = if (poi.value.equals(title, ignoreCase = true)) null else title
+    /** The moment sheet's answer; null is "Any moment", which clears the filter. */
+    fun setPoi(title: String?) {
+        poi.value = title
     }
 
     /** Called when the user commits a query (opens a hit or hits enter). */

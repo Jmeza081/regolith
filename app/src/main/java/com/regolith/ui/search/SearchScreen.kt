@@ -32,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,6 +101,9 @@ fun SearchScreen(
 
     val selection = state.selection
     val selecting = selection != null
+    // Screen state, not ViewModel state: whether a sheet is open dies with
+    // the screen, unlike the filter it sets.
+    var momentSheet by remember { mutableStateOf(false) }
     // No BackHandler: back leaves Search, and NavGraph clears the selection
     // when the top of the stack is somewhere that cannot act on it.
 
@@ -170,40 +175,42 @@ fun SearchScreen(
             // A point of interest that narrowed to nothing is the exception —
             // the chips have to stay or there is no way to turn one off.
             if (!(state.searched && state.hits.isEmpty()) || state.poi != null) item {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    SearchFilter.entries.forEach { f ->
+                // Five chips do not fit a 411dp portrait. The four file
+                // filters scroll in what is left over; the moment chip is
+                // pinned to the end, because a filter button you have to
+                // scroll to find is one nobody finds.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        SearchFilter.entries.forEach { f ->
+                            FilterChip(
+                                text = f.label,
+                                selected = f == state.filter,
+                                onClick = { viewModel.setFilter(f) },
+                                testTag = "search_filter_${f.name.lowercase()}",
+                            )
+                        }
+                    }
+                    // A sheet rather than a row of its own: the names are the
+                    // library's, so there can be two of them or forty. The
+                    // chip wears the one in force so the row still says what
+                    // is being filtered.
+                    if (state.facets.isNotEmpty()) {
+                        Spacer(Modifier.width(Spacing.s8))
                         FilterChip(
-                            text = f.label,
-                            selected = f == state.filter,
-                            onClick = { viewModel.setFilter(f) },
-                            testTag = "search_filter_${f.name.lowercase()}",
+                            text = state.poi ?: "Moment",
+                            selected = state.poi != null,
+                            onClick = { momentSheet = true },
+                            testTag = "search_filter_moment",
+                            icon = R.drawable.rg_ic_sliders,
+                            modifier = Modifier.widthIn(max = 160.dp),
                         )
                     }
                 }
             }
-            // Points of interest: the chapter names the library repeats,
-            // whether typed in the editor or imported from a .chapters.txt.
-            // A chip is a search in its own right, so this row stands even
-            // with an empty field.
-            if (state.facets.isNotEmpty()) item {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Eyebrow("Filter by moment", muted = true)
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                    ) {
-                        state.facets.forEach { facet ->
-                            FilterChip(
-                                text = facet.title,
-                                selected = facet.title.equals(state.poi, ignoreCase = true),
-                                onClick = { viewModel.togglePoi(facet.title) },
-                                testTag = "search_poi_${facet.title.lowercase().replace(' ', '_')}",
-                                modifier = Modifier.widthIn(max = 200.dp),
-                            )
-                        }
-                    }
-                }
-            }            // Points of interest first, under their own eyebrow, so a red
+            // Points of interest first, under their own eyebrow, so a red
             // match in a chapter's name is never mistaken for one in a
             // file's. They are places, not files: no selection, no download.
             if (state.searched && state.moments.isNotEmpty()) {
@@ -303,6 +310,14 @@ fun SearchScreen(
                         end = Spacing.s18,
                         bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
                     ),
+            )
+        }
+        if (momentSheet) {
+            MomentFilterSheet(
+                facets = state.facets,
+                selected = state.poi,
+                onPick = { viewModel.setPoi(it); momentSheet = false },
+                onDismiss = { momentSheet = false },
             )
         }
     }

@@ -84,6 +84,8 @@ fun FilterChip(
     onClick: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier,
+    /** A 14dp glyph before the label: the sliders on a chip that opens a sheet. */
+    icon: Int? = null,
 ) {
     val colors = RegolithTheme.colors
     Box(
@@ -97,13 +99,23 @@ fun FilterChip(
             .testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text,
-            style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()),
-            color = if (selected) Color.White else colors.inkSoft,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    painterResource(icon), contentDescription = null,
+                    tint = if (selected) Color.White else colors.inkSoft,
+                    modifier = Modifier.size(14.scaledDp()),
+                )
+                Spacer(Modifier.width(Spacing.s4))
+            }
+            Text(
+                text,
+                style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()),
+                color = if (selected) Color.White else colors.inkSoft,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
