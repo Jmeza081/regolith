@@ -47,6 +47,7 @@ class LibraryRepository @Inject constructor(
     private val progressDao: PlaybackProgressDao,
     private val recentSearchDao: RecentSearchDao,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
+    private val chapterSync: com.regolith.data.media.ChapterSyncRepository,
 ) {
     /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
     data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
@@ -177,6 +178,9 @@ class LibraryRepository @Inject constructor(
         // A poster.jpg dropped into the folder since the last scan beats the
         // mosaic the app stitched for it; this is the rescan that notices.
         artwork.onFolderListed(folder.id, entries)
+        // Likewise a chapter file beside a film (P10): new or changed, it
+        // replaces the phone's copy; gone, it takes its copy with it.
+        chapterSync.onFolderListed(folder.id, folder.relPath, entries, host, credentials, share.name)
         // SQLite's NOT IN () with an empty list is fine in Room; it removes everything.
         folderDao.deleteChildrenNotIn(folder.id, dirPaths)
         mediaFileDao.markMissingNotIn(folder.id, filePaths)

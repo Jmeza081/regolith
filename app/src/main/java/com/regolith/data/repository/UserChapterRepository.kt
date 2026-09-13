@@ -2,6 +2,7 @@ package com.regolith.data.repository
 
 import com.regolith.data.db.UserChapterDao
 import com.regolith.data.db.UserChapterEntity
+import com.regolith.data.media.ChapterSyncRepository
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.playback.UserChapterStats
@@ -22,12 +23,13 @@ import javax.inject.Singleton
 @Singleton
 class UserChapterRepository @Inject constructor(
     private val dao: UserChapterDao,
+    private val sync: ChapterSyncRepository,
 ) {
     /** Sorted by start; empty when the user has written nothing for this file. */
     fun observe(fileId: Long): Flow<List<Chapter>> =
         dao.observeForFile(fileId).map { rows -> rows.map { Chapter(it.startMs, it.title) } }
 
-    /** Replace the file's set. An empty list is the same as [clear]. */
+    /** Replace the file's set, then have the sidecar on the share catch up (P10). */
     suspend fun save(fileId: Long, chapters: List<Chapter>) {
         val now = System.currentTimeMillis()
         dao.replaceForFile(
@@ -36,13 +38,19 @@ class UserChapterRepository @Inject constructor(
                 UserChapterEntity(fileId = fileId, startMs = it.startMs, title = it.title?.takeIf { t -> t.isNotBlank() }, updatedAtMs = now)
             },
         )
+        sync.markDirty(fileId)
     }
 
-    /** Back to whatever the file would show on its own. */
-    suspend fun clear(fileId: Long) = dao.deleteForFile(fileId)
+    /** Back to whatever the file would show on its own: the rows go, and the sidecar on the share with them. */
+    suspend fun clear(fileId: Long) = sync.revert(fileId)
 
-    /** Settings › Chapters › Clear. */
-    suspend fun clearAll() = dao.deleteAll()
+    /** Settings › Chapters › Clear: the phone's cache only; the share is never touched from Settings. */
+    suspend fun clearAll() = sync.clearLocal()
+
+    /** The sheet's sync state for one film, live. */
+    fun observeSync(fileId: Long) = sync.observe(fileId)
+
+    suspend fun clearNote(fileId: Long) = sync.clearNote(fileId)
 
     fun stats(): Flow<UserChapterStats> = dao.observeTally().map { UserChapterStats(chapters = it.chapters, files = it.files) }
 

@@ -26,6 +26,8 @@ import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMarks
 import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterSyncNote
+import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -35,6 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -105,6 +108,10 @@ data class PlaybackState(
      * `user_chapters` for as long as it is loaded. Read [chapters] instead.
      */
     val userChapters: List<Chapter> = emptyList(),
+    /** Where [userChapters] stand against the sidecar on the share (P10); null when there are none. */
+    val chapterSync: ChapterSyncState? = null,
+    /** A one-time line for the sheet, e.g. the share's newer file replaced this phone's rows. */
+    val chapterSyncNote: ChapterSyncNote? = null,
     /**
      * False until the container has actually been read. Without it there is
      * no way to tell "this file has no chapters" from "we have not looked
@@ -644,8 +651,8 @@ class PlaybackSession @Inject constructor(
     private fun followUserChapters(fileId: Long) {
         userChapterJob?.cancel()
         userChapterJob = scope.launch {
-            userChapters.observe(fileId).collect { marks ->
-                if (_state.value.fileId == fileId) _state.update { it.copy(userChapters = marks) }
+            combine(userChapters.observe(fileId), userChapters.observeSync(fileId)) { marks, sync -> marks to sync }.collect { (marks, sync) ->
+                if (_state.value.fileId == fileId) _state.update { it.copy(userChapters = marks, chapterSync = sync.state, chapterSyncNote = sync.note) }
             }
         }
     }

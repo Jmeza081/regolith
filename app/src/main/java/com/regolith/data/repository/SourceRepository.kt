@@ -13,6 +13,7 @@ import com.regolith.domain.model.AuthMode
 import com.regolith.domain.model.Server
 import com.regolith.domain.model.Share
 import com.regolith.domain.smb.ParsedSmbAddress
+import com.regolith.domain.smb.CredentialSource
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbShareInfo
@@ -42,7 +43,7 @@ class SourceRepository @Inject constructor(
     private val shareDao: ShareDao,
     private val shareRootDao: ShareRootDao,
     private val credentialStore: CredentialStore,
-) {
+) : CredentialSource {
     /**
      * Passwords the user chose NOT to save live here for this process only.
      * A saved password is read back from the CredentialStore on demand.
@@ -184,7 +185,7 @@ class SourceRepository @Inject constructor(
     }
 
     /** Credentials for a stored server: this session's, else the saved password, else guest. */
-    suspend fun credentialsFor(serverId: Long): SmbCredentials {
+    override suspend fun credentialsFor(serverId: Long): SmbCredentials {
         sessionCredentials[serverId]?.let { return it }
         val server = serverDao.byId(serverId) ?: return SmbCredentials.Guest
         val creds = if (server.authMode == AuthMode.PASSWORD.name && server.username != null) {

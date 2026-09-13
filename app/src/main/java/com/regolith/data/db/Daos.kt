@@ -90,6 +90,9 @@ interface ShareDao {
 
     @Query("UPDATE shares SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: Long, enabled: Boolean)
+
+    @Query("UPDATE shares SET writeChapters = :enabled WHERE id = :id")
+    suspend fun setWriteChapters(id: Long, enabled: Boolean)
 }
 
 @Dao
@@ -540,6 +543,13 @@ interface UserChapterDao {
     @Query("DELETE FROM user_chapters")
     suspend fun deleteAll()
 
+    @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
+    suspend fun forFile(fileId: Long): List<UserChapterEntity>
+
+    /** When this film's rows were last written, for the newest-wins rule. */
+    @Query("SELECT MAX(updatedAtMs) FROM user_chapters WHERE fileId = :fileId")
+    suspend fun lastUpdated(fileId: Long): Long?
+
     @Query("SELECT COUNT(*) AS chapters, COUNT(DISTINCT fileId) AS files FROM user_chapters")
     fun observeTally(): Flow<UserChapterTally>
 
@@ -557,4 +567,31 @@ interface UserChapterDao {
             "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
     )
     fun search(match: String, limit: Int): Flow<List<UserChapterHitRow>>
+}
+
+@Dao
+interface ChapterSyncDao {
+    @Query("SELECT * FROM chapter_sync WHERE fileId = :fileId")
+    suspend fun byFile(fileId: Long): ChapterSyncEntity?
+
+    @Query("SELECT * FROM chapter_sync WHERE fileId = :fileId")
+    fun observeForFile(fileId: Long): Flow<ChapterSyncEntity?>
+
+    @Query("SELECT * FROM chapter_sync WHERE dirty = 1")
+    suspend fun dirty(): List<ChapterSyncEntity>
+
+    @Query("SELECT COUNT(*) FROM chapter_sync JOIN media_files ON media_files.id = chapter_sync.fileId WHERE media_files.folderId = :folderId")
+    suspend fun countForFolder(folderId: Long): Int
+
+    @Upsert
+    suspend fun upsert(row: ChapterSyncEntity)
+
+    @Query("UPDATE chapter_sync SET note = NULL WHERE fileId = :fileId AND note != 'READ_ONLY'")
+    suspend fun clearNote(fileId: Long)
+
+    @Query("DELETE FROM chapter_sync WHERE fileId = :fileId")
+    suspend fun delete(fileId: Long)
+
+    @Query("DELETE FROM chapter_sync")
+    suspend fun deleteAll()
 }

@@ -49,6 +49,8 @@ data class ShareEntity(
     val freeBytes: Long?,
     val totalBytes: Long?,
     val lastScanAtMs: Long?,
+    /** Schema v9: whether Done writes `<basename>.chapters.txt` to this share. Off keeps chapters on the phone. */
+    @ColumnInfo(defaultValue = "1") val writeChapters: Boolean = true,
 )
 
 /**
@@ -344,4 +346,25 @@ data class UserChapterEntity(
 @Entity(tableName = "user_chapter_fts")
 data class UserChapterFtsEntity(
     val title: String?,
+)
+
+/**
+ * Schema v9: where a film's user chapters stand against the sidecar on the
+ * share (P10). The file is the durable copy; the rows in `user_chapters`
+ * are its cache. [shareMtimeMs] is the modified time last imported or
+ * written, [dirty] means the phone has edits the share has not, [origin]
+ * says who wrote the rows (LOCAL or SHARE), and [note] carries a one-time
+ * message for the sheet or the READ_ONLY marker while a write is refused.
+ */
+@Entity(
+    tableName = "chapter_sync",
+    foreignKeys = [ForeignKey(MediaFileEntity::class, ["id"], ["fileId"], onDelete = ForeignKey.CASCADE)],
+)
+data class ChapterSyncEntity(
+    @PrimaryKey val fileId: Long,
+    val shareMtimeMs: Long?,
+    val dirty: Boolean,
+    val origin: String,
+    val note: String?,
+    val updatedAtMs: Long,
 )
