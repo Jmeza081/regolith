@@ -44,8 +44,8 @@ interest and opens the film at that moment; Revert on the sheet takes a
 film back to its defaults, and Settings › Chapters clears everything you
 wrote.
 
-Those chapters travel with the film (P10): Done also writes a small text
-file beside it on the share, `Heat.1995.chapters.txt`, in the format
+Those chapters travel with the film (P10): Save writes a small text file
+beside it on the share and says so at the bottom of the screen, `Heat.1995.chapters.txt`, in the format
 mkvmerge reads, and the next scan picks up any such file whether Regolith,
 a desktop tool or you wrote it. The phone keeps a copy so search stays
 instant and offline play has chapters; when both changed, the newer wins.

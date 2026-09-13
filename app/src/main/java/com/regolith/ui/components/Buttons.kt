@@ -61,10 +61,12 @@ private fun BasePill(
     style: TextStyle,
     leadingIcon: Painter?,
     horizontalPadding: Dp = Spacing.s18,
+    /** Busy: a small ring replaces the icon, the label stays, taps are ignored. The fill keeps its colour. */
+    loading: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
-    val bg = if (enabled) background else colors.disabledBg
-    val fg = if (enabled) ink else colors.disabledInk
+    val bg = if (enabled || loading) background else colors.disabledBg
+    val fg = if (enabled || loading) ink else colors.disabledInk
     Row(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -73,11 +75,14 @@ private fun BasePill(
             .clip(PillShape)
             .background(bg)
             .then(if (border != null && enabled) Modifier.border(1.dp, border, PillShape) else Modifier)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
             .padding(horizontal = horizontalPadding)
             .testTag(testTag),
     ) {
-        if (leadingIcon != null) {
+        if (loading) {
+            androidx.compose.material3.CircularProgressIndicator(color = fg, trackColor = Color.Transparent, strokeWidth = 2.dp, modifier = Modifier.size(14.scaledDp()).testTag("${testTag}_loading"))
+            Box(Modifier.size(Spacing.s8))
+        } else if (leadingIcon != null) {
             Icon(leadingIcon, contentDescription = null, tint = fg, modifier = Modifier.size(16.scaledDp()))
             Box(Modifier.size(Spacing.s8))
         }
@@ -96,12 +101,14 @@ fun PrimaryButton(
     leadingIcon: Painter? = null,
     /** 42dp, 600 13px: the Settings row buttons. */
     compact: Boolean = false,
+    /** Busy: a ring beside the label, taps ignored. For a Save that waits on the network. */
+    loading: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
         height = if (compact) 42.scaledDp() else 48.scaledDp(), background = colors.accent, border = null, ink = Color.White,
-        style = if (compact) TextStyles.buttonSmall else TextStyles.buttonPrimary, leadingIcon = leadingIcon,
+        style = if (compact) TextStyles.buttonSmall else TextStyles.buttonPrimary, leadingIcon = leadingIcon, loading = loading,
     )
 }
 

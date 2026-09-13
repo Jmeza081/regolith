@@ -13,6 +13,7 @@ import com.regolith.data.db.UserChapterEntity
 import com.regolith.data.transfer.DownloadStore
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
+import com.regolith.domain.playback.ChapterWriteOutcome
 import com.regolith.domain.smb.CredentialSource
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
@@ -100,6 +101,21 @@ class ChapterSyncRepositoryTest {
         assertEquals(sidecar, String(gateway.files.getValue("media").getValue("Films/Heat.1995.chapters.txt")))
         assertEquals(ChapterSyncState.ON_SHARE, state().state)
         assertFalse(db.chapterSyncDao().byFile(heat)!!.dirty)
+    }
+
+    @Test
+    fun `save's own write answers at once`() = runTest {
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
+        repo.markDirty(heat)
+        assertEquals(ChapterWriteOutcome.WRITTEN, repo.writeNow(heat))
+        assertEquals(ChapterWriteOutcome.WRITTEN, repo.writeNow(heat)) // nothing left to write
+        assertTrue(gateway.files.getValue("media").containsKey("Films/Heat.1995.chapters.txt"))
+        repo.markDirty(heat); gateway.readOnly = true
+        assertEquals(ChapterWriteOutcome.READ_ONLY, repo.writeNow(heat))
+        gateway.readOnly = false; gateway.reachable = false
+        assertEquals(ChapterWriteOutcome.UNREACHABLE, repo.writeNow(heat))
+        gateway.reachable = true; db.shareDao().setWriteChapters(shareId, false)
+        assertEquals(ChapterWriteOutcome.PHONE_ONLY, repo.writeNow(heat))
     }
 
     @Test

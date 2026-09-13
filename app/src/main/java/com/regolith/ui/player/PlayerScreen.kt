@@ -110,6 +110,8 @@ import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.ConfirmDialog
+import com.regolith.ui.components.RegolithSnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.Scrubber
 import com.regolith.ui.theme.CardShape
@@ -177,6 +179,10 @@ fun PlayerScreen(
     val brightness by viewModel.brightness.collectAsStateWithLifecycle()
     val transfer by viewModel.transfer.collectAsStateWithLifecycle()
     val draft by viewModel.chapterDraft.collectAsStateWithLifecycle()
+    val chapterSaving by viewModel.chapterSaving.collectAsStateWithLifecycle()
+    // "Saved to the share", at the bottom, gone on its own.
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(viewModel) { viewModel.chapterSaveMessages.collect { snackbar.showSnackbar(it) } }
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -499,6 +505,7 @@ fun PlayerScreen(
             onDone = viewModel::saveChapters,
             onCancel = { if (d.dirty) confirmDiscard = true else viewModel.discardChapterEdit() },
             onClearAll = viewModel::clearAllMarks,
+            saving = chapterSaving,
             onScrubStart = chromeCallbacks.onScrubStart, onScrub = chromeCallbacks.onScrub, onScrubEnd = chromeCallbacks.onScrubEnd,
         )
     }
@@ -586,6 +593,7 @@ fun PlayerScreen(
                 draft = draft,
                 modifier = Modifier.fillMaxWidth().weight(1f).background(RegolithTheme.colors.ground),
             )
+            RegolithSnackbarHost(snackbar)
         }
     } else if (immersive) {
         Box(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
@@ -604,6 +612,7 @@ fun PlayerScreen(
             if (dragDown > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dragDown * 0.45f)))
             // The map's three columns need the width; it stays a landscape lesson.
             if (showGestureMap && landscape) GestureMap(onDismiss = viewModel::dismissGestureMap)
+            RegolithSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         }
     } else if (sideBySide) {
         // Two columns, level at the top. The left one is the film with its
@@ -646,6 +655,7 @@ fun PlayerScreen(
                     Spacer(Modifier.height(Spacing.s30))
                 }
             }
+            RegolithSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         }
     } else {
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
@@ -673,6 +683,7 @@ fun PlayerScreen(
                 chapterEditor = editorPanel,
             )
         }
+        RegolithSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         }
     }
 

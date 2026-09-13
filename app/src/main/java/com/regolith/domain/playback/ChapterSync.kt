@@ -34,5 +34,19 @@ enum class ChapterSyncNote {
     }
 }
 
+/** How a write to the share ended, for the line under Save. */
+enum class ChapterWriteOutcome {
+    /** The file is on the share. */
+    WRITTEN,
+    /** The share refused: chapters stay on the phone, retried at the next scan. */
+    READ_ONLY,
+    /** The share is out of reach: written later, when it answers. */
+    UNREACHABLE,
+    /** Nothing to write to: demo library, a film with no share, or writing turned off. */
+    PHONE_ONLY,
+    /** Something else went wrong; retried later. */
+    FAILED,
+}
+
 /** What the session hands the player: the state, or null when the film has no user rows, plus any note. */
 data class ChapterSync(val state: ChapterSyncState?, val note: ChapterSyncNote?)

@@ -99,6 +99,8 @@ fun ChapterEditorContent(
     onScrubEnd: (Float) -> Unit,
     /** "Remove all chapters": start again from a single unnamed mark. */
     onClearAll: () -> Unit = {},
+    /** Save is writing to the share: ring on the button, Cancel waits. */
+    saving: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     val open = draft.selected
@@ -111,8 +113,8 @@ fun ChapterEditorContent(
                     style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-            SecondaryButton("Cancel", onCancel, "player_chapter_cancel_button", compact = true)
-            PrimaryButton("Done", onDone, "player_chapter_done_button", compact = true)
+            SecondaryButton("Cancel", onCancel, "player_chapter_cancel_button", compact = true, enabled = !saving)
+            PrimaryButton("Save", onDone, "player_chapter_done_button", compact = true, loading = saving)
         }
         if (showScrubber) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
@@ -155,15 +157,15 @@ fun ChapterEditorContent(
                 )
             }
         }
-        // The way to start from nothing. No confirm: it is a draft, and
-        // Cancel still throws the whole thing away.
+        // The way to start from nothing, centred under the list. No confirm:
+        // it is a draft, and Cancel still throws the whole thing away.
         if (draft.marks.size > 1 || draft.marks[0].title != null) {
             Box(
                 Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
                     .alpha(if (open != null) LOCKED_ALPHA else 1f)
                     .clickable(interactionSource = null, indication = null, enabled = open == null, onClick = onClearAll)
                     .testTag("player_chapter_clear_all_button"),
-                contentAlignment = Alignment.CenterStart,
+                contentAlignment = Alignment.Center,
             ) { Text("Remove all chapters", style = TextStyles.buttonTertiary, color = colors.accent) }
         }
     }
@@ -223,17 +225,19 @@ private fun MarkRow(
                 } else {
                     Text("The film starts here; this one stays at 0:00.", style = TextStyles.meta, color = colors.metadata)
                 }
-                // Two ways out, each on its own line: side by side they
-                // collided at a phone's width.
-                Box(
-                    Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(interactionSource = null, indication = null) { onSelect(null) }.testTag("player_chapter_close_button"),
-                    contentAlignment = Alignment.CenterStart,
-                ) { Text("Done with this chapter", style = TextStyles.buttonTertiary, color = colors.body) }
-                if (index > 0) {
+                // Two ways out, right-aligned and one word each: Done closes
+                // the row, Delete drops the mark.
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    if (index > 0) {
+                        Box(
+                            Modifier.defaultMinSize(minHeight = 44.dp, minWidth = 64.dp).clickable(interactionSource = null, indication = null) { onRemove(index) }.testTag("player_chapter_delete_button"),
+                            contentAlignment = Alignment.Center,
+                        ) { Text("Delete", style = TextStyles.buttonTertiary, color = colors.accent) }
+                    }
                     Box(
-                        Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(interactionSource = null, indication = null) { onRemove(index) }.testTag("player_chapter_delete_button"),
-                        contentAlignment = Alignment.CenterStart,
-                    ) { Text("Delete this chapter", style = TextStyles.buttonTertiary, color = colors.accent) }
+                        Modifier.defaultMinSize(minHeight = 44.dp, minWidth = 64.dp).clickable(interactionSource = null, indication = null) { onSelect(null) }.testTag("player_chapter_close_button"),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("Done", style = TextStyles.buttonTertiary, color = colors.ink) }
                 }
             }
         }

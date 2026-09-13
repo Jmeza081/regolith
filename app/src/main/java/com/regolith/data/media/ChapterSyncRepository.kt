@@ -16,6 +16,7 @@ import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterSync
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
+import com.regolith.domain.playback.ChapterWriteOutcome
 import com.regolith.domain.smb.CredentialSource
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
@@ -177,34 +178,60 @@ class ChapterSyncRepository @Inject constructor(
     suspend fun syncDirty(): Boolean {
         var reachable = true
         for (row in syncDao.dirty()) {
-            val file = mediaFileDao.byId(row.fileId) ?: run { syncDao.delete(row.fileId); continue }
-            val share = shareDao.byId(file.shareId) ?: continue
-            val server = serverDao.byId(share.serverId) ?: continue
-            if (DemoSource.isDemo(server.host) || !share.writeChapters) continue
-            val host = SmbHost(server.host, server.port)
-            val creds = credentials.credentialsFor(server.id)
-            val folder = file.relPath.substringBeforeLast('/', "")
-            val chapters = chapterDao.forFile(row.fileId).map { Chapter(it.startMs, it.title) }
-            try {
-                val mtime = if (chapters.isEmpty()) {
-                    writer.delete(host, creds, share.name, folder, file.name); null
-                } else {
-                    writer.write(host, creds, share.name, folder, file.name, ChapterSidecar.format(chapters))
-                }
-                syncDao.upsert(row.copy(dirty = false, shareMtimeMs = mtime, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis()))
-            } catch (e: SmbFailure.Forbidden) {
-                syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
-            } catch (e: SmbFailure.AuthFailed) {
-                // The account can read but not write: the same thing as far as the sheet is concerned.
-                syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
-            } catch (e: SmbFailure.Unreachable) {
-                reachable = false
-            } catch (e: SmbFailure) {
-                Log.w(TAG, "sidecar write for ${file.relPath} failed: $e")
-                syncDao.upsert(row.copy(note = ChapterSyncNote.WRITE_FAILED.name, updatedAtMs = System.currentTimeMillis()))
-            }
+            if (writeOne(row) == ChapterWriteOutcome.UNREACHABLE) reachable = false
         }
         return reachable
+    }
+
+    /**
+     * Save's own write: the film's sidecar, now, with the answer for the
+     * line under the button. The rows are already saved and the film is
+     * already marked dirty, so a failure here costs nothing — the worker
+     * and the next scan try again.
+     */
+    suspend fun writeNow(fileId: Long): ChapterWriteOutcome {
+        val row = syncDao.byFile(fileId) ?: return ChapterWriteOutcome.PHONE_ONLY
+        if (!row.dirty) return ChapterWriteOutcome.WRITTEN
+        return writeOne(row)
+    }
+
+    private suspend fun writeOne(row: ChapterSyncEntity): ChapterWriteOutcome {
+        val file = mediaFileDao.byId(row.fileId) ?: run { syncDao.delete(row.fileId); return ChapterWriteOutcome.PHONE_ONLY }
+        val share = shareDao.byId(file.shareId) ?: return ChapterWriteOutcome.PHONE_ONLY
+        val server = serverDao.byId(share.serverId) ?: return ChapterWriteOutcome.PHONE_ONLY
+        if (DemoSource.isDemo(server.host)) {
+            // Nothing to write to, ever: the row is settled, not waiting.
+            syncDao.upsert(row.copy(dirty = false, shareMtimeMs = null, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis()))
+            return ChapterWriteOutcome.PHONE_ONLY
+        }
+        // Writing turned off: the row stays dirty so turning it back on writes; the sheet reads it as phone-only.
+        if (!share.writeChapters) return ChapterWriteOutcome.PHONE_ONLY
+        val host = SmbHost(server.host, server.port)
+        val creds = credentials.credentialsFor(server.id)
+        val folder = file.relPath.substringBeforeLast('/', "")
+        val chapters = chapterDao.forFile(row.fileId).map { Chapter(it.startMs, it.title) }
+        return try {
+            val mtime = if (chapters.isEmpty()) {
+                writer.delete(host, creds, share.name, folder, file.name); null
+            } else {
+                writer.write(host, creds, share.name, folder, file.name, ChapterSidecar.format(chapters))
+            }
+            syncDao.upsert(row.copy(dirty = false, shareMtimeMs = mtime, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis()))
+            ChapterWriteOutcome.WRITTEN
+        } catch (e: SmbFailure.Forbidden) {
+            syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
+            ChapterWriteOutcome.READ_ONLY
+        } catch (e: SmbFailure.AuthFailed) {
+            // The account can read but not write: the same thing as far as the sheet is concerned.
+            syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
+            ChapterWriteOutcome.READ_ONLY
+        } catch (e: SmbFailure.Unreachable) {
+            ChapterWriteOutcome.UNREACHABLE
+        } catch (e: SmbFailure) {
+            Log.w(TAG, "sidecar write for ${file.relPath} failed: $e")
+            syncDao.upsert(row.copy(note = ChapterSyncNote.WRITE_FAILED.name, updatedAtMs = System.currentTimeMillis()))
+            ChapterWriteOutcome.FAILED
+        }
     }
 
     /**

@@ -12,6 +12,9 @@ import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.ChapterDraft
+import com.regolith.domain.playback.ChapterWriteOutcome
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import com.regolith.ui.titledetail.TransferView
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -240,11 +243,38 @@ class PlayerViewModel @AssistedInject constructor(
     /** "Remove all chapters": back to a single unnamed start mark. Cancel still undoes it. */
     fun clearAllMarks() = editDraft { it.clearAll() }
 
-    /** Done: the set is written and the editor closes. The session follows the table, so the scrubber updates on its own. */
+    /** True while Save is writing to the share; the button shows a ring. */
+    val chapterSaving: StateFlow<Boolean> get() = _chapterSaving
+    private val _chapterSaving = MutableStateFlow(false)
+
+    /** One line per Save, for the snackbar: where the chapters ended up. */
+    val chapterSaveMessages: SharedFlow<String> get() = _chapterSaveMessages
+    private val _chapterSaveMessages = MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /**
+     * Save: the rows first (the scrubber updates at once), then the file
+     * on the share, waited for, so the button can say how it went. The
+     * editor closes once the answer is in.
+     */
     fun saveChapters() {
         val draft = _chapterDraft.value ?: return
-        _chapterDraft.value = null
-        viewModelScope.launch { userChapters.save(draft.fileId, draft.chapters) }
+        if (_chapterSaving.value) return
+        _chapterSaving.value = true
+        viewModelScope.launch {
+            userChapters.save(draft.fileId, draft.chapters)
+            val outcome = runCatching { userChapters.writeNow(draft.fileId) }.getOrDefault(ChapterWriteOutcome.FAILED)
+            _chapterDraft.value = null
+            _chapterSaving.value = false
+            _chapterSaveMessages.tryEmit(
+                when (outcome) {
+                    ChapterWriteOutcome.WRITTEN -> "Saved to the share"
+                    ChapterWriteOutcome.READ_ONLY -> "Saved on this phone — the share is read-only"
+                    ChapterWriteOutcome.UNREACHABLE -> "Saved on this phone — the share is out of reach, so it will be written later"
+                    ChapterWriteOutcome.PHONE_ONLY -> "Saved on this phone"
+                    ChapterWriteOutcome.FAILED -> "Saved on this phone — the share refused the file; it will be tried again"
+                },
+            )
+        }
     }
 
     fun discardChapterEdit() {

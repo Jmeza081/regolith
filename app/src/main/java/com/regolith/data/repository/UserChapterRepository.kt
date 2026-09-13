@@ -47,6 +47,9 @@ class UserChapterRepository @Inject constructor(
     /** Settings › Chapters › Clear: the phone's cache only; the share is never touched from Settings. */
     suspend fun clearAll() = sync.clearLocal()
 
+    /** Save's own write to the share, now, with the answer for the line under the button. */
+    suspend fun writeNow(fileId: Long) = sync.writeNow(fileId)
+
     /** The sheet's sync state for one film, live. */
     fun observeSync(fileId: Long) = sync.observe(fileId)
 
