@@ -104,6 +104,13 @@ fun SearchScreen(
     // Screen state, not ViewModel state: whether a sheet is open dies with
     // the screen, unlike the filter it sets.
     var momentSheet by remember { mutableStateOf(false) }
+    // The chip row scrolls, and the moment chip is at the end of it. Picking
+    // a moment from the sheet has to bring it into view, or the one chip
+    // that says a filter is on would be the one you cannot see.
+    val chipScroll = rememberScrollState()
+    LaunchedEffect(state.poi) {
+        if (state.poi != null) chipScroll.animateScrollTo(chipScroll.maxValue)
+    }
     // No BackHandler: back leaves Search, and NavGraph clears the selection
     // when the top of the stack is somewhere that cannot act on it.
 
@@ -175,30 +182,24 @@ fun SearchScreen(
             // A point of interest that narrowed to nothing is the exception —
             // the chips have to stay or there is no way to turn one off.
             if (!(state.searched && state.hits.isEmpty()) || state.poi != null) item {
-                // Five chips do not fit a 411dp portrait. The four file
-                // filters scroll in what is left over; the moment chip is
-                // pinned to the end, because a filter button you have to
-                // scroll to find is one nobody finds.
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                    ) {
-                        SearchFilter.entries.forEach { f ->
-                            FilterChip(
-                                text = f.label,
-                                selected = f == state.filter,
-                                onClick = { viewModel.setFilter(f) },
-                                testTag = "search_filter_${f.name.lowercase()}",
-                            )
-                        }
+                // One row, the moment chip in it like any other: five chips
+                // do not fit a 411dp portrait, so the row scrolls. It opens a
+                // sheet rather than toggling, because the names are the
+                // library's and there can be two of them or forty — and it
+                // wears the one in force, so the row says what is filtering.
+                Row(
+                    Modifier.horizontalScroll(chipScroll),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                ) {
+                    SearchFilter.entries.forEach { f ->
+                        FilterChip(
+                            text = f.label,
+                            selected = f == state.filter,
+                            onClick = { viewModel.setFilter(f) },
+                            testTag = "search_filter_${f.name.lowercase()}",
+                        )
                     }
-                    // A sheet rather than a row of its own: the names are the
-                    // library's, so there can be two of them or forty. The
-                    // chip wears the one in force so the row still says what
-                    // is being filtered.
                     if (state.facets.isNotEmpty()) {
-                        Spacer(Modifier.width(Spacing.s8))
                         FilterChip(
                             text = state.poi ?: "Moment",
                             selected = state.poi != null,
