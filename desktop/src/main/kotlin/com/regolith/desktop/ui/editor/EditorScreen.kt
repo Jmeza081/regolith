@@ -136,7 +136,6 @@ fun EditorScreen(
             }
             player.error?.let { Text(it, style = TextStyles.body, color = RegolithTheme.colors.accent) }
             Transport(player, state.draft?.marks.orEmpty())
-            state.draft?.let { d -> ChapterStrip(d, player.durationMs, onSelect = vm::select) }
             Text(
                 "Space play · M mark · ←/→ 5 s (⇧ ½ s) · ⌘S save · Esc close",
                 style = TextStyles.meta,
@@ -274,27 +273,6 @@ private fun Transport(player: FilmPlayer, chapters: List<Chapter>) {
             modifier = Modifier.weight(1f),
             testTag = "editor_scrubber",
         )
-    }
-}
-
-/** The chapters as segments of the runtime; the open one is lit. Click one to open it. */
-@Composable
-private fun ChapterStrip(draft: ChapterDraft, durationMs: Long, onSelect: (Int) -> Unit) {
-    if (durationMs <= 0) return
-    Row(Modifier.fillMaxWidth().height(20.dp).testTag("editor_chapter_strip")) {
-        draft.marks.forEachIndexed { i, m ->
-            val end = draft.marks.getOrNull(i + 1)?.startMs ?: durationMs
-            val share = ((end - m.startMs).toFloat() / durationMs).coerceAtLeast(0.002f)
-            Box(
-                Modifier
-                    .weight(share)
-                    .fillMaxHeight()
-                    .padding(horizontal = 1.dp)
-                    .background(if (draft.selected == i) RegolithTheme.colors.ink else RegolithTheme.colors.raised)
-                    .clickOnly()
-                    .clickable { onSelect(i) },
-            )
-        }
     }
 }
 

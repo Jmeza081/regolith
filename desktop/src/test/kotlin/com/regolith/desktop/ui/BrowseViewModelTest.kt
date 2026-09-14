@@ -4,10 +4,12 @@ import com.regolith.desktop.AppGraph
 import com.regolith.desktop.data.Connection
 import com.regolith.desktop.navigation.Route
 import com.regolith.desktop.ui.browse.BrowseViewModel
+import com.regolith.desktop.ui.browse.RowImage
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbHost
 import com.regolith.testing.FakeSmbGateway
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -33,11 +35,26 @@ class BrowseViewModelTest {
     fun `a film carries the image the phone would pick from the same listing`() {
         // Two films share this folder, so poster.jpg is the folder's, not Zodiac's; Heat has its own.
         val rows = BrowseViewModel.rowsFor(listOf(file("Heat.1995.mkv"), file("Heat.1995.jpg"), file("Zodiac.2007.mkv"), file("poster.jpg")))
-        assertEquals(mapOf("Heat.1995.mkv" to "Heat.1995.jpg", "Zodiac.2007.mkv" to null), rows.associate { it.entry.name to it.image?.name })
+        assertEquals(mapOf("Heat.1995.mkv" to "Heat.1995.jpg", "Zodiac.2007.mkv" to null), rows.associate { it.entry.name to it.image?.relPath })
 
         // A film alone in its folder takes the folder's poster.
         val alone = BrowseViewModel.rowsFor(listOf(file("Arrival.2016.mp4"), file("poster.jpg")))
-        assertEquals("poster.jpg", alone.single().image?.name)
+        assertEquals("poster.jpg", alone.single().image?.relPath)
+    }
+
+    @Test
+    fun `a folder shows the poster it holds, found after the rows are listed`() = runTest {
+        val fake = FakeSmbGateway().apply {
+            addFile("media", "Films/Arrival (2016)/Arrival.2016.mp4", ByteArray(3))
+            addFile("media", "Films/Arrival (2016)/poster.jpg", ByteArray(7))
+            addFile("media", "Films/Noir/Laura.1944.mp4", ByteArray(3))
+        }
+        val route = Route.Browse(Connection(SmbHost("tower"), SmbCredentials.Guest, "media"), folder = "Films")
+        val vm = BrowseViewModel(AppGraph(fake), route, this, io = StandardTestDispatcher(testScheduler))
+        advanceUntilIdle()
+        val images = vm.state.value.rows.associate { it.entry.name to it.image }
+        assertEquals(RowImage("Films/Arrival (2016)/poster.jpg", 7), images["Arrival (2016)"])
+        assertEquals("a folder with no poster keeps its icon", null, images["Noir"])
     }
 
     @Test

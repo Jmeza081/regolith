@@ -64,7 +64,8 @@ private fun BasePill(
     loading: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
-    val bg = if (enabled || loading) background else colors.disabledBg
+    // A button with no fill (Tertiary) keeps none when disabled; only its text dims.
+    val bg = if (enabled || loading || background == Color.Transparent) background else colors.disabledBg
     val fg = if (enabled || loading) ink else colors.disabledInk
     Row(
         horizontalArrangement = Arrangement.Center,
@@ -130,7 +131,7 @@ fun SecondaryButton(
     )
 }
 
-/** Plain text, no fill, no underline. 44dp. White unless [ink] says otherwise. */
+/** Plain text, no fill, no underline. 44dp. White unless [ink] says otherwise; disabled, the text dims and it stays unfilled. */
 @Composable
 fun TertiaryButton(
     text: String,

@@ -24,7 +24,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.regolith.desktop.AppGraph
 import com.regolith.desktop.data.ShareImage
-import com.regolith.desktop.ui.childPath
 import com.regolith.desktop.navigation.Route
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.ui.components.ErrorCard
@@ -45,7 +44,8 @@ import com.regolith.ui.util.formatFolderCount
 /**
  * One folder of the share: open a subfolder, or open a film to edit its
  * chapters. Laid out like the phone's Browse in rows: a section per kind,
- * each a card of rows, and a film shows the image its folder holds for it.
+ * each a card of rows. A film shows the image its folder holds for it, and a
+ * folder its own poster.
  */
 @Composable
 fun BrowseScreen(
@@ -94,7 +94,9 @@ fun BrowseScreen(
                             title = row.entry.name,
                             onClick = { open(row) },
                             testTag = "browse_row",
-                            leading = RowLeading.IconBox(folderIcon),
+                            // A folder's own poster when Browse has found one inside it; its icon until then.
+                            leading = row.image?.let { RowLeading.Poster(ShareImage(graph.gateway, route.connection, it.relPath, it.sizeBytes), fallbackLabel = row.entry.name) }
+                                ?: RowLeading.IconBox(folderIcon),
                             trailing = RowTrailing.Chevron,
                         )
                     }
@@ -105,7 +107,7 @@ fun BrowseScreen(
                             onClick = { open(row) },
                             testTag = "browse_row",
                             leading = RowLeading.Thumb(
-                                row.image?.let { ShareImage(graph.gateway, route.connection, childPath(route.folder, it.name), it.sizeBytes) },
+                                row.image?.let { ShareImage(graph.gateway, route.connection, it.relPath, it.sizeBytes) },
                                 fallbackLabel = row.entry.name,
                             ),
                             trailing = RowTrailing.None,

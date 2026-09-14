@@ -102,8 +102,10 @@ desktop/src/main/kotlin/com/regolith/desktop/
   an image with the film's name, or a poster beside a film alone in its
   folder. It reads that one file off the share and keeps it in memory only.
   A film with no image draws the phone's unmatched look; frame grabs and
-  covers inside a film are the phone's job. Folders keep their icon, as in
-  the phone's Browse.
+  covers inside a film are the phone's job. A folder shows its own poster
+  (a poster, folder, cover or thumb image inside it) once Browse has looked
+  inside, a few folders at a time after the list is up; one without keeps
+  its icon.
 - **Video.** `VlcPlayer` hands libvlc a callback media over the gateway's
   `SeekableByteSource`, the desktop twin of the phone's `SmbDataSource`, so
   both apps read a share through one SMB client. It keeps a reference to
@@ -180,9 +182,9 @@ The rules are the phone's (`ChapterDraft`), and so is the wording:
   parser the phone uses), else a single unnamed start mark at 0:00.
   Chapters from inside a film can be saved as a chapter file straight away,
   without an edit. The start mark can be renamed, never moved or deleted.
-- **Mark here** (or M) adds a chapter where the film is. Clicking a row, or
-  its segment on the strip under the scrubber, opens it and takes the film
-  there; the other rows are locked until it closes (Done, Enter in the name,
+- **Mark here** (or M) adds a chapter where the film is. Clicking a row
+  opens it and takes the film there (the scrubber shows where the chapters
+  fall); the other rows are locked until it closes (Done, Enter in the name,
   or Esc).
 - An open row has its name, a **Start** field that takes `12:30`,
   `0:12:30`, `1:02:15.5` or bare seconds (committed on Enter or when the
