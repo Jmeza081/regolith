@@ -18,7 +18,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
@@ -206,7 +205,7 @@ fun IconCircleButton(
  */
 @Composable
 fun RowAction(
-    icon: Int,
+    icon: Painter,
     contentDescription: String,
     onClick: () -> Unit,
     testTag: String,
@@ -222,7 +221,7 @@ fun RowAction(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painterResource(icon),
+            icon,
             contentDescription = contentDescription,
             tint = if (!enabled) colors.disabledInk else tint ?: colors.body,
             modifier = Modifier.size(17.scaledDp()),

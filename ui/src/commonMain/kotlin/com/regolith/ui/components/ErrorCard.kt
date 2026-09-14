@@ -13,9 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.regolith.R
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -36,7 +34,7 @@ fun ErrorCard(
     val colors = RegolithTheme.colors
     SurfaceCard(modifier = modifier.testTag(testTag), style = CardStyle.Error, contentPadding = PaddingValues(Spacing.s12)) {
         Row(verticalAlignment = Alignment.Top) {
-            Icon(painterResource(R.drawable.rg_ic_alert), contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
+            Icon(RegolithIcons.Alert, contentDescription = null, tint = colors.accent, modifier = Modifier.size(19.dp))
             Spacer(Modifier.width(Spacing.s12))
             Column {
                 Text(message, style = TextStyles.notice, color = colors.inkSoft)

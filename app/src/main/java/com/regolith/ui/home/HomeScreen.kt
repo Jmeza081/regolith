@@ -133,7 +133,7 @@ fun HomeScreen(
         ) {
             TopBar(
                 title = "Home",
-                actions = if (state.hasSource) listOf(TopBarAction(R.drawable.rg_ic_search, "Search", "home_search_button", onSearch)) else emptyList(),
+                actions = if (state.hasSource) listOf(TopBarAction(painterResource(R.drawable.rg_ic_search), "Search", "home_search_button", onSearch)) else emptyList(),
             )
             if (!state.loaded) return@Column
             if (!state.hasSource) {

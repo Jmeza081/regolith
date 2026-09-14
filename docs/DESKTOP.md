@@ -237,5 +237,5 @@ sign-in".
 ## Not yet
 
 Signing and notarisation and Intel Macs. The phone's `ui/theme` is shared
-through `:ui`; its `ui/components` are moving there next, one step at a
-time.
+through `:ui`, as are most of its `ui/components`; the last few (rows,
+tiles, the nav pill, the scrubber) are still moving.

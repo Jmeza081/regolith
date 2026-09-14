@@ -9,11 +9,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.regolith.ui.theme.DialogShape
@@ -36,7 +33,6 @@ import com.regolith.ui.theme.scaledDp
  * Tags: `<testTag>_dialog` on the card, `<testTag>_confirm_button` and
  * `<testTag>_keep_button` on the buttons.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -53,8 +49,8 @@ fun ConfirmDialog(
             Modifier.fillMaxWidth().background(colors.surface, DialogShape).border(1.dp, colors.raised, DialogShape).padding(Spacing.s18)
                 // A Dialog is a window of its own, so the root Scaffold's
                 // setting does not reach it; without this the buttons have
-                // no resource id and no test can find them.
-                .semantics { testTagsAsResourceId = true }
+                // no resource id on Android and no test can find them.
+                .exposeTestTags()
                 .testTag("${testTag}_dialog"),
             verticalArrangement = Arrangement.spacedBy(Spacing.s12),
         ) {

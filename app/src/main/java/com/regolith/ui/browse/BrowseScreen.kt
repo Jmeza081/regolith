@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -162,8 +163,8 @@ private fun BrowseContent(
                 title = if (selection!!.itemCount == 1) "1 selected" else "${selection.itemCount} selected",
                 modifier = Modifier.testTag("browse_selection_topbar"),
                 actions = listOf(
-                    TopBarAction(R.drawable.rg_ic_check, "Select all", "browse_select_all_button", viewModel::selectAllHere),
-                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "browse_select_cancel_button", viewModel::cancelSelection),
+                    TopBarAction(painterResource(R.drawable.rg_ic_check), "Select all", "browse_select_all_button", viewModel::selectAllHere),
+                    TopBarAction(painterResource(R.drawable.rg_ic_close), "Cancel selection", "browse_select_cancel_button", viewModel::cancelSelection),
                 ),
             )
         } else {

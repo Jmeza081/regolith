@@ -18,10 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.regolith.R
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -85,7 +84,7 @@ fun FilterChip(
     testTag: String,
     modifier: Modifier = Modifier,
     /** A 14dp glyph before the label: the sliders on a chip that opens a sheet. */
-    icon: Int? = null,
+    icon: Painter? = null,
 ) {
     val colors = RegolithTheme.colors
     Box(
@@ -102,7 +101,7 @@ fun FilterChip(
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(
-                    painterResource(icon), contentDescription = null,
+                    icon, contentDescription = null,
                     tint = if (selected) Color.White else colors.inkSoft,
                     modifier = Modifier.size(14.scaledDp()),
                 )
@@ -127,7 +126,7 @@ fun CollectionBadge(count: Int, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier.background(colors.overArt, PillShape).padding(horizontal = Spacing.s4, vertical = Spacing.s2),
     ) {
-        Icon(painterResource(R.drawable.rg_ic_browse), contentDescription = null, tint = colors.ink, modifier = Modifier.size(10.scaledDp()))
+        Icon(RegolithIcons.Browse, contentDescription = null, tint = colors.ink, modifier = Modifier.size(10.scaledDp()))
         Spacer(Modifier.width(Spacing.s4))
         Text(count.toString(), style = TextStyles.badge.copy(lineHeight = 12.designSp()), color = colors.ink)
     }

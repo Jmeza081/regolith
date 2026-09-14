@@ -18,18 +18,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.regolith.R
-import com.regolith.domain.library.ViewMode
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.scaledDp
 
-/** One trailing icon in the top bar: a 44dp hit area around a 19dp glyph in #A0A0A0. */
-data class TopBarAction(val icon: Int, val contentDescription: String, val testTag: String, val onClick: () -> Unit)
+/**
+ * One trailing icon in the top bar: a 44dp hit area around a 19dp glyph in #A0A0A0.
+ * The phone passes `painterResource(R.drawable.…)` as [icon].
+ */
+data class TopBarAction(val icon: Painter, val contentDescription: String, val testTag: String, val onClick: () -> Unit)
 
 /**
  * Screen header (design: every tab and pushed screen). Michroma title at
@@ -64,7 +65,7 @@ fun TopBar(
                 Modifier.size(44.dp).offsetForBack().clickable(interactionSource = null, indication = null, onClick = onBack).testTag("topbar_back_button"),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Icon(painterResource(R.drawable.rg_ic_back), contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(20.scaledDp()))
+                Icon(RegolithIcons.Back, contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(20.scaledDp()))
             }
             Spacer(Modifier.width(Spacing.s12))
         }
@@ -79,24 +80,11 @@ fun TopBar(
                 Modifier.size(44.dp).clickable(interactionSource = null, indication = null, onClick = action.onClick).testTag(action.testTag),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(action.icon), contentDescription = action.contentDescription, tint = colors.body, modifier = Modifier.size(19.scaledDp()))
+                Icon(action.icon, contentDescription = action.contentDescription, tint = colors.body, modifier = Modifier.size(19.scaledDp()))
             }
         }
     }
 }
-
-/**
- * The grid/rows switch for a media list (Library, Browse). The glyph shows
- * the layout you would get by tapping, which is the convention every file
- * manager uses; the content description names it so screen readers and
- * argent read the action, not the current state.
- */
-fun viewModeAction(mode: ViewMode, testTag: String, onToggle: () -> Unit) = TopBarAction(
-    icon = if (mode == ViewMode.GRID) R.drawable.rg_ic_view_rows else R.drawable.rg_ic_view_grid,
-    contentDescription = if (mode == ViewMode.GRID) "Show as rows" else "Show as grid",
-    testTag = testTag,
-    onClick = onToggle,
-)
 
 /** The back glyph sits flush with the 18dp gutter; the 44dp hit area extends to the right of it. */
 private fun Modifier.offsetForBack(): Modifier = this.width(32.dp)

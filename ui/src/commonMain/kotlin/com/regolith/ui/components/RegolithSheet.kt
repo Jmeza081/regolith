@@ -22,10 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.regolith.R
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.SheetShape
 import com.regolith.ui.theme.Spacing
@@ -126,7 +124,7 @@ fun SheetOption(
             Text(trailing, style = TextStyles.meta12, color = colors.metadata, modifier = Modifier.padding(horizontal = Spacing.s8))
         }
         if (selected) {
-            Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.scaledDp()))
+            Icon(RegolithIcons.Check, contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.scaledDp()))
         }
     }
 }

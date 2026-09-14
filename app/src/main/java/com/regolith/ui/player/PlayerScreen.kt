@@ -1101,7 +1101,7 @@ private fun PillRow(
                 else -> "A–B"
             },
             selected = state.loop != null, onClick = cb.onLoopTap, onLongClick = cb.onLoopClear, onMedia = onMedia,
-            icon = R.drawable.rg_ic_loop, testTag = "player_loop_pill",
+            icon = painterResource(R.drawable.rg_ic_loop), testTag = "player_loop_pill",
             contentDescription = if (armed) null else "A–B loop. Tap to set point A.",
         )
         // One pill that cycles rather than three that sit there, because two
@@ -1119,11 +1119,11 @@ private fun PillRow(
                 onClick = cb.onCycleRotation,
                 selected = orientation != PlayerOrientation.AUTO,
                 onMedia = onMedia,
-                icon = when (orientation) {
+                icon = painterResource(when (orientation) {
                     PlayerOrientation.AUTO -> LucideR.drawable.lucide_ic_tablet_smartphone
                     PlayerOrientation.PORTRAIT -> LucideR.drawable.lucide_ic_rectangle_vertical
                     PlayerOrientation.LANDSCAPE -> LucideR.drawable.lucide_ic_rectangle_horizontal
-                },
+                }),
                 contentDescription = "Rotation: ${orientation.label}. Tap to change.",
                 testTag = "player_rotation_pill",
             )
@@ -1138,7 +1138,7 @@ private fun PillRow(
             text = "Chapters",
             onClick = { if (state.chaptersReady) cb.onChapters() },
             onMedia = onMedia,
-            icon = R.drawable.rg_ic_chapters,
+            icon = painterResource(R.drawable.rg_ic_chapters),
             testTag = "player_chapters_pill",
             loading = !state.chaptersReady,
         )
@@ -1148,7 +1148,7 @@ private fun PillRow(
             DownloadPill(transfer, onMedia, cb.onKeep, cb.onRemove)
         }
         PillButton(
-            text = "", onClick = cb.onOpenPlayback, onMedia = onMedia, icon = R.drawable.rg_ic_sliders,
+            text = "", onClick = cb.onOpenPlayback, onMedia = onMedia, icon = painterResource(R.drawable.rg_ic_sliders),
             contentDescription = "Playback settings", testTag = "player_playback_button",
         )
     }
@@ -1191,12 +1191,12 @@ private fun PillRow(
 private fun DownloadPill(transfer: TransferView?, onMedia: Boolean, onKeep: () -> Unit, onRemove: () -> Unit) {
     when (transfer?.status) {
         null, TransferStatus.FAILED -> PillButton(
-            text = "", onClick = onKeep, onMedia = onMedia, icon = R.drawable.rg_ic_download,
+            text = "", onClick = onKeep, onMedia = onMedia, icon = painterResource(R.drawable.rg_ic_download),
             contentDescription = if (transfer == null) "Keep on this device" else "Download failed. Tap to try again.",
             testTag = "player_download_pill",
         )
         TransferStatus.DONE -> PillButton(
-            text = "", onClick = {}, onLongClick = onRemove, onMedia = onMedia, icon = R.drawable.rg_ic_check,
+            text = "", onClick = {}, onLongClick = onRemove, onMedia = onMedia, icon = painterResource(R.drawable.rg_ic_check),
             contentDescription = "On this device. Hold to remove.", testTag = "player_download_pill",
         )
         TransferStatus.QUEUED -> PillButton(

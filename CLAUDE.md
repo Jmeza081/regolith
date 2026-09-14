@@ -33,7 +33,7 @@ message, and code comment should assume that background:
 | Video | Media3 (ExoPlayer) | `<video>` + hls.js |
 | SMB | jcifs-ng (or SMBJ if jcifs-ng can't do what we need) | a fetch client for a file share |
 | Build | Gradle Kotlin DSL + version catalog (`gradle/libs.versions.toml`); AGP 9 compiles Kotlin itself | package.json + lockfile |
-| Icons | Lucide via `com.composables:icons-lucide-android` (vector drawables, `R.drawable.lucide_ic_*`) | lucide-react |
+| Icons | Lucide via `com.composables:icons-lucide-android` (vector drawables, `R.drawable.lucide_ic_*`). Shared components take icons as a `Painter`: pass `painterResource(R.drawable.…)` | lucide-react |
 | SDK levels | minSdk 34 · targetSdk 37 · compileSdk 37 | browserslist |
 
 Modules. `:core` and `:ui` are the only code the phone and the Mac app share.
@@ -44,8 +44,8 @@ and nothing else (guardrail G11 in `docs/ARCHITECTURE.md`).
 core/     pure Kotlin/JVM: domain/, data/smb (jcifs), data/media/SidecarWriter,
           data/credentials/CredentialStore. Tests + FakeSmbGateway (testFixtures).
 ui/       Compose Multiplatform (Android + JVM): the shared design system.
-          ui/theme lives here (fonts in androidMain/res/font), plus the
-          components with no icons or Android-only APIs; the rest follow.
+          ui/theme lives here (fonts in androidMain/res/font), plus every
+          component except ListRow, MediaTile, NavPill, PlayAll and Scrubber.
 app/      the Android app, depends on :core and :ui
 desktop/  Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md), depends on :core and :ui
 ```

@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.unit.dp
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -44,7 +44,7 @@ fun PillButton(
     testTag: String,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
-    icon: Int? = null,
+    icon: Painter? = null,
     onLongClick: (() -> Unit)? = null,
     onMedia: Boolean = true,
     /** Swaps the icon for a spinner and dims the label: the pill is there, its content is not ready. */
@@ -98,7 +98,7 @@ fun PillButton(
                 strokeWidth = 1.5.dp, gapSize = 0.dp, modifier = Modifier.size(glyph),
             )
             loading -> CircularProgressIndicator(color = ink, strokeWidth = 1.5.dp, modifier = Modifier.size(13.dp))
-            icon != null -> Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(glyph))
+            icon != null -> Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(glyph))
         }
         if (!circle) {
             if (loading || icon != null || progress != null) Spacer(Modifier.width(Spacing.s8))

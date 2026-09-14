@@ -136,7 +136,7 @@ fun SettingsScreen(
                             }
                             Spacer(Modifier.width(Spacing.s8))
                             RowAction(
-                                icon = R.drawable.rg_ic_refresh,
+                                icon = painterResource(R.drawable.rg_ic_refresh),
                                 // The status line already says "Scanning · N files",
                                 // so a running scan greys its own button rather than
                                 // needing a spinner of its own.
@@ -146,7 +146,7 @@ fun SettingsScreen(
                                 testTag = "settings_scan_${row.serverId}",
                             )
                             RowAction(
-                                icon = R.drawable.rg_ic_trash,
+                                icon = painterResource(R.drawable.rg_ic_trash),
                                 contentDescription = "Disconnect ${row.name}",
                                 tint = colors.accent,
                                 onClick = { viewModel.askDisconnect(row) },

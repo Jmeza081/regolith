@@ -361,7 +361,7 @@ fun ChaptersSheetContent(
             )
         }
     }
-    if (onEdit != null) RowAction(LucideR.drawable.lucide_ic_pencil, "Edit chapters", onEdit, "player_chapters_edit_button")
+    if (onEdit != null) RowAction(painterResource(LucideR.drawable.lucide_ic_pencil), "Edit chapters", onEdit, "player_chapters_edit_button")
     }
     BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {
         val columns = (maxWidth / CHAPTER_CARD_MIN).toInt().coerceIn(2, 4)

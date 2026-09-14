@@ -21,9 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.regolith.R
 import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -88,7 +86,7 @@ fun NoticeCard(
     val colors = RegolithTheme.colors
     SurfaceCard(modifier = modifier.testTag(testTag), style = CardStyle.Notice, contentPadding = PaddingValues(Spacing.s12)) {
         Row(verticalAlignment = Alignment.Top) {
-            Icon(painterResource(R.drawable.rg_ic_alert), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.dp))
+            Icon(RegolithIcons.Alert, contentDescription = null, tint = colors.body, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(Spacing.s12))
             Column {
                 Text(message, style = TextStyles.notice, color = colors.inkSoft)

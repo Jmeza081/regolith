@@ -173,8 +173,8 @@ fun LibraryScreen(
                 onBack = onBack,
                 modifier = Modifier.testTag("device_selection_topbar"),
                 actions = listOf(
-                    TopBarAction(R.drawable.rg_ic_check, "Select all", "device_select_all_button", viewModel::selectAllOnDevice),
-                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "device_select_cancel_button", viewModel::cancelDeviceSelection),
+                    TopBarAction(painterResource(R.drawable.rg_ic_check), "Select all", "device_select_all_button", viewModel::selectAllOnDevice),
+                    TopBarAction(painterResource(R.drawable.rg_ic_close), "Cancel selection", "device_select_cancel_button", viewModel::cancelDeviceSelection),
                 ),
             )
         } else if (selecting) {
@@ -185,8 +185,8 @@ fun LibraryScreen(
                 onBack = onBack,
                 modifier = Modifier.testTag("library_selection_topbar"),
                 actions = listOf(
-                    TopBarAction(R.drawable.rg_ic_check, "Select all", "library_select_all_button", viewModel::selectAllHere),
-                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "library_select_cancel_button", viewModel::cancelSelection),
+                    TopBarAction(painterResource(R.drawable.rg_ic_check), "Select all", "library_select_all_button", viewModel::selectAllHere),
+                    TopBarAction(painterResource(R.drawable.rg_ic_close), "Cancel selection", "library_select_cancel_button", viewModel::cancelSelection),
                 ),
             )
         } else {
@@ -196,8 +196,8 @@ fun LibraryScreen(
                 subtitle = subtitle,
                 subtitleMuted = tab == LibraryTab.ON_DEVICE || unreachable.isNotEmpty(),
                 actions = listOf(
-                    TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
-                    TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                    TopBarAction(painterResource(R.drawable.rg_ic_search_alt), "Search", "library_search_button", onSearch),
+                    TopBarAction(painterResource(R.drawable.rg_ic_sort), "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
                     // One button, two lists: it toggles whichever tab you are on.
                     if (tab == LibraryTab.ON_DEVICE) {
                         viewModeAction(state.device.viewMode, "library_view_mode_button", viewModel::toggleDeviceViewMode)

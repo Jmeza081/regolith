@@ -205,7 +205,7 @@ fun SearchScreen(
                             selected = state.poi != null,
                             onClick = { momentSheet = true },
                             testTag = "search_filter_moment",
-                            icon = R.drawable.rg_ic_sliders,
+                            icon = painterResource(R.drawable.rg_ic_sliders),
                             modifier = Modifier.widthIn(max = 160.dp),
                         )
                     }

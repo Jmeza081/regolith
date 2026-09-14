@@ -103,7 +103,7 @@ fun SharePickerScreen(
                         }
                         Spacer(Modifier.width(Spacing.s8))
                         RowAction(
-                            icon = R.drawable.rg_ic_chevron_right,
+                            icon = painterResource(R.drawable.rg_ic_chevron_right),
                             contentDescription = "Choose folders in ${share.name}",
                             onClick = { onChooseFolders(share.id) },
                             testTag = "addserver_share_folders_${share.name}",
