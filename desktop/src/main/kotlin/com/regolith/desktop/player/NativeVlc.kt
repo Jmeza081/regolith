@@ -4,6 +4,7 @@ import com.sun.jna.NativeLibrary
 import org.slf4j.LoggerFactory
 import uk.co.caprica.vlcj.binding.lib.LibC
 import uk.co.caprica.vlcj.binding.support.runtime.RuntimeUtil
+import uk.co.caprica.vlcj.factory.MediaPlayerFactory
 import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
 import uk.co.caprica.vlcj.factory.discovery.strategy.BaseNativeDiscoveryStrategy
 import java.io.File
@@ -20,6 +21,11 @@ import java.io.File
  *
  * vlcj remembers a successful discovery for the whole process, so every
  * player made afterwards uses whatever loaded here.
+ *
+ * For a bundled libvlc, plugins are loaded through [VlcPluginIndex]'s linked
+ * folder so libvlc's plugin index stays valid; the first launch after an
+ * install builds that index once. Any failure there falls back to the
+ * bundled plugins folder: slower to start, same playback.
  */
 object NativeVlc {
     private val log = LoggerFactory.getLogger("Regolith/VLC")
@@ -30,18 +36,44 @@ object NativeVlc {
     @Volatile var loadedFrom: String? = null
         private set
 
+    /** What happened to the plugin index this launch, in words, for the self-check. */
+    @Volatile var indexStatus: String = "not used"
+        private set
+
     @Synchronized
     fun load(): String? {
         if (tried) return loadedFrom
         tried = true
         val bundled = candidateLibDirs().firstOrNull { BundledVlcStrategy.hasLibVlc(it) }
         loadedFrom = bundled?.let { dir ->
-            NativeDiscovery(BundledVlcStrategy(dir)).takeIf { it.discover() }?.discoveredPath()
+            val index = runCatching { VlcPluginIndex.prepare(File(dir, "../plugins"), supportDir()) }
+                .onFailure { log.warn("Could not prepare the plugin index; libvlc will scan its plugins", it); indexStatus = "unavailable (${it::class.simpleName})" }
+                .getOrNull()
+            NativeDiscovery(BundledVlcStrategy(dir, index?.dir)).takeIf { it.discover() }?.discoveredPath()
+                ?.also { if (index != null) ensureIndexed(index) }
                 .also { if (it == null) log.warn("The bundled libvlc in {} did not load; trying an installed VLC", dir) }
         } ?: NativeDiscovery().takeIf { it.discover() }?.discoveredPath()
         if (loadedFrom != null) log.info("libvlc loaded from {}", loadedFrom) else log.warn("libvlc was not found")
         return loadedFrom
     }
+
+    /** Builds libvlc's index in the linked folder the first time, so every later launch can trust it. */
+    private fun ensureIndexed(index: VlcPluginIndex.Prepared) {
+        if (index.ready) {
+            indexStatus = "reused"
+            return
+        }
+        val started = System.nanoTime()
+        runCatching { MediaPlayerFactory("--reset-plugins-cache", "--quiet").release() }
+            .onFailure { log.warn("libvlc could not build its plugin index", it) }
+        val ms = (System.nanoTime() - started) / 1_000_000
+        indexStatus = if (VlcPluginIndex.markIndexed(index)) "built this launch in $ms ms" else "not written; libvlc will scan its plugins"
+        log.info("plugin index: {}", indexStatus)
+    }
+
+    /** The Mac app's own data folder, where the linked plugin folder lives. */
+    private fun supportDir(): File =
+        File(System.getProperty("user.home"), "Library/Application Support/Regolith Chapters")
 
     /** Where a bundled libvlc may be, in the order [load] tries them. */
     internal fun candidateLibDirs(): List<File> = listOfNotNull(
@@ -57,9 +89,10 @@ object NativeVlc {
  * final), so this does the same two things it does, for one folder:
  * libvlc names libvlccore by `@rpath`, which only resolves if libvlccore is
  * already loaded, so that is loaded first; and libvlc is told where its
- * plugins are through `VLC_PLUGIN_PATH`, the `plugins/` folder beside `lib/`.
+ * plugins are through `VLC_PLUGIN_PATH`: [VlcPluginIndex]'s linked folder
+ * when there is one, else the `plugins/` folder beside `lib/`.
  */
-internal class BundledVlcStrategy(private val libDir: File) :
+internal class BundledVlcStrategy(private val libDir: File, private val pluginDirOverride: File? = null) :
     BaseNativeDiscoveryStrategy(arrayOf("libvlc\\.dylib", "libvlccore\\.dylib"), arrayOf("%s/../plugins")) {
 
     override fun supported(): Boolean = RuntimeUtil.isMac()
@@ -72,7 +105,9 @@ internal class BundledVlcStrategy(private val libDir: File) :
         return true
     }
 
-    override fun setPluginPath(pluginPath: String): Boolean = LibC.INSTANCE.setenv("VLC_PLUGIN_PATH", pluginPath, 1) == 0
+    /** The linked folder with the valid index when there is one, else the plugins beside `lib/`. */
+    override fun setPluginPath(pluginPath: String): Boolean =
+        LibC.INSTANCE.setenv("VLC_PLUGIN_PATH", pluginDirOverride?.absolutePath ?: pluginPath, 1) == 0
 
     companion object {
         fun hasLibVlc(dir: File): Boolean = File(dir, "libvlc.dylib").exists() && File(dir, "libvlccore.dylib").exists()

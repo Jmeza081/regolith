@@ -31,8 +31,20 @@ To check a built app plays on its own, without a window:
   --self-check smb://localhost:1445/media/Films/Long.Test.2026.mp4 /tmp/frame.png
 ```
 
-It prints where libvlc came from, the film's length and where a seek to 4:00
-landed, and saves that frame.
+It prints where libvlc came from, how long libvlc took to get ready, the
+film's length and where a seek to 4:00 landed, and saves that frame.
+
+To check a server saved in the app, the way the app signs in (its
+`servers.json` row and its Keychain password), without changing anything:
+
+```
+"…/Regolith Chapters" --check-saved 1
+```
+
+It lists the share, walks two folder levels, counts films and chapter
+files, and reads the chapters inside a few films. It never writes, never
+prints the password, and prints counts rather than film names; empty
+chapter files are listed by path, since those are what you would clean up.
 
 The UI test and the smoke check use the local Samba fixture
 (`localhost:1445`, share `media`; see the SMB test-share notes) and skip or
@@ -61,6 +73,9 @@ desktop/src/main/kotlin/com/regolith/desktop/
   player/NativeVlc.kt       finds and loads libvlc once: bundled, checkout, installed
   player/UnavailablePlayer.kt   the player when there is no libvlc
   SelfCheck.kt              play a film headless; --self-check and :desktop:smoke
+  SavedServerCheck.kt       --check-saved: a saved server, read-only
+  player/VlcPluginIndex.kt  libvlc's plugin index, kept outside the signed app
+  ui/editor/NameSuggestions.kt   which names to offer while naming a chapter
   ui/App.kt                 theme + back stack + which screen the top route draws
   ui/LeaveGuard.kt          asks before Back or closing the window drops unsaved chapters
   ui/servers, browse, editor   XScreen.kt + XViewModel.kt + XUiState.kt, as on the phone
@@ -73,6 +88,14 @@ desktop/src/main/kotlin/com/regolith/desktop/
   row locks the rest) are `ChapterDraft` from `:core`. Save writes with
   `SidecarWriter` (a `.part` file renamed into place), formatted by
   `ChapterSidecar`.
+- **Never open what a listing has not shown.** jcifs opens a file for
+  reading with create-if-missing (open flags 17, `O_CREAT | O_RDONLY`, in
+  jcifs-ng 2.1.10). Looking for a chapter file by opening it leaves an
+  empty one on the share, which then counts as the film's chapter file.
+  The editor lists the folder first and opens only the film and chapter
+  file the listing shows; `--self-check` lists before it opens too.
+  `--check-saved` reports empty chapter files it finds, which is what such
+  an open leaves behind.
 - **Video.** `VlcPlayer` hands libvlc a callback media over the gateway's
   `SeekableByteSource`, the desktop twin of the phone's `SmbDataSource`, so
   both apps read a share through one SMB client. It keeps a reference to
@@ -116,20 +139,39 @@ to be installed. The packaged app is about 230 MB and its `.dmg` about
 To move to a newer VLC, change the URL and checksum in `fetchVlc`, delete
 `desktop/vlc-bundle/`, and run `:desktop:smoke` and the `--self-check`.
 
-**Known:** libvlc logs `stale plugins cache` lines at startup. VLC's
-`plugins/plugins.dat` indexes its plugins by modification time, and copying
-them into the app changes those times, so libvlc ignores the index and scans
-the plugins instead. Playback is unaffected (the self-check passes with the
-lines present); the cost is a slower first load of libvlc and a noisy log.
-Regenerating the cache at build time is the follow-up.
+**libvlc's plugin index lives outside the app.** VLC's
+`plugins/plugins.dat` indexes its plugins by modification time and size,
+and the bundled plugins are copied several times on the way into an
+installed app, so the index VideoLAN ships never matches: libvlc rescans
+every plugin on every launch. It cannot be rebuilt inside the app either,
+because the app is code-signed and changing a file in it breaks the
+signature (tried; `codesign --verify` then fails, and the DMG makes its own
+copy anyway).
+
+So `VlcPluginIndex` makes a folder in
+`~/Library/Application Support/Regolith Chapters/vlc-plugins-<stamp>/` with
+a link to each bundled plugin. libvlc is pointed there, follows the links
+to the real plugins, and writes its index into that folder on the first
+launch. The stamp covers the plugins' location, sizes and times, so moving
+or updating the app makes a new folder, indexed once, and removes the old
+one. If any of it fails, libvlc falls back to scanning the bundled plugins:
+slower to start, same playback.
+
+| Launch of the app from the DMG | Stale lines | libvlc ready in |
+|---|---|---|
+| First (builds the index, 2.1 s) | 0 | 4.7 s |
+| Every one after | 0 | 0.2 to 0.3 s |
+| Before this, every launch | 335 | 3.3 to 4.0 s |
 
 ## Editing
 
 The rules are the phone's (`ChapterDraft`), and so is the wording:
 
-- A film with a chapter file opens with its chapters; one without starts
-  from a single unnamed start mark at 0:00. The start mark can be renamed,
-  never moved or deleted.
+- A film opens with, in the phone's order: its chapter file, else the
+  chapters inside the film (an MKV's or MP4's own markers, read by the same
+  parser the phone uses), else a single unnamed start mark at 0:00.
+  Chapters from inside a film can be saved as a chapter file straight away,
+  without an edit. The start mark can be renamed, never moved or deleted.
 - **Mark here** (or M) adds a chapter where the film is. Clicking a row, or
   its segment on the strip under the scrubber, opens it and takes the film
   there; the other rows are locked until it closes (Done, Enter in the name,
@@ -138,8 +180,14 @@ The rules are the phone's (`ChapterDraft`), and so is the wording:
   `0:12:30`, `1:02:15.5` or bare seconds (committed on Enter or when the
   field loses focus: "Use 12:30, 0:12:30 or 1:02:15.5", "Between 0:01 and
   4:59 here"), the ±½ s / ±5 s nudges, and Delete.
+- Naming a chapter offers the names already used in the chapter files of
+  the same folder, most-used first, narrowed as you type (every typed word
+  must start a word of the name, so "the hei" finds "The heist"). The
+  phone looks across its whole library; the Mac has no library, so it
+  looks at the film's folder.
 - **Remove all chapters** goes back to one unnamed start mark. **Revert
-  chapters** deletes the chapter file from the share after asking.
+  chapters** deletes the chapter file from the share after asking; the film
+  then falls back to the chapters inside it, if it has any.
 - **Save** (⌘S) writes the file now. Leaving with unsaved changes, by Back
   or by closing the window, asks: Save, Discard, or Keep editing.
 

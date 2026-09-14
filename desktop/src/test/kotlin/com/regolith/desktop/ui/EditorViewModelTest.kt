@@ -2,10 +2,13 @@ package com.regolith.desktop.ui
 
 import com.regolith.desktop.AppGraph
 import com.regolith.desktop.FakeFilmPlayer
+import com.regolith.desktop.RecordingGateway
 import com.regolith.desktop.data.Connection
 import com.regolith.desktop.navigation.Route
 import com.regolith.desktop.ui.editor.EditorViewModel
 import com.regolith.domain.playback.Chapter
+import com.regolith.desktop.ui.editor.ChapterOrigin
+import com.regolith.domain.smb.SeekableByteSource
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbHost
@@ -31,7 +34,8 @@ class EditorViewModelTest {
         video = SmbEntry("Heat.1995.mkv", isDirectory = false, sizeBytes = 64, modifiedAtMs = 0),
     )
 
-    private fun TestScope.vm() = EditorViewModel(AppGraph(fake), route, this, player, io = StandardTestDispatcher(testScheduler))
+    private fun TestScope.vm(readEmbedded: (SeekableByteSource) -> List<Chapter> = { emptyList() }) =
+        EditorViewModel(AppGraph(fake), route, this, player, io = StandardTestDispatcher(testScheduler), readEmbedded = readEmbedded)
 
     private fun text(path: String) = fake.files["media"]?.get(path)?.toString(Charsets.UTF_8)
 
@@ -214,5 +218,90 @@ class EditorViewModelTest {
         assertEquals(2, d.selected)
         assertNull(vm.typeStart(2, "12:30"))
         assertEquals(750_000L, vm.state.value.draft!!.marks[2].startMs)
+    }
+
+    @Test
+    fun `a film with no chapter file starts from the chapters inside it, and Save writes them out unchanged`() = runTest {
+        val vm = vm(readEmbedded = { listOf(Chapter(0, "Opening"), Chapter(20_000, "The middle")) })
+        advanceUntilIdle()
+        val s = vm.state.value
+        assertEquals(ChapterOrigin.EMBEDDED, s.origin)
+        assertEquals(listOf("Opening", "The middle"), s.draft!!.marks.map { it.title })
+        assertFalse("nothing edited, so leaving does not ask", s.draft!!.dirty)
+        assertTrue("but they can be saved as a chapter file", s.canSave)
+        vm.save()
+        advanceUntilIdle()
+        assertEquals("CHAPTER01=00:00:00.000\nCHAPTER01NAME=Opening\nCHAPTER02=00:00:20.000\nCHAPTER02NAME=The middle\n", text(sidecar))
+        assertEquals(ChapterOrigin.FILE, vm.state.value.origin)
+        assertFalse(vm.state.value.canSave)
+    }
+
+    @Test
+    fun `a chapter file wins, and the chapters inside the film are not even read`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Mine\n".toByteArray())
+        var reads = 0
+        val vm = vm(readEmbedded = { reads++; listOf(Chapter(0, "Theirs")) })
+        advanceUntilIdle()
+        assertEquals(0, reads)
+        assertEquals(ChapterOrigin.FILE, vm.state.value.origin)
+        assertEquals("Mine", vm.state.value.draft!!.marks[0].title)
+    }
+
+    @Test
+    fun `revert falls back to the chapters inside the film`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Mine\n".toByteArray())
+        val vm = vm(readEmbedded = { listOf(Chapter(0, "Opening"), Chapter(20_000, "The middle")) })
+        advanceUntilIdle()
+        vm.askRevert()
+        vm.confirmRevert()
+        advanceUntilIdle()
+        assertNull(text(sidecar))
+        assertEquals(ChapterOrigin.EMBEDDED, vm.state.value.origin)
+        assertEquals(listOf("Opening", "The middle"), vm.state.value.draft!!.marks.map { it.title })
+    }
+
+    @Test
+    fun `names from the folder's chapter files are gathered for suggestions, and other files are ignored`() = runTest {
+        fake.addFile("media", "Films/Ronin.1998.chapters.txt", "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Intro\nCHAPTER02=00:10:00.000\nCHAPTER02NAME=The heist\n".toByteArray())
+        fake.addFile("media", "Films/Thief.1981.chapters.txt", "CHAPTER01=00:00:00.000\nCHAPTER01NAME=intro\nCHAPTER02=00:30:00.000\nCHAPTER02NAME=\n".toByteArray())
+        fake.addFile("media", "Films/notes.txt", "CHAPTER01NAME=Not a chapter file".toByteArray())
+        fake.addFile("media", "Films/Noir/Laura.1944.chapters.txt", "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Elsewhere\n".toByteArray())
+        val vm = vm()
+        advanceUntilIdle()
+        assertEquals(listOf("Intro", "The heist", "intro"), vm.state.value.folderNames)
+    }
+
+    @Test
+    fun `opening a film never opens a chapter file the folder does not list`() = runTest {
+        // jcifs would create it: an open is a create for a missing file.
+        val recording = RecordingGateway(fake)
+        val vm = EditorViewModel(AppGraph(recording), route, this, player, io = StandardTestDispatcher(testScheduler), readEmbedded = { emptyList() })
+        advanceUntilIdle()
+        assertTrue(recording.opened.none { it.endsWith(".chapters.txt") })
+        assertEquals(ChapterOrigin.NONE, vm.state.value.origin)
+        assertNull(vm.state.value.problem)
+    }
+
+    @Test
+    fun `a listed chapter file is read`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Listed\n".toByteArray())
+        val recording = RecordingGateway(fake)
+        val vm = EditorViewModel(AppGraph(recording), route, this, player, io = StandardTestDispatcher(testScheduler), readEmbedded = { emptyList() })
+        advanceUntilIdle()
+        assertTrue(recording.opened.contains(sidecar))
+        assertEquals("Listed", vm.state.value.draft!!.marks[0].title)
+    }
+
+    @Test
+    fun `an empty chapter file counts as none, so the chapters inside the film show and Save replaces it`() = runTest {
+        fake.addFile("media", sidecar, ByteArray(0))
+        val vm = vm(readEmbedded = { listOf(Chapter(0, "Opening")) })
+        advanceUntilIdle()
+        assertEquals(ChapterOrigin.EMBEDDED, vm.state.value.origin)
+        assertFalse(vm.state.value.hasSidecar)
+        assertTrue(vm.state.value.canSave)
+        vm.save()
+        advanceUntilIdle()
+        assertEquals("CHAPTER01=00:00:00.000\nCHAPTER01NAME=Opening\n", text(sidecar))
     }
 }

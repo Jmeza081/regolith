@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import com.regolith.desktop.data.ServerStore
 import com.regolith.desktop.ui.RegolithChaptersApp
@@ -87,6 +88,68 @@ class DesktopAppTest {
             check("CHAPTER01NAME=Cold open" in onShare) { "the chapter file on the share does not hold the edit:\n$onShare" }
         } finally {
             if (before != null) sidecar.writeBytes(before) else sidecar.delete()
+        }
+    }
+
+    /**
+     * A film with chapters inside it and no chapter file (the fixture's
+     * Chaptered.Test.2026.mkv): the editor opens with those chapters, and
+     * naming one offers the names from the folder's other chapter files
+     * (Long.Test.2026's). Nothing is saved, and opening the film must not
+     * create a chapter file: jcifs opens with create-if-missing, and the
+     * first version of this feature left an empty one behind.
+     */
+    @Test
+    fun embeddedChaptersAndFolderSuggestions() {
+        assumeTrue("Samba fixture on localhost:1445 is not running", runCatching { Socket("localhost", 1445).close() }.isSuccess)
+        assumeTrue("fixture film missing", File(System.getProperty("user.home"), "RegolithShare/Films/Chaptered.Test.2026.mkv").exists())
+        val stray = File(System.getProperty("user.home"), "RegolithShare/Films/Chaptered.Test.2026.chapters.txt")
+        assumeTrue("the fixture must start without a chapter file for this film", !stray.exists())
+        try {
+        runDesktopComposeUiTest(width = 1280, height = 800) {
+            val graph = AppGraph(
+                servers = ServerStore(Files.createTempDirectory("regolith-test").resolve("servers.json")),
+                credentials = InMemoryCredentialStore(),
+            )
+            setContent { RegolithChaptersApp(graph, videoSurface = { Box(Modifier.fillMaxSize().background(Color(0xFF222222))) }) }
+            fun shot(name: String) = ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(shots, "$name.png"))
+            // On a timeout, leave the evidence: a screenshot and the semantics tree
+            // show whether rows, an error card or only a spinner were on screen.
+            fun waitFor(timeoutMs: Long = 20_000, matcher: androidx.compose.ui.test.SemanticsMatcher) = try {
+                waitUntil(timeoutMillis = timeoutMs) { onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+            } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+                runCatching { shot("failure-embedded") }
+                println("SEMANTICS AT TIMEOUT (waiting for ${matcher.description}):\n" + onRoot(useUnmergedTree = true).printToString())
+                throw e
+            }
+
+            onNodeWithTag("servers_address_field").performTextInput("smb://localhost:1445/media")
+            onNodeWithTag("servers_connect_button").performClick()
+            waitFor(matcher = hasText("Films"))
+            onNodeWithText("Films").performClick()
+            waitFor(matcher = hasText("Chaptered.Test.2026.mkv"))
+            onNodeWithText("Chaptered.Test.2026.mkv").performClick()
+
+            waitFor(30_000, hasText("Last stretch"))
+            onNodeWithText("Opening").assertExists()
+            onNodeWithText("The middle").assertExists()
+            onNodeWithTag("editor_message").assertTextContains("inside the film", substring = true)
+            waitFor(30_000, hasText("/ 1:00", substring = true))
+            shot("7-embedded")
+
+            onNodeWithTag("editor_chapter_row_1").performClick()
+            // Suggestions narrow to what is in the box (it opens holding "The middle"),
+            // so type the start of another name from the folder: "hal" finds "Halfway".
+            onNodeWithTag("editor_name_field").performTextReplacement("hal")
+            waitFor(matcher = hasTestTag("editor_suggestion_halfway"))
+            onNodeWithTag("editor_suggestion_halfway").performClick()
+            onNodeWithTag("editor_preview").assertTextContains("CHAPTER02NAME=Halfway", substring = true)
+            shot("8-suggestion-picked")
+        }
+        check(!stray.exists()) { "opening the film created ${stray.name} on the share" }
+        } finally {
+            // Only ever remove what this test could have created: an empty file.
+            if (stray.exists() && stray.length() == 0L) stray.delete()
         }
     }
 }

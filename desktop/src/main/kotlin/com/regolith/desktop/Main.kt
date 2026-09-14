@@ -1,27 +1,32 @@
 package com.regolith.desktop
 
 import androidx.compose.runtime.remember
-import com.regolith.data.smb.JcifsGateway
-import com.regolith.domain.smb.SmbCredentials
-import java.io.File
-import kotlin.system.exitProcess
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.regolith.data.smb.JcifsGateway
 import com.regolith.desktop.player.NativeVlc
 import com.regolith.desktop.ui.LeaveGuard
 import com.regolith.desktop.ui.RegolithChaptersApp
+import com.regolith.domain.smb.SmbCredentials
+import kotlinx.coroutines.runBlocking
+import java.io.File
+import kotlin.system.exitProcess
 
 /**
  * Entry point. `application {}` is the process; `Window` is the desktop's
  * Activity: one per open window, and closing the last one ends the app.
  *
- * `--self-check smb://host/share/film.mp4 [frame.png]` skips the window and
- * runs [SelfCheck] instead, exiting 0 when the film played and seeked.
+ * Two flags skip the window, for checking a build without looking at it:
+ *  - `--self-check smb://host/share/film.mp4 [frame.png]` plays a film ([SelfCheck]);
+ *  - `--check-saved <id>` signs in to a saved server, read-only ([SavedServerCheck]).
  */
 fun main(args: Array<String>) {
-    if (args.firstOrNull() == "--self-check") exitProcess(selfCheck(args.drop(1)))
+    when (args.firstOrNull()) {
+        "--self-check" -> exitProcess(selfCheck(args.drop(1)))
+        "--check-saved" -> exitProcess(runBlocking { SavedServerCheck.run(args.getOrNull(1)?.toLongOrNull() ?: 1L) })
+    }
     // libvlc is found once, before any player exists; see NativeVlc.
     NativeVlc.load()
     app()
@@ -29,8 +34,10 @@ fun main(args: Array<String>) {
 
 private fun selfCheck(args: List<String>): Int = try {
     val (host, share, path) = SelfCheck.parse(args.getOrElse(0) { error("--self-check needs an smb:// URL of a film") })
-    val report = SelfCheck.play(JcifsGateway(), host, SmbCredentials.Guest, share, path, frameOut = args.getOrNull(1)?.let(::File))
+    val report = runBlocking { SelfCheck.play(JcifsGateway(), host, SmbCredentials.Guest, share, path, frameOut = args.getOrNull(1)?.let(::File)) }
     println("libvlc from: ${report.libvlc}")
+    println("libvlc ready in ${report.libvlcReadyMs} ms")
+    println("plugin index: ${NativeVlc.indexStatus}")
     println("length: ${report.lengthMs} ms; seek to 4:00 landed at ${report.landedMs} ms")
     report.frame?.let { println("frame: ${it.absolutePath}") }
     if (report.lengthMs > 0 && report.landedMs > 0) 0 else 1

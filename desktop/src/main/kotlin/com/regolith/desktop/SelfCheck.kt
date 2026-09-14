@@ -32,12 +32,21 @@ import javax.imageio.ImageIO
  * `:desktop:smoke` runs it from the checkout.
  */
 internal object SelfCheck {
-    data class Report(val libvlc: String, val lengthMs: Long, val landedMs: Long, val frame: File?)
+    /** [libvlcReadyMs]: from finding libvlc to a ready player factory, which is where a stale plugin index costs time. */
+    data class Report(val libvlc: String, val libvlcReadyMs: Long, val lengthMs: Long, val landedMs: Long, val frame: File?)
 
-    fun play(gateway: SmbGateway, host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, seekMs: Long = 240_000, frameOut: File? = null): Report {
+    suspend fun play(gateway: SmbGateway, host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, seekMs: Long = 240_000, frameOut: File? = null): Report {
+        // Listed first: jcifs opens with create-if-missing, so a mistyped path
+        // would otherwise leave an empty file on the share.
+        val name = relPath.substringAfterLast('/')
+        check(gateway.list(host, credentials, share, relPath.substringBeforeLast('/', "")).any { !it.isDirectory && it.name == name }) {
+            "$share/$relPath is not on the share"
+        }
+        val started = System.nanoTime()
         val libvlc = checkNotNull(NativeVlc.load()) { "libvlc was not found" }
-        val src = gateway.open(host, credentials, share, relPath)
         val factory = MediaPlayerFactory("--no-audio", "--quiet")
+        val readyMs = (System.nanoTime() - started) / 1_000_000
+        val src = gateway.open(host, credentials, share, relPath)
         val player = factory.mediaPlayers().newEmbeddedMediaPlayer()
         val media = SeekableByteSourceMedia(src)
         try {
@@ -70,7 +79,7 @@ internal object SelfCheck {
             Thread.sleep(2_500)
             val written = frameOut?.let { out -> frame?.let { out.absoluteFile.parentFile.mkdirs(); ImageIO.write(it, "png", out); out } }
             player.controls().stop()
-            return Report(libvlc, length, clock, written)
+            return Report(libvlc, readyMs, length, clock, written)
         } finally {
             player.release()
             factory.release()

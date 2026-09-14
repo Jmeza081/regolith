@@ -171,6 +171,7 @@ val fetchVlc = tasks.register<FetchVlc>("fetchVlc") {
 // Every task that copies app resources into a build needs the bundle first.
 tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(fetchVlc) }
 
+
 // Headless check of the share → libvlc → sidecar path, no window (see Smoke.kt).
 // Uses the fetched bundle, so it also proves the bundled libvlc loads.
 // Args: host port share, default the local Samba fixture.

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -157,7 +158,7 @@ fun EditorScreen(
                 state.loading || draft == null -> CircularProgressIndicator(color = Palette.Body)
                 else -> {
                     Text(
-                        state.message ?: if (state.hasSidecar) "From the film's chapter file" else "No chapter file yet",
+                        state.message ?: state.statusLine,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (state.message?.startsWith("Not ") == true) Palette.Red else Palette.Body,
                         modifier = Modifier.testTag("editor_message"),
@@ -172,7 +173,7 @@ fun EditorScreen(
                         PrimaryButton("Save", { vm.save() }, enabled = state.canSave, loading = state.saving, modifier = Modifier.testTag("editor_save_button"))
                     }
                     LazyColumn(Modifier.weight(1f).testTag("editor_chapter_list"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        itemsIndexed(draft.marks) { i, _ -> ChapterRow(draft, i, vm, ::refocus) }
+                        itemsIndexed(draft.marks) { i, _ -> ChapterRow(draft, i, state.folderNames, vm, ::refocus) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         QuietButton("Remove all chapters", vm::clearAll, Modifier.testTag("editor_clear_all_button"), enabled = state.canClearAll, color = Palette.Red)
@@ -305,7 +306,7 @@ private fun ChapterStrip(draft: ChapterDraft, durationMs: Long, onSelect: (Int) 
 }
 
 @Composable
-private fun ChapterRow(draft: ChapterDraft, index: Int, vm: EditorViewModel, refocus: () -> Unit) {
+private fun ChapterRow(draft: ChapterDraft, index: Int, folderNames: List<String>, vm: EditorViewModel, refocus: () -> Unit) {
     val mark = draft.marks[index]
     val open = draft.selected == index
     // As on the phone: while one row is open, the others are locked.
@@ -336,6 +337,8 @@ private fun ChapterRow(draft: ChapterDraft, index: Int, vm: EditorViewModel, ref
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Enter) { vm.select(null); refocus(); true } else false
                 },
             )
+            val suggestions = remember(folderNames, mark.title) { NameSuggestions.rank(folderNames, mark.title.orEmpty()) }
+            NameSuggestionChips(suggestions) { vm.rename(index, it) }
             if (index == 0) {
                 Text("The film starts here; this one stays at 0:00.", style = MaterialTheme.typography.bodySmall, color = Palette.Metadata)
             } else {
@@ -386,4 +389,18 @@ private fun StartField(mark: Chapter, index: Int, vm: EditorViewModel) {
 @Composable
 private fun RowScope.NudgeButton(label: String, tag: String, onClick: () -> Unit) {
     SecondaryButton(label, onClick, modifier = Modifier.weight(1f).testTag(tag))
+}
+
+/** Names already used in this folder's chapter files; clicking one names the open chapter. */
+@Composable
+private fun NameSuggestionChips(names: List<String>, onPick: (String) -> Unit) {
+    if (names.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("editor_suggestions")) {
+        Text("Used in this folder", style = MaterialTheme.typography.bodySmall, color = Palette.Metadata)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            names.forEach { name ->
+                SecondaryButton(name, { onPick(name) }, modifier = Modifier.testTag("editor_suggestion_" + name.lowercase().replace(' ', '_')))
+            }
+        }
+    }
 }
