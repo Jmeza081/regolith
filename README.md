@@ -177,6 +177,7 @@ any store upload.
 
 ```
 core/src/main/kotlin/com/regolith/ shared, Android-free Kotlin: domain/, the SMB client, the chapter-sidecar writer
+ui/src/commonMain/kotlin/com/regolith/ui/ the design system both apps share (being moved in from app/)
 app/src/main/java/com/regolith/   the Android app (ui/, data/, di/, player/)
 desktop/src/main/kotlin/com/regolith/desktop/   the Mac chapter editor
 app/src/main/res/font/            Michroma + Space Grotesk (OFL), bundled

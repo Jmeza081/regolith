@@ -38,6 +38,7 @@ sourceSets {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":ui"))
 
     // Compose for Desktop: the same androidx.compose.* APIs the phone uses,
     // published by JetBrains for the JVM (Skia draws them).

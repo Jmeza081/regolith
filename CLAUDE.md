@@ -36,14 +36,17 @@ message, and code comment should assume that background:
 | Icons | Lucide via `com.composables:icons-lucide-android` (vector drawables, `R.drawable.lucide_ic_*`) | lucide-react |
 | SDK levels | minSdk 34 · targetSdk 37 · compileSdk 37 | browserslist |
 
-Modules. `:core` is the only code the phone and the Mac app share; it may not
-depend on Android, Compose, Room or Hilt (guardrail G11 in `docs/ARCHITECTURE.md`).
+Modules. `:core` and `:ui` are the only code the phone and the Mac app share.
+`:core` may not depend on Android, Compose, Room or Hilt; `:ui` may add Compose
+and nothing else (guardrail G11 in `docs/ARCHITECTURE.md`).
 
 ```
 core/     pure Kotlin/JVM: domain/, data/smb (jcifs), data/media/SidecarWriter,
           data/credentials/CredentialStore. Tests + FakeSmbGateway (testFixtures).
-app/      the Android app, depends on :core
-desktop/  Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md), depends on :core
+ui/       Compose Multiplatform (Android + JVM): the shared design system. Empty
+          for now; ui/theme and ui/components move here from app/ step by step.
+app/      the Android app, depends on :core and :ui
+desktop/  Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md), depends on :core and :ui
 ```
 
 Package layout. Package names are the same in every module, so

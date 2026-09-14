@@ -97,6 +97,8 @@ dependencies {
     // chapter-sidecar writer (see core/build.gradle.kts). jcifs-ng arrives
     // through it.
     implementation(project(":core"))
+    // The shared design system (theme + components), also used by the Mac app.
+    implementation(project(":ui"))
 
     // Compose. The BOM pins every Compose artifact to one tested set.
     implementation(platform(libs.androidx.compose.bom))

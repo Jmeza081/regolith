@@ -32,7 +32,10 @@ Two Gradle modules since the Mac chapter editor gave a real reason to split
 Kotlin on the JVM; `:app` is everything Android and depends on it. Package
 names did not change, so a class's package still says which layer it is in;
 the module says which apps can use it. See G11. `:desktop` is the Mac chapter
-editor, the second app on `:core`; see `DESKTOP.md`.
+editor, the second app on `:core`; see `DESKTOP.md`. `:ui` (added the same
+day, empty for now) is the design system both apps will draw with: the
+theme tokens and the reusable components move into it from `:app` one step
+at a time, each step checked against screenshots of the phone.
 
 ## Guardrails (fixed early, never reopened)
 
@@ -73,14 +76,17 @@ short "why"; see the plan for the alternatives rejected.
   phone path stays the tested one. Layouts key on `ui/adaptive/WindowShape`
   (window width class + fold posture), never on the device model. See
   `FOLDABLE_PLAN.md`.
-- **G11. `:core` is the only code the apps share, and it may not depend on
-  Android, Compose, Room or Hilt.** Web analogy: a framework-free package in
+- **G11. `:core` and `:ui` are the only code the apps share. `:core` may not
+  depend on Android, Compose, Room or Hilt; `:ui` may add Compose and
+  nothing else (no Room, Hilt, Media3, navigation or app data).** Web analogy: a framework-free package in
   a monorepo. The build enforces it (`core/` is a plain Kotlin/JVM module,
   so an `android.*` import does not compile). A class that needs one of
   those belongs in `:app` or `:desktop`, behind an interface declared in
   `:core` if the other app needs the same seam (as `CredentialStore` is:
   the Keystore on the phone, the Keychain on the Mac). Logging goes through
-  slf4j; each app picks the binding.
+  slf4j; each app picks the binding. `:ui` code in `commonMain` compiles for
+  both targets, so an Android-only API there does not build either; one that
+  is needed goes in `androidMain` behind an `expect`/`actual` pair.
 
 ## Data flow, Phase 1 (connect → browse → play)
 
@@ -672,6 +678,7 @@ What a web developer would not guess:
 | 2026-09-14 | Found: jcifs-ng opens a file for reading with create-if-missing (`SmbRandomAccessFile` mode `"r"` = open flags 17, `O_CREAT \| O_RDONLY`), so `SmbGateway.open` on a missing path creates an empty file on the share. The Mac editor now lists before it opens | Seen when the Mac's first embedded-chapters test left a 0-byte `Chaptered.Test.2026.chapters.txt` beside the fixture film; that empty file then counted as the film's chapter file and hid its own chapters. The Mac fix stays in `:desktop` (the editor opens only the film and chapter file its folder listing shows; a film gone since Browse is "not found", not an empty file created under its name). The phone had the same pattern: `ChapterSyncRepository.onDownloaded` reads the share's chapter file by name after every download, which left an empty one beside films that had none (the fixture's `Severance.S02E01.chapters.txt`, 2026-09-13). Fixed at the source in the next row. |
 | 2026-09-14 | `JcifsGateway.open` checks the path is a file before opening it and throws `NotFound` otherwise; it never creates | The owner's choice over a narrower import-only fix: it stops every create-on-open at once (downloads, chapters, artwork, playback) instead of cleaning up after one caller. The cost is one metadata request per open, including ExoPlayer's re-opens on seek; verified on the emulator that playback and seeking are unaffected. The Mac editor keeps its list-before-open guard as well. Every caller already handled `NotFound`, so the only change a user can see is that no empty files appear. A real-Samba test in `:core` pins it. |
 | 2026-09-14 | libvlc's plugin index for the bundled plugins is built at run time, once per install, in a folder of links in Application Support (`VlcPluginIndex`), not in the app | libvlc trusts `plugins.dat` only while each plugin's modification time and size match, and the plugins are copied several times on the way into an installed app, so VideoLAN's index made libvlc rescan all 337 plugins on every launch: 3.3 to 4.0 s before a film could open, and 335 log lines. Rebuilding the index inside the built app was tried and rejected: the app is ad-hoc code-signed with sealed resources, so rewriting a file in it broke `codesign --verify`, and `packageDmg` made its own copy of the app so the DMG still shipped the stale index. A folder of symbolic links outside the app leaves the signature alone, and libvlc follows the links to the installed plugins, whose times do not change. Measured from the DMG: first launch builds it (2.1 s, ready in 4.7 s), every later launch is ready in 0.2 to 0.3 s with no log lines, and the app's signature still verifies. The folder is named by a stamp of the plugins' path, sizes and times, so a moved or updated app indexes once again and the old folder is deleted. Deleting the index instead was rejected: it silences the log but keeps the multi-second rescan. |
+| 2026-09-14 | A shared `:ui` module, Compose Multiplatform for Android and the JVM, added empty before any code moves into it; its Android side uses Google's `com.android.kotlin.multiplatform.library` plugin | The owner wants one code base for both apps, and the phone is stable, so the theme and components move in small steps, each checked against screenshots of every phone screen taken beforehand. An empty module first proves the build on its own: if it changed what the phone ships, no screen change could hide it. It did not: the phone's release runtime classpath kept every version and gained only JetBrains' thin Compose wrapper artifacts, which point back at the same androidx Compose 1.12.0 the app already uses. Under AGP 9 the Kotlin Multiplatform plugin no longer works with `com.android.library`, so the Android target is declared inside `kotlin { android { } }` instead. Rejected: a plain JVM module (the phone cannot load desktop Compose), and copying the theme into the Mac app for good (two design systems drift). |
 | 2026-09-13 | A downloaded film with no chapters gets no chapter file | Seen on the device: every copy came with a 0-byte `<id>.<ext>.chapters.txt` beside it, because "no chapters" formatted to an empty string and was written anyway. Empty now deletes instead, and a blank file read off the share counts as nothing. |
 
 ## Phase plan

@@ -22,3 +22,5 @@ include(":app")
 include(":core")
 // Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md).
 include(":desktop")
+// The design system both apps draw with: theme tokens and shared components (docs/ARCHITECTURE.md).
+include(":ui")
