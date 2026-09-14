@@ -6,7 +6,8 @@
 // Compose Multiplatform compiles the same Kotlin for both.
 //
 // The move happens in steps (docs/ARCHITECTURE.md), each checked against
-// screenshots of every phone screen. Moved so far: ui/theme.
+// screenshots of every phone screen. Moved so far: ui/theme, and the
+// components that draw no icons and use no Android-only API.
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {

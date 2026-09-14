@@ -44,8 +44,8 @@ and nothing else (guardrail G11 in `docs/ARCHITECTURE.md`).
 core/     pure Kotlin/JVM: domain/, data/smb (jcifs), data/media/SidecarWriter,
           data/credentials/CredentialStore. Tests + FakeSmbGateway (testFixtures).
 ui/       Compose Multiplatform (Android + JVM): the shared design system.
-          ui/theme lives here (fonts in androidMain/res/font); ui/components
-          moves here from app/ step by step.
+          ui/theme lives here (fonts in androidMain/res/font), plus the
+          components with no icons or Android-only APIs; the rest follow.
 app/      the Android app, depends on :core and :ui
 desktop/  Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md), depends on :core and :ui
 ```
@@ -60,6 +60,7 @@ app/src/main/java/com/regolith/
   AppViewModel.kt  app-level state: onboarding gate / start destination
   ui/            screens + shared components
     components/  REUSABLE composables — check here before writing a new one
+                 (the same package in :ui holds the ones both apps share)
     theme/       (in :ui) Color, Type, Shape, Spacing, Theme (tokens from the design)
     navigation/  RegolithKey (routes), MainTab, NavGraph (the router)
     <feature>/   one package per screen: XScreen.kt, XViewModel.kt, XUiState.kt

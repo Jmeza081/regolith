@@ -37,7 +37,7 @@ private const val ART_H = 180f
  * where nothing has been kept yet — the ring is a path with nothing on it,
  * which is the difference between "empty" and "broken".
  *
- * The dash is deliberately the same 6/4 as [CardStyle.Empty]'s border, so
+ * The dash is deliberately the same 6/4 as `CardStyle.Empty`'s border, so
  * the drawing and the card it sits in read as one object.
  *
  * @param modifier size it with this; it keeps the 4:3 box whatever you pass.
