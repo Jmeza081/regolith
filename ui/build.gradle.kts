@@ -7,7 +7,7 @@
 //
 // The move happens in steps (docs/ARCHITECTURE.md), each checked against
 // screenshots of every phone screen. Moved so far: ui/theme and every
-// component except ListRow, MediaTile, NavPill, PlayAll and Scrubber.
+// component except ListRow, MediaTile, NavPill and PlayAll.
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -42,6 +42,8 @@ kotlin {
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.material3)
+            // The domain types some components draw (the scrubber's chapters and A-B loop).
+            implementation(project(":core"))
         }
         // The Mac loads the same .ttf files from the classpath: one copy in the repo.
         named("desktopMain") {

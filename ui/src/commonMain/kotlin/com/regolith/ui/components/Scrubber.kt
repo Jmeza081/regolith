@@ -17,8 +17,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -49,8 +47,8 @@ import com.regolith.ui.theme.RegolithTheme
  *
  * [progress] and [buffered] are read once per frame *inside the draw block*,
  * not in composition. A moving playhead then repaints this Canvas and
- * nothing else — pass them from
- * [com.regolith.ui.player.SmoothProgress], which updates them about once per
+ * nothing else — pass them from the phone player's `SmoothProgress`,
+ * which updates them about once per
  * pixel of travel, and tell it how wide the track turned out to be through
  * [onTrackWidth].
  */
@@ -163,14 +161,7 @@ private fun flag(scope: DrawScope, x: Float, y: Float, label: String, fill: Colo
     val w = 12.dp.toPx()
     val top = y - 13.dp.toPx() - h / 2
     drawRoundRect(fill, Offset(x - w / 2, top), Size(w, h), CornerRadius(3.dp.toPx()))
-    val paint = android.graphics.Paint().apply {
-        color = Color.White.toArgb()
-        textSize = 9.dp.toPx()
-        textAlign = android.graphics.Paint.Align.CENTER
-        isFakeBoldText = true
-        isAntiAlias = true
-    }
-    drawContext.canvas.nativeCanvas.drawText(label, x, top + h - 3.dp.toPx(), paint)
+    drawFlagLabel(label, x, top + h - 3.dp.toPx())
 }
 
 /** The 2dp cut between chapters. */
