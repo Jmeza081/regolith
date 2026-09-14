@@ -534,7 +534,7 @@ private fun TileRow(
                 // While selecting the poster gives way to the pick box, so the
                 // row has a target that picks and a target that opens.
                 leading = if (selecting) {
-                    RowLeading.PickBox(R.drawable.rg_ic_browse, picked = coming)
+                    RowLeading.PickBox(painterResource(R.drawable.rg_ic_browse), picked = coming)
                 } else {
                     RowLeading.Poster(tile.artwork, fallbackLabel = tile.name)
                 },

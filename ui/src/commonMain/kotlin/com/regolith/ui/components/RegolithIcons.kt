@@ -44,6 +44,42 @@ object RegolithIcons {
     /** `rg_ic_back`: a left arrow, for the top bar's back button. */
     val Back: ImageVector by lazy { stroked("Back", "M19 12H5m0 0 6-6m-6 6 6 6") }
 
+    /** `rg_ic_play`: a solid triangle, for Play all and the resume card. */
+    val Play: ImageVector by lazy { filled("Play", "M7 4.5v15l13-7.5z") }
+
+    /** `rg_ic_shuffle`: two crossing arrows (Lucide "shuffle"), for Play all's shuffle choice. */
+    val Shuffle: ImageVector by lazy {
+        stroked(
+            "Shuffle",
+            "M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22",
+            "m18 2 4 4-4 4",
+            "M2 6h1.9c1.5 0 2.9.9 3.6 2.2",
+            "M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8",
+            "m18 14 4 4-4 4",
+        )
+    }
+
+    /** `rg_ic_chevron_right`: a right chevron, for a row you can walk into. */
+    val ChevronRight: ImageVector by lazy { stroked("ChevronRight", "m9 6 6 6-6 6") }
+
+    // A white fill and no stroke, as in the XML (it names a stroke width but no
+    // stroke colour, so nothing is stroked).
+    private fun filled(name: String, path: String): ImageVector = ImageVector.Builder(
+        name = name,
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        addPath(
+            pathData = addPathNodes(path),
+            fill = SolidColor(Color.White),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Butt,
+            strokeLineJoin = StrokeJoin.Miter,
+        )
+    }.build()
+
     // White strokes and no fill, as in the XML; `Icon` tints them at draw time.
     private fun stroked(
         name: String,

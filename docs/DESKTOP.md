@@ -237,5 +237,5 @@ sign-in".
 ## Not yet
 
 Signing and notarisation and Intel Macs. The phone's `ui/theme` is shared
-through `:ui`, as are most of its `ui/components`; the last few (rows,
-tiles, the nav pill) are still in the phone app.
+through `:ui`, as are most of its `ui/components`; only the nav pill,
+which is built on the phone's navigation, stays in the phone app.

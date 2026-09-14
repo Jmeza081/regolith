@@ -1,5 +1,6 @@
 package com.regolith.ui
 
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -148,7 +149,7 @@ class SelectionChromeTest {
                 ListRow(
                     title = "Severance",
                     meta = "2 folders",
-                    leading = RowLeading.PickBox(android.R.drawable.ic_menu_more, picked = false),
+                    leading = RowLeading.PickBox(painterResource(android.R.drawable.ic_menu_more), picked = false),
                     onClick = { opened++ },
                     onLeadingClick = { picked++ },
                     onLongClick = { },
@@ -179,7 +180,7 @@ class SelectionChromeTest {
                 ListRow(
                     title = "Extras",
                     meta = "Coming with the folder above",
-                    leading = RowLeading.PickBox(android.R.drawable.ic_menu_more, picked = true),
+                    leading = RowLeading.PickBox(painterResource(android.R.drawable.ic_menu_more), picked = true),
                     onClick = { opened++ },
                     onLeadingClick = { toggled++ },
                     testTag = "browse_folder_8",

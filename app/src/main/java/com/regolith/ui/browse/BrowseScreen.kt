@@ -237,7 +237,7 @@ private fun BrowseContent(
                         ListRow(
                             title = row.name,
                             meta = listOfNotNull(row.serverName, row.freeBytes?.let { "${formatBytes(it)} free" }).joinToString(" · "),
-                            leading = RowLeading.IconBox(R.drawable.rg_ic_server),
+                            leading = RowLeading.IconBox(painterResource(R.drawable.rg_ic_server)),
                             onClick = { viewModel.openShare(row.shareId, onOpenFolder) },
                             testTag = row.testTag,
                         )
@@ -271,9 +271,9 @@ private fun BrowseContent(
                                     title = row.name,
                                     meta = folderMeta(row, selection, coming && !picked),
                                     leading = if (selecting) {
-                                        RowLeading.PickBox(R.drawable.rg_ic_browse, picked = coming)
+                                        RowLeading.PickBox(painterResource(R.drawable.rg_ic_browse), picked = coming)
                                     } else {
-                                        RowLeading.IconBox(R.drawable.rg_ic_browse)
+                                        RowLeading.IconBox(painterResource(R.drawable.rg_ic_browse))
                                     },
                                     onClick = { onOpenFolder(row.folderId) },
                                     onLeadingClick = if (selecting) {

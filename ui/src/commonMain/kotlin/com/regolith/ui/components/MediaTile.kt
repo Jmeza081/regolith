@@ -26,33 +26,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Canvas
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
-import coil3.BitmapImage
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
-import com.regolith.domain.artwork.ArtworkOwner
-import kotlinx.coroutines.delay
-import kotlin.math.roundToInt
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
-import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.theme.CardShape
@@ -230,7 +208,7 @@ private fun TilePick(picked: Boolean, onClick: (() -> Unit)?, modifier: Modifier
         ) {
             if (picked) {
                 Icon(
-                    painterResource(R.drawable.rg_ic_check),
+                    RegolithIcons.Check,
                     contentDescription = "Picked",
                     tint = colors.ground,
                     modifier = Modifier.size(12.dp),
@@ -273,7 +251,7 @@ fun ResumeCard(
                 Modifier.align(Alignment.Center).size(42.scaledDp()).background(Color(0x24FFFFFF), PillShape).border(1.dp, Color(0x47FFFFFF), PillShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(R.drawable.rg_ic_play), contentDescription = "Play", tint = colors.ink, modifier = Modifier.size(15.scaledDp()))
+                Icon(RegolithIcons.Play, contentDescription = "Play", tint = colors.ink, modifier = Modifier.size(15.scaledDp()))
             }
             Chip(timeLeft, ChipStyle.OverArt, Modifier.align(Alignment.TopEnd).padding(Spacing.s8))
             ProgressEdge(progress, Modifier.align(Alignment.BottomStart))

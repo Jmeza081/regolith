@@ -37,15 +37,15 @@ message, and code comment should assume that background:
 | SDK levels | minSdk 34 · targetSdk 37 · compileSdk 37 | browserslist |
 
 Modules. `:core` and `:ui` are the only code the phone and the Mac app share.
-`:core` may not depend on Android, Compose, Room or Hilt; `:ui` may use Compose
-and `:core` and nothing else (guardrail G11 in `docs/ARCHITECTURE.md`).
+`:core` may not depend on Android, Compose, Room or Hilt; `:ui` may use Compose,
+`:core` and Coil and nothing else (guardrail G11 in `docs/ARCHITECTURE.md`).
 
 ```
 core/     pure Kotlin/JVM: domain/, data/smb (jcifs), data/media/SidecarWriter,
           data/credentials/CredentialStore. Tests + FakeSmbGateway (testFixtures).
 ui/       Compose Multiplatform (Android + JVM): the shared design system.
-          ui/theme lives here (fonts in androidMain/res/font), plus every
-          component except ListRow, MediaTile, NavPill and PlayAll.
+          ui/theme lives here (fonts in androidMain/res/font), every component
+          except NavPill, and the ui/util formatting helpers.
 app/      the Android app, depends on :core and :ui
 desktop/  Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md), depends on :core and :ui
 ```

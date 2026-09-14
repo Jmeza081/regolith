@@ -20,10 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.regolith.R
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.theme.BoxShape
 import com.regolith.ui.theme.RegolithTheme
@@ -38,13 +38,13 @@ import com.regolith.ui.theme.scaledDp
  */
 enum class RowTrailing { Chevron, Checked, None }
 
-/** What sits at the left of a row. */
+/** What sits at the left of a row. Icons are a `Painter`: the phone passes `painterResource(R.drawable.…)`. */
 sealed interface RowLeading {
     /** A 17dp glyph in a 34dp #1A1A1A box with 10dp corners (Browse folders). */
-    data class IconBox(val icon: Int) : RowLeading
+    data class IconBox(val icon: Painter) : RowLeading
 
     /** A bare 18dp glyph (Home's server list). */
-    data class Glyph(val icon: Int) : RowLeading
+    data class Glyph(val icon: Painter) : RowLeading
 
     /** A 52dp-wide 16:9 thumbnail with 7dp corners (Browse files, search results). */
     data class Thumb(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
@@ -69,7 +69,7 @@ sealed interface RowLeading {
      * is coming, and tapping its box takes it back OUT — "this folder, minus
      * that one" — so the box is always live.
      */
-    data class PickBox(val icon: Int, val picked: Boolean) : RowLeading
+    data class PickBox(val icon: Painter, val picked: Boolean) : RowLeading
 
     data object None : RowLeading
 }
@@ -136,9 +136,9 @@ fun ListRow(
     ) {
         when (leading) {
             is RowLeading.IconBox -> Box(Modifier.size(34.scaledDp()).background(colors.badgeBg, BoxShape), contentAlignment = Alignment.Center) {
-                Icon(painterResource(leading.icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.scaledDp()))
+                Icon(leading.icon, contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.scaledDp()))
             }
-            is RowLeading.Glyph -> Icon(painterResource(leading.icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
+            is RowLeading.Glyph -> Icon(leading.icon, contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
             is RowLeading.Thumb -> Box(Modifier.width(52.scaledDp()).aspectRatio(16f / 9f).clip(ThumbShape)) {
                 ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(52.scaledDp(), 29.25.scaledDp()))
             }
@@ -161,7 +161,7 @@ fun ListRow(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painterResource(if (leading.picked) R.drawable.rg_ic_check else leading.icon),
+                    if (leading.picked) rememberVectorPainter(RegolithIcons.Check) else leading.icon,
                     contentDescription = leadingDescription,
                     tint = if (leading.picked) colors.ground else colors.metadata,
                     modifier = Modifier.size(18.scaledDp()),
@@ -196,11 +196,11 @@ fun ListRow(
         when (trailing) {
             RowTrailing.Chevron -> {
                 Spacer(Modifier.width(Spacing.s12))
-                Icon(painterResource(R.drawable.rg_ic_chevron_right), contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.scaledDp()))
+                Icon(RegolithIcons.ChevronRight, contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.scaledDp()))
             }
             RowTrailing.Checked -> {
                 Spacer(Modifier.width(Spacing.s12))
-                Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
+                Icon(RegolithIcons.Check, contentDescription = "Selected", tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
             }
             RowTrailing.None -> Unit
         }

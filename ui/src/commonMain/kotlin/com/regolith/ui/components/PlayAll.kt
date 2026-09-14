@@ -24,10 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.regolith.R
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.SheetShape
 import com.regolith.ui.theme.Spacing
@@ -51,7 +51,7 @@ fun PlayAllButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         text = "Play all",
         onClick = onClick,
         compact = true,
-        leadingIcon = painterResource(R.drawable.rg_ic_play),
+        leadingIcon = rememberVectorPainter(RegolithIcons.Play),
         testTag = "play_all_button",
         modifier = modifier.fillMaxWidth(),
     )
@@ -84,14 +84,14 @@ fun PlayAllSheet(
         testTag = "play_all_sheet",
     ) {
         SheetChoice(
-            icon = R.drawable.rg_ic_play,
+            icon = RegolithIcons.Play,
             label = "In order",
             note = firstName?.let { "Starts with $it." },
             testTag = "play_all_in_order",
             onClick = { onPlay(false) },
         )
         SheetChoice(
-            icon = R.drawable.rg_ic_shuffle,
+            icon = RegolithIcons.Shuffle,
             label = "Shuffle",
             note = "All $fileCount in a random order.",
             testTag = "play_all_shuffle",
@@ -102,7 +102,7 @@ fun PlayAllSheet(
 
 /** One row of the drawer: a 18dp glyph, the choice, and a line saying what it will do. */
 @Composable
-private fun SheetChoice(icon: Int, label: String, note: String?, testTag: String, onClick: () -> Unit) {
+private fun SheetChoice(icon: ImageVector, label: String, note: String?, testTag: String, onClick: () -> Unit) {
     val colors = RegolithTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -110,7 +110,7 @@ private fun SheetChoice(icon: Int, label: String, note: String?, testTag: String
             .clickable(interactionSource = null, indication = null, onClick = onClick)
             .testTag(testTag),
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
+        Icon(icon, contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
         Spacer(Modifier.width(Spacing.s12))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             Text(label, style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.ink)

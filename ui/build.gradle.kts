@@ -7,7 +7,7 @@
 //
 // The move happens in steps (docs/ARCHITECTURE.md), each checked against
 // screenshots of every phone screen. Moved so far: ui/theme and every
-// component except ListRow, MediaTile, NavPill and PlayAll.
+// component except NavPill, which is built on the phone's own navigation.
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -44,6 +44,9 @@ kotlin {
             implementation(libs.jetbrains.compose.material3)
             // The domain types some components draw (the scrubber's chapters and A-B loop).
             implementation(project(":core"))
+            // Draws artwork (ArtworkImage) at the phone's own Coil version. Each app
+            // registers how artwork is fetched; :ui only draws it.
+            implementation(libs.coil.compose)
         }
         // The Mac loads the same .ttf files from the classpath: one copy in the repo.
         named("desktopMain") {
