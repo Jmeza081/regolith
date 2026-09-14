@@ -30,6 +30,8 @@ import com.regolith.desktop.ui.theme.Palette
  * composition, so a screen's state holder and coroutine scope live exactly
  * as long as the entry is on top.
  *
+ * @param guard asked before Back or closing the window; Main passes the one the
+ *   window's close button uses.
  * @param newPlayer builds the one player the window uses; tests can pass a fake.
  * @param videoSurface draws the player's picture. The default hosts VLC's
  *   Swing view; Compose's in-memory test renderer cannot host Swing, so UI
@@ -38,6 +40,7 @@ import com.regolith.desktop.ui.theme.Palette
 @Composable
 fun RegolithChaptersApp(
     graph: AppGraph,
+    guard: LeaveGuard = remember { LeaveGuard() },
     newPlayer: () -> FilmPlayer = { VlcPlayer() },
     videoSurface: @Composable (FilmPlayer) -> Unit = { p ->
         (p as? VlcPlayer)?.let { vlc -> SwingPanel(factory = { vlc.surface }, modifier = Modifier.fillMaxSize()) }
@@ -46,7 +49,7 @@ fun RegolithChaptersApp(
     val player = remember { newPlayer() }
     DisposableEffect(Unit) { onDispose { (player as? VlcPlayer)?.dispose() ?: player.release() } }
     val backStack = remember { mutableStateListOf<Route>(Route.Servers) }
-    fun back() {
+    fun back() = guard.request {
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
 
@@ -63,7 +66,7 @@ fun RegolithChaptersApp(
                             onOpenFolder = { folder -> backStack.add(Route.Browse(top.connection, folder)) },
                             onOpenFilm = { film -> backStack.add(Route.Editor(top.connection, top.folder, film)) },
                         )
-                        is Route.Editor -> EditorScreen(graph, top, player, videoSurface, onBack = ::back)
+                        is Route.Editor -> EditorScreen(graph, top, player, videoSurface, guard, onBack = ::back)
                     }
                 }
             }

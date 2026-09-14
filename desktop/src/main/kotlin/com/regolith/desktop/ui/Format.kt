@@ -12,6 +12,12 @@ fun formatClock(ms: Long): String {
     return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, sec) else String.format(Locale.US, "%d:%02d", m, sec)
 }
 
+/** A start time as the Start field shows it: `12:30`, or `12:30.5` when it is not on a whole second. */
+fun formatStart(ms: Long): String {
+    val tenth = (ms.coerceAtLeast(0) % 1000) / 100
+    return formatClock(ms) + if (tenth > 0) ".$tenth" else ""
+}
+
 /** `1.4 GB`, `312 MB`, `56 KB`. */
 fun formatSize(bytes: Long): String = when {
     bytes >= 1L shl 30 -> String.format(Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024))

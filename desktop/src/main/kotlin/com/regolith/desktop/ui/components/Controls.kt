@@ -21,6 +21,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,13 @@ import com.regolith.desktop.ui.theme.Palette
  */
 
 private val PillShape = RoundedCornerShape(percent = 50)
+
+/**
+ * A control that a mouse click does not focus, as buttons behave on macOS.
+ * Without this, clicking Mark would park focus on it and the next Space
+ * would press Mark again instead of reaching the editor's shortcuts.
+ */
+fun Modifier.clickOnly(): Modifier = focusProperties { canFocus = false }
 
 /** The one red action on a screen. [loading] shows a ring and ignores clicks. */
 @Composable
@@ -57,7 +66,7 @@ fun PrimaryButton(
             disabledContentColor = Palette.DisabledInk,
         ),
         contentPadding = PaddingValues(horizontal = 20.dp),
-        modifier = modifier.height(40.dp),
+        modifier = modifier.clickOnly().height(40.dp),
     ) {
         if (loading) CircularProgressIndicator(Modifier.size(16.dp), color = Palette.InkSoft, strokeWidth = 2.dp)
         else Text(text, style = MaterialTheme.typography.labelLarge)
@@ -83,17 +92,21 @@ fun SecondaryButton(
             disabledContentColor = Palette.DisabledInk,
         ),
         contentPadding = PaddingValues(horizontal = 12.dp),
-        modifier = modifier.height(36.dp),
+        modifier = modifier.clickOnly().height(36.dp),
     ) {
         Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
     }
 }
 
-/** A text-only action that should not compete with the buttons: Back, Delete. */
+/**
+ * A text-only action that should not compete with the buttons: Back, Done.
+ * Pass [color] = [Palette.Red] for the destructive ones (Revert, Remove all),
+ * as the phone draws them.
+ */
 @Composable
-fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    TextButton(onClick = onClick, enabled = enabled, modifier = modifier) {
-        Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) Palette.Body else Palette.DisabledInk)
+fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, color: Color = Palette.Body) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = modifier.clickOnly()) {
+        Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) color else Palette.DisabledInk, maxLines = 1, softWrap = false)
     }
 }
 

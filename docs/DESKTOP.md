@@ -43,6 +43,7 @@ desktop/src/main/kotlin/com/regolith/desktop/
   player/FilmPlayer.kt      what the editor needs from a player
   player/VlcPlayer.kt       libvlc through vlcj, reading via SeekableByteSource
   ui/App.kt                 theme + back stack + which screen the top route draws
+  ui/LeaveGuard.kt          asks before Back or closing the window drops unsaved chapters
   ui/servers, browse, editor   XScreen.kt + XViewModel.kt + XUiState.kt, as on the phone
   ui/components/Controls.kt the few controls, styled from the phone's tokens
   ui/theme/                 the phone's palette and fonts, copied (sharing is a later branch)
@@ -63,6 +64,38 @@ desktop/src/main/kotlin/com/regolith/desktop/
 - **Test tags.** Every control has a `testTag` (`servers_connect_button`,
   `browse_list`, `editor_save_button`, `editor_chapter_row_N`, …), the same
   convention as the phone.
+
+## Editing
+
+The rules are the phone's (`ChapterDraft`), and so is the wording:
+
+- A film with a chapter file opens with its chapters; one without starts
+  from a single unnamed start mark at 0:00. The start mark can be renamed,
+  never moved or deleted.
+- **Mark here** (or M) adds a chapter where the film is. Clicking a row, or
+  its segment on the strip under the scrubber, opens it and takes the film
+  there; the other rows are locked until it closes (Done, Enter in the name,
+  or Esc).
+- An open row has its name, a **Start** field that takes `12:30`,
+  `0:12:30`, `1:02:15.5` or bare seconds (committed on Enter or when the
+  field loses focus: "Use 12:30, 0:12:30 or 1:02:15.5", "Between 0:01 and
+  4:59 here"), the ±½ s / ±5 s nudges, and Delete.
+- **Remove all chapters** goes back to one unnamed start mark. **Revert
+  chapters** deletes the chapter file from the share after asking.
+- **Save** (⌘S) writes the file now. Leaving with unsaved changes, by Back
+  or by closing the window, asks: Save, Discard, or Keep editing.
+
+| Key | Does |
+|---|---|
+| Space | Play / pause |
+| M | Mark here |
+| ← / → | Back / forward 5 s (with ⇧: ½ s) |
+| ⌘S | Save |
+| Esc | Close the open row; leave a text field |
+
+The keys go to the editor itself, so its buttons, rows and slider never
+take focus when clicked (how buttons behave on macOS). Inside a text field
+keys type as usual; ⌘S and Esc still work there.
 
 ## Servers and passwords
 
@@ -96,6 +129,4 @@ sign-in".
 
 ## Not yet
 
-Typed start times, Revert, the unsaved-changes guard, keyboard shortcuts,
-and a packaged `.app` that bundles libvlc are the next commits on this
-branch.
+A packaged `.app` that bundles libvlc is the next commit on this branch.

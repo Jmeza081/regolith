@@ -14,12 +14,19 @@ data class EditorUiState(
     /** Whether the share had a chapter file when the film opened, or has one since a save. */
     val hasSidecar: Boolean = false,
     val saving: Boolean = false,
+    /** The Revert confirmation is showing. */
+    val revertAsked: Boolean = false,
+    val reverting: Boolean = false,
     /** The outcome of the last save, in words. */
     val message: String? = null,
     /** Opening the film failed; the screen shows this instead of the editor. */
     val problem: Problem? = null,
 ) {
     val canSave: Boolean get() = draft?.dirty == true && !saving
+
+    /** "Remove all chapters": inert while a row is open, and when there is nothing to remove. */
+    val canClearAll: Boolean
+        get() = draft != null && draft.selected == null && !(draft.marks.size == 1 && draft.marks[0].title == null)
 
     /** The exact text Save would write, shown so the file is never a surprise. */
     val preview: String get() = draft?.let { ChapterSidecar.format(it.chapters) }.orEmpty()

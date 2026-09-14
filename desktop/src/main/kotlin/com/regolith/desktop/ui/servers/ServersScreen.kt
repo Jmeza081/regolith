@@ -24,6 +24,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.regolith.desktop.AppGraph
@@ -42,6 +47,10 @@ fun ServersScreen(graph: AppGraph, onConnected: (Connection) -> Unit) {
     val scope = rememberCoroutineScope()
     val vm = remember { ServersViewModel(graph, scope, onConnected) }
     val state by vm.state.collectAsState()
+    // Enter in the form connects, as a Mac sheet's default button would.
+    val enterConnects = Modifier.onPreviewKeyEvent { e ->
+        if (e.type == KeyEventType.KeyDown && e.key == Key.Enter && state.canConnect) { vm.connect(); true } else false
+    }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
@@ -68,7 +77,7 @@ fun ServersScreen(graph: AppGraph, onConnected: (Connection) -> Unit) {
             ChaptersTextField(
                 state.address, vm::onAddressChange, label = "Address",
                 placeholder = "smb://192.168.1.24/media",
-                modifier = Modifier.testTag("servers_address_field"),
+                modifier = Modifier.testTag("servers_address_field").then(enterConnects),
             )
             ChaptersTextField(
                 state.username, vm::onUsernameChange, label = "Username",
@@ -80,7 +89,7 @@ fun ServersScreen(graph: AppGraph, onConnected: (Connection) -> Unit) {
                 enabled = state.username.isNotBlank(),
                 placeholder = state.passwordPlaceholder,
                 supportingText = if (state.username.isNotBlank()) "Kept in the macOS Keychain" else null,
-                modifier = Modifier.testTag("servers_password_field"),
+                modifier = Modifier.testTag("servers_password_field").then(enterConnects),
             )
             state.problem?.let { ProblemCard(it, Modifier.testTag("servers_problem")) }
             Row(verticalAlignment = Alignment.CenterVertically) {

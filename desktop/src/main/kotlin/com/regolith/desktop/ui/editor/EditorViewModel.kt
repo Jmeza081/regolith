@@ -5,6 +5,7 @@ import com.regolith.desktop.AppGraph
 import com.regolith.desktop.navigation.Route
 import com.regolith.desktop.player.FilmPlayer
 import com.regolith.desktop.ui.childPath
+import com.regolith.desktop.ui.formatClock
 import com.regolith.desktop.ui.toProblem
 import com.regolith.domain.media.ChapterSidecar
 import com.regolith.domain.playback.ChapterDraft
@@ -107,8 +108,60 @@ class EditorViewModel(
 
     fun remove(index: Int) = editDraft { it.remove(index) }
 
-    /** Write the chapter file to the share now. */
-    fun save() {
+    /** Back to a single unnamed start mark. Nothing is written until Save. */
+    fun clearAll() = editDraft { it.clearAll() }
+
+    /**
+     * Move mark [index] to a typed time (`12:30`, `0:12:30`, `1:02:15.5`, or
+     * bare seconds) and take the film there. Returns the problem in the
+     * phone's words, or null when the mark moved.
+     */
+    fun typeStart(index: Int, text: String): String? {
+        val draft = _state.value.draft ?: return null
+        val ms = ChapterDraft.parseClock(text) ?: return "Use 12:30, 0:12:30 or 1:02:15.5"
+        val range = draft.bounds(index) ?: return "This one cannot move"
+        if (ms !in range) {
+            return if (range.last >= UNKNOWN_DURATION / 2) "After ${formatClock(range.first)} here"
+            else "Between ${formatClock(range.first)} and ${formatClock(range.last)} here"
+        }
+        editDraft { it.move(index, ms) }
+        seekToMark(index)
+        return null
+    }
+
+    fun askRevert() = _state.update { if (it.hasSidecar) it.copy(revertAsked = true) else it }
+    fun cancelRevert() = _state.update { it.copy(revertAsked = false) }
+
+    /**
+     * Delete the film's chapter file from the share. The phone then falls
+     * back to the film's own markers, or the even split; here the draft
+     * starts again from one unnamed start mark.
+     */
+    fun confirmRevert() {
+        if (_state.value.reverting) return
+        _state.update { it.copy(revertAsked = false, reverting = true, message = null) }
+        scope.launch {
+            try {
+                graph.sidecars.delete(c.host, c.credentials, c.share, route.folder, route.video.name)
+                _state.update {
+                    val d = it.draft
+                    it.copy(
+                        reverting = false,
+                        hasSidecar = false,
+                        message = "Reverted: the chapter file is gone",
+                        draft = d?.let { ChapterDraft.seed(d.fileId, emptyList(), d.durationMs) },
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(reverting = false, message = failure("Not reverted", e)) }
+            }
+        }
+    }
+
+    /** Write the chapter file to the share now. [onSaved] runs only when the write succeeded. */
+    fun save(onSaved: () -> Unit = {}) {
         val s = _state.value
         val draft = s.draft ?: return
         if (s.saving) return
@@ -125,19 +178,20 @@ class EditorViewModel(
                         draft = it.draft?.let { d -> if (d.marks == draft.marks) d.copy(dirty = false) else d },
                     )
                 }
+                onSaved()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(saving = false, message = saveFailure(e)) }
+                _state.update { it.copy(saving = false, message = failure("Not saved", e)) }
             }
         }
     }
 
-    private fun saveFailure(e: Exception): String = when (e) {
-        is SmbFailure.Forbidden -> "Not saved: the share is read-only"
-        is SmbFailure.Unreachable -> "Not saved: ${c.host.host} is out of reach"
-        is SmbFailure.AuthFailed -> "Not saved: the share no longer accepts this sign-in"
-        else -> "Not saved: ${e.toProblem().message}"
+    private fun failure(what: String, e: Exception): String = when (e) {
+        is SmbFailure.Forbidden -> "$what: the share is read-only"
+        is SmbFailure.Unreachable -> "$what: ${c.host.host} is out of reach"
+        is SmbFailure.AuthFailed -> "$what: the share no longer accepts this sign-in"
+        else -> "$what: ${e.toProblem().message}"
     }
 
     private fun seekToMark(index: Int) {

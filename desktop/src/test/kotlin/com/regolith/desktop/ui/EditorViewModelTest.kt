@@ -5,6 +5,7 @@ import com.regolith.desktop.FakeFilmPlayer
 import com.regolith.desktop.data.Connection
 import com.regolith.desktop.navigation.Route
 import com.regolith.desktop.ui.editor.EditorViewModel
+import com.regolith.domain.playback.Chapter
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbHost
@@ -116,5 +117,89 @@ class EditorViewModelTest {
         advanceUntilIdle()
         assertEquals("media/Films/Heat.1995.mkv was not found", vm.state.value.problem?.message)
         assertNull(vm.state.value.draft)
+    }
+
+    @Test
+    fun `a typed start moves the mark and the film, and bad times say why in the phone's words`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=\nCHAPTER02=00:02:00.000\nCHAPTER02NAME=\nCHAPTER03=00:05:00.000\nCHAPTER03NAME=\n".toByteArray())
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onDurationKnown(10 * 60_000L)
+
+        assertNull(vm.typeStart(1, "1:30.5"))
+        assertEquals(90_500L, vm.state.value.draft!!.marks[1].startMs)
+        assertEquals(90_500L, player.seeks.last())
+
+        assertEquals("Use 12:30, 0:12:30 or 1:02:15.5", vm.typeStart(1, "soon"))
+        assertEquals("Between 0:01 and 4:59 here", vm.typeStart(1, "6:00"))
+        assertEquals("This one cannot move", vm.typeStart(0, "0:10"))
+        assertEquals("the failed tries moved nothing", 90_500L, vm.state.value.draft!!.marks[1].startMs)
+    }
+
+    @Test
+    fun `remove all leaves one unnamed start mark and is saved only on Save`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Intro\nCHAPTER02=00:02:00.000\nCHAPTER02NAME=\n".toByteArray())
+        val vm = vm()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.canClearAll)
+        vm.clearAll()
+        assertEquals(listOf(Chapter(0, null)), vm.state.value.draft!!.marks)
+        assertFalse(vm.state.value.canClearAll)
+        assertTrue(text(sidecar)!!.contains("Intro"))
+    }
+
+    @Test
+    fun `revert deletes the chapter file and starts again from the start mark`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Intro\n".toByteArray())
+        val vm = vm()
+        advanceUntilIdle()
+        vm.askRevert()
+        assertTrue(vm.state.value.revertAsked)
+        vm.confirmRevert()
+        advanceUntilIdle()
+        assertNull(text(sidecar))
+        assertFalse(vm.state.value.hasSidecar)
+        assertEquals(listOf(Chapter(0, null)), vm.state.value.draft!!.marks)
+        assertEquals("Reverted: the chapter file is gone", vm.state.value.message)
+    }
+
+    @Test
+    fun `revert on a read-only share keeps the file and says so`() = runTest {
+        fake.addFile("media", sidecar, "CHAPTER01=00:00:00.000\nCHAPTER01NAME=Intro\n".toByteArray())
+        val vm = vm()
+        advanceUntilIdle()
+        fake.readOnly = true
+        vm.askRevert()
+        vm.confirmRevert()
+        advanceUntilIdle()
+        assertEquals("Not reverted: the share is read-only", vm.state.value.message)
+        assertTrue(vm.state.value.hasSidecar)
+        assertEquals("Intro", vm.state.value.draft!!.marks[0].title)
+    }
+
+    @Test
+    fun `revert is not offered for a film with no chapter file`() = runTest {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.askRevert()
+        assertFalse(vm.state.value.revertAsked)
+    }
+
+    @Test
+    fun `the save callback runs only when the file was written`() = runTest {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.onDurationKnown(60_000L)
+        player.positionMs = 30_000
+        vm.mark()
+        var saved = 0
+        fake.readOnly = true
+        vm.save { saved++ }
+        advanceUntilIdle()
+        assertEquals(0, saved)
+        fake.readOnly = false
+        vm.save { saved++ }
+        advanceUntilIdle()
+        assertEquals(1, saved)
     }
 }
