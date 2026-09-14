@@ -43,6 +43,7 @@ depend on Android, Compose, Room or Hilt (guardrail G11 in `docs/ARCHITECTURE.md
 core/     pure Kotlin/JVM: domain/, data/smb (jcifs), data/media/SidecarWriter,
           data/credentials/CredentialStore. Tests + FakeSmbGateway (testFixtures).
 app/      the Android app, depends on :core
+desktop/  Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md), depends on :core
 ```
 
 Package layout. Package names are the same in every module, so
@@ -152,7 +153,16 @@ To make the app navigable by argent, follow these conventions in Compose:
 ./gradlew connectedAndroidTest # instrumented/Compose UI tests on the emulator
 ./gradlew lint                 # Android lint
 repomix                        # regenerate the full-repo snapshot
+
+./gradlew :desktop:run         # the Mac app's window
+./gradlew :desktop:test        # its unit tests + a Compose UI test against the Samba fixture
+./gradlew :desktop:smoke       # headless: SMB list, libvlc seek, sidecar round-trip
 ```
+
+The Mac app is verified with its Compose Desktop UI test, not argent: argent
+cannot drive a desktop JVM window. The test renders the real screens, clicks
+by the same `testTag`s, and saves a PNG of each step to
+`desktop/build/test-shots` to look at.
 
 There is no system JDK on this machine. Run Gradle with
 `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"` set

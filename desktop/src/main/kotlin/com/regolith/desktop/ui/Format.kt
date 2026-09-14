@@ -1,0 +1,23 @@
+package com.regolith.desktop.ui
+
+import java.util.Locale
+
+/** `4:05`, or `1:02:15` past an hour. Negative and unknown read as `0:00`. */
+fun formatClock(ms: Long): String {
+    if (ms <= 0 || ms >= Long.MAX_VALUE / 4) return "0:00"
+    val s = ms / 1000
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val sec = s % 60
+    return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, sec) else String.format(Locale.US, "%d:%02d", m, sec)
+}
+
+/** `1.4 GB`, `312 MB`, `56 KB`. */
+fun formatSize(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> String.format(Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024))
+    bytes >= 1L shl 20 -> String.format(Locale.US, "%.0f MB", bytes / (1024.0 * 1024))
+    else -> String.format(Locale.US, "%.0f KB", bytes / 1024.0)
+}
+
+/** `Films/Heat` for `Films` + `Heat`; the share root has no prefix. */
+fun childPath(folder: String, name: String): String = if (folder.isEmpty()) name else "$folder/$name"

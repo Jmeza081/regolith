@@ -94,6 +94,18 @@ Android Studio writes it on first open, or create it by hand.
 
 Emulator driving and QA go through the argent MCP tools (see `CLAUDE.md`).
 
+### Mac app: Regolith Chapters
+
+A small macOS app for writing chapters at a desk: connect to a share,
+open a film, mark and name its chapters, Save. It writes the same
+`<film>.chapters.txt` the phone reads (`docs/CHAPTERS.md`), with the same
+code, from the shared `:core` module. Details in `docs/DESKTOP.md`.
+
+```
+brew install --cask vlc        # for now; the packaged app will bundle it
+./gradlew :desktop:run
+```
+
 ### Foldable emulator
 
 The owner's phone is a Galaxy Z Fold, and the inner display gets its own
@@ -163,6 +175,7 @@ any store upload.
 ```
 core/src/main/kotlin/com/regolith/ shared, Android-free Kotlin: domain/, the SMB client, the chapter-sidecar writer
 app/src/main/java/com/regolith/   the Android app (ui/, data/, di/, player/)
+desktop/src/main/kotlin/com/regolith/desktop/   the Mac chapter editor
 app/src/main/res/font/            Michroma + Space Grotesk (OFL), bundled
 design/docs/                      the high-fidelity design export (source of truth)
 docs/                             ARCHITECTURE.md, NAVIGATION.md

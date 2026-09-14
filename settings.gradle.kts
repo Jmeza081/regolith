@@ -20,3 +20,5 @@ rootProject.name = "Regolith"
 include(":app")
 // Pure-Kotlin code shared by the phone and the Mac app (guardrail G11).
 include(":core")
+// Regolith Chapters, the macOS chapter editor (docs/DESKTOP.md).
+include(":desktop")

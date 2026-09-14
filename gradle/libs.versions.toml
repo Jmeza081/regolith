@@ -35,6 +35,13 @@ coil = "3.4.0"
 haze = "1.7.3"
 lucide = "2.2.1"
 jcifsNg = "2.1.10"
+# --- Mac app (:desktop). Compose Multiplatform 1.12.0 is built with Kotlin
+# 2.2.20, under the 2.3 metadata ceiling, so the AGP-bundled 2.2.10 compiler
+# reads it. Its Material 3 is versioned separately; 1.9.0 is what 1.12.0 pairs
+# with. vlcj binds libvlc (VLC 3.x) through JNA.
+composeMultiplatform = "1.12.0"
+composeMultiplatformMaterial3 = "1.9.0"
+vlcj = "4.12.1"
 # Held on 1.7.x on purpose: slf4j-android has no 2.x, and a 2.x API would
 # unbind it (every SMB log would vanish from logcat).
 #noinspection GradleDependency
@@ -116,6 +123,15 @@ slf4j-android = { group = "org.slf4j", name = "slf4j-android", version.ref = "sl
 slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4jAndroid" }
 # @Inject/@Singleton for :core, which has no Hilt. The standard JSR-330 jar.
 javax-inject = { group = "javax.inject", name = "javax.inject", version = "1" }
+# The Mac app's binding for the same 1.7.x API: logs to stderr.
+slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4jAndroid" }
+
+# --- Mac app (:desktop)
+jetbrains-compose-material3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "composeMultiplatformMaterial3" }
+jetbrains-compose-ui-test-junit4 = { group = "org.jetbrains.compose.ui", name = "ui-test-junit4", version.ref = "composeMultiplatform" }
+vlcj = { group = "uk.co.caprica", name = "vlcj", version.ref = "vlcj" }
+# Dispatchers.Main on the desktop is the Swing event thread.
+kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 
 # --- Kotlin
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
@@ -139,3 +155,4 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 # Plain-JVM Kotlin modules (:core, :desktop). MUST be the Kotlin AGP 9 bundles.
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
