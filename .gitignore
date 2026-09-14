@@ -23,3 +23,6 @@ local.properties
 
 # Mac app: libvlc fetched by :desktop:fetchVlc (~82 MB), bundled into the .app, never committed
 desktop/vlc-bundle/
+
+# Phone screenshot baselines for visual regression checks (argent); local only, never committed
+.baselines/
