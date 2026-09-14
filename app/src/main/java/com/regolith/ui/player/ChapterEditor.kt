@@ -367,6 +367,12 @@ private fun NudgeStrip(index: Int, onNudge: (Int, Long) -> Unit) {
  * opens it, and a tap or drag anywhere else scrubs the film — the same
  * callbacks the picture's scrubber uses, so the preview shows there too.
  *
+ * Opening a handle, and dragging one, take the FILM to that mark (the seek
+ * itself is `PlayerViewModel.seekToOpenMark`, so a nudge and a typed time
+ * do it too): you cannot name a moment, or place one on a cut, while the
+ * picture is showing somewhere else. Scrubbing away afterwards is free —
+ * the film only follows a mark when a mark is what moved.
+ *
  * Big handles on a strip of their own, rather than flags on the 3dp
  * scrubber: a miss by a few pixels used to scrub instead of moving the
  * mark, which is what the owner meant by "finicky".
@@ -399,8 +405,11 @@ private fun MarksTimeline(
                     val d = draftNow
                     val hit = handleAt(d, durationMs, offset.x, size.width, HANDLE_W.toPx() / 2 + HANDLE_REACH.toPx())
                     when {
-                        d.selected == null && hit > 0 -> onSelect(hit)
-                        hit > 0 -> Unit // locked, or already the open one: nothing to do
+                        // Opening a mark takes the film to it, and so does
+                        // tapping the one already open — that is the way back
+                        // to the frame after scrubbing off to look at something.
+                        hit > 0 && (d.selected == null || hit == d.selected) -> onSelect(hit)
+                        hit > 0 -> Unit // another row is open: this one is locked
                         durationMs > 0 -> { onScrubStart(); onScrubEnd((offset.x / size.width).coerceIn(0f, 1f)) }
                     }
                 }

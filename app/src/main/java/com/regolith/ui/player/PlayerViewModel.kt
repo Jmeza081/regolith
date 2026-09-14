@@ -26,6 +26,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import android.os.SystemClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,6 +36,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.stateIn
 import kotlin.math.absoluteValue
@@ -256,9 +259,11 @@ class PlayerViewModel @AssistedInject constructor(
      * spelling stays put.
      *
      * An empty field gets the library's commonest names rather than nothing
-     * — that is when the prompt is worth the most. Already dropped: what is
-     * typed (there is nothing to fix) and names on this film's other marks
-     * (two parts of one film with one name helps nobody).
+     * — that is when the prompt is worth the most. The ONLY name dropped is
+     * the one already in the box, because tapping that chip would do
+     * nothing. Names this film already uses on another mark stay: the
+     * owner's call, and right — a film can have two "Opening credits", and
+     * a list that hides what you have used is a list you cannot trust.
      */
     val chapterNameSuggestions: StateFlow<List<String>> = combine(
         openMarkTitle.debounce(SUGGEST_DEBOUNCE_MS).flatMapLatest { typed ->
@@ -271,18 +276,16 @@ class PlayerViewModel @AssistedInject constructor(
             emptyList()
         } else {
             val typed = draft.marks.getOrNull(open)?.title?.trim().orEmpty()
-            val taken = draft.marks.filterIndexed { i, _ -> i != open }
-                .mapNotNullTo(HashSet()) { it.title?.trim()?.lowercase()?.takeIf(String::isNotEmpty) }
-            found.map { it.title }
-                .filter { it.trim().lowercase() !in taken && !it.equals(typed, ignoreCase = true) }
-                .take(SUGGEST_CHIPS)
+            found.map { it.title }.filter { !it.equals(typed, ignoreCase = true) }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // Opening a mark, or moving one, takes the film to it. Marking at the
+    // playhead does not: the film is already there.
     fun markChapterAtPlayhead() = editDraft { it.mark(state.value.positionMs) }
-    fun selectMark(index: Int?) = editDraft { it.select(index) }
-    fun moveMark(index: Int, ms: Long) = editDraft { it.move(index, ms) }
-    fun nudgeMark(index: Int, deltaMs: Long) = editDraft { it.nudge(index, deltaMs) }
+    fun selectMark(index: Int?) = editDraft { it.select(index) }.also { seekToOpenMark(throttle = false) }
+    fun moveMark(index: Int, ms: Long) = editDraft { it.move(index, ms) }.also { seekToOpenMark(throttle = true) }
+    fun nudgeMark(index: Int, deltaMs: Long) = editDraft { it.nudge(index, deltaMs) }.also { seekToOpenMark(throttle = false) }
     fun renameMark(index: Int, title: String) = editDraft { it.rename(index, title) }
     fun removeMark(index: Int) = editDraft { it.remove(index) }
     /** "Remove all chapters": back to a single unnamed start mark. Cancel still undoes it. */
@@ -342,6 +345,37 @@ class PlayerViewModel @AssistedInject constructor(
         _chapterDraft.value = _chapterDraft.value?.let(edit)
     }
 
+    private var markSeekJob: Job? = null
+    private var lastMarkSeekAtMs = 0L
+
+    /**
+     * Put the film on the mark that is open, so the frame on screen is the
+     * one being marked (P13). Nothing to do when no row is open — closing a
+     * row leaves the film where the last move put it.
+     *
+     * [throttle] is for a handle being DRAGGED, which calls this many times
+     * a second: the first move seeks at once, the rest at most one per
+     * [MARK_SEEK_INTERVAL_MS], and the trailing job re-reads the draft when
+     * it fires, so wherever the finger stops is where the film ends up. A
+     * seek per pointer event would have the player re-reading the share on
+     * every pixel. Discrete moves — a tap, a nudge, a typed time — pass
+     * false and land immediately.
+     */
+    private fun seekToOpenMark(throttle: Boolean) {
+        if (openMarkMs() == null) return
+        markSeekJob?.cancel()
+        val wait = if (!throttle) 0L else (MARK_SEEK_INTERVAL_MS - (SystemClock.elapsedRealtime() - lastMarkSeekAtMs)).coerceAtLeast(0L)
+        markSeekJob = viewModelScope.launch {
+            if (wait > 0) delay(wait)
+            val ms = openMarkMs() ?: return@launch
+            lastMarkSeekAtMs = SystemClock.elapsedRealtime()
+            session.seekTo(ms)
+        }
+    }
+
+    /** Where the open mark sits, or null when the editor is closed or no row is open. */
+    private fun openMarkMs(): Long? = _chapterDraft.value?.let { d -> d.selected?.let { d.marks.getOrNull(it)?.startMs } }
+
     init {
         // A draft belongs to one file: when autoplay moves on, it goes.
         viewModelScope.launch {
@@ -398,14 +432,19 @@ class PlayerViewModel @AssistedInject constructor(
         /** Frames across the flex-mode filmstrip. Nine fits the artboard's deck without crowding. */
         const val STRIP_FRAMES = 9
 
+        /** The most often a handle being dragged may move the film. Four seeks a second is plenty to follow by eye. */
+        const val MARK_SEEK_INTERVAL_MS = 250L
+
         /** A pause in typing before the suggestions re-query: short, it is a local table. */
         const val SUGGEST_DEBOUNCE_MS = 120L
 
-        /** Rows asked of the database; more than [SUGGEST_CHIPS] because used names are filtered out after. */
-        const val SUGGEST_QUERY_LIMIT = 20
-
-        /** Chips shown. Enough to recognise the name you want, few enough to read at a glance. */
-        const val SUGGEST_CHIPS = 6
+        /**
+         * How many names the chips can offer. The row scrolls, and the point
+         * is to show what the share HAS — so this is a safety rail against a
+         * pathological library, not an editorial cut. Same number as the
+         * moment filter's, for the same reason.
+         */
+        const val SUGGEST_QUERY_LIMIT = 50
 
         /** The middle of each of [STRIP_FRAMES] equal slices, or empty until the duration is known. */
         fun stripPositions(durationMs: Long): List<Long> =
