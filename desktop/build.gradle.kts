@@ -37,6 +37,9 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(libs.jetbrains.compose.material3)
     implementation(libs.kotlinx.coroutines.swing)
+    // Artwork beside films: the shared ArtworkImage draws through Coil, and the
+    // Mac registers how to read an image off a share (data/ShareImage.kt).
+    implementation(libs.coil.compose)
 
     // Video: vlcj binds libvlc through JNA.
     implementation(libs.vlcj)

@@ -46,10 +46,13 @@ import com.regolith.ui.theme.scaledDp
  * look while it is pulled off the share, and the unmatched look (a dark
  * gradient with the filename set inside) when nothing was found. Used by
  * [MediaTile], [ResumeCard], list-row thumbnails and Title Detail.
+ *
+ * [artwork] is whatever the app's image loader understands: the phone's
+ * `ArtworkRequest`, or the Mac's `ShareImage` (an image file on a share).
  */
 @Composable
 fun ArtworkImage(
-    artwork: ArtworkRequest?,
+    artwork: Any?,
     modifier: Modifier = Modifier,
     fallbackLabel: String = "",
     contentScale: ContentScale = ContentScale.Crop,

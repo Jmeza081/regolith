@@ -68,6 +68,7 @@ desktop/src/main/kotlin/com/regolith/desktop/
   data/SavedServer.kt       a remembered share (no password), as stored
   data/ServerStore.kt       servers.json in Application Support
   data/KeychainCredentialStore.kt   passwords, in the macOS Keychain
+  data/ShareImage.kt        artwork beside a film: an image file on the share, loaded by Coil
   player/FilmPlayer.kt      what the editor needs from a player
   player/VlcPlayer.kt       libvlc through vlcj, reading via SeekableByteSource
   player/NativeVlc.kt       finds and loads libvlc once: bundled, checkout, installed
@@ -96,6 +97,13 @@ desktop/src/main/kotlin/com/regolith/desktop/
   `--check-saved` reports empty chapter files it finds, which is what such
   an open leaves behind. Since then the shared client itself refuses to
   open a missing file (`JcifsGateway.open`), so this is a second guard.
+- **Artwork.** Browse draws a thumbnail beside each film from the images
+  already in its folder, chosen by the phone's rules (`ArtworkCandidates`):
+  an image with the film's name, or a poster beside a film alone in its
+  folder. It reads that one file off the share and keeps it in memory only.
+  A film with no image draws the phone's unmatched look; frame grabs and
+  covers inside a film are the phone's job. Folders keep their icon, as in
+  the phone's Browse.
 - **Video.** `VlcPlayer` hands libvlc a callback media over the gateway's
   `SeekableByteSource`, the desktop twin of the phone's `SmbDataSource`, so
   both apps read a share through one SMB client. It keeps a reference to

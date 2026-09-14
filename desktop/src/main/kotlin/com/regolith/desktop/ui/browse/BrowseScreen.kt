@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.regolith.desktop.AppGraph
+import com.regolith.desktop.data.ShareImage
+import com.regolith.desktop.ui.childPath
 import com.regolith.desktop.navigation.Route
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.ui.components.ErrorCard
@@ -43,7 +45,7 @@ import com.regolith.ui.util.formatFolderCount
 /**
  * One folder of the share: open a subfolder, or open a film to edit its
  * chapters. Laid out like the phone's Browse in rows: a section per kind,
- * each a card of rows.
+ * each a card of rows, and a film shows the image its folder holds for it.
  */
 @Composable
 fun BrowseScreen(
@@ -102,7 +104,12 @@ fun BrowseScreen(
                             meta = listOfNotNull(formatBytes(row.entry.sizeBytes), "Chapters".takeIf { row.hasChapters }).joinToString(" · "),
                             onClick = { open(row) },
                             testTag = "browse_row",
+                            leading = RowLeading.Thumb(
+                                row.image?.let { ShareImage(graph.gateway, route.connection, childPath(route.folder, it.name), it.sizeBytes) },
+                                fallbackLabel = row.entry.name,
+                            ),
                             trailing = RowTrailing.None,
+                            compact = true,
                         )
                     }
                 }
@@ -119,7 +126,7 @@ fun BrowseScreen(
  */
 private fun LazyListScope.section(key: String, title: String, rows: List<BrowseRow>, row: @Composable (BrowseRow) -> Unit) {
     if (rows.isEmpty()) return
-    item(key = "header:$key") { Eyebrow(title, Modifier.padding(top = Spacing.s18, bottom = Spacing.s8)) }
+    item(key = "header:$key") { Eyebrow(title, Modifier.padding(top = Spacing.s18, bottom = Spacing.s8), muted = true) }
     itemsIndexed(rows, key = { _, r -> "$key:${r.entry.name}" }) { i, r ->
         val top = if (i == 0) 14.dp else 0.dp
         val bottom = if (i == rows.lastIndex) 14.dp else 0.dp

@@ -68,6 +68,8 @@ class DesktopAppTest {
 
                 onNodeWithText("Films").performClick()
                 waitFor(matcher = hasText("Long.Test.2026.mp4"))
+                // Artwork is read off the share after the rows appear; let it land for the screenshot.
+                waitForIdle(); Thread.sleep(1500); waitForIdle()
                 shot("3-browse-films")
 
                 onNodeWithText("Long.Test.2026.mp4").performClick()

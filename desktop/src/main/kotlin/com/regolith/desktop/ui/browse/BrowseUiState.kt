@@ -14,10 +14,12 @@ data class BrowseUiState(
     val problem: Problem? = null,
 )
 
-/** A folder, or a film with whether it already has a chapter file. */
+/** A folder, or a film with whether it already has a chapter file and which image to show. */
 data class BrowseRow(
     val entry: SmbEntry,
     val hasChapters: Boolean,
+    /** The image drawn beside a film, from the same listing; null when none applies. */
+    val image: SmbEntry? = null,
 ) {
     val isFolder: Boolean get() = entry.isDirectory
 }

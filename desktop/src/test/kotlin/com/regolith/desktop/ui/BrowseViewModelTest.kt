@@ -30,6 +30,17 @@ class BrowseViewModelTest {
     }
 
     @Test
+    fun `a film carries the image the phone would pick from the same listing`() {
+        // Two films share this folder, so poster.jpg is the folder's, not Zodiac's; Heat has its own.
+        val rows = BrowseViewModel.rowsFor(listOf(file("Heat.1995.mkv"), file("Heat.1995.jpg"), file("Zodiac.2007.mkv"), file("poster.jpg")))
+        assertEquals(mapOf("Heat.1995.mkv" to "Heat.1995.jpg", "Zodiac.2007.mkv" to null), rows.associate { it.entry.name to it.image?.name })
+
+        // A film alone in its folder takes the folder's poster.
+        val alone = BrowseViewModel.rowsFor(listOf(file("Arrival.2016.mp4"), file("poster.jpg")))
+        assertEquals("poster.jpg", alone.single().image?.name)
+    }
+
+    @Test
     fun `a subfolder lists its own entries and is titled by its name`() = runTest {
         val fake = FakeSmbGateway().apply {
             addFile("media", "Films/Heat.1995.mkv", ByteArray(3))

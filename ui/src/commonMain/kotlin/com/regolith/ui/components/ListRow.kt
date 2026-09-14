@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.theme.BoxShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -38,7 +37,11 @@ import com.regolith.ui.theme.scaledDp
  */
 enum class RowTrailing { Chevron, Checked, None }
 
-/** What sits at the left of a row. Icons are a `Painter`: the phone passes `painterResource(R.drawable.…)`. */
+/**
+ * What sits at the left of a row. Icons are a `Painter`: the phone passes
+ * `painterResource(R.drawable.…)`. Artwork is an image-loader model, as for
+ * [ArtworkImage].
+ */
 sealed interface RowLeading {
     /** A 17dp glyph in a 34dp #1A1A1A box with 10dp corners (Browse folders). */
     data class IconBox(val icon: Painter) : RowLeading
@@ -47,10 +50,10 @@ sealed interface RowLeading {
     data class Glyph(val icon: Painter) : RowLeading
 
     /** A 52dp-wide 16:9 thumbnail with 7dp corners (Browse files, search results). */
-    data class Thumb(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
+    data class Thumb(val artwork: Any?, val fallbackLabel: String = "") : RowLeading
 
     /** A 34dp-wide 2:3 poster with 7dp corners (Library in rows mode). */
-    data class Poster(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
+    data class Poster(val artwork: Any?, val fallbackLabel: String = "") : RowLeading
 
     /**
      * Selection mode on a row you can still walk into: a 38dp box holding

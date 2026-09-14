@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import com.regolith.desktop.AppGraph
+import com.regolith.desktop.data.installShareImageLoader
 import com.regolith.desktop.navigation.Route
 import com.regolith.desktop.player.FilmPlayer
 import com.regolith.desktop.player.NativeVlc
@@ -48,6 +49,8 @@ fun RegolithChaptersApp(
     },
 ) {
     val player = remember { newPlayer() }
+    // Before any row can ask for an image: teaches Coil to read one off a share.
+    remember { installShareImageLoader() }
     DisposableEffect(Unit) { onDispose { (player as? VlcPlayer)?.dispose() ?: player.release() } }
     val backStack = remember { mutableStateListOf<Route>(Route.Servers) }
     fun back() = guard.request {
