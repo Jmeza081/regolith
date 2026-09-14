@@ -1,16 +1,10 @@
 package com.regolith.desktop
 
-import com.regolith.desktop.player.SeekableByteSourceMedia
 import com.regolith.domain.media.ChapterSidecar
 import com.regolith.domain.playback.ChapterDraft
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
 import kotlinx.coroutines.runBlocking
-import uk.co.caprica.vlcj.factory.MediaPlayerFactory
-import uk.co.caprica.vlcj.player.base.MediaPlayer
-import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 /**
@@ -19,7 +13,8 @@ import kotlin.system.exitProcess
  * or `-PsmokeArgs="host port share"`).
  *
  *  1. The shared jcifs gateway lists and opens a film.
- *  2. libvlc decodes it through `SeekableByteSource`, and a seek lands.
+ *  2. libvlc (the fetched bundle, via [SelfCheck]) decodes it through
+ *     `SeekableByteSource`, and a seek lands.
  *  3. The shared chapter code writes a sidecar and reads the same one back;
  *     the fixture's file is put back afterwards.
  *
@@ -41,28 +36,10 @@ private suspend fun smoke(args: Array<String>) {
         check(films.any { it.name == name }) { "$folder/$name is not on the share" }
         println("1. listed $folder: ${films.size} entries")
 
-        val src = graph.gateway.open(host, creds, share, "$folder/$name")
-        val factory = MediaPlayerFactory("--no-audio", "--quiet", "--vout=dummy")
-        val player = factory.mediaPlayers().newMediaPlayer()
-        val gotLength = CountDownLatch(1)
-        var length = 0L
-        var clock = 0L
-        player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
-            override fun lengthChanged(mediaPlayer: MediaPlayer, newLength: Long) { length = newLength; gotLength.countDown() }
-            override fun timeChanged(mediaPlayer: MediaPlayer, newTime: Long) { clock = newTime }
-        })
-        val media = SeekableByteSourceMedia(src)
-        player.media().play(media)
-        check(gotLength.await(20, TimeUnit.SECONDS)) { "libvlc never reported a length" }
-        player.controls().setTime(240_000)
-        Thread.sleep(2_500)
-        check(clock in 235_000..250_000) { "seek to 4:00 landed at $clock ms" }
-        println("2. libvlc: length $length ms, seek to 4:00 landed at $clock ms")
-        player.controls().stop()
-        player.release()
-        factory.release()
-        src.close()
-        media.hashCode() // held until here on purpose: libvlc's handle to it is weak
+        val report = SelfCheck.play(graph.gateway, host, creds, share, "$folder/$name")
+        check(report.landedMs in 235_000..250_000) { "seek to 4:00 landed at ${report.landedMs} ms" }
+        val length = report.lengthMs
+        println("2. libvlc from ${report.libvlc}: length $length ms, seek to 4:00 landed at ${report.landedMs} ms")
 
         val sidecar = "$folder/Long.Test.2026${ChapterSidecar.SUFFIX}"
         val before = graph.sidecars.read(host, creds, share, sidecar)

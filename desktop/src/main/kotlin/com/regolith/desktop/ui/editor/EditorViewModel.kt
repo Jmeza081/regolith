@@ -93,6 +93,12 @@ class EditorViewModel(
     /** A new chapter where the film is now, or select the one already there. */
     fun mark() = editDraft { it.mark(player.positionMs) }
 
+    /**
+     * A new chapter a minute after the last one, open for its Start to be
+     * typed: how chapters are added when there is no video to mark from.
+     */
+    fun addChapter() = editDraft { d -> d.mark(d.marks.last().startMs + ADD_STEP_MS) }
+
     /** Open a row (null closes it). Opening one takes the film to that chapter, as on the phone. */
     fun select(index: Int?) {
         editDraft { it.select(index) }
@@ -205,5 +211,8 @@ class EditorViewModel(
     companion object {
         /** Stands in for the runtime until the player reports it; far past any film. */
         const val UNKNOWN_DURATION = Long.MAX_VALUE / 4
+
+        /** Where [addChapter] puts a new mark, after the last. */
+        const val ADD_STEP_MS = 60_000L
     }
 }

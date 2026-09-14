@@ -102,9 +102,12 @@ open a film, mark and name its chapters, Save. It writes the same
 code, from the shared `:core` module. Details in `docs/DESKTOP.md`.
 
 ```
-brew install --cask vlc        # for now; the packaged app will bundle it
 ./gradlew :desktop:run
+REGOLITH_JPACKAGE_JDK=/path/to/jdk-21/Contents/Home ./gradlew :desktop:packageDmg
 ```
+
+The app bundles its own libvlc (fetched and checksum-verified at build
+time), so VLC does not need to be installed. Apple Silicon only.
 
 ### Foldable emulator
 

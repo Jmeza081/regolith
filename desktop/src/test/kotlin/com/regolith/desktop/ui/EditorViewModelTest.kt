@@ -202,4 +202,17 @@ class EditorViewModelTest {
         advanceUntilIdle()
         assertEquals(1, saved)
     }
+
+    @Test
+    fun `with no video, Add chapter puts one a minute after the last and opens it for typing`() = runTest {
+        val vm = vm()
+        advanceUntilIdle()
+        vm.addChapter()
+        vm.addChapter()
+        val d = vm.state.value.draft!!
+        assertEquals(listOf(0L, 60_000L, 120_000L), d.marks.map { it.startMs })
+        assertEquals(2, d.selected)
+        assertNull(vm.typeStart(2, "12:30"))
+        assertEquals(750_000L, vm.state.value.draft!!.marks[2].startMs)
+    }
 }

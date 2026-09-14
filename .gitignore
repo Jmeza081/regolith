@@ -20,3 +20,6 @@ local.properties
 
 # argent tool artifacts (screen recordings, flows scratch)
 .argent/
+
+# Mac app: libvlc fetched by :desktop:fetchVlc (~82 MB), bundled into the .app, never committed
+desktop/vlc-bundle/

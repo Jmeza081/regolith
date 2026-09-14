@@ -163,7 +163,12 @@ fun EditorScreen(
                         modifier = Modifier.testTag("editor_message"),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SecondaryButton("Mark here", vm::mark, enabled = player.durationMs > 0, modifier = Modifier.testTag("editor_mark_button"))
+                        if (player.durationMs == 0L && player.error != null) {
+                            // No video to mark from: add one and type its Start.
+                            SecondaryButton("Add chapter", vm::addChapter, modifier = Modifier.testTag("editor_add_button"))
+                        } else {
+                            SecondaryButton("Mark here", vm::mark, enabled = player.durationMs > 0, modifier = Modifier.testTag("editor_mark_button"))
+                        }
                         PrimaryButton("Save", { vm.save() }, enabled = state.canSave, loading = state.saving, modifier = Modifier.testTag("editor_save_button"))
                     }
                     LazyColumn(Modifier.weight(1f).testTag("editor_chapter_list"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -218,7 +223,7 @@ fun EditorScreen(
             },
             confirmButton = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    QuietButton("Discard", { guard.pending = null; leave() }, Modifier.testTag("editor_discard_button"), color = Palette.Red)
+                    QuietButton("Discard", { guard.pending = null; leave() }, Modifier.testTag("editor_discard_button"))
                     PrimaryButton(
                         "Save", { vm.save(onSaved = { guard.pending = null; leave() }) },
                         loading = state.saving, modifier = Modifier.testTag("editor_discard_save_button"),
@@ -247,7 +252,10 @@ private fun onEditorKey(e: KeyEvent, state: EditorUiState, vm: EditorViewModel, 
         e.key == Key.Escape -> { vm.select(null); refocus(); true }
         state.draft == null -> false
         e.key == Key.Spacebar -> { player.togglePause(); true }
-        e.key == Key.M -> { if (player.durationMs > 0) vm.mark(); true }
+        e.key == Key.M -> {
+            if (player.durationMs > 0) vm.mark() else if (player.error != null) vm.addChapter()
+            true
+        }
         e.key == Key.DirectionLeft -> { player.seekTo(player.positionMs - step); true }
         e.key == Key.DirectionRight -> { player.seekTo(player.positionMs + step); true }
         else -> false

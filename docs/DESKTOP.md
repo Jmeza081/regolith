@@ -9,14 +9,30 @@ It is not a second player. There is no library, scan, artwork or
 download; the share is the only record, and the Mac keeps nothing but the
 list of servers.
 
-## Run and test
+## Run, test, package
 
 ```
-brew install --cask vlc          # until the packaged app bundles libvlc
 ./gradlew :desktop:run           # the window
-./gradlew :desktop:test          # unit tests + a Compose UI test
-./gradlew :desktop:smoke         # headless SMB → libvlc → sidecar check
+./gradlew :desktop:test          # unit tests + Compose UI tests
+./gradlew :desktop:smoke         # headless SMB → bundled libvlc → sidecar check
+./gradlew :desktop:fetchVlc      # fetch libvlc into vlc-bundle/ (the two above do it for you)
+REGOLITH_JPACKAGE_JDK=/path/to/jdk-21/Contents/Home ./gradlew :desktop:packageDmg
 ```
+
+The `.dmg` lands in `desktop/build/compose/binaries/main/dmg/`. It is not
+signed, so the first launch of a copy downloaded from elsewhere needs
+right-click › Open. The Android Studio JDK has no `jpackage`, hence
+`REGOLITH_JPACKAGE_JDK` (any full JDK 17+, e.g. a Temurin download).
+
+To check a built app plays on its own, without a window:
+
+```
+"desktop/build/compose/binaries/main/app/Regolith Chapters.app/Contents/MacOS/Regolith Chapters" \
+  --self-check smb://localhost:1445/media/Films/Long.Test.2026.mp4 /tmp/frame.png
+```
+
+It prints where libvlc came from, the film's length and where a seek to 4:00
+landed, and saves that frame.
 
 The UI test and the smoke check use the local Samba fixture
 (`localhost:1445`, share `media`; see the SMB test-share notes) and skip or
@@ -42,6 +58,9 @@ desktop/src/main/kotlin/com/regolith/desktop/
   data/KeychainCredentialStore.kt   passwords, in the macOS Keychain
   player/FilmPlayer.kt      what the editor needs from a player
   player/VlcPlayer.kt       libvlc through vlcj, reading via SeekableByteSource
+  player/NativeVlc.kt       finds and loads libvlc once: bundled, checkout, installed
+  player/UnavailablePlayer.kt   the player when there is no libvlc
+  SelfCheck.kt              play a film headless; --self-check and :desktop:smoke
   ui/App.kt                 theme + back stack + which screen the top route draws
   ui/LeaveGuard.kt          asks before Back or closing the window drops unsaved chapters
   ui/servers, browse, editor   XScreen.kt + XViewModel.kt + XUiState.kt, as on the phone
@@ -64,6 +83,45 @@ desktop/src/main/kotlin/com/regolith/desktop/
 - **Test tags.** Every control has a `testTag` (`servers_connect_button`,
   `browse_list`, `editor_save_button`, `editor_chapter_row_N`, …), the same
   convention as the phone.
+
+## VLC is bundled
+
+The app carries libvlc and its plugins (82 MB of it), so VLC does not need
+to be installed. The packaged app is about 230 MB and its `.dmg` about
+115 MB.
+
+- `fetchVlc` downloads VideoLAN's own `vlc-3.0.23-arm64.dmg`, refuses it
+  unless it matches the pinned SHA-256 (VideoLAN's published one), mounts it
+  read-only and copies `lib/` and `plugins/` into
+  `desktop/vlc-bundle/macos-arm64/vlc/` (gitignored). `share/` is left out:
+  Lua playlist scripts and translations a callback-media player never uses.
+  Apple Silicon only. VideoLAN redirects the https link to a plain-http
+  mirror (a different one each time); the download follows it, and the
+  checksum is what vouches for the bytes.
+- Compose copies that folder into the `.app`; `NativeVlc` finds it through
+  `compose.application.resources.dir`, then the checkout's copy, then an
+  installed `/Applications/VLC.app`.
+- vlcj's own macOS discovery cannot be pointed at one folder, so a small
+  strategy does what it does: load `libvlccore` first (libvlc names it by
+  `@rpath`, which only resolves once it is loaded) and set
+  `VLC_PLUGIN_PATH` to the `plugins/` beside `lib/`.
+- The packaged Java runtime holds only the modules the build lists
+  (`java.naming` and `java.security.jgss` for jcifs, `jdk.unsupported` for
+  JNA, and the rest `suggestModules` asked for). A missing one would build
+  fine and fail when the app connects or plays; `--self-check` catches it.
+- With no libvlc at all, the editor still opens: it says video is
+  unavailable, and **Add chapter** (or M) adds one a minute after the last,
+  open for its Start to be typed.
+
+To move to a newer VLC, change the URL and checksum in `fetchVlc`, delete
+`desktop/vlc-bundle/`, and run `:desktop:smoke` and the `--self-check`.
+
+**Known:** libvlc logs `stale plugins cache` lines at startup. VLC's
+`plugins/plugins.dat` indexes its plugins by modification time, and copying
+them into the app changes those times, so libvlc ignores the index and scans
+the plugins instead. Playback is unaffected (the self-check passes with the
+lines present); the cost is a slower first load of libvlc and a noisy log.
+Regenerating the cache at build time is the follow-up.
 
 ## Editing
 
@@ -129,4 +187,5 @@ sign-in".
 
 ## Not yet
 
-A packaged `.app` that bundles libvlc is the next commit on this branch.
+Signing and notarisation, Intel Macs, and sharing the phone's
+`ui/theme` + `ui/components` are later branches.

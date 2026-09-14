@@ -156,7 +156,8 @@ repomix                        # regenerate the full-repo snapshot
 
 ./gradlew :desktop:run         # the Mac app's window
 ./gradlew :desktop:test        # its unit tests + a Compose UI test against the Samba fixture
-./gradlew :desktop:smoke       # headless: SMB list, libvlc seek, sidecar round-trip
+./gradlew :desktop:smoke       # headless: SMB list, bundled libvlc seek, sidecar round-trip
+REGOLITH_JPACKAGE_JDK=… ./gradlew :desktop:packageDmg   # the .app/.dmg (Studio's JDK has no jpackage)
 ```
 
 The Mac app is verified with its Compose Desktop UI test, not argent: argent

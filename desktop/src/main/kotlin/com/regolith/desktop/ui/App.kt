@@ -15,6 +15,8 @@ import androidx.compose.ui.awt.SwingPanel
 import com.regolith.desktop.AppGraph
 import com.regolith.desktop.navigation.Route
 import com.regolith.desktop.player.FilmPlayer
+import com.regolith.desktop.player.NativeVlc
+import com.regolith.desktop.player.UnavailablePlayer
 import com.regolith.desktop.player.VlcPlayer
 import com.regolith.desktop.ui.browse.BrowseScreen
 import com.regolith.desktop.ui.editor.EditorScreen
@@ -41,7 +43,7 @@ import com.regolith.desktop.ui.theme.Palette
 fun RegolithChaptersApp(
     graph: AppGraph,
     guard: LeaveGuard = remember { LeaveGuard() },
-    newPlayer: () -> FilmPlayer = { VlcPlayer() },
+    newPlayer: () -> FilmPlayer = ::defaultPlayer,
     videoSurface: @Composable (FilmPlayer) -> Unit = { p ->
         (p as? VlcPlayer)?.let { vlc -> SwingPanel(factory = { vlc.surface }, modifier = Modifier.fillMaxSize()) }
     },
@@ -73,3 +75,8 @@ fun RegolithChaptersApp(
         }
     }
 }
+
+/** VLC when libvlc loads; otherwise a player that says why, so the editor still works. */
+private fun defaultPlayer(): FilmPlayer =
+    if (NativeVlc.load() == null) UnavailablePlayer()
+    else runCatching<FilmPlayer> { VlcPlayer() }.getOrElse { UnavailablePlayer("Video is unavailable: ${it.message}") }
