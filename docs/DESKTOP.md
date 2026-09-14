@@ -6,8 +6,8 @@ Save. The file it writes, `<film>.chapters.txt` next to the film, is the
 one the phone reads (`CHAPTERS.md`), produced by the same code.
 
 It is not a second player. There is no library, scan, artwork or
-download; the share is the only record, and the Mac keeps nothing but
-(from step 3) the list of servers.
+download; the share is the only record, and the Mac keeps nothing but the
+list of servers.
 
 ## Run and test
 
@@ -37,6 +37,9 @@ desktop/src/main/kotlin/com/regolith/desktop/
   AppGraph.kt               the long-lived objects, wired by hand (no DI framework)
   navigation/Route.kt       Servers | Browse(connection, folder) | Editor(connection, folder, film)
   data/Connection.kt        host + credentials + share: what every screen past Servers needs
+  data/SavedServer.kt       a remembered share (no password), as stored
+  data/ServerStore.kt       servers.json in Application Support
+  data/KeychainCredentialStore.kt   passwords, in the macOS Keychain
   player/FilmPlayer.kt      what the editor needs from a player
   player/VlcPlayer.kt       libvlc through vlcj, reading via SeekableByteSource
   ui/App.kt                 theme + back stack + which screen the top route draws
@@ -61,6 +64,29 @@ desktop/src/main/kotlin/com/regolith/desktop/
   `browse_list`, `editor_save_button`, `editor_chapter_row_N`, …), the same
   convention as the phone.
 
+## Servers and passwords
+
+- A share is remembered once it connects: host, port, share and the
+  username as typed, in
+  `~/Library/Application Support/Regolith Chapters/servers.json`. The file
+  has no password in it. Connecting the same share with the same username
+  again updates the row. A file the app cannot read is moved to
+  `servers.json.bad`, not overwritten.
+- Passwords live in the login Keychain, one item per server: service
+  **Regolith Chapters**, account = the server's id in `servers.json`. This is
+  the Mac's version of the phone's guardrail G6, behind the same
+  `CredentialStore` interface.
+- The app drives `/usr/bin/security`. Writes go to `security -i` over stdin
+  so a password never appears on a command line (`ps` can read those). The
+  stored value is `b64:` + base64 of the password, because
+  `find-generic-password -w` prints any non-ASCII password as hex, which
+  a password made of hex digits could not be told apart from. An entry typed
+  into Keychain Access by hand still works if it is plain ASCII.
+- A saved row whose password is missing, or that the NAS now refuses, opens
+  in the form to take a new one. Editing a row with the password field left
+  blank keeps the stored password. Remove asks first, then deletes the row
+  and its Keychain item; films and chapter files are never touched.
+
 ## Save outcomes
 
 There is no local copy, so a failed save leaves the edits unsaved and says
@@ -70,6 +96,6 @@ sign-in".
 
 ## Not yet
 
-Saved servers and Keychain passwords, typed start times, Revert, the
-unsaved-changes guard, keyboard shortcuts, and a packaged `.app` that
-bundles libvlc are the next commits on this branch.
+Typed start times, Revert, the unsaved-changes guard, keyboard shortcuts,
+and a packaged `.app` that bundles libvlc are the next commits on this
+branch.

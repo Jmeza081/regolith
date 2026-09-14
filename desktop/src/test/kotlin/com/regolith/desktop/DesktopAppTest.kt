@@ -18,11 +18,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.runDesktopComposeUiTest
+import com.regolith.desktop.data.ServerStore
 import com.regolith.desktop.ui.RegolithChaptersApp
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 import java.net.Socket
+import java.nio.file.Files
 import javax.imageio.ImageIO
 
 /**
@@ -46,7 +48,13 @@ class DesktopAppTest {
         val before = sidecar.takeIf { it.exists() }?.readBytes()
         try {
             runDesktopComposeUiTest(width = 1280, height = 800) {
-                setContent { RegolithChaptersApp(AppGraph(), videoSurface = { Box(Modifier.fillMaxSize().background(Color(0xFF222222))) }) }
+                // Real SMB; a throwaway server list and in-memory passwords, so the
+                // test never writes the app's own servers.json or the Keychain.
+                val graph = AppGraph(
+                    servers = ServerStore(Files.createTempDirectory("regolith-test").resolve("servers.json")),
+                    credentials = InMemoryCredentialStore(),
+                )
+                setContent { RegolithChaptersApp(graph, videoSurface = { Box(Modifier.fillMaxSize().background(Color(0xFF222222))) }) }
                 fun shot(name: String) = ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(shots, "$name.png"))
                 fun waitFor(timeoutMs: Long = 20_000, matcher: androidx.compose.ui.test.SemanticsMatcher) =
                     waitUntil(timeoutMillis = timeoutMs) { onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }

@@ -1,7 +1,10 @@
 package com.regolith.desktop
 
+import com.regolith.data.credentials.CredentialStore
 import com.regolith.data.media.SidecarWriter
 import com.regolith.data.smb.JcifsGateway
+import com.regolith.desktop.data.KeychainCredentialStore
+import com.regolith.desktop.data.ServerStore
 import com.regolith.domain.smb.SmbGateway
 
 /**
@@ -15,6 +18,10 @@ import com.regolith.domain.smb.SmbGateway
 class AppGraph(
     /** Every network call goes through the phone's own SMB client. */
     val gateway: SmbGateway = JcifsGateway(),
+    /** The servers the app remembers (no passwords). */
+    val servers: ServerStore = ServerStore(),
+    /** Their passwords, in the macOS Keychain. */
+    val credentials: CredentialStore = KeychainCredentialStore(),
 ) {
     /** Reads and writes `<basename>.chapters.txt`, exactly as the phone does. */
     val sidecars: SidecarWriter = SidecarWriter(gateway)

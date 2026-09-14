@@ -8,6 +8,8 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
+    // servers.json (ServerStore).
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -33,6 +35,8 @@ dependencies {
 
     // Video: vlcj binds libvlc through JNA.
     implementation(libs.vlcj)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.slf4j.api)
     runtimeOnly(libs.slf4j.simple)
 
     testImplementation(testFixtures(project(":core")))
