@@ -108,7 +108,7 @@ sealed interface SearchHit {
 data class SearchUiState(
     val query: String = "",
     val filter: SearchFilter = SearchFilter.ALL,
-    /** Points of interest offered as chips: names carried by more than one film. */
+    /** Points of interest offered in the moment sheet: every named moment the library holds, commonest first. */
     val facets: List<ChapterFacet> = emptyList(),
     /** The chip currently on, if any. Narrows everything to films carrying it. */
     val poi: String? = null,
@@ -143,8 +143,9 @@ class SearchViewModel @Inject constructor(
     private val filter = MutableStateFlow(SearchFilter.ALL)
     private val poi = MutableStateFlow<String?>(null)
 
-    // The chips themselves: free of the share, since the sidecar import put
-    // every chapter name in the table when the folder was listed.
+    // The names themselves: free of the share, since the sidecar import put
+    // every chapter name in the table when the folder was listed. Every one
+    // of them, including those on a single film — see the DAO.
     private val facets = userChapters.facets(FACETS_LIMIT)
 
     /**
@@ -368,7 +369,12 @@ class SearchViewModel @Inject constructor(
         /** Points of interest are one group above the files; more than this and it becomes the list. */
         const val MOMENTS_LIMIT = 20
 
-        /** Chips for the commonest recurring names; past this the row is a wall, not a filter. */
-        const val FACETS_LIMIT = 12
+        /**
+         * How many named moments the filter sheet offers, commonest first.
+         * Raised from 12 when single-film names joined the list — the sheet
+         * scrolls, so the cap is only there to keep one pathological library
+         * from building a list nobody can read.
+         */
+        const val FACETS_LIMIT = 50
     }
 }

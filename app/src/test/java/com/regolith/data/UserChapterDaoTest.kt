@@ -89,6 +89,37 @@ class UserChapterDaoTest {
     }
 
     @Test
+    fun `facets list every name, including one that is only on a single film`() = runTest {
+        val heat = file("Films/Heat.1995.mkv")
+        val ocean = file("Films/Oceans.Eleven.mkv")
+        val gone = file("Films/Gone.mkv", missing = true)
+        // "the heist" differs only in case: one chip, not two.
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 0, "The heist"), row(heat, 60_000, "Finale")))
+        db.userChapterDao().replaceForFile(ocean, listOf(row(ocean, 0, "the heist")))
+        db.userChapterDao().replaceForFile(gone, listOf(row(gone, 0, "Off the share")))
+
+        val facets = db.userChapterDao().observeFacets(20).first()
+        // Commonest first; a name on one film is still offered (it used to be
+        // dropped by `HAVING films > 1`); a name only on a missing file is not.
+        assertEquals(listOf("The heist" to 2, "Finale" to 1), facets.map { it.title to it.films })
+    }
+
+    @Test
+    fun `name matches prefix-search the chapter index and group by name`() = runTest {
+        val heat = file("Films/Heat.1995.mkv")
+        val ocean = file("Films/Oceans.Eleven.mkv")
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 0, "The heist"), row(heat, 60_000, "Finale")))
+        db.userChapterDao().replaceForFile(ocean, listOf(row(ocean, 0, "The heist"), row(ocean, 90_000, "Heist rehearsal")))
+
+        // "hei" reaches both names, and "The heist" is ONE suggestion even
+        // though two films carry it.
+        val hits = db.userChapterDao().observeNameMatches(LibraryRepository.ftsMatch("hei")!!, 20).first()
+        assertEquals(listOf("The heist" to 2, "Heist rehearsal" to 1), hits.map { it.title to it.films })
+
+        assertEquals(listOf("Finale"), db.userChapterDao().observeNameMatches(LibraryRepository.ftsMatch("fin")!!, 20).first().map { it.title })
+    }
+
+    @Test
     fun `tally counts rows and films, and clear zeroes both`() = runTest {
         val heat = file("Films/Heat.1995.mkv")
         val ocean = file("Films/Oceans.Eleven.mkv")

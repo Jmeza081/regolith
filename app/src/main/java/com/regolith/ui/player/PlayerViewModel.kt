@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -43,7 +45,7 @@ import kotlin.math.absoluteValue
  * Playback stops when the screen goes away; background audio and PiP will
  * change that later without touching the screen.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @UnstableApi
 @HiltViewModel(assistedFactory = PlayerViewModel.Factory::class)
 class PlayerViewModel @AssistedInject constructor(
@@ -107,7 +109,7 @@ class PlayerViewModel @AssistedInject constructor(
     val strip: StateFlow<List<StripFrame>> = session.scrubThumbnails
         .flatMapLatest { thumbs ->
             combine(state, thumbs.updates) { s, _ ->
-                stripPositions(s.durationMs).map { ms -> StripFrame(ms, thumbs.nearest(ms)) }
+                stripPositions(s.durationMs).map { ms -> StripFrame(ms, thumbs.nearest(ms, exact = true)) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -125,7 +127,7 @@ class PlayerViewModel @AssistedInject constructor(
     val chapterFrames: StateFlow<Map<Long, Bitmap?>> = session.scrubThumbnails
         .flatMapLatest { thumbs ->
             combine(state, thumbs.updates) { s, _ ->
-                s.chapters.associate { it.startMs to thumbs.nearest(frameFor(it.startMs, s)) }
+                s.chapters.associate { it.startMs to thumbs.nearest(frameFor(it.startMs, s), exact = true) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
@@ -233,6 +235,49 @@ class PlayerViewModel @AssistedInject constructor(
         if (s.isPlaying) session.togglePlayPause()
         _chapterDraft.value = ChapterDraft.seed(s.fileId!!, s.chapters, s.durationMs)
     }
+
+    /**
+     * What the open mark is currently called, or null when no row is open.
+     * Its own flow so the suggestion query below only re-runs when the TEXT
+     * changes — dragging a handle rewrites the draft many times a second.
+     */
+    private val openMarkTitle: Flow<String?> = _chapterDraft
+        .map { draft -> draft?.selected?.let { draft.marks.getOrNull(it)?.title.orEmpty() } }
+        .distinctUntilChanged()
+
+    /**
+     * Names already used elsewhere in the library, offered as chips under
+     * the name field (P13).
+     *
+     * The library ends up with "The heist", "the heist" and "Heist" as three
+     * separate moments in Search because nothing ever showed you the name
+     * you used last time. These do: they come from `user_chapter_fts`, the
+     * same index Search reads, and tapping one writes it verbatim, so the
+     * spelling stays put.
+     *
+     * An empty field gets the library's commonest names rather than nothing
+     * — that is when the prompt is worth the most. Already dropped: what is
+     * typed (there is nothing to fix) and names on this film's other marks
+     * (two parts of one film with one name helps nobody).
+     */
+    val chapterNameSuggestions: StateFlow<List<String>> = combine(
+        openMarkTitle.debounce(SUGGEST_DEBOUNCE_MS).flatMapLatest { typed ->
+            if (typed == null) flowOf(emptyList()) else userChapters.nameSuggestions(typed, SUGGEST_QUERY_LIMIT)
+        },
+        _chapterDraft,
+    ) { found, draft ->
+        val open = draft?.selected
+        if (open == null) {
+            emptyList()
+        } else {
+            val typed = draft.marks.getOrNull(open)?.title?.trim().orEmpty()
+            val taken = draft.marks.filterIndexed { i, _ -> i != open }
+                .mapNotNullTo(HashSet()) { it.title?.trim()?.lowercase()?.takeIf(String::isNotEmpty) }
+            found.map { it.title }
+                .filter { it.trim().lowercase() !in taken && !it.equals(typed, ignoreCase = true) }
+                .take(SUGGEST_CHIPS)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun markChapterAtPlayhead() = editDraft { it.mark(state.value.positionMs) }
     fun selectMark(index: Int?) = editDraft { it.select(index) }
@@ -352,6 +397,15 @@ class PlayerViewModel @AssistedInject constructor(
 
         /** Frames across the flex-mode filmstrip. Nine fits the artboard's deck without crowding. */
         const val STRIP_FRAMES = 9
+
+        /** A pause in typing before the suggestions re-query: short, it is a local table. */
+        const val SUGGEST_DEBOUNCE_MS = 120L
+
+        /** Rows asked of the database; more than [SUGGEST_CHIPS] because used names are filtered out after. */
+        const val SUGGEST_QUERY_LIMIT = 20
+
+        /** Chips shown. Enough to recognise the name you want, few enough to read at a glance. */
+        const val SUGGEST_CHIPS = 6
 
         /** The middle of each of [STRIP_FRAMES] equal slices, or empty until the duration is known. */
         fun stripPositions(durationMs: Long): List<Long> =

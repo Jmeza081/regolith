@@ -61,13 +61,28 @@ class UserChapterRepository @Inject constructor(
     fun stats(): Flow<UserChapterStats> = dao.observeTally().map { UserChapterStats(chapters = it.chapters, files = it.files) }
 
     /**
-     * The points of interest worth filtering by: chapter names carried by
-     * more than one film, commonest first. Free of the share — the sidecar
-     * import already put every name in this table when the folder was
-     * listed (see `ChapterSyncRepository.onFolderListed`).
+     * The points of interest to filter by: every chapter name in the
+     * library, commonest first. Free of the share — the sidecar import
+     * already put every name in this table when the folder was listed (see
+     * `ChapterSyncRepository.onFolderListed`).
      */
     fun facets(limit: Int): Flow<List<ChapterFacet>> =
         dao.observeFacets(limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
+
+    /**
+     * Names to offer while a chapter is being named: the ones matching what
+     * has been typed so far, or the library's commonest when nothing has.
+     *
+     * The point is consistency — "The heist" and "the heist" and "Heist"
+     * are three filters in Search and should have been one — so the
+     * matching goes through `user_chapter_fts`, the same index the chapter
+     * search uses, and an empty box still gets the popular names rather
+     * than nothing.
+     */
+    fun nameSuggestions(query: String, limit: Int): Flow<List<ChapterFacet>> {
+        val match = LibraryRepository.ftsMatch(query) ?: return facets(limit)
+        return dao.observeNameMatches(match, limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
+    }
 
     /** The films carrying a point of interest, for a chip standing on its own. */
     fun filesWith(title: String, limit: Int): Flow<List<MediaFileEntity>> = dao.filesWithChapter(title, limit)

@@ -24,6 +24,27 @@ class FrameIndexTest {
         assertNull(index.nearest(90_000))       // bucket 9: three away from f
     }
 
+    @Test fun `a zero tolerance takes the bucket's own frame or nothing`() {
+        val index = FrameIndex<String>(toleranceBuckets = 2)
+        index.put(3, "c")
+        assertEquals("c", index.nearest(35_000, tolerance = 0))
+        // What a chapter tile does: bucket 4 has no frame of its own, and
+        // borrowing bucket 3's would put the wrong picture under a clock
+        // saying 0:45.
+        assertNull(index.nearest(45_000, tolerance = 0))
+    }
+
+    @Test fun `forget drops the frames without recycling them`() {
+        val evicted = mutableListOf<String>()
+        val index = FrameIndex<String>(onEvict = { evicted += it })
+        index.put(1, "a")
+        index.forget()
+        assertEquals(0, index.size)
+        assertNull(index.nearest(15_000))
+        // Still on screen, so still whole: the garbage collector takes them.
+        assertEquals(emptyList<String>(), evicted)
+    }
+
     @Test fun `least recently used frames are evicted and recycled`() {
         val evicted = mutableListOf<String>()
         val index = FrameIndex<String>(capacity = 2, onEvict = { evicted += it })

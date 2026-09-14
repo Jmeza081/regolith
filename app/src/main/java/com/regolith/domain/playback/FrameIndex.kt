@@ -41,11 +41,23 @@ class FrameIndex<T : Any>(
         entries[bucket] = frame
     }
 
-    /** The frame for [positionMs]'s bucket, else the nearest loaded neighbour within tolerance. */
-    fun nearest(positionMs: Long): T? {
+    /**
+     * The frame for [positionMs]'s bucket, else the nearest loaded neighbour
+     * within [tolerance] buckets.
+     *
+     * Borrowing a neighbour is right for a finger on the timeline — the drag
+     * is continuous, and a frame a few seconds out is better than a blank —
+     * and WRONG for a wall of tiles, where each one is labelled with a time
+     * and claims to show it. Pass `tolerance = 0` there: a chapter shows its
+     * own frame or nothing. (With the default, a film whose parts are 10 s
+     * apart — anything under about three minutes — had every early tile
+     * showing the one at 0:00 until its own frame landed, and for good if
+     * that frame never did.)
+     */
+    fun nearest(positionMs: Long, tolerance: Int = toleranceBuckets): T? {
         val want = bucketOf(positionMs)
         entries[want]?.let { return it }
-        for (d in 1..toleranceBuckets) {
+        for (d in 1..tolerance) {
             entries[want - d]?.let { return it }
             entries[want + d]?.let { return it }
         }
@@ -68,6 +80,19 @@ class FrameIndex<T : Any>(
 
     fun clear() {
         entries.values.forEach(onEvict)
+        entries.clear()
+    }
+
+    /**
+     * Empty the index WITHOUT evicting: the frames are dropped but not
+     * recycled, so the garbage collector reclaims them whenever the screen
+     * has finished with them.
+     *
+     * For throwing away frames that turned out to be wrong while they are
+     * still being drawn. [clear] recycles, and recycling a bitmap Compose is
+     * mid-draw with crashes the frame.
+     */
+    fun forget() {
         entries.clear()
     }
 

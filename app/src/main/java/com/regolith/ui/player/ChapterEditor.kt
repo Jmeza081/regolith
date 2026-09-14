@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,6 +50,7 @@ import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.ChapterDraft
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RegolithTextField
 import com.regolith.ui.components.Scrubber
@@ -100,6 +103,11 @@ fun ChapterEditorContent(
     onScrubEnd: (Float) -> Unit,
     /** "Remove all chapters": start again from a single unnamed mark. */
     onClearAll: () -> Unit = {},
+    /**
+     * Names already in the library, for the chips under the open row's name
+     * field. Tapping one is a rename, so it goes back through [onRename].
+     */
+    suggestions: List<String> = emptyList(),
     /** Save is writing to the share: ring on the button, Cancel waits. */
     saving: Boolean = false,
 ) {
@@ -156,6 +164,7 @@ fun ChapterEditorContent(
                 MarkRow(
                     draft = draft, index = index, isOpen = index == open, locked = open != null && index != open,
                     onSelect = onSelect, onMove = onMove, onNudge = onNudge, onRename = onRename, onRemove = onRemove,
+                    suggestions = if (index == open) suggestions else emptyList(),
                 )
             }
         }
@@ -190,6 +199,7 @@ private fun MarkRow(
     onNudge: (Int, Long) -> Unit,
     onRename: (Int, String) -> Unit,
     onRemove: (Int) -> Unit,
+    suggestions: List<String>,
 ) {
     val colors = RegolithTheme.colors
     val mark = draft.marks[index]
@@ -221,6 +231,7 @@ private fun MarkRow(
                     value = mark.title ?: "", onValueChange = { onRename(index, it) },
                     label = "Name", placeholder = "Part ${index + 1}", testTag = "player_chapter_name_field",
                 )
+                NameSuggestions(suggestions) { onRename(index, it) }
                 if (index > 0) {
                     StartField(draft = draft, index = index, onMove = onMove)
                     NudgeStrip(index = index, onNudge = onNudge)
@@ -241,6 +252,40 @@ private fun MarkRow(
                         contentAlignment = Alignment.Center,
                     ) { Text("Done", style = TextStyles.buttonTertiary, color = colors.ink) }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Names the library already uses, under the name field.
+ *
+ * A moment is only a filter in Search if it is spelled the same way twice,
+ * and nothing used to show you what you called it last time — so the same
+ * scene became "The heist", "the heist" and "Heist", three chips that each
+ * found a third of the films. Tapping a chip writes that spelling exactly.
+ *
+ * One scrolling row rather than a wrapping block: the editor is a panel in
+ * a column, and a block that grows by a line as you type pushes the fields
+ * under your thumb around.
+ */
+@Composable
+private fun NameSuggestions(suggestions: List<String>, onPick: (String) -> Unit) {
+    if (suggestions.isEmpty()) return
+    val colors = RegolithTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4), modifier = Modifier.testTag("player_chapter_suggestions")) {
+        Text("Used elsewhere in your library", style = TextStyles.meta, color = colors.metadata)
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+        ) {
+            suggestions.forEach { name ->
+                PillButton(
+                    text = name,
+                    onClick = { onPick(name) },
+                    testTag = "player_chapter_suggestion_${name.lowercase().replace(' ', '_')}",
+                    onMedia = false,
+                )
             }
         }
     }
