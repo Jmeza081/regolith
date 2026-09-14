@@ -30,7 +30,7 @@ import com.regolith.desktop.ui.components.ProblemCard
 import com.regolith.desktop.ui.components.QuietButton
 import com.regolith.desktop.ui.components.SecondaryButton
 import com.regolith.desktop.ui.formatSize
-import com.regolith.desktop.ui.theme.Palette
+import com.regolith.ui.theme.RegolithTheme
 import com.regolith.domain.smb.SmbEntry
 
 /** One folder of the share: open a subfolder, or open a film to edit its chapters. */
@@ -50,20 +50,20 @@ fun BrowseScreen(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             QuietButton("‹ Back", onBack, Modifier.testTag("browse_back_button"))
             Column(Modifier.weight(1f)) {
-                Text(state.title, style = MaterialTheme.typography.titleLarge, color = Palette.Ink)
+                Text(state.title, style = MaterialTheme.typography.titleLarge, color = RegolithTheme.colors.ink)
                 Eyebrow(state.location)
             }
             SecondaryButton("Refresh", vm::refresh, enabled = !state.loading, modifier = Modifier.testTag("browse_refresh_button"))
         }
-        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Palette.Hairline)
+        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = RegolithTheme.colors.hairline)
         state.problem?.let { ProblemCard(it, Modifier.testTag("browse_problem").padding(bottom = 12.dp)) }
         when {
             state.loading && state.rows.isEmpty() ->
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Palette.Body)
+                    CircularProgressIndicator(color = RegolithTheme.colors.body)
                 }
             !state.loading && state.rows.isEmpty() && state.problem == null ->
-                Text("No folders or films here.", color = Palette.Body, modifier = Modifier.testTag("browse_empty"))
+                Text("No folders or films here.", color = RegolithTheme.colors.body, modifier = Modifier.testTag("browse_empty"))
             else -> LazyColumn(Modifier.testTag("browse_list")) {
                 items(state.rows, key = { it.entry.name }) { row ->
                     val openRow = {
@@ -80,15 +80,15 @@ fun BrowseScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Text(row.entry.name, style = MaterialTheme.typography.bodyLarge, color = Palette.Ink, modifier = Modifier.weight(1f))
+                        Text(row.entry.name, style = MaterialTheme.typography.bodyLarge, color = RegolithTheme.colors.ink, modifier = Modifier.weight(1f))
                         if (row.hasChapters) Eyebrow("Chapters")
                         Text(
                             if (row.isFolder) "›" else formatSize(row.entry.sizeBytes),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Palette.Metadata,
+                            color = RegolithTheme.colors.metadata,
                         )
                     }
-                    HorizontalDivider(color = Palette.Hairline)
+                    HorizontalDivider(color = RegolithTheme.colors.hairline)
                 }
             }
         }

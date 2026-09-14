@@ -39,7 +39,7 @@ import com.regolith.desktop.ui.components.Eyebrow
 import com.regolith.desktop.ui.components.PrimaryButton
 import com.regolith.desktop.ui.components.ProblemCard
 import com.regolith.desktop.ui.components.QuietButton
-import com.regolith.desktop.ui.theme.Palette
+import com.regolith.ui.theme.RegolithTheme
 
 /** The first screen: the remembered shares, and a form to add or edit one. */
 @Composable
@@ -58,11 +58,11 @@ fun ServersScreen(graph: AppGraph, onConnected: (Connection) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Eyebrow("Regolith Chapters")
-            Text("Your shares", style = MaterialTheme.typography.headlineSmall, color = Palette.Ink)
+            Text("Your shares", style = MaterialTheme.typography.headlineSmall, color = RegolithTheme.colors.ink)
             Text(
                 "Chapters are saved as a small file next to each film, where the phone app reads them.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Palette.Body,
+                color = RegolithTheme.colors.body,
             )
 
             if (state.saved.isNotEmpty()) {
@@ -70,7 +70,7 @@ fun ServersScreen(graph: AppGraph, onConnected: (Connection) -> Unit) {
                     state.saved.forEach { server -> SavedRow(server, state, vm) }
                 }
             } else if (state.loaded) {
-                Text("No shares yet. Add one below.", style = MaterialTheme.typography.bodyMedium, color = Palette.Metadata)
+                Text("No shares yet. Add one below.", style = MaterialTheme.typography.bodyMedium, color = RegolithTheme.colors.metadata)
             }
 
             Eyebrow(if (state.editingId != null) "Edit share" else "Add a share", Modifier.padding(top = 16.dp))
@@ -115,9 +115,9 @@ fun ServersScreen(graph: AppGraph, onConnected: (Connection) -> Unit) {
             },
             confirmButton = { PrimaryButton("Remove", vm::confirmRemove, Modifier.testTag("servers_remove_confirm_button")) },
             dismissButton = { QuietButton("Cancel", vm::cancelRemove, Modifier.testTag("servers_remove_cancel_button")) },
-            containerColor = Palette.Surface,
-            titleContentColor = Palette.Ink,
-            textContentColor = Palette.Body,
+            containerColor = RegolithTheme.colors.surface,
+            titleContentColor = RegolithTheme.colors.ink,
+            textContentColor = RegolithTheme.colors.body,
         )
     }
 }
@@ -134,12 +134,12 @@ private fun SavedRow(server: SavedServer, state: ServersUiState, vm: ServersView
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(server.label, style = MaterialTheme.typography.bodyLarge, color = Palette.Ink)
-            Text(if (server.isGuest) "Guest" else server.username, style = MaterialTheme.typography.bodySmall, color = Palette.Metadata)
+            Text(server.label, style = MaterialTheme.typography.bodyLarge, color = RegolithTheme.colors.ink)
+            Text(if (server.isGuest) "Guest" else server.username, style = MaterialTheme.typography.bodySmall, color = RegolithTheme.colors.metadata)
         }
-        if (state.connectingId == server.id) CircularProgressIndicator(Modifier.size(18.dp), color = Palette.Body, strokeWidth = 2.dp)
+        if (state.connectingId == server.id) CircularProgressIndicator(Modifier.size(18.dp), color = RegolithTheme.colors.body, strokeWidth = 2.dp)
         QuietButton("Edit", { vm.edit(server) }, Modifier.testTag("servers_saved_edit_${server.id}"), enabled = !state.busy)
         QuietButton("Remove", { vm.askRemove(server) }, Modifier.testTag("servers_saved_remove_${server.id}"), enabled = !state.busy)
     }
-    HorizontalDivider(color = Palette.Hairline)
+    HorizontalDivider(color = RegolithTheme.colors.hairline)
 }

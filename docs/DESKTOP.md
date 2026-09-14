@@ -80,7 +80,7 @@ desktop/src/main/kotlin/com/regolith/desktop/
   ui/LeaveGuard.kt          asks before Back or closing the window drops unsaved chapters
   ui/servers, browse, editor   XScreen.kt + XViewModel.kt + XUiState.kt, as on the phone
   ui/components/Controls.kt the few controls, styled from the phone's tokens
-  ui/theme/                 the phone's palette and fonts, copied (sharing is a later branch)
+  ui/theme/                 ChaptersTheme: the shared RegolithTheme from :ui, with desktop type sizes
 ```
 
 - **Same rules, same file.** The editor's rules (the start mark is pinned,
@@ -236,5 +236,6 @@ sign-in".
 
 ## Not yet
 
-Signing and notarisation, Intel Macs, and sharing the phone's
-`ui/theme` + `ui/components` are later branches.
+Signing and notarisation and Intel Macs. The phone's `ui/theme` is shared
+through `:ui`; its `ui/components` are moving there next, one step at a
+time.

@@ -2,16 +2,13 @@ package com.regolith.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import com.regolith.R
 
 /*
  * Two faces (design section 01, "Type & nav"):
@@ -27,7 +24,8 @@ import com.regolith.R
  * Every style below is a `font:` declaration copied verbatim from the design
  * export, in the design's own CSS px, then multiplied by [TYPE_SCALE] on the
  * way to sp. Keeping the raw numbers means a style can still be diffed
- * against the export. Both faces are bundled in res/font.
+ * against the export. Both faces are bundled once, in
+ * ui/src/androidMain/res/font; the Mac build reads the same files.
  */
 
 /**
@@ -73,16 +71,20 @@ fun Number.scaledDp(): Dp = (toFloat() * SIZE_SCALE).dp
  */
 fun Number.designSp(): TextUnit = (toFloat() * TYPE_SCALE).sp
 
-/** Michroma: display face. */
-val Michroma = FontFamily(Font(R.font.michroma, FontWeight.Normal))
+/**
+ * Michroma: display face.
+ *
+ * Declared here and defined once per platform (`expect`/`actual`, like a
+ * package.json `browser` field swapping one module for another): the phone
+ * loads the file as an Android font resource, the Mac from the classpath.
+ */
+expect val Michroma: FontFamily
 
-/** Space Grotesk ships as one variable font; each weight is an axis setting. */
-val SpaceGrotesk = FontFamily(
-    Font(R.font.space_grotesk, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
-    Font(R.font.space_grotesk, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
-    Font(R.font.space_grotesk, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
-    Font(R.font.space_grotesk, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
-)
+/**
+ * Space Grotesk ships as one variable font; each weight is an axis setting.
+ * Loaded per platform, as [Michroma] is.
+ */
+expect val SpaceGrotesk: FontFamily
 
 // `size`/`lineHeight` are the design's px; `tracking` is in em, so it is already
 // relative to the font size and must NOT be scaled.

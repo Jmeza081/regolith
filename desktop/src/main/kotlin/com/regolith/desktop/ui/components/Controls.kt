@@ -27,7 +27,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.regolith.desktop.ui.Problem
-import com.regolith.desktop.ui.theme.Palette
+import com.regolith.ui.theme.RegolithTheme
 
 /*
  * The Mac app's handful of controls, styled from the phone's tokens.
@@ -60,15 +60,15 @@ fun PrimaryButton(
         enabled = enabled,
         shape = PillShape,
         colors = ButtonDefaults.buttonColors(
-            containerColor = Palette.Red,
-            contentColor = Palette.InkSoft,
-            disabledContainerColor = Palette.DisabledBg,
-            disabledContentColor = Palette.DisabledInk,
+            containerColor = RegolithTheme.colors.accent,
+            contentColor = RegolithTheme.colors.inkSoft,
+            disabledContainerColor = RegolithTheme.colors.disabledBg,
+            disabledContentColor = RegolithTheme.colors.disabledInk,
         ),
         contentPadding = PaddingValues(horizontal = 20.dp),
         modifier = modifier.clickOnly().height(40.dp),
     ) {
-        if (loading) CircularProgressIndicator(Modifier.size(16.dp), color = Palette.InkSoft, strokeWidth = 2.dp)
+        if (loading) CircularProgressIndicator(Modifier.size(16.dp), color = RegolithTheme.colors.inkSoft, strokeWidth = 2.dp)
         else Text(text, style = MaterialTheme.typography.labelLarge)
     }
 }
@@ -85,11 +85,11 @@ fun SecondaryButton(
         onClick = onClick,
         enabled = enabled,
         shape = PillShape,
-        border = BorderStroke(1.dp, if (enabled) Palette.FrostBorder else Palette.Hairline),
+        border = BorderStroke(1.dp, if (enabled) RegolithTheme.colors.frostBorder else RegolithTheme.colors.hairline),
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = Palette.FrostBg,
-            contentColor = Palette.Ink,
-            disabledContentColor = Palette.DisabledInk,
+            containerColor = RegolithTheme.colors.frostBg,
+            contentColor = RegolithTheme.colors.ink,
+            disabledContentColor = RegolithTheme.colors.disabledInk,
         ),
         contentPadding = PaddingValues(horizontal = 12.dp),
         modifier = modifier.clickOnly().height(36.dp),
@@ -100,13 +100,13 @@ fun SecondaryButton(
 
 /**
  * A text-only action that should not compete with the buttons: Back, Done.
- * Pass [color] = [Palette.Red] for the destructive ones (Revert, Remove all),
+ * Pass [color] = `RegolithTheme.colors.accent` for the destructive ones (Revert, Remove all),
  * as the phone draws them.
  */
 @Composable
-fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, color: Color = Palette.Body) {
+fun QuietButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, color: Color = RegolithTheme.colors.body) {
     TextButton(onClick = onClick, enabled = enabled, modifier = modifier.clickOnly()) {
-        Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) color else Palette.DisabledInk, maxLines = 1, softWrap = false)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = if (enabled) color else RegolithTheme.colors.disabledInk, maxLines = 1, softWrap = false)
     }
 }
 
@@ -127,18 +127,18 @@ fun ChaptersTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        placeholder = placeholder?.let { { Text(it, color = Palette.Metadata) } },
+        placeholder = placeholder?.let { { Text(it, color = RegolithTheme.colors.metadata) } },
         singleLine = true,
         enabled = enabled,
         isError = isError,
         supportingText = supportingText?.let { { Text(it) } },
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Palette.Ink,
-            unfocusedBorderColor = Palette.Raised,
-            focusedLabelColor = Palette.Ink,
-            unfocusedLabelColor = Palette.Body,
-            cursorColor = Palette.Ink,
+            focusedBorderColor = RegolithTheme.colors.ink,
+            unfocusedBorderColor = RegolithTheme.colors.raised,
+            focusedLabelColor = RegolithTheme.colors.ink,
+            unfocusedLabelColor = RegolithTheme.colors.body,
+            cursorColor = RegolithTheme.colors.ink,
         ),
         modifier = modifier.fillMaxWidth(),
     )
@@ -147,7 +147,7 @@ fun ChaptersTextField(
 /** An uppercase, letter-spaced label: section names and paths. */
 @Composable
 fun Eyebrow(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.Metadata, modifier = modifier)
+    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = RegolithTheme.colors.metadata, modifier = modifier)
 }
 
 /** A [Problem] on the phone's 8%-red card: the sentence, then the small print. */
@@ -156,11 +156,11 @@ fun ProblemCard(problem: Problem, modifier: Modifier = Modifier) {
     Column(
         modifier
             .fillMaxWidth()
-            .background(Palette.RedTint, RoundedCornerShape(12.dp))
+            .background(RegolithTheme.colors.accentTint, RoundedCornerShape(12.dp))
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(problem.message, style = MaterialTheme.typography.bodyLarge, color = Palette.Ink)
-        problem.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.Metadata) }
+        Text(problem.message, style = MaterialTheme.typography.bodyLarge, color = RegolithTheme.colors.ink)
+        problem.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = RegolithTheme.colors.metadata) }
     }
 }

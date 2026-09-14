@@ -22,7 +22,7 @@ import com.regolith.desktop.ui.browse.BrowseScreen
 import com.regolith.desktop.ui.editor.EditorScreen
 import com.regolith.desktop.ui.servers.ServersScreen
 import com.regolith.desktop.ui.theme.ChaptersTheme
-import com.regolith.desktop.ui.theme.Palette
+import com.regolith.ui.theme.RegolithTheme
 
 /**
  * The whole window: theme, back stack, and which screen the top entry draws.
@@ -56,7 +56,7 @@ fun RegolithChaptersApp(
     }
 
     ChaptersTheme {
-        Surface(Modifier.fillMaxSize(), color = Palette.Ground, contentColor = Palette.Ink) {
+        Surface(Modifier.fillMaxSize(), color = RegolithTheme.colors.ground, contentColor = RegolithTheme.colors.ink) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 val top = backStack.last()
                 key(top) {

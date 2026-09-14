@@ -1,6 +1,7 @@
 package com.regolith.ui.theme
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -41,15 +42,20 @@ private val RegolithColorScheme = darkColorScheme(
 )
 
 /**
- * Root theme. Wrap the whole app in this once (MainActivity does).
+ * Root theme. Wrap the whole app in this once (the phone's MainActivity and
+ * the Mac app's `ChaptersTheme` do).
  * Web analogy: the ThemeProvider at the top of a React tree.
+ *
+ * @param typography Material's type slots. The phone uses the default; the
+ *   Mac passes the same faces at the design's own sizes, without the phone's
+ *   [TYPE_SCALE].
  */
 @Composable
-fun RegolithTheme(content: @Composable () -> Unit) {
+fun RegolithTheme(typography: Typography = RegolithTypography, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalRegolithColors provides RegolithColors()) {
         MaterialTheme(
             colorScheme = RegolithColorScheme,
-            typography = RegolithTypography,
+            typography = typography,
             shapes = RegolithShapes,
             content = content,
         )

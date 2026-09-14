@@ -5,9 +5,8 @@
 // "browsers": Android (the phone app) and the JVM desktop (the Mac app).
 // Compose Multiplatform compiles the same Kotlin for both.
 //
-// Step 1 of the move (docs/ARCHITECTURE.md): the module exists and both apps
-// depend on it, with no code in it yet, so the build setup is proven on its
-// own before any screen could be affected.
+// The move happens in steps (docs/ARCHITECTURE.md), each checked against
+// screenshots of every phone screen. Moved so far: ui/theme.
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -24,6 +23,11 @@ kotlin {
         namespace = "com.regolith.ui"
         compileSdk = 37
         minSdk = 34
+        // The two bundled fonts are Android resources here (R.font.*); a KMP
+        // Android library builds no resources unless asked.
+        androidResources {
+            enable = true
+        }
         // The same bytecode level as :app, so nothing the phone inlines from here is newer.
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_17)
@@ -37,6 +41,10 @@ kotlin {
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.material3)
+        }
+        // The Mac loads the same .ttf files from the classpath: one copy in the repo.
+        named("desktopMain") {
+            resources.srcDir("src/androidMain/res/font")
         }
     }
 }

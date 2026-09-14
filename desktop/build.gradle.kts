@@ -28,14 +28,6 @@ kotlin {
     jvmToolchain(21)
 }
 
-sourceSets {
-    main {
-        // The phone's bundled fonts (Michroma, Space Grotesk), read in place so
-        // there is one copy of each file in the repo.
-        resources.srcDir("../app/src/main/res/font")
-    }
-}
-
 dependencies {
     implementation(project(":core"))
     implementation(project(":ui"))

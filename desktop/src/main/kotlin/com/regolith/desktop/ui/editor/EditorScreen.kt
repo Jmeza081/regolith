@@ -73,7 +73,7 @@ import com.regolith.desktop.ui.components.SecondaryButton
 import com.regolith.desktop.ui.components.clickOnly
 import com.regolith.desktop.ui.formatClock
 import com.regolith.desktop.ui.formatStart
-import com.regolith.desktop.ui.theme.Palette
+import com.regolith.ui.theme.RegolithTheme
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterDraft
 
@@ -132,22 +132,22 @@ fun EditorScreen(
         Column(Modifier.weight(2f).fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuietButton("‹ Back", onBack, Modifier.testTag("editor_back_button"))
-                Text(state.title, style = MaterialTheme.typography.titleMedium, color = Palette.Ink)
+                Text(state.title, style = MaterialTheme.typography.titleMedium, color = RegolithTheme.colors.ink)
             }
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black).testTag("editor_video")) {
                 videoSurface(player)
             }
-            player.error?.let { Text(it, color = Palette.Red) }
+            player.error?.let { Text(it, color = RegolithTheme.colors.accent) }
             Transport(player)
             state.draft?.let { d -> ChapterStrip(d, player.durationMs, onSelect = vm::select) }
             Text(
                 "Space play · M mark · ←/→ 5 s (⇧ ½ s) · ⌘S save · Esc close",
                 style = MaterialTheme.typography.bodySmall,
-                color = Palette.Metadata,
+                color = RegolithTheme.colors.metadata,
             )
         }
         Column(
-            Modifier.weight(1f).fillMaxHeight().background(Palette.Surface).padding(16.dp),
+            Modifier.weight(1f).fillMaxHeight().background(RegolithTheme.colors.surface).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Eyebrow("Chapters")
@@ -155,12 +155,12 @@ fun EditorScreen(
             val draft = state.draft
             when {
                 problem != null -> ProblemCard(problem, Modifier.testTag("editor_problem"))
-                state.loading || draft == null -> CircularProgressIndicator(color = Palette.Body)
+                state.loading || draft == null -> CircularProgressIndicator(color = RegolithTheme.colors.body)
                 else -> {
                     Text(
                         state.message ?: state.statusLine,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (state.message?.startsWith("Not ") == true) Palette.Red else Palette.Body,
+                        color = if (state.message?.startsWith("Not ") == true) RegolithTheme.colors.accent else RegolithTheme.colors.body,
                         modifier = Modifier.testTag("editor_message"),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -176,16 +176,16 @@ fun EditorScreen(
                         itemsIndexed(draft.marks) { i, _ -> ChapterRow(draft, i, state.folderNames, vm, ::refocus) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        QuietButton("Remove all chapters", vm::clearAll, Modifier.testTag("editor_clear_all_button"), enabled = state.canClearAll, color = Palette.Red)
+                        QuietButton("Remove all chapters", vm::clearAll, Modifier.testTag("editor_clear_all_button"), enabled = state.canClearAll, color = RegolithTheme.colors.accent)
                         if (state.hasSidecar) {
-                            QuietButton("Revert chapters", vm::askRevert, Modifier.testTag("editor_revert_button"), enabled = !state.reverting && !state.saving, color = Palette.Red)
+                            QuietButton("Revert chapters", vm::askRevert, Modifier.testTag("editor_revert_button"), enabled = !state.reverting && !state.saving, color = RegolithTheme.colors.accent)
                         }
                     }
                     Eyebrow("The file Save writes")
                     Text(
                         state.preview,
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = Palette.Body,
+                        color = RegolithTheme.colors.body,
                         modifier = Modifier.height(120.dp).verticalScroll(rememberScrollState()).testTag("editor_preview"),
                     )
                 }
@@ -206,9 +206,9 @@ fun EditorScreen(
             },
             confirmButton = { PrimaryButton("Revert", vm::confirmRevert, Modifier.testTag("editor_revert_confirm_button")) },
             dismissButton = { QuietButton("Keep mine", vm::cancelRevert, Modifier.testTag("editor_revert_keep_button")) },
-            containerColor = Palette.Surface,
-            titleContentColor = Palette.Ink,
-            textContentColor = Palette.Body,
+            containerColor = RegolithTheme.colors.surface,
+            titleContentColor = RegolithTheme.colors.ink,
+            textContentColor = RegolithTheme.colors.body,
         )
     }
 
@@ -219,7 +219,7 @@ fun EditorScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("What you marked and named since the last save goes. The chapter file on the share stays as it was.")
-                    state.message?.takeIf { it.startsWith("Not saved") }?.let { Text(it, color = Palette.Red) }
+                    state.message?.takeIf { it.startsWith("Not saved") }?.let { Text(it, color = RegolithTheme.colors.accent) }
                 }
             },
             confirmButton = {
@@ -232,9 +232,9 @@ fun EditorScreen(
                 }
             },
             dismissButton = { QuietButton("Keep editing", { guard.pending = null }, Modifier.testTag("editor_keep_editing_button")) },
-            containerColor = Palette.Surface,
-            titleContentColor = Palette.Ink,
-            textContentColor = Palette.Body,
+            containerColor = RegolithTheme.colors.surface,
+            titleContentColor = RegolithTheme.colors.ink,
+            textContentColor = RegolithTheme.colors.body,
         )
     }
 }
@@ -270,14 +270,14 @@ private fun Transport(player: FilmPlayer) {
         Text(
             "${formatClock(player.positionMs)} / ${formatClock(player.durationMs)}",
             style = MaterialTheme.typography.bodyMedium,
-            color = Palette.Body,
+            color = RegolithTheme.colors.body,
             modifier = Modifier.testTag("editor_clock"),
         )
         Slider(
             value = if (player.durationMs > 0) (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f) else 0f,
             onValueChange = { player.seekTo((it * player.durationMs).toLong()) },
             enabled = player.durationMs > 0,
-            colors = SliderDefaults.colors(thumbColor = Palette.Ink, activeTrackColor = Palette.Ink, inactiveTrackColor = Palette.TrackWhite),
+            colors = SliderDefaults.colors(thumbColor = RegolithTheme.colors.ink, activeTrackColor = RegolithTheme.colors.ink, inactiveTrackColor = RegolithTheme.colors.trackWhite),
             // A focused slider would eat ←/→ for its own 1% steps.
             modifier = Modifier.weight(1f).clickOnly().testTag("editor_scrubber"),
         )
@@ -297,7 +297,7 @@ private fun ChapterStrip(draft: ChapterDraft, durationMs: Long, onSelect: (Int) 
                     .weight(share)
                     .fillMaxHeight()
                     .padding(horizontal = 1.dp)
-                    .background(if (draft.selected == i) Palette.Ink else Palette.Raised)
+                    .background(if (draft.selected == i) RegolithTheme.colors.ink else RegolithTheme.colors.raised)
                     .clickOnly()
                     .clickable { onSelect(i) },
             )
@@ -314,8 +314,8 @@ private fun ChapterRow(draft: ChapterDraft, index: Int, folderNames: List<String
     Column(
         Modifier
             .fillMaxWidth()
-            .background(if (open) Palette.Lifted else Color.Transparent, RoundedCornerShape(10.dp))
-            .then(if (open) Modifier.border(1.dp, Palette.LiftedBorder, RoundedCornerShape(10.dp)) else Modifier)
+            .background(if (open) RegolithTheme.colors.lifted else Color.Transparent, RoundedCornerShape(10.dp))
+            .then(if (open) Modifier.border(1.dp, RegolithTheme.colors.liftedBorder, RoundedCornerShape(10.dp)) else Modifier)
             .clickOnly()
             .clickable(enabled = !locked) { vm.select(if (open) null else index) }
             .testTag("editor_chapter_row_$index")
@@ -323,8 +323,8 @@ private fun ChapterRow(draft: ChapterDraft, index: Int, folderNames: List<String
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(formatStart(mark.startMs), Modifier.width(72.dp), style = MaterialTheme.typography.bodyMedium, color = if (locked) Palette.DisabledInk else Palette.Body)
-            Text(mark.label(index), style = MaterialTheme.typography.bodyLarge, color = if (locked) Palette.DisabledInk else Palette.Ink)
+            Text(formatStart(mark.startMs), Modifier.width(72.dp), style = MaterialTheme.typography.bodyMedium, color = if (locked) RegolithTheme.colors.disabledInk else RegolithTheme.colors.body)
+            Text(mark.label(index), style = MaterialTheme.typography.bodyLarge, color = if (locked) RegolithTheme.colors.disabledInk else RegolithTheme.colors.ink)
         }
         if (open) {
             ChaptersTextField(
@@ -340,7 +340,7 @@ private fun ChapterRow(draft: ChapterDraft, index: Int, folderNames: List<String
             val suggestions = remember(folderNames, mark.title) { NameSuggestions.rank(folderNames, mark.title.orEmpty()) }
             NameSuggestionChips(suggestions) { vm.rename(index, it) }
             if (index == 0) {
-                Text("The film starts here; this one stays at 0:00.", style = MaterialTheme.typography.bodySmall, color = Palette.Metadata)
+                Text("The film starts here; this one stays at 0:00.", style = MaterialTheme.typography.bodySmall, color = RegolithTheme.colors.metadata)
             } else {
                 StartField(mark, index, vm)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -396,7 +396,7 @@ private fun RowScope.NudgeButton(label: String, tag: String, onClick: () -> Unit
 private fun NameSuggestionChips(names: List<String>, onPick: (String) -> Unit) {
     if (names.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("editor_suggestions")) {
-        Text("Used in this folder", style = MaterialTheme.typography.bodySmall, color = Palette.Metadata)
+        Text("Used in this folder", style = MaterialTheme.typography.bodySmall, color = RegolithTheme.colors.metadata)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             names.forEach { name ->
                 SecondaryButton(name, { onPick(name) }, modifier = Modifier.testTag("editor_suggestion_" + name.lowercase().replace(' ', '_')))
