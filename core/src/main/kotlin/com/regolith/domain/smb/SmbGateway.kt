@@ -21,7 +21,10 @@ interface SmbGateway {
     /** List one directory. [relPath] is `""` for the share root. */
     suspend fun list(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): List<SmbEntry>
 
-    /** Open one file for random-access reads. Caller closes it. */
+    /**
+     * Open one file for random-access reads. Caller closes it. Throws
+     * [SmbFailure.NotFound] when the path is not a file; it never creates one.
+     */
     fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource
 
     // --- Writing (P10). The share was read-only to this app until chapter

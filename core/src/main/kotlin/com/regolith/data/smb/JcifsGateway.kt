@@ -232,9 +232,19 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         }
     }
 
+    /**
+     * jcifs-ng opens a file for reading with create-if-missing: mode `"r"` is
+     * open flags 17, `O_CREAT | O_RDONLY`. Opening a path that is not there
+     * would therefore leave an empty file on the share; it did, as 0-byte
+     * `.chapters.txt` files after downloads of films that had none. So the
+     * path must be a file first, which costs one metadata request per open.
+     * The URL has no trailing slash, the form `exists` is paired with in
+     * [delete]; jcifs reads an existing file through either form.
+     */
     override fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource =
         withDialect(host, credentials, "$share/$relPath") { ctx ->
-            val file = SmbFile(urlFor(host, share, relPath), ctx)
+            val file = SmbFile(fileUrl(host, share, relPath), ctx)
+            if (!file.isFile) throw SmbFailure.NotFound("$share/$relPath")
             JcifsByteSource(file.openRandomAccess("r"), file.length())
         }
 

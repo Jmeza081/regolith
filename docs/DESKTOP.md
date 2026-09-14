@@ -95,7 +95,8 @@ desktop/src/main/kotlin/com/regolith/desktop/
   The editor lists the folder first and opens only the film and chapter
   file the listing shows; `--self-check` lists before it opens too.
   `--check-saved` reports empty chapter files it finds, which is what such
-  an open leaves behind.
+  an open leaves behind. Since then the shared client itself refuses to
+  open a missing file (`JcifsGateway.open`), so this is a second guard.
 - **Video.** `VlcPlayer` hands libvlc a callback media over the gateway's
   `SeekableByteSource`, the desktop twin of the phone's `SmbDataSource`, so
   both apps read a share through one SMB client. It keeps a reference to
