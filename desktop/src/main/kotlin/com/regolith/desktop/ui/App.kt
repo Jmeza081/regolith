@@ -21,7 +21,6 @@ import com.regolith.desktop.player.VlcPlayer
 import com.regolith.desktop.ui.browse.BrowseScreen
 import com.regolith.desktop.ui.editor.EditorScreen
 import com.regolith.desktop.ui.servers.ServersScreen
-import com.regolith.desktop.ui.theme.ChaptersTheme
 import com.regolith.ui.theme.RegolithTheme
 
 /**
@@ -55,7 +54,7 @@ fun RegolithChaptersApp(
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
 
-    ChaptersTheme {
+    RegolithTheme {
         Surface(Modifier.fillMaxSize(), color = RegolithTheme.colors.ground, contentColor = RegolithTheme.colors.ink) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 val top = backStack.last()

@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.sp
  */
 
 /**
- * Design px -> sp multiplier.
+ * Design px -> sp multiplier, per platform: 1.28 on the phone, 1 on the desktop.
  *
  * The design frames are 320 px wide; the phone this targets is 411 dp. Reading
  * the export's px straight as sp made every label ~28% smaller *relative to the
@@ -37,13 +37,20 @@ import androidx.compose.ui.unit.sp
  * type did not. 411/320 = 1.284, so type now occupies the same fraction of the
  * screen width as it does in the frames.
  *
+ * The desktop has no such mismatch: a window is not a 320 px frame stretched
+ * across a phone, and a Mac at 100% already draws a design px as a point, so
+ * its value is 1. Each platform defines it (`Scale.android.kt`,
+ * `Scale.desktop.kt`); shared components read it through [scaledDp] and
+ * [designSp] and never need to know which one they run on.
+ *
  * sp (not dp) so the user's font-size accessibility setting still applies on
  * top; this factor only fixes the design-to-device mismatch.
  */
-const val TYPE_SCALE = 1.28f
+expect val TYPE_SCALE: Float
 
 /**
- * Design px -> dp multiplier for anything drawn at a FIXED size.
+ * Design px -> dp multiplier for anything drawn at a FIXED size. It follows
+ * [TYPE_SCALE], so it is 1 on the desktop.
  *
  * The frames are 320 px wide and the phone is 411 dp, so a 112 px poster
  * that filled 35% of a frame fills 27% of the screen. Every fixed size in
@@ -59,7 +66,7 @@ const val TYPE_SCALE = 1.28f
  *  - gutters, gaps, and the 44dp hit targets. Room across is what a wider
  *    screen is for, and 44dp is an ergonomic floor, not a proportion.
  */
-const val SIZE_SCALE = TYPE_SCALE
+val SIZE_SCALE: Float get() = TYPE_SCALE
 
 /** A design-export px size (a 48 dp button, a 52 dp thumb, a 19 dp glyph) as scaled dp. */
 fun Number.scaledDp(): Dp = (toFloat() * SIZE_SCALE).dp

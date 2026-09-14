@@ -130,7 +130,7 @@ fun SecondaryButton(
     )
 }
 
-/** Plain white text, no fill, no underline. 44dp. */
+/** Plain text, no fill, no underline. 44dp. White unless [ink] says otherwise. */
 @Composable
 fun TertiaryButton(
     text: String,
@@ -138,11 +138,13 @@ fun TertiaryButton(
     testTag: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** The text colour. Pass the accent for a quiet destructive action ("Remove all chapters"); null is white. */
+    ink: Color? = null,
 ) {
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
-        height = 44.scaledDp(), background = Color.Transparent, border = null, ink = colors.ink,
+        height = 44.scaledDp(), background = Color.Transparent, border = null, ink = ink ?: colors.ink,
         style = TextStyles.buttonTertiary, leadingIcon = null,
     )
 }

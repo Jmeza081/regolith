@@ -79,8 +79,7 @@ desktop/src/main/kotlin/com/regolith/desktop/
   ui/App.kt                 theme + back stack + which screen the top route draws
   ui/LeaveGuard.kt          asks before Back or closing the window drops unsaved chapters
   ui/servers, browse, editor   XScreen.kt + XViewModel.kt + XUiState.kt, as on the phone
-  ui/components/Controls.kt the few controls, styled from the phone's tokens
-  ui/theme/                 ChaptersTheme: the shared RegolithTheme from :ui, with desktop type sizes
+  ui/components/ClickOnly.kt   clickOnly(): passed to the shared buttons so a click does not take focus
 ```
 
 - **Same rules, same file.** The editor's rules (the start mark is pinned,

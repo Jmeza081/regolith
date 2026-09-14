@@ -31,7 +31,8 @@ import com.regolith.ui.theme.scaledDp
  * "Cancel", so the two buttons read as two outcomes rather than yes/no.
  *
  * Tags: `<testTag>_dialog` on the card, `<testTag>_confirm_button` and
- * `<testTag>_keep_button` on the buttons.
+ * `<testTag>_keep_button` on the buttons, `<testTag>_alternate_button` and
+ * `<testTag>_note` when those are given.
  */
 @Composable
 fun ConfirmDialog(
@@ -42,6 +43,15 @@ fun ConfirmDialog(
     onConfirm: () -> Unit,
     onKeep: () -> Unit,
     testTag: String,
+    /** A red line under the body saying why the last attempt failed ("Not saved: …"). */
+    note: String? = null,
+    /**
+     * A third way out, drawn frosted between the two: the Mac's "Save" when
+     * leaving unsaved chapters. Null draws the usual two buttons.
+     */
+    alternateLabel: String? = null,
+    onAlternate: () -> Unit = {},
+    alternateEnabled: Boolean = true,
 ) {
     val colors = RegolithTheme.colors
     Dialog(onDismissRequest = onKeep) {
@@ -56,8 +66,12 @@ fun ConfirmDialog(
         ) {
             DisplayText(title, style = TextStyles.dialogTitle)
             Text(body, style = TextStyles.body, color = colors.body)
+            if (note != null) Text(note, style = TextStyles.body, color = colors.accent, modifier = Modifier.testTag("${testTag}_note"))
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                 DestructiveButton(text = confirmLabel, onClick = onConfirm, testTag = "${testTag}_confirm_button", modifier = Modifier.fillMaxWidth().height(48.scaledDp()))
+                if (alternateLabel != null) {
+                    SecondaryButton(text = alternateLabel, onClick = onAlternate, testTag = "${testTag}_alternate_button", enabled = alternateEnabled, modifier = Modifier.fillMaxWidth())
+                }
                 SecondaryButton(text = keepLabel, onClick = onKeep, testTag = "${testTag}_keep_button", modifier = Modifier.fillMaxWidth())
             }
         }

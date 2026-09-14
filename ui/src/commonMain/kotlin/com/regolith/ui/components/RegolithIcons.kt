@@ -62,6 +62,28 @@ object RegolithIcons {
     /** `rg_ic_chevron_right`: a right chevron, for a row you can walk into. */
     val ChevronRight: ImageVector by lazy { stroked("ChevronRight", "m9 6 6 6-6 6") }
 
+    /** `rg_ic_server`: two stacked drives, for a share's row. */
+    val Server: ImageVector by lazy {
+        stroked(
+            "Server",
+            "M5.0,4.0 h14.0 a2.0,2.0 0 0 1 2.0,2.0 v3.0 a2.0,2.0 0 0 1 -2.0,2.0 h-14.0 a2.0,2.0 0 0 1 -2.0,-2.0 v-3.0 a2.0,2.0 0 0 1 2.0,-2.0 z",
+            "M5.0,13.0 h14.0 a2.0,2.0 0 0 1 2.0,2.0 v3.0 a2.0,2.0 0 0 1 -2.0,2.0 h-14.0 a2.0,2.0 0 0 1 -2.0,-2.0 v-3.0 a2.0,2.0 0 0 1 2.0,-2.0 z",
+            "M7 7.5h.01M7 16.5h.01",
+            join = StrokeJoin.Miter,
+        )
+    }
+
+    /** `rg_ic_refresh`: two arcs with arrow heads (Lucide "refresh-cw"), for listing a folder again. */
+    val Refresh: ImageVector by lazy {
+        stroked(
+            "Refresh",
+            "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
+            "M21 3v5h-5",
+            "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",
+            "M8 16H3v5",
+        )
+    }
+
     // A white fill and no stroke, as in the XML (it names a stroke width but no
     // stroke colour, so nothing is stroked).
     private fun filled(name: String, path: String): ImageVector = ImageVector.Builder(
@@ -86,6 +108,7 @@ object RegolithIcons {
         vararg paths: String,
         width: Float = 2f,
         cap: StrokeCap = StrokeCap.Round,
+        join: StrokeJoin = StrokeJoin.Round,
     ): ImageVector = ImageVector.Builder(
         name = name,
         defaultWidth = 24.dp,
@@ -99,7 +122,7 @@ object RegolithIcons {
                 stroke = SolidColor(Color.White),
                 strokeLineWidth = width,
                 strokeLineCap = cap,
-                strokeLineJoin = StrokeJoin.Round,
+                strokeLineJoin = join,
             )
         }
     }.build()

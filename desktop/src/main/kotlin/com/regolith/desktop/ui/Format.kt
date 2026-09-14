@@ -18,12 +18,5 @@ fun formatStart(ms: Long): String {
     return formatClock(ms) + if (tenth > 0) ".$tenth" else ""
 }
 
-/** `1.4 GB`, `312 MB`, `56 KB`. */
-fun formatSize(bytes: Long): String = when {
-    bytes >= 1L shl 30 -> String.format(Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024))
-    bytes >= 1L shl 20 -> String.format(Locale.US, "%.0f MB", bytes / (1024.0 * 1024))
-    else -> String.format(Locale.US, "%.0f KB", bytes / 1024.0)
-}
-
 /** `Films/Heat` for `Films` + `Heat`; the share root has no prefix. */
 fun childPath(folder: String, name: String): String = if (folder.isEmpty()) name else "$folder/$name"

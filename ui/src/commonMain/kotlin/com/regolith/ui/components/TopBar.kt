@@ -50,6 +50,8 @@ fun TopBar(
     subtitleMuted: Boolean = false,
     actions: List<TopBarAction> = emptyList(),
     statusBarPadding: Boolean = true,
+    /** The back arrow's test tag. A screen with an established tag (the Mac editor's `editor_back_button`) passes its own. */
+    backTestTag: String = "topbar_back_button",
 ) {
     val colors = RegolithTheme.colors
     val hasSubtitle = subtitle != null
@@ -62,7 +64,7 @@ fun TopBar(
     ) {
         if (onBack != null) {
             Box(
-                Modifier.size(44.dp).offsetForBack().clickable(interactionSource = null, indication = null, onClick = onBack).testTag("topbar_back_button"),
+                Modifier.size(44.dp).offsetForBack().clickable(interactionSource = null, indication = null, onClick = onBack).testTag(backTestTag),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Icon(RegolithIcons.Back, contentDescription = "Back", tint = colors.ink, modifier = Modifier.size(20.scaledDp()))
