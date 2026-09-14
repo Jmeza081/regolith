@@ -183,6 +183,7 @@ fun PlayerScreen(
     val transfer by viewModel.transfer.collectAsStateWithLifecycle()
     val draft by viewModel.chapterDraft.collectAsStateWithLifecycle()
     val chapterSaving by viewModel.chapterSaving.collectAsStateWithLifecycle()
+    val nameSuggestions by viewModel.chapterNameSuggestions.collectAsStateWithLifecycle()
     // "Saved to the share", at the bottom, gone on its own.
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.chapterSaveMessages.collect { snackbar.showSnackbar(it) } }
@@ -508,6 +509,7 @@ fun PlayerScreen(
             onDone = viewModel::saveChapters,
             onCancel = { if (d.dirty) confirmDiscard = true else viewModel.discardChapterEdit() },
             onClearAll = viewModel::clearAllMarks,
+            suggestions = nameSuggestions,
             saving = chapterSaving,
             onScrubStart = chromeCallbacks.onScrubStart, onScrub = chromeCallbacks.onScrub, onScrubEnd = chromeCallbacks.onScrubEnd,
         )

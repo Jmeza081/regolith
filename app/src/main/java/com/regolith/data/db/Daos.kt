@@ -519,8 +519,8 @@ data class UserChapterHitRow(
 data class UserChapterTally(val chapters: Int, val files: Int)
 
 /**
- * A chapter name that recurs across the library, with how many films carry
- * it. A name on one film filters nothing, so only repeats are counted.
+ * A chapter name the library holds, with how many films carry it. Used both
+ * for the moment filter and for the editor's naming suggestions.
  */
 data class UserChapterFacetRow(val title: String, val films: Int)
 
@@ -575,22 +575,46 @@ interface UserChapterDao {
     fun search(match: String, limit: Int): Flow<List<UserChapterHitRow>>
 
     /**
-     * The chapter names shared by more than one film, commonest first. The
-     * names arrive from both directions — typed in the editor, or imported
-     * from a `.chapters.txt` beside the film — because both land in this
-     * table, so this sees the whole library without reading a share.
+     * Every named chapter in the library, commonest first. The names arrive
+     * from both directions — typed in the editor, or imported from a
+     * `.chapters.txt` beside the film — because both land in this table, so
+     * this sees the whole library without reading a share.
      *
      * `COLLATE NOCASE` on the grouping so "The Heist" and "the heist" are
      * one chip; `MIN(title)` picks a stable spelling to show.
+     *
+     * This used to end `HAVING films > 1`, on the theory that a name on a
+     * single film filters nothing. It does filter something — down to that
+     * one film — and leaving it out made the list look broken, because a
+     * moment you had just written was missing from it.
      */
     @Query(
         "SELECT MIN(user_chapters.title) AS title, COUNT(DISTINCT user_chapters.fileId) AS films " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
             "WHERE user_chapters.title IS NOT NULL AND user_chapters.title != '' AND media_files.missing = 0 " +
             "GROUP BY user_chapters.title COLLATE NOCASE " +
-            "HAVING films > 1 ORDER BY films DESC, title COLLATE NOCASE LIMIT :limit",
+            "ORDER BY films DESC, title COLLATE NOCASE LIMIT :limit",
     )
     fun observeFacets(limit: Int): Flow<List<UserChapterFacetRow>>
+
+    /**
+     * The same list, narrowed to the names matching what is being typed —
+     * through `user_chapter_fts`, the index the chapter search already uses,
+     * so "hei" reaches "The heist" exactly as it does in Search.
+     *
+     * Grouped rather than listed per occurrence: the editor is suggesting a
+     * NAME, so "The heist" on four films is one suggestion, not four.
+     */
+    @Query(
+        "SELECT MIN(user_chapters.title) AS title, COUNT(DISTINCT user_chapters.fileId) AS films " +
+            "FROM user_chapters JOIN user_chapter_fts ON user_chapters.id = user_chapter_fts.rowid " +
+            "JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE user_chapter_fts MATCH :match AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +
+            "AND media_files.missing = 0 " +
+            "GROUP BY user_chapters.title COLLATE NOCASE " +
+            "ORDER BY films DESC, title COLLATE NOCASE LIMIT :limit",
+    )
+    fun observeNameMatches(match: String, limit: Int): Flow<List<UserChapterFacetRow>>
 
     /** The films carrying a chapter of this exact name, for a chip's own listing. */
     @Query(

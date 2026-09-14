@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.prefs.AppPreferences
@@ -193,6 +194,8 @@ class PlaybackSession @Inject constructor(
     private val playback: PlaybackRepository,
     private val prefs: AppPreferences,
     private val frames: FrameSourceFactory,
+    /** Media3's extractor, the scrub previews' fallback when the platform one cannot seek. */
+    private val frameGrabber: FrameGrabber,
     private val local: LocalMedia,
     private val chapterSource: ChapterRepository,
     private val userChapters: UserChapterRepository,
@@ -427,7 +430,11 @@ class PlaybackSession @Inject constructor(
         val fileId = _state.value.fileId
         val file = currentFile
         _scrubThumbnails.value = if (enabled && fileId != null && file != null) {
-            OnDemandScrubThumbnails(durationMs = file.durationMs ?: _state.value.durationMs) {
+            OnDemandScrubThumbnails(
+                durationMs = file.durationMs ?: _state.value.durationMs,
+                fileId = fileId,
+                grabber = frameGrabber,
+            ) {
                 // Same rule as playback: the copy on this device first.
                 local.fileBlocking(fileId)?.let { return@OnDemandScrubThumbnails frames.openLocal(it) }
                 val media = resolver.resolveBlocking(fileId) ?: error("file $fileId is unknown")

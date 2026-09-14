@@ -22,7 +22,10 @@ import com.regolith.ui.components.SheetOption
  * being a Clear button somewhere else.
  *
  * A film count rides on each row because it is the thing that decides
- * whether a filter is worth tapping.
+ * whether a filter is worth tapping. Names on a single film are listed
+ * too: they narrow to that one film, which is a perfectly good answer to
+ * "which moment?", and leaving them out made a moment you had only just
+ * written look like it had not been saved.
  */
 @Composable
 fun MomentFilterSheet(
@@ -33,7 +36,7 @@ fun MomentFilterSheet(
 ) {
     RegolithSheet(
         title = "Filter by moment",
-        subtitle = if (facets.size == 1) "1 moment appears in more than one film" else "${facets.size} moments appear in more than one film",
+        subtitle = if (facets.size == 1) "1 named moment in this library" else "${facets.size} named moments in this library",
         onDismiss = onDismiss,
         testTag = "search_moment_sheet",
     ) {
@@ -52,7 +55,7 @@ fun MomentFilterSheet(
                     selected = facet.title.equals(selected, ignoreCase = true),
                     onClick = { onPick(facet.title) },
                     testTag = "search_moment_${facet.title.lowercase().replace(' ', '_')}",
-                    trailing = "${facet.films} films",
+                    trailing = if (facet.films == 1) "1 film" else "${facet.films} films",
                 )
             }
         }
