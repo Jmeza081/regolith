@@ -20,7 +20,7 @@ import jcifs.smb.SmbFile
 import jcifs.smb.SmbRandomAccessFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import android.util.Log
+import org.slf4j.LoggerFactory
 import java.net.ConnectException
 import java.security.Security
 import org.bouncycastle.jce.provider.BouncyCastleProvider
@@ -47,7 +47,10 @@ import javax.inject.Singleton
 class JcifsGateway @Inject constructor() : SmbGateway {
 
     private companion object {
-        const val TAG = "Regolith/SMB"
+        // slf4j, not android.util.Log: this file lives in :core and runs on the
+        // Mac too. On the phone slf4j-android still routes it to logcat under
+        // the same tag.
+        val log = LoggerFactory.getLogger("Regolith/SMB")
     }
 
     /**
@@ -72,7 +75,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         if (existing != null && existing.javaClass.name == BouncyCastleProvider::class.java.name) return
         Security.removeProvider("BC")
         Security.insertProviderAt(BouncyCastleProvider(), 1)
-        Log.i(TAG, "Replaced Android's BC provider with bundled BouncyCastle ${BouncyCastleProvider().version}")
+        log.info("Replaced Android's BC provider with bundled BouncyCastle ${BouncyCastleProvider().version}")
     }
 
     private val baseProps: Properties by lazy {
@@ -160,7 +163,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
                     wrap(host, path, d) { block(context(host, credentials, d, lenient)) }
                 } catch (e: SmbFailure) {
                     if (lenient || !e.isSignatureFailure()) throw e
-                    Log.w(TAG, "$d signing failed for ${host.host}; retrying without enforced signing")
+                    log.warn("$d signing failed for ${host.host}; retrying without enforced signing")
                     wrap(host, path, d) { block(context(host, credentials, d, lenientSigning = true)) }
                         .also { lenientHosts += host }
                 }
@@ -172,7 +175,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
                 // A refused/timed-out TCP connection or a name that does not
                 // resolve is the same on every dialect: stop immediately.
                 if (e.isTcpLevel()) throw e
-                Log.w(TAG, "$d failed for ${host.host}: ${e.detail ?: e.message}")
+                log.warn("$d failed for ${host.host}: ${e.detail ?: e.message}")
                 last = e
             }
         }
@@ -288,7 +291,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
         // The full cause chain: jcifs folds transport-thread failures into one status code.
-        Log.w(TAG, "SMB failure on $dialect for ${host.host}$path", e)
+        log.warn("SMB failure on $dialect for ${host.host}$path", e)
         throw when (e.ntStatus) {
             NtStatus.NT_STATUS_LOGON_FAILURE,
             NtStatus.NT_STATUS_ACCOUNT_DISABLED,
@@ -307,7 +310,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
         }
     } catch (e: CIFSException) {
-        Log.w(TAG, "CIFS failure on $dialect for ${host.host}$path", e)
+        log.warn("CIFS failure on $dialect for ${host.host}$path", e)
         throw if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
     } catch (e: UnknownHostException) {
         throw SmbFailure.Unreachable(host.host, e, "DNS lookup failed · $dialect")

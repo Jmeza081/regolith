@@ -93,6 +93,11 @@ ksp {
 }
 
 dependencies {
+    // The shared, Android-free layer: domain/, the jcifs SMB client and the
+    // chapter-sidecar writer (see core/build.gradle.kts). jcifs-ng arrives
+    // through it.
+    implementation(project(":core"))
+
     // Compose. The BOM pins every Compose artifact to one tested set.
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -141,12 +146,7 @@ dependencies {
     implementation(libs.media3.inspector)
     implementation(libs.media3.inspector.frame)
 
-    // SMB. jcifs-ng drags in the servlet API for an HTTP filter we never
-    // use; excluding it keeps a few hundred KB out of the APK.
-    implementation(libs.jcifs.ng) {
-        exclude(group = "javax.servlet")
-    }
-    // jcifs-ng logs through slf4j; this binding routes it to logcat.
+    // jcifs-ng and :core log through slf4j; this binding routes it to logcat.
     implementation(libs.slf4j.android)
 
     // Async
@@ -159,6 +159,8 @@ dependencies {
 
     // Tests
     testImplementation(libs.junit)
+    // FakeSmbGateway, shared with :core's own tests.
+    testImplementation(testFixtures(project(":core")))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)

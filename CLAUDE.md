@@ -36,7 +36,18 @@ message, and code comment should assume that background:
 | Icons | Lucide via `com.composables:icons-lucide-android` (vector drawables, `R.drawable.lucide_ic_*`) | lucide-react |
 | SDK levels | minSdk 34 · targetSdk 37 · compileSdk 37 | browserslist |
 
-Package layout (single module until there's a real reason to split):
+Modules. `:core` is the only code the phone and the Mac app share; it may not
+depend on Android, Compose, Room or Hilt (guardrail G11 in `docs/ARCHITECTURE.md`).
+
+```
+core/     pure Kotlin/JVM: domain/, data/smb (jcifs), data/media/SidecarWriter,
+          data/credentials/CredentialStore. Tests + FakeSmbGateway (testFixtures).
+app/      the Android app, depends on :core
+```
+
+Package layout. Package names are the same in every module, so
+`com.regolith.domain.*` lives in `core/src/main/kotlin` and everything
+else below in `app/src/main/java`:
 
 ```
 app/src/main/java/com/regolith/
@@ -48,7 +59,7 @@ app/src/main/java/com/regolith/
     navigation/  RegolithKey (routes), MainTab, NavGraph (the router)
     <feature>/   one package per screen: XScreen.kt, XViewModel.kt, XUiState.kt
   data/          repositories, SMB client, local persistence (DataStore/Room)
-  domain/        pure Kotlin models + use cases (no Android imports)
+  domain/        (in :core) pure Kotlin models + use cases (no Android imports)
   di/            Hilt modules
   player/        Media3 setup, custom DataSource for SMB, thumbnail scrubbing
 ```
@@ -59,7 +70,9 @@ fixes are summarised in `docs/ARCHITECTURE.md`.
 
 Rules of thumb:
 - UI never touches `data/` directly; it goes through a ViewModel.
-- `domain/` has no Android dependencies so it's trivially unit-testable.
+- `domain/` has no Android dependencies so it's trivially unit-testable. It
+  lives in `:core`, where the build enforces that: an Android import there
+  does not compile.
 - Follow the official Android app architecture guide and Kotlin style guide.
   When unsure what "industry standard" is, say so and pick the mainstream
   option rather than the clever one.
@@ -135,7 +148,7 @@ To make the app navigable by argent, follow these conventions in Compose:
 ```
 ./gradlew assembleDebug        # compile
 ./gradlew installDebug         # build + install on the running emulator
-./gradlew test                 # JVM unit tests (domain/, ViewModels)
+./gradlew test                 # JVM unit tests: :core (domain/, SMB, sidecar) + :app (ViewModels, Room)
 ./gradlew connectedAndroidTest # instrumented/Compose UI tests on the emulator
 ./gradlew lint                 # Android lint
 repomix                        # regenerate the full-repo snapshot

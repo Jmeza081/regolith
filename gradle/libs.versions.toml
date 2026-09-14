@@ -35,6 +35,9 @@ coil = "3.4.0"
 haze = "1.7.3"
 lucide = "2.2.1"
 jcifsNg = "2.1.10"
+# Held on 1.7.x on purpose: slf4j-android has no 2.x, and a 2.x API would
+# unbind it (every SMB log would vanish from logcat).
+#noinspection GradleDependency
 slf4jAndroid = "1.7.36"
 coroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
@@ -108,9 +111,15 @@ lucide-icons = { group = "com.composables", name = "icons-lucide-android", versi
 # --- SMB
 jcifs-ng = { group = "eu.agno3.jcifs", name = "jcifs-ng", version.ref = "jcifsNg" }
 slf4j-android = { group = "org.slf4j", name = "slf4j-android", version.ref = "slf4jAndroid" }
+# The facade :core logs through. Same 1.7.x line as the android binding above:
+# slf4j-android 1.7 cannot bind a 2.x API, and every SMB log would vanish.
+slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4jAndroid" }
+# @Inject/@Singleton for :core, which has no Hilt. The standard JSR-330 jar.
+javax-inject = { group = "javax.inject", name = "javax.inject", version = "1" }
 
 # --- Kotlin
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
@@ -128,3 +137,5 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+# Plain-JVM Kotlin modules (:core, :desktop). MUST be the Kotlin AGP 9 bundles.
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

@@ -26,7 +26,12 @@ player/    Media3 (ExoPlayer) session, the SMB DataSource, the container
 di/        Hilt modules wiring the above together.
 ```
 
-Single Gradle module (`:app`) until there is a real reason to split.
+Two Gradle modules since the Mac chapter editor gave a real reason to split
+(2026-09-14): `:core` holds `domain/`, `data/smb/JcifsGateway.kt`,
+`data/media/SidecarWriter.kt` and the `CredentialStore` interface as plain
+Kotlin on the JVM; `:app` is everything Android and depends on it. Package
+names did not change, so a class's package still says which layer it is in;
+the module says which apps can use it. See G11.
 
 ## Guardrails (fixed early, never reopened)
 
@@ -67,6 +72,14 @@ short "why"; see the plan for the alternatives rejected.
   phone path stays the tested one. Layouts key on `ui/adaptive/WindowShape`
   (window width class + fold posture), never on the device model. See
   `FOLDABLE_PLAN.md`.
+- **G11. `:core` is the only code the apps share, and it may not depend on
+  Android, Compose, Room or Hilt.** Web analogy: a framework-free package in
+  a monorepo. The build enforces it (`core/` is a plain Kotlin/JVM module,
+  so an `android.*` import does not compile). A class that needs one of
+  those belongs in `:app` or `:desktop`, behind an interface declared in
+  `:core` if the other app needs the same seam (as `CredentialStore` is:
+  the Keystore on the phone, the Keychain on the Mac). Logging goes through
+  slf4j; each app picks the binding.
 
 ## Data flow, Phase 1 (connect → browse → play)
 
@@ -648,6 +661,7 @@ What a web developer would not guess:
 | 2026-09-13 | Naming a chapter offers chips of names already in the library, from `user_chapter_fts` | The same scene became "The heist", "the heist" and "Heist" — three chips in Search each finding a third of the films — because nothing ever showed you what you called it last time. Suggesting at the point of typing is the cheapest place to fix that: the consistency has to happen before the row is written, not by reconciling names afterwards. They come from the index Search already reads, so "hei" reaches "The heist" exactly as it does there, and an empty field gets the library's commonest names, which is when the prompt is worth the most. Grouped by name, not listed per occurrence — the editor is suggesting a name. Already dropped: what is typed, and names on this film's other marks. |
 | 2026-09-14 | Opening a mark, dragging one, nudging one or typing its time all take the FILM to that mark; scrubbing away afterwards is free | Owner's report: the picture stayed where it was while a mark moved, so you were naming and placing a moment you could not see. One rule in `PlayerViewModel.seekToOpenMark` rather than three gesture handlers, so the handle, the row, the ±5 s strip and the typed Start field all behave the same. A drag calls it many times a second, so it throttles: the first move seeks at once, the rest at most one per 250 ms, and the trailing job re-reads the draft when it fires — wherever the finger stops is where the film ends up, without the player re-reading the share on every pixel. Tapping the handle that is ALREADY open re-seeks, which is the way back after scrubbing off to look at something. The film only follows a MARK, so the picture's own scrubber still goes anywhere. |
 | 2026-09-14 | **Amends the naming-chips row above.** The chips drop only the name already in the box; a film may carry the same moment twice | The owner's call, and the previous rule had it backwards twice over. Hiding names this film already used meant the suggestions thinned out exactly as a film got well annotated — and a film legitimately has two "Opening credits" or three "Ad break", so the app was enforcing a rule nobody asked for. The six-chip cap did the rest of the damage: with the list sorted commonest-first, every name on a single film fell off the end, which read as "single-film moments are not suggested". The cap is now 50, the same safety rail as the moment filter's, and the row scrolls. |
+| 2026-09-14 | `:core` split out of `:app` (domain, jcifs gateway, sidecar writer, `CredentialStore`); package names kept; `android.util.Log` in the gateway swapped for slf4j | The desktop spike proved these compile on the JVM unchanged and a Mac chapter editor needs exactly them. Keeping package names made it a move, not a refactor: none of the 67 importing files changed, git follows the renames, and the 268 unit tests ran the same before and after (split across the two modules). slf4j because the phone already shipped `slf4j-android` for jcifs, so logcat output is unchanged; the API is pinned to 1.7.36 to match that binding, as a 2.x API would silently drop every SMB log. `FakeSmbGateway` became a `java-test-fixtures` artifact because Robolectric tests in `:app` still use it. Rejected: a Kotlin Multiplatform module (nothing needs iOS or web, and `java.util.Locale`/`Closeable` in `domain/` would have to go first). |
 | 2026-09-13 | A downloaded film with no chapters gets no chapter file | Seen on the device: every copy came with a 0-byte `<id>.<ext>.chapters.txt` beside it, because "no chapters" formatted to an empty string and was written anyway. Empty now deletes instead, and a blank file read off the share counts as nothing. |
 
 ## Phase plan

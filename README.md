@@ -76,7 +76,7 @@ SDK platform 37, an Android 14+ device or the `Pixel_10` emulator.
 ```
 ./gradlew assembleDebug        # compile
 ./gradlew installDebug         # build + install on the running emulator
-./gradlew test                 # JVM unit tests
+./gradlew test                 # JVM unit tests (:core and :app)
 ./gradlew connectedAndroidTest # Compose UI tests on the emulator
 ./gradlew lint
 ```
@@ -161,7 +161,8 @@ any store upload.
 ## Layout
 
 ```
-app/src/main/java/com/regolith/   Kotlin sources (ui/, data/, domain/, di/, player/)
+core/src/main/kotlin/com/regolith/ shared, Android-free Kotlin: domain/, the SMB client, the chapter-sidecar writer
+app/src/main/java/com/regolith/   the Android app (ui/, data/, di/, player/)
 app/src/main/res/font/            Michroma + Space Grotesk (OFL), bundled
 design/docs/                      the high-fidelity design export (source of truth)
 docs/                             ARCHITECTURE.md, NAVIGATION.md
