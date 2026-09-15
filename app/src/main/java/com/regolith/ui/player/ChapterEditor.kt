@@ -73,9 +73,11 @@ import kotlin.math.abs
  * The film is paused while it is open.
  *
  * Mark at the playhead, then open a row to work on it. **One point at a
- * time:** while a row is open every other mark is locked — its handle is
- * inert, its row dims and ignores taps, and Mark waits — until you close
- * it. The open row lifts to a lighter card and offers the name, a typed
+ * time:** while a row is open every other mark is locked — its handle
+ * cannot be dragged, its row dims and ignores taps, and Mark waits — until
+ * you close it. Tapping another mark's handle on the timeline closes the
+ * open one and opens that one, as Done and then a tap would, without the
+ * scroll down to Done. The open row lifts to a lighter card and offers the name, a typed
  * start time, ±0.5 s and ±5 s nudges, and Delete. Marks are moved on the
  * [MarksTimeline] below the Mark button, with handles big enough to hold,
  * never on the picture's scrubber, which only scrubs. The first mark is
@@ -148,7 +150,7 @@ fun ChapterEditorContent(
                     when {
                         open == null -> "Tap a handle to open it"
                         open == 0 -> "Start mark: rename only"
-                        else -> "Drag handle ${open + 1} · others locked"
+                        else -> "Drag handle ${open + 1} · tap another to switch"
                     },
                     style = TextStyles.meta, color = colors.body, maxLines = 1, modifier = Modifier.testTag("player_chapter_marks_hint"),
                 )
@@ -363,8 +365,9 @@ private fun NudgeStrip(index: Int, onNudge: (Int, Long) -> Unit) {
  * The marks' own timeline: a 64dp strip with a 30×40dp numbered handle
  * per mark, the chapter gaps drawn along its foot, and a thin white line
  * where the film is. Only the OPEN mark's handle can be grabbed; the rest
- * are drawn dark and take no touch. With nothing open, tapping a handle
- * opens it, and a tap or drag anywhere else scrubs the film — the same
+ * are drawn dark and cannot be dragged. Tapping any handle opens it, closing
+ * whichever was open (its edits stay, as Done leaves them), and a tap or
+ * drag anywhere else scrubs the film — the same
  * callbacks the picture's scrubber uses, so the preview shows there too.
  *
  * Opening a handle, and dragging one, take the FILM to that mark (the seek
@@ -404,13 +407,10 @@ private fun MarksTimeline(
                 detectTapGestures { offset ->
                     val d = draftNow
                     val hit = handleAt(d, durationMs, offset.x, size.width, HANDLE_W.toPx() / 2 + HANDLE_REACH.toPx())
-                    when {
-                        // Opening a mark takes the film to it, and so does
-                        // tapping the one already open — that is the way back
-                        // to the frame after scrubbing off to look at something.
-                        hit > 0 && (d.selected == null || hit == d.selected) -> onSelect(hit)
-                        hit > 0 -> Unit // another row is open: this one is locked
-                        durationMs > 0 -> { onScrubStart(); onScrubEnd((offset.x / size.width).coerceIn(0f, 1f)) }
+                    when (marksTap(hit, durationMs)) {
+                        MarksTap.Open -> onSelect(hit)
+                        MarksTap.Scrub -> { onScrubStart(); onScrubEnd((offset.x / size.width).coerceIn(0f, 1f)) }
+                        MarksTap.Nothing -> Unit
                     }
                 }
             }
@@ -482,6 +482,26 @@ private fun MarksTimeline(
 }
 
 /** The handle whose box (plus [reachPx] either side) holds [xPx]; the open one wins a tie; 0 (the start mark) never; -1 for none. */
+/** What a tap on the marks timeline does; see [marksTap]. */
+internal enum class MarksTap { Open, Scrub, Nothing }
+
+/**
+ * What a tap on the marks timeline does, given the handle under the finger
+ * ([hit], -1 for none; the start mark has no handle) and the film's length.
+ *
+ * A handle always opens. The one already open: that takes the film back to
+ * its frame after scrubbing off to look at something. Another one: that
+ * closes the open mark the way Done does (its edits are already in the
+ * draft) and saves the scroll down to Done. Only DRAGGING is locked to the
+ * open mark, so a mark still cannot be moved by accident. Anywhere else a
+ * tap scrubs, once the length is known.
+ */
+internal fun marksTap(hit: Int, durationMs: Long): MarksTap = when {
+    hit > 0 -> MarksTap.Open
+    durationMs > 0 -> MarksTap.Scrub
+    else -> MarksTap.Nothing
+}
+
 private fun handleAt(draft: ChapterDraft, durationMs: Long, xPx: Float, widthPx: Int, reachPx: Float): Int {
     if (durationMs <= 0) return -1
     fun x(i: Int) = (draft.marks[i].startMs.toFloat() / durationMs).coerceIn(0f, 1f) * widthPx

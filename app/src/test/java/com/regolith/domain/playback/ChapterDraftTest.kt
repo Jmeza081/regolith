@@ -118,4 +118,15 @@ class ChapterDraftTest {
     fun `selecting past the end clears`() {
         assertNull(seeded().select(99).selected)
     }
+
+    @Test
+    fun `opening another mark keeps the open one's edits`() {
+        val draft = ChapterDraft.seed(1, listOf(Chapter(0, null), Chapter(10_000, "A"), Chapter(20_000, "B")), 60_000)
+            .select(1).rename(1, "Cold open").nudge(1, ChapterDraft.NUDGE_FINE_MS)
+            .select(2)
+        assertEquals(2, draft.selected)
+        assertEquals("Cold open", draft.marks[1].title)
+        assertEquals(10_500L, draft.marks[1].startMs)
+        assertTrue(draft.dirty)
+    }
 }
