@@ -3,6 +3,7 @@ package com.regolith.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.db.FolderEntity
+import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.repository.LibraryRepository
@@ -11,6 +12,7 @@ import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.ParsedName
+import com.regolith.domain.library.ViewMode
 import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.playback.VideoInfo
@@ -122,6 +124,8 @@ data class SearchUiState(
     val searched: Boolean = false,
     /** Non-null while a multi-selection is running. */
     val selection: SelectionUiState? = null,
+    /** Rows or tiles, for both result groups at once; remembered (`AppPreferences.searchViewMode`). */
+    val viewMode: ViewMode = ViewMode.ROWS,
 )
 
 /**
@@ -137,6 +141,7 @@ class SearchViewModel @Inject constructor(
     scans: ScanRepository,
     private val selection: SelectionPresenter,
     userChapters: UserChapterRepository,
+    private val prefs: AppPreferences,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -182,7 +187,7 @@ class SearchViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi,
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode,
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -203,6 +208,7 @@ class SearchViewModel @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val facetList = values[8] as List<ChapterFacet>
         val chip = values[9] as String?
+        val mode = values[10] as ViewMode
 
         val hits = mutableListOf<SearchHit>()
         for (file in files) {
@@ -279,6 +285,7 @@ class SearchViewModel @Inject constructor(
             scanningPath = runs.firstOrNull { it.status == ScanRunEntity.RUNNING }?.let { "/" + it.currentPath.ifEmpty { "…" } },
             searched = searched,
             selection = sel,
+            viewMode = mode,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchUiState())
 
@@ -293,6 +300,11 @@ class SearchViewModel @Inject constructor(
     /** The moment sheet's answer; null is "Any moment", which clears the filter. */
     fun setPoi(title: String?) {
         poi.value = title
+    }
+
+    /** The grid/rows toggle on the results label: one choice for both groups, remembered across visits. */
+    fun toggleViewMode() {
+        viewModelScope.launch { prefs.setSearchViewMode(uiState.value.viewMode.toggled()) }
     }
 
     /** Called when the user commits a query (opens a hit or hits enter). */

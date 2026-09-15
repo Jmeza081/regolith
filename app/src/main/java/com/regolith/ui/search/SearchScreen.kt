@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.horizontalScroll
@@ -56,10 +57,14 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.library.ViewMode
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.FilterChip
+import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.RowAction
+import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.SurfaceCard
@@ -83,6 +88,11 @@ import com.regolith.ui.util.SelectionUiState
  * thumb, the matched run in red, and the meta line. While a scan walks,
  * a card at the foot says matches will keep arriving. No matches gets
  * the card that says why, and Recent stays one tap from a hit.
+ *
+ * A toggle at the end of the first results label switches BOTH groups
+ * between those rows and a grid of 16:9 tiles, and the choice is kept
+ * (`AppPreferences.searchViewMode`). Only the rows show the matched run in
+ * red; a tile shows the name as it is.
  */
 @Composable
 fun SearchScreen(
@@ -217,10 +227,16 @@ fun SearchScreen(
             if (state.searched && state.moments.isNotEmpty()) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("Points of interest", muted = true, modifier = Modifier.testTag("search_moments"))
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                            state.moments.forEach { hit ->
-                                HitRow(hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt)
+                        ResultsLabel("Points of interest", "search_moments", showToggle = true, state.viewMode, viewModel::toggleViewMode)
+                        if (state.viewMode == ViewMode.GRID) {
+                            HitGrid(state.moments) { hit, tileModifier ->
+                                HitTile(hit, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt, modifier = tileModifier)
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                                state.moments.forEach { hit ->
+                                    HitRow(hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt)
+                                }
                             }
                         }
                     }
@@ -229,15 +245,31 @@ fun SearchScreen(
             if (state.searched && state.hits.isNotEmpty()) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("${state.hits.size} match" + (if (state.hits.size == 1) "" else "es"), muted = true, modifier = Modifier.testTag("search_count"))
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                            state.hits.forEach { hit ->
-                                HitRow(
-                                    hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember,
+                        // One toggle for both groups: it sits on whichever label comes first.
+                        ResultsLabel(
+                            "${state.hits.size} match" + (if (state.hits.size == 1) "" else "es"), "search_count",
+                            showToggle = state.moments.isEmpty(), state.viewMode, viewModel::toggleViewMode,
+                        )
+                        if (state.viewMode == ViewMode.GRID) {
+                            HitGrid(state.hits) { hit, tileModifier ->
+                                HitTile(
+                                    hit, onOpenTitle, onOpenFolder, viewModel::remember,
                                     selection = selection,
                                     onToggle = viewModel::toggleSelection,
                                     onLongPress = viewModel::beginSelection,
+                                    modifier = tileModifier,
                                 )
+                            }
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                                state.hits.forEach { hit ->
+                                    HitRow(
+                                        hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember,
+                                        selection = selection,
+                                        onToggle = viewModel::toggleSelection,
+                                        onLongPress = viewModel::beginSelection,
+                                    )
+                                }
                             }
                         }
                     }
@@ -341,15 +373,7 @@ private fun HitRow(
     val selecting = selection != null
     // Coming: picked itself, or inside a pick and not taken back out.
     // Nothing is inert — tapping a checked row inside a pick excludes it.
-    val coming = when (hit) {
-        is SearchHit.Folder -> selection?.pickedFolders?.contains(hit.folderId) == true ||
-            selection?.coversFolder(hit.shareId, hit.relPath) == true
-        is SearchHit.Title -> selection?.pickedFiles?.contains(hit.fileId) == true ||
-            (selection?.coversFile(hit.shareId, hit.relPath) == true && selection.excludedFiles.contains(hit.fileId).not())
-        is SearchHit.File -> selection?.pickedFiles?.contains(hit.fileId) == true ||
-            (selection?.coversFile(hit.shareId, hit.relPath) == true && selection.excludedFiles.contains(hit.fileId).not())
-        is SearchHit.Moment -> false
-    }
+    val coming = selection.isComing(hit)
     val picked = coming
     val covered = false
     // A folder result is a way into Browse, so while selecting it keeps two
@@ -369,19 +393,7 @@ private fun HitRow(
                         indication = null,
                         onLongClick = { if (hit !is SearchHit.Moment) onLongPress(hit) },
                     ) {
-                        when {
-                            hit is SearchHit.Moment -> { remember(); onPlayAt(hit.fileId, hit.startMs) }
-                            selecting -> onToggle(hit)
-                            else -> {
-                                remember()
-                                when (hit) {
-                                    is SearchHit.Title -> onOpenTitle(hit.fileId)
-                                    is SearchHit.File -> onOpenTitle(hit.fileId)
-                                    is SearchHit.Folder -> onOpenFolder(hit.folderId)
-                                    is SearchHit.Moment -> Unit
-                                }
-                            }
-                        }
+                        activate(hit, selecting, remember, onToggle, onOpenTitle, onOpenFolder, onPlayAt)
                     }
                 },
             )
@@ -454,6 +466,158 @@ private fun HitRow(
         }
     }
 }
+
+/**
+ * Whether a result is coming in the selection: picked itself, or inside a
+ * pick and not taken back out. Nothing is inert — tapping a checked result
+ * inside a pick excludes it. A point of interest is a place, never picked.
+ */
+private fun SelectionUiState?.isComing(hit: SearchHit): Boolean = when (hit) {
+    is SearchHit.Folder -> this?.pickedFolders?.contains(hit.folderId) == true ||
+        this?.coversFolder(hit.shareId, hit.relPath) == true
+    is SearchHit.Title -> this?.pickedFiles?.contains(hit.fileId) == true ||
+        (this?.coversFile(hit.shareId, hit.relPath) == true && !this.excludedFiles.contains(hit.fileId))
+    is SearchHit.File -> this?.pickedFiles?.contains(hit.fileId) == true ||
+        (this?.coversFile(hit.shareId, hit.relPath) == true && !this.excludedFiles.contains(hit.fileId))
+    is SearchHit.Moment -> false
+}
+
+/** What tapping a result does, row or tile: a moment plays from its time; while selecting a result is picked; otherwise it opens. */
+private fun activate(
+    hit: SearchHit,
+    selecting: Boolean,
+    remember: () -> Unit,
+    onToggle: (SearchHit) -> Unit,
+    onOpenTitle: (Long) -> Unit,
+    onOpenFolder: (Long) -> Unit,
+    onPlayAt: (Long, Long) -> Unit,
+) {
+    when {
+        hit is SearchHit.Moment -> { remember(); onPlayAt(hit.fileId, hit.startMs) }
+        selecting -> onToggle(hit)
+        else -> {
+            remember()
+            when (hit) {
+                is SearchHit.Title -> onOpenTitle(hit.fileId)
+                is SearchHit.File -> onOpenTitle(hit.fileId)
+                is SearchHit.Folder -> onOpenFolder(hit.folderId)
+                is SearchHit.Moment -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * A results group's label ("Points of interest", "3 matches"), with the
+ * grid/rows toggle at its end when [showToggle]. Search has no top bar to
+ * carry the toggle, so it rides on the first label of the results, and one
+ * toggle switches both groups: a grid above a list would read as two
+ * different kinds of thing.
+ */
+@Composable
+private fun ResultsLabel(text: String, tag: String, showToggle: Boolean, mode: ViewMode, onToggle: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Eyebrow(text, Modifier.weight(1f).testTag(tag), muted = true)
+        if (showToggle) {
+            // The same glyph and words as the switch on Library and Browse.
+            val action = viewModeAction(mode, "search_view_mode_button", onToggle)
+            RowAction(icon = action.icon, contentDescription = action.contentDescription, onClick = action.onClick, testTag = action.testTag)
+        }
+    }
+}
+
+/**
+ * Results as tiles: as many columns as fit at [GRID_TILE_MIN] each, two on
+ * a phone and more on a wide window. Plain rows of tiles rather than a lazy
+ * grid, because the groups already sit inside Search's scrolling list, and
+ * a lazy grid cannot scroll inside another list.
+ */
+@Composable
+private fun HitGrid(hits: List<SearchHit>, tile: @Composable (SearchHit, Modifier) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = (maxWidth / GRID_TILE_MIN).toInt().coerceIn(2, 4)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            hits.chunked(columns).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    row.forEach { hit -> tile(hit, Modifier.weight(1f)) }
+                    // The last row keeps the others' tile width instead of stretching.
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One result as a tile: the same 16:9 thumb Browse's grid shows, with the
+ * name and meta line under it. A folder shows its count and, while
+ * selecting, keeps two targets (the marker picks, the tile opens); a point
+ * of interest wears its time as the chip over the film's thumb.
+ */
+@Composable
+private fun HitTile(
+    hit: SearchHit,
+    onOpenTitle: (Long) -> Unit,
+    onOpenFolder: (Long) -> Unit,
+    remember: () -> Unit,
+    modifier: Modifier = Modifier,
+    selection: SelectionUiState? = null,
+    onToggle: (SearchHit) -> Unit = {},
+    onLongPress: (SearchHit) -> Unit = {},
+    onPlayAt: (Long, Long) -> Unit = { _, _ -> },
+) {
+    val selecting = selection != null
+    val coming = selection.isComing(hit)
+    val open = { activate(hit, selecting, remember, onToggle, onOpenTitle, onOpenFolder, onPlayAt) }
+    when (hit) {
+        is SearchHit.Folder -> MediaTile(
+            artwork = ArtworkRequest(ArtworkOwner.Folder(hit.folderId), ArtworkKind.THUMB),
+            kind = ArtworkKind.THUMB,
+            title = hit.primary,
+            meta = hit.meta,
+            count = hit.fileCount.takeIf { it > 0 },
+            onClick = { remember(); onOpenFolder(hit.folderId) },
+            onLongClick = { onLongPress(hit) },
+            checked = if (selecting) coming else null,
+            onCheckClick = if (selecting) {
+                { onToggle(hit) }
+            } else {
+                null
+            },
+            testTag = hit.testTag,
+            modifier = modifier,
+        )
+        is SearchHit.Moment -> MediaTile(
+            artwork = ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB),
+            kind = ArtworkKind.THUMB,
+            title = hit.primary,
+            meta = hit.meta,
+            resolution = formatClock(hit.startMs),
+            fallbackLabel = hit.meta,
+            onClick = open,
+            testTag = hit.testTag,
+            modifier = modifier,
+        )
+        is SearchHit.Title, is SearchHit.File -> {
+            val fileId = if (hit is SearchHit.Title) hit.fileId else (hit as SearchHit.File).fileId
+            MediaTile(
+                artwork = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB),
+                kind = ArtworkKind.THUMB,
+                title = hit.primary,
+                meta = hit.meta,
+                fallbackLabel = hit.primary,
+                onClick = open,
+                onLongClick = { onLongPress(hit) },
+                checked = if (selecting) coming else null,
+                testTag = hit.testTag,
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+/** The narrowest a result tile gets before the grid drops a column. */
+private val GRID_TILE_MIN = 160.dp
 
 /** The matched run in red: the first case-insensitive occurrence of each query word. */
 private fun highlight(text: String, query: String, accent: Color): AnnotatedString {

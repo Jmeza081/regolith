@@ -35,6 +35,7 @@ class AppPreferences @Inject constructor(
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
         val deviceViewMode = stringPreferencesKey("device_view_mode")
+        val searchViewMode = stringPreferencesKey("search_view_mode")
         val autoplayNext = booleanPreferencesKey("autoplay_next")
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
@@ -206,6 +207,17 @@ class AppPreferences @Inject constructor(
 
     suspend fun setBrowseViewMode(mode: ViewMode) {
         store.edit { it[Keys.browseViewMode] = mode.name }
+    }
+
+    /**
+     * Search's grid/rows switch: one choice for both result groups (points of
+     * interest and matches). Rows are the default, because results are read
+     * name by name and only the rows show which run of the name matched.
+     */
+    val searchViewMode: Flow<ViewMode> = store.data.map { it[Keys.searchViewMode].toViewMode(ViewMode.ROWS) }
+
+    suspend fun setSearchViewMode(mode: ViewMode) {
+        store.edit { it[Keys.searchViewMode] = mode.name }
     }
 
     /** An unknown or missing stored name falls back rather than throwing (the enum may gain cases). */
