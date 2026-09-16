@@ -883,18 +883,16 @@ private fun BoxScope.FullChrome(
             // not fit inside them, so it takes the portrait frame's 18.
             val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
             val gutter = if (landscape) 30.dp else Spacing.s18
-            // The clock is an OVERLAY rather than a cell in the header row:
-            // that row spaces itself with a weighted spacer, so a child of it
-            // would centre between the icons and drift as they come and go.
-            // Aligned to the box it is centred on the screen, whatever else
-            // the header holds, and it sits on the header's own 18dp line.
-            PlayerClock(Modifier.align(Alignment.TopCenter).padding(top = 18.dp))
             Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter, top = 18.dp, bottom = 12.dp)) {
-                // The header carries the two ways out and nothing else. What
-                // is playing moved down to sit on the timeline, where the
-                // controls for it are, so the top edge is left to the picture.
+                // The header carries the two ways out and the time. The clock
+                // sits BESIDE Back rather than centred: dead centre at the top
+                // is where a phone puts its camera, and the notch was landing
+                // on it. 8dp is the gap FlexChrome already uses between this
+                // same glyph and the text next to it -- with the 44dp cell
+                // around a 20dp arrow that reads as about 20dp of air.
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconCell(R.drawable.rg_ic_back, "Back", 20.dp, cb.onBack, "player_back_button")
+                    PlayerClock(Modifier.padding(start = Spacing.s8))
                     Spacer(Modifier.weight(1f))
                     if (canCollapse) {
                         IconCell(R.drawable.rg_ic_fullscreen_exit, "Leave full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", size = 40.dp)
