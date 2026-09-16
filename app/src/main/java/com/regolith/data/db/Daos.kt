@@ -305,6 +305,24 @@ interface MediaFileDao {
     @Query("SELECT COUNT(*) FROM media_files WHERE shareId IN (:shareIds) AND missing = 0")
     fun observeCountInShares(shareIds: List<Long>): Flow<Int>
 
+    /**
+     * Candidates for the Shorts feed: present, measured, and short enough.
+     *
+     * The shape of the rule is deliberately split. SQLite does the half it
+     * is good at -- a duration bound, which throws away almost everything on
+     * a media share -- and the rotation-aware "is it portrait" half runs in
+     * Kotlin (`ShortsRule`), where it is testable without a database. No
+     * index on `durationMs`: the remaining scan is a few thousand rows, and
+     * an index would cost a schema version to save nothing measurable.
+     */
+    @Query(
+        "SELECT * FROM media_files WHERE shareId IN (:shareIds) AND missing = 0 " +
+            "AND durationMs IS NOT NULL AND durationMs > 0 AND durationMs <= :maxDurationMs " +
+            "AND width IS NOT NULL AND height IS NOT NULL " +
+            "ORDER BY addedAtMs DESC, id DESC",
+    )
+    fun observeShortCandidates(shareIds: List<Long>, maxDurationMs: Long): Flow<List<MediaFileEntity>>
+
     /** Newest files first (Home's "Newly added"). */
     @Query("SELECT * FROM media_files WHERE missing = 0 ORDER BY addedAtMs DESC, id DESC LIMIT :limit")
     fun observeNewest(limit: Int): Flow<List<MediaFileEntity>>

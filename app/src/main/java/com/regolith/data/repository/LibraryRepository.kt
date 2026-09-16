@@ -25,9 +25,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.ShortsRule
 
 /**
  * Folders and files as the app knows them. The Browse screen reads from
@@ -280,6 +282,24 @@ class LibraryRepository @Inject constructor(
         if (shareIds.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeInShares(shareIds)
 
     fun observeFileCount(shareIds: List<Long>): Flow<Int> = if (shareIds.isEmpty()) flowOf(0) else mediaFileDao.observeCountInShares(shareIds)
+
+    /**
+     * The Shorts feed: every measured file on these shares that is vertical
+     * and a minute or less, newest first.
+     *
+     * Rows only exist for paths a scan walked, so this needs no `share_roots`
+     * test of its own -- a folder outside the chosen roots has no files here
+     * to find. Files the artwork walk has not reached yet have no size on
+     * the row and are simply absent, which is what [ShortsRule] means by
+     * refusing to guess.
+     */
+    fun observeShorts(shareIds: List<Long>): Flow<List<MediaFileEntity>> =
+        if (shareIds.isEmpty()) {
+            flowOf(emptyList())
+        } else {
+            mediaFileDao.observeShortCandidates(shareIds, ShortsRule.MAX_DURATION_MS)
+                .map { rows -> rows.filter { ShortsRule.isShort(it.durationMs, it.width, it.height, it.rotationDegrees) } }
+        }
 
     fun observeNewest(limit: Int): Flow<List<MediaFileEntity>> = mediaFileDao.observeNewest(limit)
 

@@ -9,6 +9,8 @@ import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareEntity
+import com.regolith.domain.media.ShortsRule
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -111,6 +113,33 @@ class MediaFileDaoTest {
         assertEquals(a.id, back.id)
         assertFalse(back.missing)
         assertEquals(5_000, db.playbackProgressDao().byFile(a.id)!!.positionMs)
+    }
+
+    /**
+     * Where the two halves of the Shorts rule meet: SQL throws away anything
+     * long, unmeasured or gone from the share; Kotlin decides what counts as
+     * portrait. This pins the seam -- that SQL hands the rule everything it
+     * needs to judge, and nothing it would wrongly admit on its own.
+     */
+    @Test
+    fun `short candidates drop the long, the gone and the unmeasured`() = runTest {
+        suspend fun measured(name: String, ms: Long, w: Int, h: Int, rot: Int?) {
+            val f = db.mediaFileDao().upsert(file(name))
+            db.mediaFileDao().fillBasics(f.id, ms, w, h, rot)
+        }
+        measured("portrait.mkv", 15_000, 1080, 1920, null)   // plainly vertical
+        measured("turned.mkv", 10_000, 1920, 1080, 90)       // vertical once turned
+        measured("landscape.mkv", 30_000, 1920, 1080, null)  // short, but wide
+        measured("long.mkv", 90_000, 1080, 1920, null)       // vertical, but a minute and a half
+        measured("gone.mkv", 12_000, 1080, 1920, null)       // vertical and short, but off the share
+        db.mediaFileDao().upsert(file("unmeasured.mkv"))     // nothing has opened it yet
+        db.mediaFileDao().markMissingNotIn(folderId, listOf("portrait.mkv", "turned.mkv", "landscape.mkv", "long.mkv", "unmeasured.mkv"))
+
+        val candidates = db.mediaFileDao().observeShortCandidates(listOf(shareId), ShortsRule.MAX_DURATION_MS).first()
+        assertEquals(listOf("landscape.mkv", "portrait.mkv", "turned.mkv"), candidates.map { it.name }.sorted())
+
+        val shorts = candidates.filter { ShortsRule.isShort(it.durationMs, it.width, it.height, it.rotationDegrees) }
+        assertEquals(listOf("portrait.mkv", "turned.mkv"), shorts.map { it.name }.sorted())
     }
 
     @Test
