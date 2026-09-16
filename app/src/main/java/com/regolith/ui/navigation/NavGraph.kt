@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
@@ -185,7 +186,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // A phone's pill hides on the same timer, minus the pinning: there is no
     // spine to pin it to, so going idle is the only way it leaves, and any
     // touch brings it straight back.
-    val navVisible = if (windowShape.wide) railVisible else !railIdle
+    // Phones get a second, independent reason for the pill to be away:
+    // scrolling DOWN puts it out of the way and keeps it there, which is
+    // 112dp of a small screen handed back to the thing being read. The two
+    // reasons never argue, because absent always beats present.
+    val pillScroll = rememberNavPillScroll()
+    // A new tab is a new thing to look at, and it starts at the top of its
+    // own scroll. Arriving on it with the nav still scrolled away would
+    // punish you for where you had got to on the LAST screen.
+    LaunchedEffect(currentTab) { pillScroll.reveal() }
+    val navVisible = if (windowShape.wide) railVisible else !railIdle && !pillScroll.hidden
     // F6 reserved the rail's 102dp even while it was slid away, so nothing
     // would reflow. What that actually produced was a screen with an obvious
     // empty stripe down the side and no rail in it — and the two ways of
@@ -214,6 +224,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val touches = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     LaunchedEffect(autoHideRail, windowShape.wide, railHidden) {
         railIdle = false
+        // The scroll watcher is detached when the setting is off, so it
+        // cannot un-hide itself; say so here or the pill stays gone.
+        pillScroll.reveal()
         // Phones hide their pill on the same timer. The wide-window gate that
         // used to be here meant the setting only ever did anything on a
         // tablet, which is also why it was hidden from a phone's Settings.
@@ -350,12 +363,26 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 // This is what tells the rail you are still using the app.
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
+                        // Tracked across events rather than read per event:
+                        // a drag reports "pressed" on every move, and
+                        // treating each of those as a fresh press would
+                        // forget that the gesture had already scrolled.
+                        var wasPressed = false
                         while (true) {
-                            awaitPointerEvent(PointerEventPass.Initial)
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
                             touches.tryEmit(Unit)
+                            val pressed = event.changes.any { it.pressed }
+                            if (pressed && !wasPressed) pillScroll.onPress()
+                            if (!pressed && wasPressed) pillScroll.onRelease()
+                            wasPressed = pressed
                         }
                     }
                 }
+                // Above every scrolling container in the app, so Home's
+                // Column, Library's grid and Search's list all report through
+                // one place. Phones only: a wide window has the room, and its
+                // rail answers to the spine instead.
+                .then(if (!windowShape.wide && autoHideRail) Modifier.nestedScroll(pillScroll.connection) else Modifier)
                 .semantics { testTagsAsResourceId = true },
         ) {
             Box(Modifier.fillMaxSize()) {

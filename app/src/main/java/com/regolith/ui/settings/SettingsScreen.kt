@@ -280,7 +280,7 @@ fun SettingsScreen(
                     // half by a screen size.
                     RegolithSwitch(
                         label = "Auto-hide the navigation",
-                        note = "Slides the pill, or the rail on a wide window, away three seconds after you stop touching the screen. Touch anything to bring it back.",
+                        note = "On a phone, slides the pill away as you scroll down a page; scroll back up or touch anything to bring it back. On a wide window the rail goes three seconds after you stop touching the screen.",
                         checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
                     )
                     // The one switch in the app that is about battery rather
