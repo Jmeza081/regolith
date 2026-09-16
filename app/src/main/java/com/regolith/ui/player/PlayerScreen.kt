@@ -182,6 +182,7 @@ fun PlayerScreen(
     val brightness by viewModel.brightness.collectAsStateWithLifecycle()
     val transfer by viewModel.transfer.collectAsStateWithLifecycle()
     val draft by viewModel.chapterDraft.collectAsStateWithLifecycle()
+    val chaptersOpenable by viewModel.chaptersOpenable.collectAsStateWithLifecycle()
     val chapterSaving by viewModel.chapterSaving.collectAsStateWithLifecycle()
     val nameSuggestions by viewModel.chapterNameSuggestions.collectAsStateWithLifecycle()
     // "Saved to the share", at the bottom, gone on its own.
@@ -347,8 +348,10 @@ fun PlayerScreen(
     LaunchedEffect(state.fileId) { if (sheet == Sheet.Chapters) sheet = null }
     // A sync note is read once: it goes when the sheet that showed it closes.
     LaunchedEffect(sheet) { if (sheet != Sheet.Chapters && state.chapterSyncNote != null) viewModel.clearChapterNote() }
-    // Pictures cost a key-frame seek each, so they are only asked for once
-    // the sheet is actually open — and again if the film changes under it.
+    // The prefetch in the ViewModel does this when the chapter list settles,
+    // long before the tap. This stays as a safety net for a film whose list
+    // changed under an open sheet: `requestAll` skips buckets already in the
+    // index, so asking twice costs nothing.
     LaunchedEffect(sheet, state.fileId, state.durationMs) {
         if (sheet == Sheet.Chapters) viewModel.requestChapterFrames()
     }
@@ -494,6 +497,7 @@ fun PlayerScreen(
         onRemove = viewModel::removeFromDevice,
         onShuffle = viewModel::toggleShuffle,
         onRepeat = viewModel::cycleRepeat,
+        chaptersOpenable = chaptersOpenable,
     )
     // The rotation lock, where locking would do anything (see [rotationLockable]).
     val lockable = rotationLockable()
@@ -803,6 +807,15 @@ private class ChromeCallbacks(
     val onShuffle: () -> Unit,
     /** Steps the repeat mode on one: off -> all -> one -> off. */
     val onRepeat: () -> Unit,
+    /**
+     * False while the chapter sheet's pictures are still coming, which keeps
+     * the Chapters pill spinning rather than opening onto empty tiles.
+     *
+     * A value among lambdas, which is not lovely, but it rides here because
+     * every chrome already carries this object -- the alternative was the
+     * same flag threaded through three chrome signatures and [PillRow].
+     */
+    val chaptersOpenable: Boolean = true,
 )
 
 /** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
@@ -1135,16 +1148,19 @@ private fun PillRow(
     }
     // The pill is drawn as soon as the film is loaded, but it spins until the
     // list has SETTLED — the container has been read and the runtime is
-    // known. Opening earlier meant a sheet that resized itself as the parts
-    // were recounted underneath it.
+    // known — and until the sheet's PICTURES have settled too. Opening before
+    // the list settled meant a sheet that resized itself as the parts were
+    // recounted underneath it; opening before the pictures meant a grid of
+    // empty tiles filling in one at a time (see [chapterFramesSettled], which
+    // is also where the ways out of waiting are).
     val centre = @Composable {
         PillButton(
             text = "Chapters",
-            onClick = { if (state.chaptersReady) cb.onChapters() },
+            onClick = { if (state.chaptersReady && cb.chaptersOpenable) cb.onChapters() },
             onMedia = onMedia,
             icon = R.drawable.rg_ic_chapters,
             testTag = "player_chapters_pill",
-            loading = !state.chaptersReady,
+            loading = !state.chaptersReady || !cb.chaptersOpenable,
         )
     }
     val right = @Composable {

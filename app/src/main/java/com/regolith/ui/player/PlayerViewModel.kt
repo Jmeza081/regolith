@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.PlaybackSession
+import com.regolith.player.ScrubThumbnails
 import com.regolith.player.PlaybackState
 import com.regolith.ui.navigation.RegolithKey
 import dagger.assisted.Assisted
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -147,6 +149,49 @@ class PlayerViewModel @AssistedInject constructor(
         val here = s.positionMs
         thumbs.requestAll(s.chapters.map { frameFor(it.startMs, s) }.sortedBy { (it - here).absoluteValue })
     }
+
+    /**
+     * Whether the chapters sheet is worth opening yet: the list has settled
+     * AND its pictures have (see [chapterFramesSettled], which is where the
+     * ways out of waiting live).
+     *
+     * A poll rather than a combine, because two of the conditions are about
+     * time PASSING -- nothing has arrived for a while, or the wait has run
+     * long -- and no upstream flow emits for those. It runs only while the
+     * player is on screen and stops the moment it settles.
+     */
+    val chaptersOpenable: StateFlow<Boolean> = state
+        .map { it.fileId }
+        .distinctUntilChanged()
+        .flatMapLatest {
+            flow {
+                emit(false)
+                val startedMs = SystemClock.elapsedRealtime()
+                var lastCount = -1
+                var lastArrivalMs = startedMs
+                while (true) {
+                    val s = state.value
+                    val present = chapterFrames.value.count { it.value != null }
+                    if (present != lastCount) {
+                        lastCount = present
+                        lastArrivalMs = SystemClock.elapsedRealtime()
+                    }
+                    val now = SystemClock.elapsedRealtime()
+                    val settled = !s.chaptersReady || chapterFramesSettled(
+                        chapterCount = s.chapters.size,
+                        framesPresent = present,
+                        thumbnailsOff = session.scrubThumbnails.value is ScrubThumbnails.None,
+                        msSinceRequest = now - startedMs,
+                        msSinceArrival = now - lastArrivalMs,
+                    )
+                    // Never "open" before the list itself is ready: that gate
+                    // still belongs to PlaybackState.chaptersReady.
+                    if (settled && s.chaptersReady) { emit(true); return@flow }
+                    delay(FRAMES_POLL_MS)
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private fun frameFor(startMs: Long, s: PlaybackState): Long {
         val end = s.chapters.firstOrNull { it.startMs > startMs }?.startMs ?: s.durationMs
@@ -377,6 +422,16 @@ class PlayerViewModel @AssistedInject constructor(
     private fun openMarkMs(): Long? = _chapterDraft.value?.let { d -> d.selected?.let { d.marks.getOrNull(it)?.startMs } }
 
     init {
+        // The sheet's pictures are asked for as soon as the chapter list
+        // settles, NOT when the sheet opens. They cost a key-frame seek each
+        // and the worker serves them one at a time, so starting at the tap
+        // meant watching them fill in. Started here, the seeks happen while
+        // the film is playing and the sheet is usually full before it opens.
+        viewModelScope.launch {
+            state.map { it.fileId to it.chaptersReady }.distinctUntilChanged().collect { (_, ready) ->
+                if (ready) requestChapterFrames()
+            }
+        }
         // A draft belongs to one file: when autoplay moves on, it goes.
         viewModelScope.launch {
             state.map { it.fileId }.distinctUntilChanged().collect { id ->
