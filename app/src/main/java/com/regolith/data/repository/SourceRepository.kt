@@ -11,6 +11,8 @@ import com.regolith.domain.smb.SmbEntry
 import kotlinx.coroutines.flow.combine
 import com.regolith.domain.model.AuthMode
 import com.regolith.domain.model.Server
+import com.regolith.domain.model.defaultServerName
+import com.regolith.domain.model.serverNameOrDefault
 import com.regolith.domain.model.Share
 import com.regolith.domain.smb.ParsedSmbAddress
 import com.regolith.domain.smb.CredentialSource
@@ -102,7 +104,7 @@ class SourceRepository @Inject constructor(
         val serverId = if (existing == null) {
             serverDao.insert(
                 ServerEntity(
-                    name = displayNameFor(address.host),
+                    name = defaultServerName(address.host),
                     host = address.host.host,
                     port = address.host.port,
                     authMode = authMode.name,
@@ -178,6 +180,18 @@ class SourceRepository @Inject constructor(
         return entries.filter { it.isDirectory }.map { it.name }.sortedBy { it.lowercase() }
     }
 
+    /**
+     * Settings and the "Name this server" step: what the user calls this
+     * box. Nothing keys off a server's name (identity is its address), so a
+     * rename is a single column write with nothing to cascade. Clearing the
+     * field is not an error — it means "use the default", and
+     * [serverNameOrDefault] puts the derived name back.
+     */
+    suspend fun renameServer(serverId: Long, typed: String) {
+        val server = serverDao.byId(serverId) ?: return
+        serverDao.rename(serverId, serverNameOrDefault(typed, SmbHost(server.host, server.port)))
+    }
+
     suspend fun removeServer(serverId: Long) {
         credentialStore.clear(serverId)
         sessionCredentials.remove(serverId)
@@ -224,13 +238,6 @@ class SourceRepository @Inject constructor(
             markUnreachable(serverId)
             false
         }
-    }
-
-    /** "TOWER" for tower.local, the address itself for an IP. */
-    private fun displayNameFor(host: SmbHost): String {
-        val h = host.host
-        val isIp = h.all { it.isDigit() || it == '.' } || h.contains(':')
-        return if (isIp) h else h.substringBefore('.').uppercase().ifBlank { h }
     }
 
     private fun ServerEntity.toDomain() = Server(

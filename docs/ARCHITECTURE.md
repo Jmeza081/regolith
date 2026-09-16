@@ -461,10 +461,41 @@ What a web developer would not guess:
 - **Locking pauses the film.** A lock that hides the picture while the sound
   carries on is not a lock.
 
+## Server names (P13)
+
+A server is identified by its address: `(host, port)` is the unique index on
+`servers`, and nothing in `data/`, `domain/` or `player/` ever looks a server
+up by name. That is the whole reason a nickname needs no new column — the
+name was only ever a label, so a rename writes `servers.name` and there is
+nothing to cascade and no migration to ship.
+
+`domain/model/ServerName.kt` holds the two rules. `defaultServerName` is what
+the app picks on its own ("TOWER" for `tower.local`, the address itself for
+an IP) and `serverNameOrDefault` is what a typed name becomes — blank goes
+back to the default, because an unnamed server would be an unidentifiable
+one. Moving them out of `SourceRepository` is what lets the default run a
+second time, when the user clears the field.
+
+Two places write it: the optional "Name this server" step in Add Server
+(`RegolithKey.AddServer.Name`, between connecting and choosing shares), and
+tapping a server's name in Settings, which opens `PromptDialog`. Everything
+downstream already read `server.name` — Library's subtitle, Browse's share
+rows, the scan screen, `LibraryRepository.shareLabel` — so the nickname
+reaches them with no further change.
+
+The cost the rename introduces, and pays for in the same change: the
+Settings row used to identify a server by its name, which only worked while
+the name WAS the address. `ServerRow.meta` now prints the address under the
+nickname, or two renamed NAS boxes would be indistinguishable.
+
 ## Decision log
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-09-16 | A server's nickname IS `servers.name` — no second column, no migration | Identity is `(host, port)`; nothing reads a server by name. A separate `nickname` would only create two names that can disagree, and cost a schema bump to do it. The derived name becomes a fallback rather than a stored fact, so clearing the field restores it. |
+| 2026-09-16 | The "Name this server" field starts empty, with the derived name as its placeholder | A pre-filled field must be cleared before it can be typed in, charging work to the person who wanted to rename. Empty costs the person who did not want to rename nothing: Continue on a blank field keeps the default. |
+| 2026-09-16 | Only the name column of a Settings server row is the rename tap target | The row already ends in scan and disconnect buttons; a row that does a third thing depending on where you land is a trap. |
+| 2026-09-16 | `PromptDialog` keeps its draft in `rememberSaveable`, not in a ViewModel | An open dialog is an uncommitted one, so every keystroke reaching the state holder would be a change the user never asked to keep — and Cancel would have to undo it. `rememberSaveable` still survives a rotation, which was the only reason a ViewModel was tempting. |
 | 2026-09-08 | Navigation 3 instead of Navigation Compose 2 | Nav2 is in maintenance mode; a greenfield app should not start on a migration. |
 | 2026-09-08 | minSdk 34 / targetSdk 37 | Personal app on a Pixel 10. Frame extraction and foreground-service types need no version branches. |
 | 2026-09-08 | jcifs-ng 2.1.10 for SMB | True random-access reads; no JGSS dependency on Android; NetBIOS naming for host labels. SMBJ rejected (BouncyCastle, no NetBIOS, more DIY). |
@@ -706,6 +737,8 @@ What a web developer would not guess:
 | P10 | Chapter sidecars: the durable copy of a film's user chapters is `<basename>.chapters.txt` beside it on the share; the scan imports, Done writes, newest wins; Settings clears the phone only | `ChapterSidecar`, `SmbGateway.write/rename/delete`, `SidecarWriter`, `chapter_sync` + `shares.writeChapters` (schema v9), `ChapterSyncRepository`, `ChapterSyncWorker`, `CredentialSource`, `ChapterSyncState` |
 | P11 | App lock: a fingerprint, face or screen lock before the library, with a grace period, set up in Settings › Privacy | `AppLock`, `LockAfter`, `BiometricAvailability`, `BiometricGate` (platform `BiometricPrompt`), `AppViewModel.locked`, `LockScreen`, `FLAG_SECURE` on pause |
 | P12 | Points of interest as Search filters: the chapter names the library repeats are offered in a sheet behind a pinned Moment chip; one narrows Search to the films carrying it and lists every occurrence | `ChapterFacet`, `UserChapterDao.observeFacets`/`filesWithChapter`/`occurrencesOf`, `SearchUiState.facets`/`poi`, `MomentFilterSheet`, `FilterChip`, `RegolithSheet`/`SheetOption` |
+
+| P13 | Server nicknames: name a source server in Add Server or by tapping it in Settings, with the address moved to the row's second line | `ServerName` (`defaultServerName`/`serverNameOrDefault`), `ServerDao.rename`, `SourceRepository.renameServer`, `RegolithKey.AddServer.Name`, `NameServerScreen`, `PromptDialog`, `ServerRow.host`/`meta` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

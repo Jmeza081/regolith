@@ -38,7 +38,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.BuildConfig
 import com.regolith.R
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.domain.model.MAX_SERVER_NAME
 import com.regolith.ui.components.ConfirmDialog
+import com.regolith.ui.components.PromptDialog
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
@@ -126,12 +128,21 @@ fun SettingsScreen(
                         Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(8.dp).background(if (row.reachable) colors.ink else colors.metadata, PillShape))
                             Spacer(Modifier.width(Spacing.s12))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                            // The name is the tap target, not the whole row:
+                            // the row already ends in two buttons that do
+                            // something else, and a row that both renames and
+                            // scans depending on where you land is a trap.
+                            Column(
+                                Modifier.weight(1f)
+                                    .clickable(interactionSource = null, indication = null, onClickLabel = "Rename ${row.name}") { viewModel.askRename(row) }
+                                    .testTag("settings_rename_${row.serverId}"),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                                     Text(row.name, style = TextStyles.settingLabel, overflow = TextOverflow.Ellipsis, color = if (row.reachable) colors.ink else colors.body, maxLines = 1)
                                     if (row.showing) Tag("Showing")
                                 }
-                                Text(row.status, style = TextStyles.settingMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(row.meta, style = TextStyles.settingMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Spacer(Modifier.width(Spacing.s8))
                             RowAction(
@@ -447,6 +458,20 @@ fun SettingsScreen(
             confirmLabel = "Clear chapters", keepLabel = "Keep them",
             onConfirm = viewModel::clearChapters, onKeep = { viewModel.askClearChapters(false) },
             testTag = "settings_clear_chapters",
+        )
+    }
+    state.renaming?.let { row ->
+        PromptDialog(
+            title = "Name this server",
+            label = "Name",
+            initialValue = row.name,
+            placeholder = row.name,
+            note = row.host.takeIf { it.isNotBlank() },
+            confirmLabel = "Save",
+            onConfirm = { viewModel.rename(row, it) },
+            onCancel = { viewModel.askRename(null) },
+            testTag = "settings_rename",
+            maxLength = MAX_SERVER_NAME,
         )
     }
     state.confirmDisconnect?.let { row ->

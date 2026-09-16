@@ -55,12 +55,14 @@ import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneSt
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.adaptive.rememberWindowShape
 import com.regolith.ui.addserver.AddServerViewModel
+import com.regolith.ui.addserver.FolderPickerScreen
+import com.regolith.ui.addserver.FolderPickerViewModel
 import com.regolith.ui.addserver.ManualEntryScreen
+import com.regolith.ui.addserver.NameServerScreen
+import com.regolith.ui.addserver.NameServerViewModel
 import com.regolith.ui.addserver.ScanningScreen
 import com.regolith.ui.addserver.ScanningViewModel
 import com.regolith.ui.addserver.SearchServersScreen
-import com.regolith.ui.addserver.FolderPickerScreen
-import com.regolith.ui.addserver.FolderPickerViewModel
 import com.regolith.ui.addserver.SharePickerScreen
 import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
@@ -503,7 +505,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             ManualEntryScreen(
                                 viewModel = hiltViewModel<AddServerViewModel, AddServerViewModel.Factory>(creationCallback = { it.create(key.prefill) }),
                                 onBack = { backStack.removeLastOrNull() },
-                                onConnected = { serverId -> backStack.add(RegolithKey.AddServer.Shares(serverId)) },
+                                onConnected = { serverId -> backStack.add(RegolithKey.AddServer.Name(serverId)) },
+                            )
+                        }
+                        entry<RegolithKey.AddServer.Name> { key ->
+                            NameServerScreen(
+                                viewModel = hiltViewModel<NameServerViewModel, NameServerViewModel.Factory>(
+                                    creationCallback = { it.create(key.serverId) },
+                                ),
+                                onBack = { backStack.removeLastOrNull() },
+                                onContinue = { backStack.add(RegolithKey.AddServer.Shares(key.serverId)) },
                             )
                         }
                         entry<RegolithKey.AddServer.Shares> { key ->

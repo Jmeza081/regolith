@@ -119,6 +119,18 @@ adb logcat -s Regolith                    # prints "window shape: …" on every 
 inner display and false on the cover, so every wide layout can be checked
 on one emulator by folding it.
 
+### Naming a server
+
+A server added by address is called by that address — `192.168.4.73` reads
+the same as every other box on the network. After connecting, **Name this
+server** offers a better one; leave it blank to keep what the app worked out
+(`TOWER` for `tower.local`, the address itself for an IP).
+
+You can change it later: in **Settings › Shares**, tap a server's name. The
+address stays on the line underneath, so a renamed box is still findable.
+The name is only a label — nothing is keyed to it, so renaming touches no
+media, no progress and no downloads.
+
 ### Choosing folders inside a share
 
 "Choose a share" takes whole shares; the chevron on each share opens

@@ -63,6 +63,8 @@ sealed interface RegolithKey : NavKey {
         /** [prefill] is the address the finder picked, so the field starts filled. */
         @Serializable data class Manual(val prefill: String? = null) : AddServer
         @Serializable data class Connecting(val serverId: Long) : AddServer
+        /** "Name this server": optional, between connecting and choosing shares. */
+        @Serializable data class Name(val serverId: Long) : AddServer
         @Serializable data class Shares(val serverId: Long) : AddServer
         /**
          * "Choose folders": one level of one share, [relPath] `""` for its

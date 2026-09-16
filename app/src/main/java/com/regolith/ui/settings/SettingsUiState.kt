@@ -18,8 +18,21 @@ data class ServerRow(
     val reachable: Boolean = true,
     /** "SHOWING": its media is what Library lists. */
     val showing: Boolean = false,
+    /**
+     * "192.168.4.73", or "tower.local:1445" off the usual port. Blank for
+     * the demo library, which has no address to show.
+     *
+     * The row used to identify a server by its name alone, which worked
+     * only because the name WAS the address. Now that the name can be
+     * anything, the address has to be said somewhere or two nicknamed NAS
+     * boxes become indistinguishable.
+     */
+    val host: String = "",
 ) {
     val testTag get() = "settings_server_$serverId"
+
+    /** The second line: where it is, then how it is. */
+    val meta: String get() = if (host.isBlank()) status else "$host · $status"
 }
 
 /**
@@ -31,6 +44,8 @@ data class SettingsUiState(
     val servers: List<ServerRow> = emptyList(),
     /** Server the "Disconnect X?" confirm is open for. */
     val confirmDisconnect: ServerRow? = null,
+    /** Server the rename dialog is open for. */
+    val renaming: ServerRow? = null,
     val hardwareDecoding: Boolean = true,
     val scrubThumbnails: Boolean = true,
     val autoplayNext: Boolean = true,

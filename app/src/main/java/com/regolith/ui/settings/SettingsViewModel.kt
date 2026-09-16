@@ -74,7 +74,14 @@ class SettingsViewModel @Inject constructor(
                         free != null -> "${formatBytes(free)} free"
                         else -> "${own.size} share" + if (own.size == 1) "" else "s"
                     }
-                    ServerRow(server.id, server.name, status, running.isNotEmpty(), reachable = reachable, showing = reachable && own.isNotEmpty())
+                    // The demo library is not on the network, so it has no
+                    // address to print under its name.
+                    val host = if (DemoSource.isDemo(server.host.host)) {
+                        ""
+                    } else {
+                        server.host.host + if (server.host.port != 445) ":${server.host.port}" else ""
+                    }
+                    ServerRow(server.id, server.name, status, running.isNotEmpty(), reachable = reachable, showing = reachable && own.isNotEmpty(), host = host)
                 }
             }.collect { rows -> _uiState.update { it.copy(servers = rows) } }
         }
@@ -155,6 +162,21 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun askDisconnect(row: ServerRow?) = _uiState.update { it.copy(confirmDisconnect = row) }
+
+    /** Tapping a server's name opens the rename dialog; null closes it. */
+    fun askRename(row: ServerRow?) = _uiState.update { it.copy(renaming = row) }
+
+    /**
+     * Store what the user called this server. Nothing is keyed to a
+     * server's name, so this is a single column write; the rows redraw
+     * because they are observing the `servers` table, not because anything
+     * is told to refresh. A blank name is not an error — it puts the
+     * derived name ("TOWER", or the address) back.
+     */
+    fun rename(row: ServerRow, name: String) {
+        _uiState.update { it.copy(renaming = null) }
+        viewModelScope.launch { sources.renameServer(row.serverId, name) }
+    }
 
     /** Settings › Chapters › Clear: asks first, because there is no getting them back. */
     fun askClearChapters(open: Boolean) = _uiState.update { it.copy(confirmClearChapters = open) }

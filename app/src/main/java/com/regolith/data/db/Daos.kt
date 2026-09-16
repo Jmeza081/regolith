@@ -49,6 +49,14 @@ interface ServerDao {
     /** Only the first failure sets the timestamp, so "out of reach since" stays honest. */
     @Query("UPDATE servers SET unreachableSinceMs = COALESCE(unreachableSinceMs, :now) WHERE id = :id")
     suspend fun markUnreachable(id: Long, now: Long)
+
+    /**
+     * What the user calls this server. A targeted update rather than
+     * [update], so a rename cannot race a reachability stamp and write back
+     * a stale row.
+     */
+    @Query("UPDATE servers SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
 }
 
 @Dao
