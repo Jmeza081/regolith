@@ -45,6 +45,7 @@ class AppPreferences @Inject constructor(
         val ambientLight = booleanPreferencesKey("ambient_light")
         val appLock = booleanPreferencesKey("app_lock")
         val appLockAfter = stringPreferencesKey("app_lock_after")
+        val shortsAutoAdvance = booleanPreferencesKey("shorts_auto_advance")
     }
 
     /** Settings › Privacy: ask for a fingerprint, face or screen lock before showing the library. */
@@ -90,6 +91,18 @@ class AppPreferences @Inject constructor(
 
     suspend fun setHardwareDecoding(enabled: Boolean) {
         store.edit { it[Keys.hardwareDecoding] = enabled }
+    }
+
+    /**
+     * Shorts › auto-advance. Remembered rather than session-only for the
+     * same reason the rotation lock is: a mode you have to set every time
+     * you open the feed is not a mode. Off by default — a clip that loops
+     * waits for you, and one that moves on decides for you.
+     */
+    val shortsAutoAdvance: Flow<Boolean> = store.data.map { it[Keys.shortsAutoAdvance] ?: false }
+
+    suspend fun setShortsAutoAdvance(enabled: Boolean) {
+        store.edit { it[Keys.shortsAutoAdvance] = enabled }
     }
 
     /** Settings › Playback › Scrub thumbnails. Consumed in Phase 3. */

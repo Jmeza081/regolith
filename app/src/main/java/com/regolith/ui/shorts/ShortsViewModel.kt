@@ -59,6 +59,16 @@ class ShortsViewModel @Inject constructor(
     private val _bindVersion = MutableStateFlow(0)
     val bindVersion: StateFlow<Int> = _bindVersion
 
+    /**
+     * Auto-advance, from preferences so it survives leaving the feed.
+     *
+     * Kept OUT of [uiState] deliberately: that combine is already at the
+     * five-flow overload, and this is a mode rather than content — the
+     * pager reads it when a clip wraps, and nothing else re-renders on it.
+     */
+    val autoAdvance: StateFlow<Boolean> = prefs.shortsAutoAdvance
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** null means every folder. */
     private val _folderId = MutableStateFlow<Long?>(null)
 
@@ -141,6 +151,10 @@ class ShortsViewModel @Inject constructor(
     /** Off, or on with a fresh order — asking to shuffle again should reshuffle. */
     fun toggleShuffle() {
         _shuffleSeed.value = if (_shuffleSeed.value == null) System.nanoTime() else null
+    }
+
+    fun toggleAutoAdvance() {
+        viewModelScope.launch { prefs.setShortsAutoAdvance(!autoAdvance.value) }
     }
 
     fun keepOnDevice(fileId: Long) {
