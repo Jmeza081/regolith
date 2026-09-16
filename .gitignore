@@ -20,3 +20,14 @@ local.properties
 
 # argent tool artifacts (screen recordings, flows scratch)
 .argent/
+
+# argent screenshot-diff baselines. Reference captures for a comparison,
+# not source: re-capture them on the branch that needs them.
+/.baselines/
+
+# The desktop (Mac) spike's libvlc bundle: a local artifact, assembled once
+# and 82MB of it. Deliberately NOT `/desktop/` — the Kotlin sources under it
+# are tracked on `mac-chapters`, and ignoring the whole directory would stop
+# new ones from ever being `git add`ed there. `build/` above already covers
+# desktop/build.
+/desktop/vlc-bundle/
