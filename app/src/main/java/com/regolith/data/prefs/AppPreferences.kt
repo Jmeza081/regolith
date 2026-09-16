@@ -136,9 +136,10 @@ class AppPreferences @Inject constructor(
     }
 
     /**
-     * Settings › Display › Auto-hide the rail. Wide windows only; on a phone
-     * the pill is the bottom bar and never retracts. Controls the idle timer
-     * only — [railHidden] is the deliberate pin and is independent of it.
+     * Settings › Display › Auto-hide the navigation. Both shapes: the rail on
+     * a wide window and the pill on a phone go away on the same timer.
+     * Controls the idle timer only — [railHidden] is the deliberate pin, is
+     * independent of this, and counts on a wide window ONLY.
      */
     val autoHideRail: Flow<Boolean> = store.data.map { it[Keys.autoHideRail] ?: true }
 

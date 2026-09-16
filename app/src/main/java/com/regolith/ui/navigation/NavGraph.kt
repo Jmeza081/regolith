@@ -215,7 +215,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         // Phones hide their pill on the same timer. The wide-window gate that
         // used to be here meant the setting only ever did anything on a
         // tablet, which is also why it was hidden from a phone's Settings.
-        if (!autoHideRail || railHidden) return@LaunchedEffect
+        //
+        // [railHidden] only counts on a wide window. It is the PIN -- the
+        // chevron under the rail, which a phone never draws -- and it is
+        // remembered, so a Fold pinned away on its inner display came back to
+        // its outer one with the pill's auto-hide silently dead and no
+        // control anywhere to revive it.
+        if (!autoHideRail || (windowShape.wide && railHidden)) return@LaunchedEffect
         touches.onStart { emit(Unit) }.collectLatest {
             // A phone has no spine to tap, so touching anything is what brings
             // the pill back. A wide window keeps its old manners: the rail
