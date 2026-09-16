@@ -1,6 +1,9 @@
 package com.regolith.ui.shorts
 
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +52,7 @@ import com.regolith.R
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
+import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.ProgressEdge
@@ -95,6 +99,9 @@ fun ShortsScreen(
     var sheetOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     val autoAdvance by viewModel.autoAdvance.collectAsStateWithLifecycle()
+    // Published by the nav graph: the pill's own three-second idle answer, so
+    // the title and the rail leave and return exactly when the pill does.
+    val chromeVisible = LocalNavChromeVisible.current
 
     // The player's own brightness/volume helper, not a second one: brightness
     // is a window override here too, so it must be handed back on the way out
@@ -159,6 +166,7 @@ fun ShortsScreen(
                     shuffled = state.shuffled,
                     filtered = state.folderId != null,
                     autoAdvance = autoAdvance,
+                    chromeVisible = chromeVisible,
                     // Only the clip you are looking at may move the feed. A
                     // prewarmed neighbour wrapping would otherwise scroll the
                     // page out from under a finger that never asked.
@@ -204,6 +212,7 @@ private fun ShortPage(
     shuffled: Boolean,
     filtered: Boolean,
     autoAdvance: Boolean,
+    chromeVisible: Boolean,
     onWrapped: suspend () -> Unit,
     onTap: () -> Unit,
     onHoldFast: (Boolean) -> Unit,
@@ -241,49 +250,57 @@ private fun ShortPage(
             StrataLoader(modifier = Modifier.align(Alignment.Center), height = 48.dp, testTag = "shorts_buffering")
         }
 
-        Column(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.CenterEnd),
         ) {
-            IconCircleButton(
-                painterResource(R.drawable.rg_ic_library), "Choose which folder to play from", onPickSource,
-                "shorts_source_button", onMedia = true, selected = filtered,
-            )
-            IconCircleButton(
-                painterResource(R.drawable.rg_ic_shuffle), if (shuffled) "Shuffling — tap to stop" else "Shuffle these clips",
-                onShuffle, "shorts_shuffle_button", onMedia = true, selected = shuffled,
-            )
-            IconCircleButton(
-                painterResource(R.drawable.rg_ic_skip_next),
-                if (autoAdvance) "Auto-advance is on — tap to stop" else "Play the next clip automatically",
-                onAutoAdvance, "shorts_autoadvance_button", onMedia = true, selected = autoAdvance,
-            )
-            IconCircleButton(
-                painterResource(R.drawable.rg_ic_browse), "Show where this is", onLocate, "shorts_locate_button", onMedia = true,
-            )
-            IconCircleButton(
-                painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download),
-                if (item.onDevice) "Already on this device" else "Keep on this device",
-                onKeep, "shorts_download_button", onMedia = true, selected = item.onDevice,
-            )
-            IconCircleButton(
-                painterResource(R.drawable.rg_ic_sliders), "Sound and brightness", onSettings,
-                "shorts_settings_button", onMedia = true,
-            )
+            Column(
+                Modifier.padding(end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+            ) {
+                IconCircleButton(
+                    painterResource(R.drawable.rg_ic_library), "Choose which folder to play from", onPickSource,
+                    "shorts_source_button", onMedia = true, selected = filtered,
+                )
+                IconCircleButton(
+                    painterResource(R.drawable.rg_ic_shuffle), if (shuffled) "Shuffling — tap to stop" else "Shuffle these clips",
+                    onShuffle, "shorts_shuffle_button", onMedia = true, selected = shuffled,
+                )
+                IconCircleButton(
+                    painterResource(R.drawable.rg_ic_skip_next),
+                    if (autoAdvance) "Auto-advance is on — tap to stop" else "Play the next clip automatically",
+                    onAutoAdvance, "shorts_autoadvance_button", onMedia = true, selected = autoAdvance,
+                )
+                IconCircleButton(
+                    painterResource(R.drawable.rg_ic_browse), "Show where this is", onLocate, "shorts_locate_button", onMedia = true,
+                )
+                IconCircleButton(
+                    painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download),
+                    if (item.onDevice) "Already on this device" else "Keep on this device",
+                    onKeep, "shorts_download_button", onMedia = true, selected = item.onDevice,
+                )
+                IconCircleButton(
+                    painterResource(R.drawable.rg_ic_sliders), "Sound and brightness", onSettings,
+                    "shorts_settings_button", onMedia = true,
+                )
+            }
         }
 
-        Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = Spacing.s18, end = 96.dp, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomStart),
         ) {
-            Text(item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
-                style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            Column(Modifier.padding(start = Spacing.s18, end = 96.dp, bottom = LocalNavPillInsets.current.calculateBottomPadding())) {
+                Text(item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
+                    style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         // Where it has got to, and nothing more: scrubbing is deliberately

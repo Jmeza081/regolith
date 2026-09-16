@@ -73,6 +73,7 @@ import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
+import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
@@ -354,6 +355,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     CompositionLocalProvider(
         LocalWindowShape provides windowShape,
         LocalNavPillInsets provides pillInsets,
+        // The same answer the pill acts on, published for screens that float
+        // their own chrome. One timer, so nothing can drift out of step.
+        LocalNavChromeVisible provides navVisible,
     ) {
         Box(
             Modifier

@@ -285,3 +285,24 @@ val NAV_PILL_CLEARANCE: Dp = 112.dp
  * root and read by every page.
  */
 val LocalNavPillInsets = staticCompositionLocalOf { PaddingValues(bottom = NAV_PILL_CLEARANCE) }
+
+/**
+ * Whether the nav pill is showing — and therefore whether a screen's OWN
+ * floating chrome should be showing with it.
+ *
+ * The pill leaves after three seconds of no touch and returns on the next
+ * one. A screen that floats controls over its content (Shorts) has exactly
+ * the same question to answer, and answering it with a second timer would
+ * put two timers on one screen, drifting apart by however long each took to
+ * start. This publishes the pill's own answer, so the two hide and return
+ * together off one clock.
+ *
+ * Defaults to true: a screen composed without the nav graph above it — a
+ * preview, a Compose test — should draw its chrome rather than wait for a
+ * signal that never arrives.
+ *
+ * NOTE for QA: chrome behind this is REMOVED from the tree while hidden,
+ * not merely faded, so its test tags are unfindable three seconds after the
+ * last touch. Drive it as ONE `run-sequence`: touch, await the tag, tap.
+ */
+val LocalNavChromeVisible = staticCompositionLocalOf { true }
