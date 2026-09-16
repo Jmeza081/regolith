@@ -17,12 +17,14 @@ sealed interface RegolithKey : NavKey {
     /** First run only. Ends on "Find my server". */
     @Serializable data object Onboarding : RegolithKey
 
-    // --- The four tabs. Exactly one is at the top of the stack when the
+    // --- The five tabs. Exactly one is at the top of the stack when the
     // nav pill is visible.
     @Serializable data object Home : RegolithKey
     /** The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab). */
     @Serializable data class Library(val folderId: Long? = null, val onDevice: Boolean = false) : RegolithKey
     @Serializable data class Browse(val folderId: Long? = null) : RegolithKey
+    /** The vertical feed: every portrait clip of a minute or less, across every enabled share. */
+    @Serializable data object Shorts : RegolithKey
     @Serializable data object Settings : RegolithKey
 
     // --- Pushed screens.

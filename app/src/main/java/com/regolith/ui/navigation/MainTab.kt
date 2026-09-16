@@ -4,7 +4,7 @@ import androidx.annotation.DrawableRes
 import com.regolith.R
 
 /**
- * The four destinations in the floating nav pill (design section 01,
+ * The five destinations in the floating nav pill (design section 01,
  * "Type & nav"). Order here is display order. Icons are the design's own
  * glyphs (`res/drawable/rg_ic_*`, generated from its SVG paths) — with one
  * deliberate exception: [SETTINGS] wears a hex nut where the design draws a
@@ -21,6 +21,7 @@ enum class MainTab(
     HOME("Home", R.drawable.rg_ic_home, RegolithKey.Home, "nav_home"),
     LIBRARY("Library", R.drawable.rg_ic_library, RegolithKey.Library(), "nav_library"),
     BROWSE("Browse", R.drawable.rg_ic_browse, RegolithKey.Browse(), "nav_browse"),
+    SHORTS("Shorts", R.drawable.rg_ic_shorts, RegolithKey.Shorts, "nav_shorts"),
     SETTINGS("Settings", R.drawable.rg_ic_settings, RegolithKey.Settings, "nav_settings");
 
     companion object {
@@ -33,6 +34,7 @@ enum class MainTab(
             RegolithKey.Home -> HOME
             is RegolithKey.Library -> LIBRARY
             is RegolithKey.Browse -> BROWSE
+            RegolithKey.Shorts -> SHORTS
             RegolithKey.Settings -> SETTINGS
             else -> null
         }

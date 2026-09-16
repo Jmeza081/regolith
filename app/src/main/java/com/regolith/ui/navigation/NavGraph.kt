@@ -101,6 +101,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onStart
 import com.regolith.ui.settings.SettingsScreen
+import com.regolith.ui.shorts.ShortsScreen
 import com.regolith.ui.titledetail.TitleDetailScreen
 import com.regolith.ui.titledetail.TitleDetailViewModel
 import com.regolith.ui.theme.RegolithTheme
@@ -510,6 +511,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onPlay = { backStack.add(RegolithKey.Player(it)) },
                                 inPane = paneListKey != null,
                             )
+                        }
+                        entry<RegolithKey.Shorts>(metadata = tabScreen) {
+                            tabContent {
+                                ShortsScreen(
+                                    viewModel = hiltViewModel(),
+                                    // Locate lands in Browse at the clip's folder, which is
+                                    // the existing screen: the feed designs no destination.
+                                    onLocate = { backStack.add(RegolithKey.Browse(it)) },
+                                )
+                            }
                         }
                         entry<RegolithKey.Settings>(metadata = tabScreen) {
                             tabContent {

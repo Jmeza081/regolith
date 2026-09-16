@@ -173,13 +173,13 @@ class AppViewModel @Inject constructor(
     /**
      * Tabs drawn at 22% in the pill (design: "Library and Browse dim in
      * the pill rather than vanishing, so the app never changes shape").
-     * No source server: Library, Browse and Settings dim. A server out of
+     * No source server: Library, Browse, Shorts and Settings dim. A server out of
      * reach: Home and Browse dim, since only the device tab can do anything.
      */
     val dimmedTabs: StateFlow<Set<MainTab>> = sources.observeServers()
         .map { servers ->
             when {
-                servers.isEmpty() -> setOf(MainTab.LIBRARY, MainTab.BROWSE, MainTab.SETTINGS)
+                servers.isEmpty() -> setOf(MainTab.LIBRARY, MainTab.BROWSE, MainTab.SHORTS, MainTab.SETTINGS)
                 servers.all { it.unreachableSinceMs != null } -> setOf(MainTab.HOME, MainTab.BROWSE)
                 else -> emptySet()
             }

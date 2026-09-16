@@ -50,13 +50,13 @@ import com.regolith.ui.theme.scaledDp
  * The floating frosted nav pill (design: every tab frame). 62dp tall,
  * 18dp from each side and 26dp from the bottom, `rgba(0,0,0,.52)` under
  * a 20dp blur with a `rgba(255,255,255,.16)` hairline and a soft drop
- * shadow. Four equal cells: a 19dp glyph over a 10px tracked uppercase
+ * shadow. Five equal cells: a 19dp glyph over a 10px tracked uppercase
  * label, white when selected, #8A8A8A otherwise, and 22% white when
  * [dimmed] (a tab with nothing behind it yet).
  *
  * [vertical] turns the same pill on its side for a wide window (a
  * foldable's inner display, a tablet): a [NAV_RAIL_WIDTH] column of the
- * same four cells hugging the start edge, where the thumbs rest on a
+ * same five cells hugging the start edge, where the thumbs rest on a
  * book-sized device. Same blur, same tokens, same test tags; only the
  * axis changes, which is why it is a flag and not a second composable.
  *
@@ -255,8 +255,16 @@ val NAV_RAIL_SPINE_WIDTH: Dp = 14.dp
  */
 val NAV_RAIL_SPINE_INSET: Dp = Spacing.s8 + NAV_RAIL_SPINE_WIDTH
 
-/** Four 81dp slots plus 10dp of inner padding each side. */
-private val NAV_PILL_MAX_WIDTH = 344.dp
+/**
+ * Five 71dp slots plus 10dp of inner padding each side.
+ *
+ * Was four 81dp slots at 344dp until Shorts arrived. 375dp is the full
+ * width a 411dp phone has between the s18 gutters, so the cap only bites
+ * on something wider; SETTINGS, the longest label, sets at roughly 65dp and
+ * keeps about 3dp either side. That is the number to watch if a sixth tab
+ * is ever proposed, or the font-size setting is turned well up.
+ */
+private val NAV_PILL_MAX_WIDTH = 375.dp
 
 /**
  * How far a scrolling tab screen must pad its content so the last row can

@@ -55,6 +55,7 @@ state, so a scroll does not recompose the tree on every frame.
 | Home | `Home` | `HomeScreen` | `nav_home` |
 | Library | `Library(folderId?, onDevice)` | `LibraryScreen` | `nav_library` |
 | Browse | `Browse(folderId?)` | `BrowseScreen` | `nav_browse` |
+| Shorts | `Shorts` | `ShortsScreen` | `nav_shorts` |
 | Settings | `Settings` | `SettingsScreen` | `nav_settings` |
 
 Switching tab resets the stack to `[Home, tab]` (just `[Home]` for Home), so
