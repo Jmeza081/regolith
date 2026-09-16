@@ -118,6 +118,17 @@ class ShortsPlayerPool @Inject constructor(
         }
     }
 
+    /**
+     * Stop making sound without giving up the buffers.
+     *
+     * For LEAVING the screen rather than pausing a clip: the window stays
+     * prepared, so coming back starts again instantly instead of paying the
+     * SMB open a second time.
+     */
+    fun pauseAll() {
+        players.forEach { it?.pause() }
+    }
+
     /** 2× while the finger is down, back to 1× on release. */
     fun holdFast(hold: Boolean) {
         playerFor(current)?.setPlaybackSpeed(if (hold) FAST_SPEED else 1f)

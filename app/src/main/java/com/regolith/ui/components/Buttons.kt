@@ -179,21 +179,43 @@ fun IconCircleButton(
     modifier: Modifier = Modifier,
     /** Over the picture: `rgba(0,0,0,.42)` fill and a `.34` hairline instead of the frost. */
     onMedia: Boolean = false,
+    /**
+     * A latched state the glyph alone cannot carry: shuffle is ON, this file
+     * IS on the device. The accent at 16% behind a 55% ring, which is the
+     * same quiet "this is lit" the app uses elsewhere — never a full red
+     * fill, which is reserved for the one primary action on a screen.
+     */
+    selected: Boolean = false,
     size: Dp = 48.scaledDp(),
     iconSize: Dp = 18.scaledDp(),
 ) {
     val colors = RegolithTheme.colors
+    val fill = when {
+        selected -> colors.accent.copy(alpha = 0.16f)
+        onMedia -> colors.onMediaCircleBg
+        else -> colors.frostBg
+    }
+    val edge = when {
+        selected -> colors.accent.copy(alpha = 0.55f)
+        onMedia -> colors.onMediaCircleBorder
+        else -> colors.frostBorder
+    }
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(size)
             .clip(PillShape)
-            .background(if (onMedia) colors.onMediaCircleBg else colors.frostBg)
-            .border(1.dp, if (onMedia) colors.onMediaCircleBorder else colors.frostBorder, PillShape)
+            .background(fill)
+            .border(1.dp, edge, PillShape)
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(testTag),
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = if (onMedia) colors.ink else colors.inkSoft, modifier = Modifier.size(iconSize))
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (selected) colors.accent else if (onMedia) colors.ink else colors.inkSoft,
+            modifier = Modifier.size(iconSize),
+        )
     }
 }
 
