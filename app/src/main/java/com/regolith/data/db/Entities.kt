@@ -126,6 +126,12 @@ data class MediaFileEntity(
     // columns, like a materialised `ffprobe`.
     val width: Int? = null,
     val height: Int? = null,
+    /**
+     * Clockwise rotation the container asks for (schema v10): 0/90/180/270,
+     * null until measured. Width and height above are the STORED size, so a
+     * portrait phone clip is commonly 1920x1080 with 90 here.
+     */
+    val rotationDegrees: Int? = null,
     val frameRate: Float? = null,
     /** Sample MIME type, e.g. "video/avc". */
     val videoCodec: String? = null,

@@ -132,6 +132,13 @@ PlayerScreen ── Chapters / filmstrip ── PlayerViewModel ── ScrubThum
                                                                  └─ one picture for two positions → drop the lot, Media3 FrameExtractor from here on (receipt checked)
 ```
 
+Every file the walk opens also leaves its measurements behind, which is
+why a vertical-video feed needs no walk of its own: `grabFrame` calls
+`MediaFileDao.fillBasics` before it decodes anything, so `durationMs`,
+`width`, `height` and (schema v10) `rotationDegrees` are filled as a side
+effect of making a picture. Width and height are the STORED size — the
+rotation beside them is what says which way up the picture actually is.
+
 Two things a web developer would not guess: a folder listing is what
 decides steps 1 and 2 (the listing is cached for five minutes so a grid of
 twenty tiles costs one SMB list), and a loose file in a folder with other
@@ -492,6 +499,7 @@ nickname, or two renamed NAS boxes would be indistinguishable.
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-09-16 | Rotation is a column (`media_files.rotationDegrees`, schema v10), read where the size already was | The artwork walk has always written duration, width and height for free: `ArtworkRepository.grabFrame` calls `fillBasics` as its first line, before it decodes anything. What nobody ever read was the rotation flag, and phone video is routinely stored 1920x1080 with a quarter turn on it, so `height > width` would have missed exactly the files a vertical feed is for. Both extractors had it to hand and neither was asked (`METADATA_KEY_VIDEO_ROTATION`; `Format.rotationDegrees`), so this is four lines of extraction and an additive column rather than a new pass over the share. It is null everywhere until the walk reaches a file, which is what keeps an unmeasured row OUT of a feed rather than guessing at it. `fillBasics` keeps its write-once COALESCE and `saveProbe` keeps its overwrite, so the full probe can still correct what frame extraction learned in passing. |
 | 2026-09-16 | The Settings tab wears a hex nut, not the design's sun — the first deliberate deviation from the design source | A circle with eight rays reads as BRIGHTNESS on a tab bar. The replacement keeps the sun's exact inner circle (`r=3.2`) and its `r=9` extent, so it is an edit of the design's glyph rather than a stock gear dropped in; two strokes instead of nine also survives being drawn at 19dp, which the rays did not. Candidates were compared at real nav size before picking. |
 | 2026-09-16 | On a phone the nav pill hides while you scroll DOWN and returns on a scroll up or a tap; the wide rail keeps the idle timer alone | The pill costs 112dp of a small screen, and the old rule gave it back the moment you touched anything — including the scroll that was asking for the room. A wide window has the space and answers to its spine, so nothing changes there. |
 | 2026-09-16 | One `NestedScrollConnection` above `NavDisplay` rather than hoisting six scroll states | Home and Settings scroll a `Column`; Library, Browse and Search are lazy lists and grids; none hoisted its state. A connection above them all sees every one, so no screen has to learn about the nav. The app's first nested-scroll use. |

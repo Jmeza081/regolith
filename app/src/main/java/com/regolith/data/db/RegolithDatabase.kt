@@ -31,6 +31,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *  9. `chapter_sync` and `shares.writeChapters` (P10): where each film's
  *     chapters stand against the sidecar file on the share, and whether a
  *     share gets those files at all. Additive.
+ * 10. `media_files.rotationDegrees`: the rotation the container asks for,
+ *     so a portrait clip stored landscape can be recognised as portrait
+ *     (Shorts). Additive; null everywhere until the artwork walk fills it.
  */
 @Database(
     entities = [
@@ -51,7 +54,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserChapterFtsEntity::class,
         ChapterSyncEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -62,6 +65,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 6, to = 7),
         AutoMigration(from = 7, to = 8),
         AutoMigration(from = 8, to = 9),
+        AutoMigration(from = 9, to = 10),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

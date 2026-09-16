@@ -47,7 +47,7 @@ class MediaProbe @Inject constructor(
                 val durationUs = retriever.retrieveDurationUs().get()
                 var info = MediaInfo(
                     durationMs = durationUs.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000 },
-                    width = null, height = null, frameRate = null, videoMimeType = null, hdr = false,
+                    width = null, height = null, rotationDegrees = null, frameRate = null, videoMimeType = null, hdr = false,
                     audioMimeType = null, audioChannels = null, audioSampleRate = null,
                 )
                 for (i in 0 until groups.length) {
@@ -60,6 +60,8 @@ class MediaProbe @Inject constructor(
                         info = info.copy(
                             width = format.width.takeIf { it > 0 },
                             height = format.height.takeIf { it > 0 },
+                            // NO_VALUE comes back as -1; 0 and "not stated" mean the same thing here.
+                            rotationDegrees = format.rotationDegrees.takeIf { it > 0 },
                             frameRate = format.frameRate.takeIf { it > 0 },
                             videoMimeType = mime,
                             hdr = transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG,

@@ -21,6 +21,16 @@ interface FrameSource : Closeable {
     val width: Int?
     val height: Int?
 
+    /**
+     * Clockwise degrees the container asks for on the way to the screen: 0,
+     * 90, 180 or 270, or null when it does not say.
+     *
+     * [width] and [height] are the STORED size, which on its own says
+     * nothing about which way up the picture is: phone video is routinely
+     * stored landscape with a 90 here.
+     */
+    val rotationDegrees: Int?
+
     /** Cover art stored in the container (MP4 `covr`), as encoded bytes. */
     fun embeddedPicture(): ByteArray?
 

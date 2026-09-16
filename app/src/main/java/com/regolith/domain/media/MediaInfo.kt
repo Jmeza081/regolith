@@ -11,6 +11,8 @@ data class MediaInfo(
     val durationMs: Long?,
     val width: Int?,
     val height: Int?,
+    /** Clockwise rotation the container asks for: 0/90/180/270, or null when unknown. */
+    val rotationDegrees: Int? = null,
     val frameRate: Float?,
     /** Sample MIME type, e.g. "video/avc". */
     val videoMimeType: String?,

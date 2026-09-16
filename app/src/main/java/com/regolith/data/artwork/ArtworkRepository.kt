@@ -275,7 +275,7 @@ class ArtworkRepository @Inject constructor(
      * decision was arrived at (`adb logcat -s Regolith/Artwork`).
      */
     private suspend fun grabFrame(file: MediaFileEntity, owner: ArtworkOwner.File, source: FrameSource, kinds: List<ArtworkKind>): Boolean {
-        mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height)
+        mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height, source.rotationDegrees)
         source.embeddedPicture()?.let {
             if (saveEncoded(it, owner, ArtworkSource.EMBEDDED, kinds)) {
                 Log.i(TAG, "${file.name}: cover art embedded in the container (no frame grabbed)")
@@ -346,7 +346,7 @@ class ArtworkRepository @Inject constructor(
             return 0L
         }
         Log.i(TAG, "no runtime from the container for ${file.name}; the probe says ${probed}ms")
-        mediaFileDao.fillBasics(file.id, probed, null, null)
+        mediaFileDao.fillBasics(file.id, probed, null, null, null)
         return probed
     }
 

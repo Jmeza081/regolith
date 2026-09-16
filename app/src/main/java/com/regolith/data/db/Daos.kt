@@ -243,13 +243,14 @@ interface MediaFileDao {
 
     /** What frame extraction learns in passing; never overwrites a value the full probe set. */
     @Query(
-        "UPDATE media_files SET durationMs = COALESCE(durationMs, :durationMs), width = COALESCE(width, :width), height = COALESCE(height, :height) WHERE id = :id",
+        "UPDATE media_files SET durationMs = COALESCE(durationMs, :durationMs), width = COALESCE(width, :width), height = COALESCE(height, :height), " +
+            "rotationDegrees = COALESCE(rotationDegrees, :rotationDegrees) WHERE id = :id",
     )
-    suspend fun fillBasics(id: Long, durationMs: Long?, width: Int?, height: Int?)
+    suspend fun fillBasics(id: Long, durationMs: Long?, width: Int?, height: Int?, rotationDegrees: Int?)
 
     /** The full container probe (Title Detail). */
     @Query(
-        "UPDATE media_files SET durationMs = COALESCE(:durationMs, durationMs), width = :width, height = :height, frameRate = :frameRate, " +
+        "UPDATE media_files SET durationMs = COALESCE(:durationMs, durationMs), width = :width, height = :height, rotationDegrees = :rotationDegrees, frameRate = :frameRate, " +
             "videoCodec = :videoCodec, hdr = :hdr, audioCodec = :audioCodec, audioChannels = :audioChannels, audioSampleRate = :audioSampleRate, probedAtMs = :probedAtMs WHERE id = :id",
     )
     suspend fun saveProbe(
@@ -257,6 +258,7 @@ interface MediaFileDao {
         durationMs: Long?,
         width: Int?,
         height: Int?,
+        rotationDegrees: Int?,
         frameRate: Float?,
         videoCodec: String?,
         hdr: Boolean?,

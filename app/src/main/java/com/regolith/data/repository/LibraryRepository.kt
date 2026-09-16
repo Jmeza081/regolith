@@ -412,6 +412,7 @@ class LibraryRepository @Inject constructor(
             durationMs = info.durationMs,
             width = info.width,
             height = info.height,
+            rotationDegrees = info.rotationDegrees,
             frameRate = info.frameRate,
             videoCodec = info.videoMimeType,
             hdr = info.hdr,

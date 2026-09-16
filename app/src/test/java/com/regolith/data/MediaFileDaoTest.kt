@@ -14,6 +14,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -52,6 +53,45 @@ class MediaFileDaoTest {
         val second = db.mediaFileDao().upsert(file("a.mkv", size = 200))
         assertEquals(first.id, second.id)
         assertEquals(200, db.mediaFileDao().byId(first.id)!!.sizeBytes)
+    }
+
+    /**
+     * The two writers pull in opposite directions on purpose: what frame
+     * extraction learns in passing must never overwrite what the full probe
+     * set, but the full probe is allowed to correct it.
+     */
+    @Test
+    fun `fillBasics writes rotation once, saveProbe corrects it`() = runTest {
+        val f = db.mediaFileDao().upsert(file("clip.mp4"))
+        assertNull(db.mediaFileDao().byId(f.id)!!.rotationDegrees)
+
+        // A portrait clip stored landscape: 1920x1080 with a quarter turn.
+        db.mediaFileDao().fillBasics(f.id, 12_000, 1920, 1080, 90)
+        db.mediaFileDao().byId(f.id)!!.let {
+            assertEquals(90, it.rotationDegrees)
+            assertEquals(1920, it.width)
+            assertEquals(12_000L, it.durationMs)
+        }
+
+        // A second pass through the artwork path changes nothing.
+        db.mediaFileDao().fillBasics(f.id, 99_000, 720, 1280, 270)
+        db.mediaFileDao().byId(f.id)!!.let {
+            assertEquals(90, it.rotationDegrees)
+            assertEquals(1920, it.width)
+            assertEquals(12_000L, it.durationMs)
+        }
+
+        // The container probe overwrites, and still protects the duration.
+        db.mediaFileDao().saveProbe(
+            id = f.id, durationMs = null, width = 1080, height = 1920, rotationDegrees = 0, frameRate = 30f,
+            videoCodec = "video/avc", hdr = false, audioCodec = "audio/aac", audioChannels = 2, audioSampleRate = 48_000,
+            probedAtMs = 1_000,
+        )
+        db.mediaFileDao().byId(f.id)!!.let {
+            assertEquals(0, it.rotationDegrees)
+            assertEquals(1080, it.width)
+            assertEquals(12_000L, it.durationMs)
+        }
     }
 
     @Test

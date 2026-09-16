@@ -141,6 +141,7 @@ class TitleDetailViewModel @AssistedInject constructor(
         durationMs = file.durationMs,
         width = file.width,
         height = file.height,
+        rotationDegrees = file.rotationDegrees,
         frameRate = file.frameRate,
         videoMimeType = file.videoCodec,
         hdr = file.hdr ?: false,

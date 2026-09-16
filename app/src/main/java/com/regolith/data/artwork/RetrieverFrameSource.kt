@@ -33,6 +33,7 @@ class RetrieverFrameSource private constructor(
     override val durationMs: Long? = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { it > 0 }
     override val width: Int? = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()?.takeIf { it > 0 }
     override val height: Int? = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()?.takeIf { it > 0 }
+    override val rotationDegrees: Int? = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull()
 
     override fun embeddedPicture(): ByteArray? = runCatching { retriever.embeddedPicture }.getOrNull()
 
