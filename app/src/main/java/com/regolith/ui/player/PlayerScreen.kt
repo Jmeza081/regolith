@@ -48,7 +48,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -95,6 +94,7 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.playback.SeekStacker
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.player.PlaybackState
+import com.regolith.ui.components.StrataLoader
 import com.regolith.ui.titledetail.TransferView
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.ChapterDraft
@@ -539,7 +539,9 @@ fun PlayerScreen(
             }
             Box(Modifier.fillMaxSize().playerGestures(gestures).testTag("player_gesture_layer"))
             if (state.isBuffering) {
-                CircularProgressIndicator(color = RegolithTheme.colors.accent, trackColor = Color.Transparent, strokeWidth = 2.dp, modifier = Modifier.align(Alignment.Center).size(48.dp).testTag("player_buffering"))
+                // The mark, not a circle: 48dp is the smallest size the five
+                // bands still read at (docs/ARCHITECTURE.md).
+                StrataLoader(modifier = Modifier.align(Alignment.Center), height = 48.dp, testTag = "player_buffering")
             }
             if (flex) {
                 // Above the fold there is only the header: the timeline and the

@@ -5,12 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,10 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -60,6 +50,7 @@ import com.regolith.ui.components.NoticeCard
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RegolithTextField
 import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.StrataLoader
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.components.TertiaryButton
 import com.regolith.ui.components.TopBar
@@ -211,18 +202,14 @@ private const val LOCAL_NETWORK_PERMISSION_SDK = 37
 @Composable
 private fun ConnectingContent(address: String, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     val colors = RegolithTheme.colors
-    val transition = rememberInfiniteTransition(label = "spin")
-    val angle by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "angle")
     Box(modifier.fillMaxSize().navigationBarsPadding().testTag("addserver_connecting_screen"), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s30)) {
-            Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.size(64.dp)) {
-                    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    drawArc(colors.hairline, 0f, 360f, false, Offset.Zero, Size(size.width, size.height), style = stroke)
-                    drawArc(colors.accent, angle - 90f, 96f, false, Offset.Zero, Size(size.width, size.height), style = stroke)
-                }
-                Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.dp))
-            }
+            // The wedge, where a ring with a server glyph inside it used to
+            // turn. The glyph does not come along: it sat INSIDE the ring, and
+            // there is no inside to a wedge -- it would land on the bands. The
+            // screen says "Connecting" under this and names the address, so
+            // the glyph was saying a third time what the words already say.
+            StrataLoader(height = 64.dp, testTag = "addserver_connecting_loader")
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                 DisplayText("Connecting", style = TextStyles.dialogTitle.copy(fontSize = 16.designSp(), lineHeight = 22.4.designSp()))
                 Text(address, style = TextStyles.body.copy(fontSize = 13.designSp(), lineHeight = 13.designSp()), color = colors.metadata)
