@@ -13,8 +13,8 @@
     </style>
 
     <style name="Theme.Regolith.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/regolith_ground</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_wordmark</item>
+        <item name="windowSplashScreenBackground">@color/regolith_splash_ground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_wedge</item>
         <item name="postSplashScreenTheme">@style/Theme.Regolith</item>
     </style>
 </resources>

@@ -65,6 +65,7 @@ import com.regolith.ui.addserver.SharePickerScreen
 import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
 import com.regolith.ui.browse.BrowseViewModel
+import com.regolith.ui.onboarding.SPLASH_MS
 import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.Eyebrow
@@ -601,7 +602,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     }
 }
 
-private const val SPLASH_MS = 1_400L
 
 /**
  * How long the rail waits after the last touch before it slides away. The

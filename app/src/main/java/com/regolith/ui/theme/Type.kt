@@ -118,6 +118,13 @@ object TextStyles {
     val fieldLabel = sg(FontWeight.SemiBold, 10, 10f, 0.12f)
     /** Pull-to-refresh status: `600 10px/1`, `.12em`, uppercase. */
     val refreshLabel = sg(FontWeight.SemiBold, 10, 10f, 0.12f)
+    /**
+     * The wordmark on the splash and the lock: `500 16px/20px`, `.14em`,
+     * uppercase. Space Grotesk rather than the Michroma of [wordmark] --
+     * the owner's call for the drawn splash, where the mark carries the
+     * character and the name only has to be legible under it.
+     */
+    val splashWordmark = sg(FontWeight.Medium, 16, 20f, 0.14f)
     /** "SHOWING" tag on a Settings row: `600 9px/1.4`, `.1em`. */
     val tag = sg(FontWeight.SemiBold, 9, 12.6f, 0.1f)
 

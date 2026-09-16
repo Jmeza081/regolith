@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
  * greys for everything else. There is no light theme.
  */
 val Ground = Color(0xFF0A0A0A)      // page background
+val SplashGround = Color(0xFF121212) // splash and lock: dark gray, so the wedge's dim bands still separate
 val Surface = Color(0xFF0F0F0F)     // cards, sheets: one step up from ground
 val Skeleton = Color(0xFF141414)    // loading placeholders
 val Hairline = Color(0xFF1F1F1F)    // 1dp borders and dividers
@@ -51,6 +52,7 @@ val BarWhite = Color(0x40FFFFFF)    // rgba(255,255,255,.25): progress bar track
 @Immutable
 data class RegolithColors(
     val ground: Color = Ground,
+    val splashGround: Color = SplashGround,
     val surface: Color = Surface,
     val skeleton: Color = Skeleton,
     val hairline: Color = Hairline,

@@ -3,14 +3,12 @@ package com.regolith.ui.lock
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,17 +20,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
-import com.regolith.R
 import com.regolith.domain.security.AuthResult
-import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.StrataWedge
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -83,19 +76,18 @@ fun LockScreen(
     LaunchedEffect(Unit) { ask() }
     BackHandler(enabled = true) { /* the lock is not a screen you can go back from */ }
 
-    Box(modifier.fillMaxSize().background(Color.Black).testTag("lock_screen")) {
-        Image(
-            painterResource(R.drawable.rg_splash_moon), contentDescription = null,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-        )
-        Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x8C000000), Color(0xCC000000), Color.Black), radius = 900f)))
+    // The same ground and the same mark as the splash: the lock is the
+    // other screen that stands in front of the library, and the two used to
+    // share the moon plate. Still, nothing animates here -- the lock comes
+    // back many times a day, and an entrance every time is noise.
+    Box(modifier.fillMaxSize().background(colors.splashGround).testTag("lock_screen")) {
         Column(
             Modifier.align(Alignment.Center).padding(horizontal = Spacing.s30),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
-            Image(painterResource(R.drawable.rg_wedge_white), contentDescription = null, modifier = Modifier.size(58.dp, 78.dp))
-            DisplayText("Regolith", style = TextStyles.wordmark.copy(letterSpacing = 0.04.em))
+            StrataWedge()
+            Text("REGOLITH", style = TextStyles.splashWordmark, color = colors.ink)
             Text(
                 error ?: "Locked",
                 style = TextStyles.body,

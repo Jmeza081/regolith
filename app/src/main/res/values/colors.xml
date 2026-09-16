@@ -2,5 +2,8 @@
 <!-- Only what XML (splash, launcher icon) needs. The real palette is Color.kt. -->
 <resources>
     <color name="regolith_ground">#0A0A0A</color>
+    <!-- The splash's own ground. Matches RegolithColors.splashGround, so the
+         system splash and SplashContent are one continuous screen. -->
+    <color name="regolith_splash_ground">#121212</color>
     <color name="ic_launcher_background">#0A0A0A</color>
 </resources>

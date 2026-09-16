@@ -1,6 +1,9 @@
 package com.regolith.ui.onboarding
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,11 +23,14 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -34,6 +40,7 @@ import androidx.compose.ui.unit.em
 import com.regolith.R
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.StrataWedge
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -125,18 +132,54 @@ fun OnboardingScreen(
 
 
 /**
- * Splash (design section 02): the moon plate under a radial darkening,
- * the wedge mark in monochrome white over it and the wordmark in Michroma
- * 21 tracked .04em. Wordmark, nothing else: no spinner, no status line.
+ * Splash: the Strata Wedge assembling itself on a dark gray ground, the
+ * wordmark rising under it. Nothing else -- no spinner, no status line.
+ *
+ * It used to be a moon photograph under a radial darkening, but the plate
+ * was 427x640 and every phone stretched it to fill the screen, which is
+ * what made it look soft. Nothing here is a bitmap: [StrataWedge] draws the
+ * mark, so it is sharp at any density and its five bands can arrive one at
+ * a time.
+ *
+ * The timing is [SplashEntrance]'s, and it is built to land with a beat of
+ * stillness before [SPLASH_MS] fades the whole screen out.
  */
 @Composable
 fun SplashContent(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().background(Color.Black).testTag("splash_screen")) {
-        Image(painterResource(R.drawable.rg_splash_moon), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x8C000000), Color(0xCC000000), Color.Black), radius = 900f)))
-        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
-            Image(painterResource(R.drawable.rg_wedge_white), contentDescription = null, modifier = Modifier.size(58.dp, 78.dp))
-            DisplayText("Regolith", style = TextStyles.wordmark.copy(letterSpacing = 0.04.em))
+    val colors = RegolithTheme.colors
+    // One linear driver; the shape of the motion is in the pure functions,
+    // where it can be tested. Web analogy: one clock, and the easing is
+    // arithmetic rather than a CSS keyframe per element.
+    val elapsed = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        elapsed.animateTo(
+            targetValue = ENTRANCE_TOTAL_MS.toFloat(),
+            animationSpec = tween(durationMillis = ENTRANCE_TOTAL_MS, easing = LinearEasing),
+        )
+    }
+    val now = elapsed.value.toLong()
+    val word = wordmarkProgress(now)
+    Box(modifier.fillMaxSize().background(colors.splashGround).testTag("splash_screen")) {
+        Column(
+            Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+        ) {
+            StrataWedge(
+                bandOffsetX = { index -> bandOffsetX(index, now) },
+                bandAlpha = { index -> bandAlpha(index, now) },
+            )
+            Text(
+                text = "REGOLITH",
+                style = TextStyles.splashWordmark,
+                color = colors.ink,
+                modifier = Modifier
+                    .graphicsLayer {
+                        alpha = word
+                        translationY = (1f - word) * WORDMARK_RISE_DP.dp.toPx()
+                    }
+                    .testTag("splash_wordmark"),
+            )
         }
     }
 }

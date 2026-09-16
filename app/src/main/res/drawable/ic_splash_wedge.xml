@@ -1,0 +1,24 @@
+<!-- The system splash's icon: the Strata Wedge in monochrome white, the same
+     mark SplashContent then draws. It used to be the solid wedge of
+     @drawable/ic_splash_wordmark, so the mark CHANGED shape at the handoff
+     from the system splash to the app's own. That drawable stays as it is:
+     it is also the notification small icon, where bands this fine would
+     turn to mud at 24dp.
+
+     Geometry is ic_launcher_foreground's, which is rg_wedge_white's rhythm
+     at the 108 viewport the splash icon wants. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:name="wedge">
+        <clip-path android:pathData="M36,30 L80,54 L36,78 Q46,54 36,30 Z" />
+        <!-- Strata, top to bottom; the dim ones are 62% white, as in the mark. -->
+        <path android:fillColor="#FFFFFF" android:pathData="M0,28 H108 V37 H0 Z" />
+        <path android:fillColor="#9EFFFFFF" android:pathData="M0,40.5 H108 V47.5 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,50.5 H108 V59.5 H0 Z" />
+        <path android:fillColor="#9EFFFFFF" android:pathData="M0,63 H108 V69.5 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,72.5 H108 V80 H0 Z" />
+    </group>
+</vector>
