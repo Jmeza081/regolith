@@ -1,3 +1,18 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:pathData="M4 8h13a3 3 0 0 1 0 6h-1M7 5 4 8l3 3M20 16H7a3 3 0 0 1 0-6h1M17 19l3-3-3-3" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <!--
+        The A-B loop: two end-stops with a single arrow running B back to A.
+
+        It used to be the two-run, two-arrowhead cycle, which is the REPEAT
+        idiom, and the transport draws the real repeat button a few dp away in
+        the same chrome, so the pill and the button were saying the same
+        thing. What repeat cannot say is that this loop has two ENDS, so the
+        stops are the whole point of the glyph; the single arrow keeps the one
+        thing repeat did get right, that playback comes back.
+
+        The stops also echo the A and B handles drawn on the scrubber under it.
+    -->
+    <path android:pathData="M6 7v10" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M18 7v10" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M18 12H9" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M12 9l-3 3 3 3" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>
