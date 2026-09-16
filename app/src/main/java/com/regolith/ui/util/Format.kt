@@ -16,6 +16,16 @@ fun formatBytes(bytes: Long): String {
     return if (i == 0) "$bytes B" else String.format(Locale.US, if (value < 10) "%.1f %s" else "%.0f %s", value, units[i])
 }
 
+/**
+ * Milliseconds from [nowMs] until the next whole minute.
+ *
+ * A wall clock that ticks on a one-minute timer drifts: it would show 8:04
+ * while the phone says 8:05, for up to a minute. Waiting for the BOUNDARY
+ * instead means the display changes when the minute does. Pure, so the
+ * arithmetic is tested without waiting a minute for it.
+ */
+fun msUntilNextMinute(nowMs: Long): Long = 60_000L - Math.floorMod(nowMs, 60_000L)
+
 /** "1h 07m", "42:18"-style clock for the player, "15m left" for rows. */
 fun formatClock(ms: Long): String {
     val totalSec = (ms / 1000).coerceAtLeast(0)

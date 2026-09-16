@@ -883,6 +883,12 @@ private fun BoxScope.FullChrome(
             // not fit inside them, so it takes the portrait frame's 18.
             val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
             val gutter = if (landscape) 30.dp else Spacing.s18
+            // The clock is an OVERLAY rather than a cell in the header row:
+            // that row spaces itself with a weighted spacer, so a child of it
+            // would centre between the icons and drift as they come and go.
+            // Aligned to the box it is centred on the screen, whatever else
+            // the header holds, and it sits on the header's own 18dp line.
+            PlayerClock(Modifier.align(Alignment.TopCenter).padding(top = 18.dp))
             Column(Modifier.fillMaxSize().padding(start = gutter, end = gutter, top = 18.dp, bottom = 12.dp)) {
                 // The header carries the two ways out and nothing else. What
                 // is playing moved down to sit on the timeline, where the
