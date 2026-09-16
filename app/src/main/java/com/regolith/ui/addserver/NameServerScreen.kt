@@ -48,19 +48,58 @@ fun NameServerScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val colors = RegolithTheme.colors
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(state.loaded) { if (state.loaded) focus.requestFocus() }
     LaunchedEffect(state.saved) {
         if (!state.saved) return@LaunchedEffect
         viewModel.consumeNavigation()
         onContinue()
     }
+    NameServerContent(
+        name = state.name,
+        address = state.address,
+        suggestion = state.suggestion,
+        loaded = state.loaded,
+        onNameChange = viewModel::onNameChange,
+        onSave = viewModel::save,
+        onBack = onBack,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The screen without its ViewModel, in the shape [ChapterEditorContent]
+ * established: state in, callbacks out.
+ *
+ * Split out so it can be driven by a Compose test. That is not only tidiness
+ * — this project's emulator has a habit of serving a stale accessibility
+ * tree, and a screen that can only be reached by tapping through four others
+ * is a screen that then cannot be checked at all.
+ *
+ * @param suggestion the name the app derived; shown as the placeholder,
+ *   because it is what Continue keeps when nothing is typed.
+ * @param loaded false until the server row has been read; Continue would
+ *   have nothing to name before then.
+ */
+@Composable
+fun NameServerContent(
+    name: String,
+    address: String,
+    suggestion: String,
+    loaded: Boolean,
+    onNameChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RegolithTheme.colors
+    val focus = remember { FocusRequester() }
+    // The keyboard is the point of this screen; making the user tap the
+    // field first is a tap that never had anything else to be.
+    LaunchedEffect(loaded) { if (loaded) focus.requestFocus() }
     Column(modifier.fillMaxSize().navigationBarsPadding().imePadding().testTag("addserver_name_screen")) {
         TopBar(
             title = "Name this server",
             onBack = onBack,
-            subtitle = state.address.takeIf { it.isNotBlank() },
+            subtitle = address.takeIf { it.isNotBlank() },
             subtitleMuted = true,
         )
         Column(
@@ -68,25 +107,25 @@ fun NameServerScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.s12),
         ) {
             Text(
-                "Give it a name you'll recognise in Library and Settings. Leave this blank to keep ${state.suggestion}.",
+                "Give it a name you'll recognise in Library and Settings. Leave this blank to keep $suggestion.",
                 style = TextStyles.body,
                 color = colors.body,
             )
             RegolithTextField(
-                value = state.name,
-                onValueChange = { viewModel.onNameChange(it.take(MAX_SERVER_NAME)) },
+                value = name,
+                onValueChange = { onNameChange(it.take(MAX_SERVER_NAME)) },
                 label = "Name",
-                placeholder = state.suggestion,
+                placeholder = suggestion,
                 testTag = "addserver_name_field",
                 modifier = Modifier.focusRequester(focus),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { viewModel.save() }),
+                keyboardActions = KeyboardActions(onDone = { onSave() }),
             )
         }
         PrimaryButton(
             text = "Continue",
-            onClick = viewModel::save,
-            enabled = state.loaded,
+            onClick = onSave,
+            enabled = loaded,
             testTag = "addserver_name_continue_button",
             modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.s18, vertical = Spacing.s18),
         )
