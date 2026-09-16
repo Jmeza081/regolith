@@ -112,6 +112,13 @@ object TextStyles {
     // --- Space Grotesk, structural
     /** Section eyebrow ("CONTINUE WATCHING"): `600 11px/1`, `.14em`, uppercase. */
     val eyebrow = sg(FontWeight.SemiBold, 11, 11f, 0.14f)
+    /**
+     * The same eyebrow, two points up, for a section that names a GROUP
+     * rather than labelling the thing under it -- Home's rows, where 11px
+     * left the titles weaker than the metadata beside them. Tracking eases
+     * off as the size grows, which is how tracked caps stay even.
+     */
+    val sectionTitle = sg(FontWeight.SemiBold, 13, 13f, 0.12f)
     /** Nav pill label: `600 10px/1`, `.06em`, uppercase. */
     val navLabel = sg(FontWeight.SemiBold, 10, 10f, 0.06f)
     /** Field label inside a text field: `600 10px/1`, `.12em`, uppercase. */

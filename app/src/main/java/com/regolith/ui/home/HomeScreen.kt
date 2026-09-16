@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
@@ -141,10 +142,14 @@ fun HomeScreen(
                 return@Column
             }
             if (refreshing) Spacer(Modifier.height(30.dp + Spacing.s18))
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
+            // Sections are told apart by the GAP between them, not by a rule
+            // or a card: 18dp was the same gap as the one inside a section
+            // (header to row), so the page read as one long list of rows
+            // rather than three named groups.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s30)) {
                 if (state.resume.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        SectionHeader("Continue watching", onAll = onOpenContinueWatching, allTestTag = "home_resume_all")
+                        SectionHeader("Continue watching")
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = Spacing.s18),
                             horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
@@ -162,13 +167,21 @@ fun HomeScreen(
                                     modifier = Modifier.width(resumeWidth),
                                 )
                             }
+                            item {
+                                SeeAllCard(
+                                    width = resumeWidth,
+                                    aspect = 16f / 9f,
+                                    onClick = onOpenContinueWatching,
+                                    testTag = "home_resume_all",
+                                )
+                            }
                         }
                     }
                 }
 
                 if (state.newlyAdded.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("Newly added", Modifier.padding(horizontal = Spacing.s18))
+                        Eyebrow("Newly added", Modifier.padding(horizontal = Spacing.s18), large = true)
                         if (wide) {
                             // The wall: rows of six posters, edge to edge. Home is a
                             // vertical scroll, so this is plain rows rather than a
@@ -196,7 +209,7 @@ fun HomeScreen(
                     }
                 } else if (state.neverScanned && !refreshing) {
                     Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("Newly added")
+                        Eyebrow("Newly added", large = true)
                         Text("Nothing yet. Scan the share and what it holds shows up here.", style = TextStyles.body, color = colors.body)
                         PrimaryButton(text = "Scan now", onClick = viewModel::refresh, testTag = "home_scan_button")
                     }
@@ -210,8 +223,6 @@ fun HomeScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         SectionHeader(
                             title = "On this device",
-                            onAll = onOpenDevice,
-                            allTestTag = "home_device_all",
                             meta = formatBytes(state.downloadsBytes),
                         )
                         LazyRow(
@@ -221,6 +232,14 @@ fun HomeScreen(
                         ) {
                             items(state.onDevice, key = { it.fileId }) { item ->
                                 NewPoster(item, onOpenTitle, Modifier.width(NEW_POSTER_WIDTH))
+                            }
+                            item {
+                                SeeAllCard(
+                                    width = NEW_POSTER_WIDTH,
+                                    aspect = 2f / 3f,
+                                    onClick = onOpenDevice,
+                                    testTag = "home_device_all",
+                                )
                             }
                         }
                     }
@@ -242,15 +261,16 @@ private val RESUME_CARD_WIDTH = 256.dp
 private const val WALL_COLUMNS = 6
 
 /**
- * A row's title, with the way to see all of it on the right and an
- * optional quiet fact between them. Two rows on Home end in "All", and a
- * third nearly did before this existed.
+ * A row's title, and an optional quiet fact beside it.
+ *
+ * The way to see all of a row used to be a word in this corner: "All", set
+ * at link size, the smallest target on the screen for one of the more
+ * useful moves. It is now the last card IN the row (see [SeeAllCard]), so
+ * the header carries a title and nothing else.
  */
 @Composable
 private fun SectionHeader(
     title: String,
-    onAll: () -> Unit,
-    allTestTag: String,
     meta: String? = null,
 ) {
     val colors = RegolithTheme.colors
@@ -259,14 +279,54 @@ private fun SectionHeader(
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
     ) {
-        Eyebrow(title, Modifier.weight(1f))
+        Eyebrow(title, Modifier.weight(1f), large = true)
         meta?.let { Text(it, style = TextStyles.meta, color = colors.metadata) }
-        Text(
-            "All", style = TextStyles.link, color = colors.ink,
-            modifier = Modifier
-                .clickable(interactionSource = null, indication = null, onClick = onAll)
-                .testTag(allTestTag),
-        )
+    }
+}
+
+/**
+ * The last card in a row: a circled arrow that opens the whole list.
+ *
+ * It sits where the finger already is -- at the end of the row it has just
+ * been scrolling -- and it is the size of the things beside it, which is
+ * the entire point. The old "All" link was about 30dp wide in a corner the
+ * thumb never visits.
+ *
+ * @param aspect the shape of the cards it follows, so it lines up with them
+ *   rather than announcing itself as a different kind of object.
+ */
+@Composable
+private fun SeeAllCard(
+    width: Dp,
+    aspect: Float,
+    onClick: () -> Unit,
+    testTag: String,
+) {
+    val colors = RegolithTheme.colors
+    Column(
+        Modifier
+            .width(width)
+            .aspectRatio(aspect)
+            .clip(TileShape)
+            .background(colors.frostBg)
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .testTag(testTag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier.size(44.scaledDp()).border(1.dp, colors.frostBorder, PillShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(R.drawable.rg_ic_chevron_right),
+                contentDescription = null,
+                tint = colors.ink,
+                modifier = Modifier.size(20.scaledDp()),
+            )
+        }
+        Spacer(Modifier.height(Spacing.s8))
+        Text("See all", style = TextStyles.buttonSmall, color = colors.ink)
     }
 }
 

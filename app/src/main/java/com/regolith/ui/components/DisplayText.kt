@@ -47,8 +47,17 @@ fun DisplayText(
  * use #6E6E6E ([muted]).
  */
 @Composable
-fun Eyebrow(text: String, modifier: Modifier = Modifier, muted: Boolean = false) {
+fun Eyebrow(text: String, modifier: Modifier = Modifier, muted: Boolean = false, large: Boolean = false) {
     val colors = RegolithTheme.colors
-    Text(text.uppercase(), style = TextStyles.eyebrow, color = if (muted) colors.metadata else colors.body, modifier = modifier, maxLines = 1)
+    Text(
+        text.uppercase(),
+        // [large] names a whole section rather than labelling one thing: the
+        // rows on Home, where the 11px eyebrow sat quieter than the metadata
+        // next to it.
+        style = if (large) TextStyles.sectionTitle else TextStyles.eyebrow,
+        color = if (muted) colors.metadata else colors.body,
+        modifier = modifier,
+        maxLines = 1,
+    )
 }
 

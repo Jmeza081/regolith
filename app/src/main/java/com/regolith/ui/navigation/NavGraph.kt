@@ -88,7 +88,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.delay
@@ -178,6 +180,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val autoHideRail by appViewModel.autoHideRail.collectAsStateWithLifecycle()
     var railIdle by remember { mutableStateOf(false) }
     val railVisible = windowShape.wide && !railHidden && !railIdle
+    // A phone's pill hides on the same timer, minus the pinning: there is no
+    // spine to pin it to, so going idle is the only way it leaves, and any
+    // touch brings it straight back.
+    val navVisible = if (windowShape.wide) railVisible else !railIdle
     // F6 reserved the rail's 102dp even while it was slid away, so nothing
     // would reflow. What that actually produced was a screen with an obvious
     // empty stripe down the side and no rail in it — and the two ways of
@@ -206,8 +212,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val touches = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     LaunchedEffect(autoHideRail, windowShape.wide, railHidden) {
         railIdle = false
-        if (!autoHideRail || !windowShape.wide || railHidden) return@LaunchedEffect
+        // Phones hide their pill on the same timer. The wide-window gate that
+        // used to be here meant the setting only ever did anything on a
+        // tablet, which is also why it was hidden from a phone's Settings.
+        if (!autoHideRail || railHidden) return@LaunchedEffect
         touches.onStart { emit(Unit) }.collectLatest {
+            // A phone has no spine to tap, so touching anything is what brings
+            // the pill back. A wide window keeps its old manners: the rail
+            // returns when you ask the spine for it, because a touch in the
+            // content reflowing the layout under your finger is worse than
+            // reaching for the edge.
+            if (!windowShape.wide) railIdle = false
             delay(RAIL_IDLE_MS)
             railIdle = true
         }
@@ -556,9 +571,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         )
                     }
                     AnimatedVisibility(
-                        visible = railVisible || !windowShape.wide,
-                        enter = if (windowShape.wide) slideInHorizontally { -it } + fadeIn() else fadeIn(),
-                        exit = if (windowShape.wide) slideOutHorizontally { -it } + fadeOut() else fadeOut(),
+                        visible = navVisible,
+                        // The rail leaves by the start edge it lives on; the
+                        // pill leaves by the bottom, which is where it already
+                        // sits and the shortest way out of the way.
+                        enter = if (windowShape.wide) slideInHorizontally { -it } + fadeIn() else slideInVertically { it } + fadeIn(),
+                        exit = if (windowShape.wide) slideOutHorizontally { -it } + fadeOut() else slideOutVertically { it } + fadeOut(),
                         modifier = if (windowShape.wide) {
                             // The rail: s18 in from the start edge, centred on the height.
                             Modifier.align(Alignment.CenterStart).padding(start = Spacing.s18)

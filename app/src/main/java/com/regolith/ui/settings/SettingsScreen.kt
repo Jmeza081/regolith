@@ -42,7 +42,6 @@ import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.RegolithSwitch
@@ -264,15 +263,15 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("Display", muted = true)
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
-                    // Wide windows only: on a phone the pill is the bottom bar
-                    // and there is no side space to reclaim, so the row would
-                    // toggle something a phone can never show.
-                    if (LocalWindowShape.current.wide) {
-                        RegolithSwitch(
-                            label = "Auto-hide the rail", note = "Slides the navigation rail away three seconds after you stop touching the screen.",
-                            checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
-                        )
-                    }
+                    // One switch for both shapes: the rail on a wide window and
+                    // the pill on a phone go away on the same timer, so two
+                    // rows saying the same thing would be a setting split in
+                    // half by a screen size.
+                    RegolithSwitch(
+                        label = "Auto-hide the navigation",
+                        note = "Slides the pill, or the rail on a wide window, away three seconds after you stop touching the screen. Touch anything to bring it back.",
+                        checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
+                    )
                     // The one switch in the app that is about battery rather
                     // than taste, so the note says what it costs instead of
                     // only what it does.
