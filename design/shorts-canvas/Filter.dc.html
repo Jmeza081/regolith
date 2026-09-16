@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin:0; background:#0A0A0A; font-family:'Space Grotesk', system-ui, -apple-system, sans-serif; -webkit-font-smoothing:antialiased; }
+    a { color:#E11B17; } a:hover { color:#FF423D; }
+    .t { font-family:'Michroma','Eurostile',sans-serif; font-size:19.2px; line-height:25px; color:#FFFFFF; }
+    .eb { font-size:14.1px; line-height:14.1px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; }
+    .mt { font-size:14.1px; line-height:19.7px; font-weight:400; color:#6E6E6E; }
+    .nm { font-size:15.4px; line-height:20px; font-weight:500; color:#EDEDED; }
+    .row { display:flex; align-items:center; gap:18px; height:70px; }
+    .bx { width:100px; display:flex; align-items:center; justify-content:center; }
+    .sh { background:#141414; border:1px solid #2E2E2E; border-radius:4px; box-sizing:border-box; }
+  </style>
+</helmet>
+<div style="width:880px; height:620px; background:#0A0A0A; padding:30px 40px; box-sizing:border-box;">
+  <div class="t">WHAT COUNTS AS A SHORT</div>
+
+  <div style="margin-top:14px; background:#0F0F0F; border:1px solid #1F1F1F; border-radius:14px; padding:14px 18px; display:flex; align-items:center; gap:16px;">
+    <span style="font-size:17.9px; line-height:24px; font-weight:500; color:#FFFFFF;">display aspect &lt; 1.0</span>
+    <span class="mt" style="letter-spacing:.14em; font-weight:600;">AFTER ROTATION</span>
+    <span style="width:1px; height:22px; background:#2E2E2E;"></span>
+    <span style="font-size:17.9px; line-height:24px; font-weight:500; color:#FFFFFF;">duration &le; 60s</span>
+  </div>
+
+  <div style="display:flex; gap:40px; margin-top:24px;">
+    <div style="width:380px;">
+      <div class="eb" style="color:#EDEDED;">IN THE FEED</div>
+      <div class="row"><div class="bx"><div class="sh" style="width:39px; height:70px;"></div></div><div><div class="nm">1080 &times; 1920 &middot; 0:15</div><div class="mt">9:16, stored upright</div></div></div>
+      <div class="row"><div class="bx"><div class="sh" style="width:39px; height:70px;"></div></div><div><div class="nm">720 &times; 1280 &middot; 0:45</div><div class="mt">9:16, smaller</div></div></div>
+      <div class="row"><div class="bx"><div class="sh" style="width:53px; height:70px;"></div></div><div><div class="nm">1080 &times; 1440 &middot; 0:20</div><div class="mt">3:4 &mdash; still portrait, still in</div></div></div>
+      <div class="row"><div class="bx"><div class="sh" style="width:39px; height:70px; border-color:#E11B17;"></div></div><div><div class="nm">1920 &times; 1080, rotate 90&deg; &middot; 0:10</div><div class="mt" style="color:#E11B17;">Stored landscape, displays 9:16</div></div></div>
+    </div>
+
+    <div style="width:380px;">
+      <div class="eb" style="color:#6E6E6E;">NOT IN THE FEED</div>
+      <div class="row"><div class="bx"><div class="sh" style="width:100px; height:56px; opacity:.5;"></div></div><div><div class="nm" style="color:#6E6E6E;">1920 &times; 1080 &middot; 0:30</div><div class="mt">Landscape</div></div></div>
+      <div class="row"><div class="bx"><div class="sh" style="width:100px; height:56px; opacity:.5;"></div></div><div><div class="nm" style="color:#6E6E6E;">1280 &times; 720 &middot; 0:20</div><div class="mt">Landscape</div></div></div>
+      <div class="row"><div class="bx"><div class="sh" style="width:70px; height:70px; opacity:.5;"></div></div><div><div class="nm" style="color:#6E6E6E;">1080 &times; 1080 &middot; 0:12</div><div class="mt">Square &mdash; aspect is 1.0, not below it</div></div></div>
+      <div class="row"><div class="bx"><div class="sh" style="width:39px; height:70px; opacity:.5;"></div></div><div><div class="nm" style="color:#6E6E6E;">1080 &times; 1920 &middot; 1:30</div><div class="mt">Portrait, but over a minute</div></div></div>
+      <div class="row"><div class="bx"><div style="width:44px; height:70px; border:1px dashed #2E2E2E; border-radius:4px; box-sizing:border-box;"></div></div><div><div class="nm" style="color:#6E6E6E;">Not measured yet</div><div class="mt">Unknown is never a Short</div></div></div>
+    </div>
+  </div>
+
+  <div style="margin-top:14px; display:flex; align-items:center; gap:12px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E11B17" stroke-width="1.9" stroke-linecap="round"><path d="M12 8v5"/><circle cx="12" cy="16.6" r=".9" fill="#E11B17" stroke="none"/><circle cx="12" cy="12" r="9.2"/></svg>
+    <div class="mt" style="color:#A0A0A0;">The fourth row is the one that matters: phone video is routinely stored landscape with a rotation flag. Testing height against width alone would miss it.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

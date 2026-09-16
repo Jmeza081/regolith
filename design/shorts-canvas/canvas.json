@@ -1,0 +1,18 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",        "x": 0,    "y": 0,    "w": 411, "h": 915, "title": "Feed — playing" },
+    { "file": "Paused.dc.html",      "x": 491,  "y": 0,    "w": 411, "h": 915, "title": "Tap — paused" },
+    { "file": "FastForward.dc.html", "x": 982,  "y": 0,    "w": 411, "h": 915, "title": "Hold right — fast forward" },
+    { "file": "Empty.dc.html",       "x": 1473, "y": 0,    "w": 411, "h": 915, "title": "Nothing measured yet" },
+    { "file": "FillAlt.dc.html",     "x": 1964, "y": 0,    "w": 411, "h": 915, "title": "Fill / crop — alternative" },
+    { "file": "NavPill.dc.html",     "x": 0,    "y": 1035, "w": 880, "h": 480, "title": "Nav pill — five slots" },
+    { "file": "Rail.dc.html",        "x": 960,  "y": 1035, "w": 560, "h": 600, "title": "Action rail" },
+    { "file": "Filter.dc.html",      "x": 1600, "y": 1035, "w": 880, "h": 620, "title": "What counts as a Short" }
+  ],
+  "annotations": [
+    { "id": "flow",  "x": 0,    "y": -230, "w": 470, "text": "Left to right: the feed plays as soon as the tab opens. Tap anywhere pauses. Press and hold the right half to fast forward while held. Swipe up or down moves between clips.\n\nOnly two controls sit over the picture — locate, and keep on device." },
+    { "id": "alt",   "x": 1473, "y": -230, "w": 470, "text": "Fit (the first three frames) letterboxes a 9:16 clip on this 20:9 phone, and the pill lands in the black band below the picture rather than over it.\n\nFill crops to fill the screen the way TikTok does — but then the pill floats over the video and the bottom of the frame is lost. Worth settling before this gets built." },
+    { "id": "specs", "x": 0,    "y": 1800, "w": 560, "text": "Above: the pill at both widths, the action rail at real size, and the exact rule deciding which files reach the feed." }
+  ],
+  "launch": { "view": "canvas" }
+}

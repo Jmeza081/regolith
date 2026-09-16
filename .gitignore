@@ -31,3 +31,8 @@ local.properties
 # new ones from ever being `git add`ed there. `build/` above already covers
 # desktop/build.
 /desktop/vlc-bundle/
+
+# The seeded design-canvas page: ~2.5MB of packaged editor wrapped around the
+# .dc.html artboards beside it, which ARE the source. Regenerate it with the
+# design skill's helper rather than committing the output.
+/design/shorts-canvas/regolith-shorts-flow.html
