@@ -162,7 +162,11 @@ class ChapterSyncRepository @Inject constructor(
                     if (local > entry.modifiedAtMs) continue // ours is newer; the worker writes over it
                     note = ChapterSyncNote.REPLACED_BY_SHARE.name
                 }
-                val text = writer.read(host, creds, share, prefix + entry.name) ?: continue
+                // Blank as well as null: a 0-byte sidecar parses to no chapters,
+                // and importing that would DELETE the rows here. Empty files
+                // should no longer appear (the gateway stopped creating them on
+                // read), but one already on a share must not wipe anything.
+                val text = writer.read(host, creds, share, prefix + entry.name)?.takeIf { it.isNotBlank() } ?: continue
                 val chapters = ChapterSidecar.parse(text, video.durationMs ?: 0L)
                 val now = System.currentTimeMillis()
                 chapterDao.replaceForFile(video.id, chapters.map { UserChapterEntity(fileId = video.id, startMs = it.startMs, title = it.title, updatedAtMs = now) })

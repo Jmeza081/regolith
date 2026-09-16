@@ -76,7 +76,8 @@ SDK platform 37, an Android 14+ device or the `Pixel_10` emulator.
 ```
 ./gradlew assembleDebug        # compile
 ./gradlew installDebug         # build + install on the running emulator
-./gradlew test                 # JVM unit tests
+./gradlew test                 # JVM unit tests (one talks to the local
+                               #   Samba fixture and skips without it)
 ./gradlew connectedAndroidTest # Compose UI tests on the emulator
 ./gradlew lint
 ```

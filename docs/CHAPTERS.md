@@ -67,7 +67,10 @@ is instant and offline play has chapters) and syncs:
 
 - **Import.** Every scan and every Browse listing compares the file's
   modified time with the last one imported; a newer file replaces the
-  phone's copy.
+  phone's copy. A **blank file counts as nothing** and is skipped, not
+  imported as "no chapters": it would otherwise delete chapters the phone
+  has. (Reading a sidecar never creates one either — see
+  `docs/ARCHITECTURE.md`, chapter sidecars.)
 - **Write.** Pressing Done in the app writes the phone's copy first, then
   the file in the background (a `.chapters.txt.part` file, renamed over
   the real name once complete, so a half-written file is never read).

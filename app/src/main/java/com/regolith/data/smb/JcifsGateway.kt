@@ -229,9 +229,22 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         }
     }
 
+    /**
+     * Read a file on the share.
+     *
+     * The `isFile` check is not belt-and-braces: jcifs-ng opens read-only
+     * handles with create-if-missing (`SmbRandomAccessFile(file, "r")` sets
+     * O_CREAT | O_RDONLY), so asking for a path that is not there CREATES an
+     * empty file on the share — how 0-byte `.chapters.txt` files appeared
+     * beside films that never had chapters. Unlike a local `File`, a missing
+     * name here is not an error the library reports; we have to look first.
+     * The URL is built without the trailing slash `urlFor` adds, so `isFile`
+     * is asked about a file rather than a directory.
+     */
     override fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource =
         withDialect(host, credentials, "$share/$relPath") { ctx ->
-            val file = SmbFile(urlFor(host, share, relPath), ctx)
+            val file = SmbFile(fileUrl(host, share, relPath), ctx)
+            if (!file.isFile) throw SmbFailure.NotFound("$share/$relPath")
             JcifsByteSource(file.openRandomAccess("r"), file.length())
         }
 
