@@ -1,4 +1,18 @@
+<!--
+  The Settings glyph: a hex nut.
+
+  The design source draws a sun here — a circle with eight rays — which sits
+  in the app's lunar trope but reads as BRIGHTNESS on a tab bar, not
+  preferences. This keeps the sun's exact inner circle (the same r=3.2 path)
+  and replaces the eight rays with a six-sided nut at the same r=9 extent, so
+  the mark is an edit of the design's own glyph rather than a swap for a
+  stock gear. Two strokes instead of nine also means it survives being drawn
+  at 19dp in the nav pill, which the rays did not.
+
+  The hexagon is the only straight-sided shape in the nav, which is what
+  makes it findable at a glance next to Home, Library and Browse.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:pathData="M8.8,12.0 a3.2,3.2 0 1 0 6.4,0 a3.2,3.2 0 1 0 -6.4,0 z" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="miter" />
-    <path android:pathData="M12 3v2.6M12 18.4V21M3 12h2.6M18.4 12H21M5.6 5.6l1.9 1.9M16.5 16.5l1.9 1.9M18.4 5.6l-1.9 1.9M7.5 16.5l-1.9 1.9" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="miter" />
+    <path android:pathData="M21,12 L16.5,19.79 L7.5,19.79 L3,12 L7.5,4.21 L16.5,4.21 Z" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M8.8,12.0 a3.2,3.2 0 1 0 6.4,0 a3.2,3.2 0 1 0 -6.4,0 z" android:strokeColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
 </vector>
