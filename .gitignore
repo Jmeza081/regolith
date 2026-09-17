@@ -36,3 +36,4 @@ local.properties
 # .dc.html artboards beside it, which ARE the source. Regenerate it with the
 # design skill's helper rather than committing the output.
 /design/shorts-canvas/regolith-shorts-flow.html
+brag-output/
