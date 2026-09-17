@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -66,7 +68,13 @@ fun RegolithSheet(
         dragHandle = null,
     ) {
         Column(
-            modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12)
+            // Scrolls, because a sheet is only ever as tall as the screen
+            // allows and the list inside it is not. Without this a share with
+            // 49 folders offered the first ten and silently swallowed the
+            // rest -- and the same was true of any sort or filter list that
+            // outgrew the sheet. `PlayerSheetHost` had it; this did not.
+            modifier.verticalScroll(rememberScrollState())
+                .padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12)
                 .navigationBarsPadding().testTag(testTag),
         ) {
             Box38Handle()

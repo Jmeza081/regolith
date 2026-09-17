@@ -53,11 +53,4 @@ data class ShortsUiState(
     val measuringFraction: Float = 0f,
 ) {
     val isEmpty: Boolean get() = loaded && items.isEmpty()
-
-    /** What the sheet's trigger says it is showing: a folder name, or everywhere. */
-    val sourceLabel: String get() = folders.firstOrNull { it.id == folderId }?.label ?: EVERYWHERE
-
-    companion object {
-        const val EVERYWHERE = "Everywhere"
-    }
 }

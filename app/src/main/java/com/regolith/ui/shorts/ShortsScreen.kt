@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -55,20 +56,25 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import com.regolith.R
+import com.regolith.domain.artwork.ArtworkKind
+import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.LocalNavChromeVisible
+import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.ProgressEdge
 import com.regolith.ui.components.RegolithSheet
-import com.regolith.ui.components.SheetOption
 import com.regolith.ui.components.StrataLoader
 import com.regolith.ui.player.PlayerSystemControls
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.theme.scaledDp
 import kotlinx.coroutines.delay
 
@@ -266,7 +272,7 @@ private fun ShortPage(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s8),
             ) {
                 RailAction(
-                    painterResource(R.drawable.rg_ic_library), "Choose which folder to play from", onPickSource,
+                    painterResource(R.drawable.rg_ic_folder_play), "Choose which folder to play from", onPickSource,
                     "shorts_source_button", selected = filtered,
                 )
                 RailAction(
@@ -279,7 +285,7 @@ private fun ShortPage(
                     onAutoAdvance, "shorts_autoadvance_button", selected = autoAdvance,
                 )
                 RailAction(
-                    painterResource(R.drawable.rg_ic_browse), "Show where this is", onLocate, "shorts_locate_button",
+                    painterResource(R.drawable.rg_ic_folder_go), "Show where this is", onLocate, "shorts_locate_button",
                 )
                 RailAction(
                     painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download),
@@ -334,7 +340,16 @@ private fun ShortPage(
     }
 }
 
-/** "Play from": everywhere, or one folder. Only folders that hold shorts are offered. */
+/**
+ * "Play from": a wall of the folders that hold shorts, drawn the way Browse
+ * draws folders — art, name and a count — because a name on its own is a
+ * poor way to recognise a folder full of video you filmed.
+ *
+ * Rows are CHUNKED rather than a `LazyVerticalGrid`. A lazy grid inside a
+ * scrolling column has no height to lay out in; the device grid learned
+ * this already (see the decision log). A picker is tens of folders, not
+ * thousands, so chunking costs nothing.
+ */
 @Composable
 private fun SourceSheet(state: ShortsUiState, onPick: (Long?) -> Unit, onDismiss: () -> Unit) {
     val total = state.folders.sumOf { it.count }
@@ -342,26 +357,46 @@ private fun SourceSheet(state: ShortsUiState, onPick: (Long?) -> Unit, onDismiss
         title = "Play from",
         onDismiss = onDismiss,
         testTag = "shorts_folder_sheet",
-        subtitle = if (state.folders.size == 1) "One folder holds shorts" else "${state.folders.size} folders hold shorts",
+        subtitle = "${formatFolderCount(state.folders.size)} · ${if (total == 1) "1 clip" else "$total clips"}",
     ) {
-        SheetOption(
-            label = ShortsUiState.EVERYWHERE,
-            selected = state.folderId == null,
+        // The way back, always offered rather than only while filtered: a
+        // control that appears once you are stuck is a control you have to
+        // discover twice.
+        SecondaryButton(
+            text = "Play from everywhere",
             onClick = { onPick(null) },
             testTag = "shorts_folder_all",
-            trailing = if (total == 1) "1 clip" else "$total clips",
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.s8),
+            leadingIcon = painterResource(R.drawable.rg_ic_folder_play),
+            compact = true,
         )
-        state.folders.forEach { folder ->
-            SheetOption(
-                label = folder.label,
-                selected = state.folderId == folder.id,
-                onClick = { onPick(folder.id) },
-                testTag = folder.testTag,
-                trailing = if (folder.count == 1) "1 clip" else "${folder.count} clips",
-            )
+        Spacer(Modifier.size(Spacing.s12))
+        state.folders.chunked(SOURCE_COLUMNS).forEach { rowFolders ->
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = Spacing.s12),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+            ) {
+                rowFolders.forEach { folder ->
+                    MediaTile(
+                        artwork = ArtworkRequest(ArtworkOwner.Folder(folder.id), ArtworkKind.THUMB),
+                        kind = ArtworkKind.THUMB,
+                        title = folder.label,
+                        count = folder.count,
+                        selected = state.folderId == folder.id,
+                        onClick = { onPick(folder.id) },
+                        testTag = folder.testTag,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                // Keep a short last row left-aligned instead of stretched.
+                repeat(SOURCE_COLUMNS - rowFolders.size) { Spacer(Modifier.weight(1f)) }
+            }
         }
     }
 }
+
+/** Three across: small enough that a folder's frame still reads, wide enough to name it. */
+private const val SOURCE_COLUMNS = 3
 
 /**
  * One bare glyph on the feed's rail — a deliberate deviation from
