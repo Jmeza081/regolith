@@ -100,7 +100,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun ShortsScreen(
     viewModel: ShortsViewModel,
-    onLocate: (folderId: Long) -> Unit,
+    /** Open Browse at this clip's folder, with the clip itself picked out. */
+    onLocate: (folderId: Long, fileId: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -192,7 +193,7 @@ fun ShortsScreen(
                     onHoldFast = viewModel::holdFast,
                     onPickSource = { sheetOpen = true },
                     onShuffle = viewModel::toggleShuffle,
-                    onLocate = { onLocate(item.folderId) },
+                    onLocate = { onLocate(item.folderId, item.fileId) },
                     onKeep = { viewModel.keepOnDevice(item.fileId) },
                 )
             }

@@ -483,6 +483,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             tabContent {
                                 BrowseScreen(
                                     selectedFileId = paneFileId,
+                                    highlightFileId = key.highlightFileId,
                                     viewModel = hiltViewModel<BrowseViewModel, BrowseViewModel.Factory>(
                                         creationCallback = { it.create(key.folderId) },
                                     ),
@@ -522,7 +523,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     viewModel = hiltViewModel(),
                                     // Locate lands in Browse at the clip's folder, which is
                                     // the existing screen: the feed designs no destination.
-                                    onLocate = { backStack.add(RegolithKey.Browse(it)) },
+                                    // The file id rides along so Browse can scroll to it and
+                                    // ring it, rather than dropping you at the top of a folder
+                                    // to hunt for the clip you were just watching.
+                                    onLocate = { folderId, fileId ->
+                                        backStack.add(RegolithKey.Browse(folderId, highlightFileId = fileId))
+                                    },
                                 )
                             }
                         }

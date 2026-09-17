@@ -22,7 +22,15 @@ sealed interface RegolithKey : NavKey {
     @Serializable data object Home : RegolithKey
     /** The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab). */
     @Serializable data class Library(val folderId: Long? = null, val onDevice: Boolean = false) : RegolithKey
-    @Serializable data class Browse(val folderId: Long? = null) : RegolithKey
+    /**
+     * [highlightFileId] is a file to scroll to and ring once on arrival —
+     * Shorts' Locate, which answers "where does this clip actually live".
+     * It rides on the KEY rather than in a ViewModel for the same reason the
+     * player's queue does: a jump has to survive the process being killed
+     * and restored, or coming back lands you at the top of a folder with no
+     * idea which file you came for.
+     */
+    @Serializable data class Browse(val folderId: Long? = null, val highlightFileId: Long? = null) : RegolithKey
     /** The vertical feed: every portrait clip of a minute or less, across every enabled share. */
     @Serializable data object Shorts : RegolithKey
     @Serializable data object Settings : RegolithKey

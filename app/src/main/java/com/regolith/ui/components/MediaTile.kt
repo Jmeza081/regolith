@@ -122,6 +122,15 @@ fun MediaTile(
     shape: Shape = TileShape,
     /** Wide window only: this is the title open in the detail pane beside the wall. */
     selected: Boolean = false,
+    /**
+     * A momentary white ring, 0..1: "here is the one you came for". Shorts'
+     * Locate rings the clip it just left, then lets it fade.
+     *
+     * The same ring [selected] uses, because the tile's own KDoc already
+     * says a white ring over artwork reads as a highlight — this is that
+     * meaning, borrowed for a moment rather than held.
+     */
+    highlight: Float = 0f,
     /** Hold to start a multi-selection. Null means the tile has nothing to hold for. */
     onLongClick: (() -> Unit)? = null,
     /**
@@ -159,8 +168,14 @@ fun MediaTile(
                 // the content, so anything drawn over it would be read as
                 // part of the picture. Outside the clip so the ring is not
                 // shaved by the tile's own corners.
-                .then(if (selected || picked) Modifier.border(2.dp, colors.ink, shape) else Modifier)
-                .padding(if (selected || picked) 4.dp else 0.dp)
+                .then(
+                    when {
+                        selected || picked -> Modifier.border(2.dp, colors.ink, shape)
+                        highlight > 0f -> Modifier.border(2.dp, colors.ink.copy(alpha = highlight), shape)
+                        else -> Modifier
+                    },
+                )
+                .padding(if (selected || picked || highlight > 0f) 4.dp else 0.dp)
                 .clip(shape)
                 .background(colors.surface)
                 .alpha(if (dimmed) 0.45f else 1f),

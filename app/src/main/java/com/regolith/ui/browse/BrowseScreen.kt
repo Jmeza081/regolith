@@ -15,9 +15,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import kotlinx.coroutines.delay
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -100,6 +106,8 @@ fun BrowseScreen(
      * a file covers the wall.
      */
     selectedFileId: Long? = null,
+    /** Scroll to this file on arrival and ring it briefly (Shorts' Locate). */
+    highlightFileId: Long? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val offline = state.offlineMessage
@@ -118,7 +126,7 @@ fun BrowseScreen(
                     modifier = Modifier.width(SHARE_TREE_WIDTH).fillMaxHeight().padding(top = TREE_TOP_PADDING, bottom = Spacing.s18),
                 )
             }
-            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, Modifier.weight(1f))
+            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, Modifier.weight(1f))
         }
     }
 }
@@ -134,6 +142,7 @@ private fun BrowseContent(
     onAddServer: () -> Unit,
     onPlayAll: ((fileIds: List<Long>, shuffle: Boolean) -> Unit)?,
     selectedFileId: Long?,
+    highlightFileId: Long?,
     modifier: Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -224,6 +233,40 @@ private fun BrowseContent(
             }
         }
         val showEmpty = state.loaded && state.rows.isEmpty() && offline == null
+
+        /*
+         * Arriving from Shorts' Locate: put the clip on screen and ring it.
+         *
+         * GRID can scroll precisely — every file is its own lazy item. ROWS
+         * cannot: the whole file section is ONE item holding a forEach, so
+         * the best it can do is bring that section to the top and let the
+         * flash find the eye. Keyed on the rows as well as the id because
+         * the folder is still loading when this screen first composes.
+         */
+        val gridState = rememberLazyGridState()
+        val listState = rememberLazyListState()
+        var flashed by remember { mutableStateOf<Long?>(null) }
+        val flash = remember { Animatable(0f) }
+        LaunchedEffect(highlightFileId, state.rows, state.viewMode) {
+            val id = highlightFileId ?: return@LaunchedEffect
+            val index = files.indexOfFirst { it.fileId == id }
+            if (index < 0) return@LaunchedEffect
+            val lead = (if (offline != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
+            runCatching {
+                if (state.viewMode == ViewMode.GRID) {
+                    // + the folders eyebrow and every folder tile, + the files eyebrow.
+                    val header = lead + (if (folders.isNotEmpty()) 1 + folders.size else 0) + 1
+                    gridState.animateScrollToItem(header + index)
+                } else {
+                    listState.animateScrollToItem(lead + (if (folders.isNotEmpty()) 1 else 0))
+                }
+            }
+            flashed = id
+            flash.snapTo(1f)
+            delay(FLASH_HOLD_MS)
+            flash.animateTo(0f, tween(FLASH_FADE_MS))
+            flashed = null
+        }
         // The bar floats over the pill, so the last row has to clear both.
         val bottomPadding = LocalNavPillInsets.current.calculateBottomPadding() +
             if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp
@@ -247,6 +290,7 @@ private fun BrowseContent(
 
         if (state.viewMode == ViewMode.ROWS) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().testTag("browse_grid"),
                 contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = bottomPadding),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s12),
@@ -318,7 +362,12 @@ private fun BrowseContent(
                                     // The Library's rows lift onto `surface` from the ground; these
                                     // already sit ON a surface card, so the same idea measured from
                                     // the card is `skeleton`, the next step up.
-                                    modifier = if (row.fileId == selectedFileId) Modifier.background(colors.skeleton) else Modifier,
+                                    modifier = when {
+                                        row.fileId == selectedFileId -> Modifier.background(colors.skeleton)
+                                        // A row has no art to ring, so it flashes instead.
+                                        row.fileId == flashed -> Modifier.background(colors.ink.copy(alpha = flash.value * 0.18f))
+                                        else -> Modifier
+                                    },
                                 )
                             }
                         }
@@ -331,6 +380,7 @@ private fun BrowseContent(
             // Library's 2:3: Browse shows the file as it is, and a folder on a
             // share has no poster to speak of.
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().testTag("browse_tiles"),
                 contentPadding = PaddingValues(start = Spacing.s18, end = Spacing.s18, bottom = bottomPadding),
@@ -382,6 +432,7 @@ private fun BrowseContent(
                             // The pane's ring stands down while selecting, so one
                             // ring never means both "open" and "picked".
                             selected = !selecting && row.fileId == selectedFileId,
+                            highlight = if (row.fileId == flashed) flash.value else 0f,
                             onClick = if (selecting) {
                                 { viewModel.toggleSelection(row) }
                             } else {
@@ -481,3 +532,7 @@ private fun NoSourceContent(onAddServer: () -> Unit) {
         }
     }
 }
+
+/** Long enough to find with your eye, short enough not to look stuck. */
+private const val FLASH_HOLD_MS = 1_200L
+private const val FLASH_FADE_MS = 500
