@@ -81,7 +81,6 @@ import com.regolith.ui.theme.scaledDp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.alpha
-import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.util.SelectionUiState
 
 /**
@@ -344,6 +343,8 @@ fun SearchScreen(
                             SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "search_select_download", enabled = live.canDownload),
                         ),
                         onCancel = viewModel::cancelSelection,
+                        summary = live.summary,
+                        detail = live.detail,
                     ),
                 )
             }

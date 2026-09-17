@@ -483,6 +483,10 @@ private fun BrowseContent(
                             SelectionVerb("Delete", R.drawable.rg_ic_trash, viewModel::startDelete, "browse_select_delete", enabled = state.canActOnFiles, destructive = true),
                         ),
                         onCancel = viewModel::cancelSelection,
+                        summary = live.summary,
+                        // The hint explains a GREY verb, so it outranks the
+                        // selection's own qualifier when both apply.
+                        detail = state.selectionHint ?: live.detail,
                     ),
                 )
             }

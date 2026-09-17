@@ -127,7 +127,7 @@ fun ChromeMessageHost(state: SnackbarHostState, hazeState: HazeState, modifier: 
             // different material reads as something stuck onto it, and text
             // over unblurred artwork is the readability problem this fixes.
             Modifier.fillMaxWidth()
-                .then(navChromeFrost(hazeState, MessageTierShape))
+                .navChromeFrost(hazeState, MessageTierShape)
                 .testTag("chrome_message"),
         ) {
             Row(

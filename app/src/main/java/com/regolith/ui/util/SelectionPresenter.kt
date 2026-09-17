@@ -22,8 +22,8 @@ import javax.inject.Inject
 /**
  * A selection as one screen needs to see it.
  *
- * Null on a screen's UiState means "not selecting", and the contextual top
- * bar and the [com.regolith.ui.components.SelectionBar] are not drawn.
+ * Null on a screen's UiState means "not selecting": the contextual top bar
+ * stands down and the nav chrome goes back to being a nav.
  */
 data class SelectionUiState(
     /** Folders picked in their own right: checked, and tapping unpicks. */

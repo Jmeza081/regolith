@@ -84,6 +84,7 @@ import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.NavChromeHold
 import androidx.compose.material3.SnackbarHostState
 import com.regolith.ui.components.SelectionChrome
+import com.regolith.ui.components.SelectionSummaryTier
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
@@ -656,13 +657,17 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // appeared, and since nothing could dismiss it, it held the
                     // queue's lock and swallowed every message after it.
                     if (windowShape.wide) {
-                        ChromeMessageHost(
-                            appSnackbar,
-                            hazeState,
-                            Modifier.align(Alignment.BottomCenter)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                            modifier = Modifier.align(Alignment.BottomCenter)
                                 .padding(start = railInset, end = Spacing.s18, bottom = Spacing.s18)
                                 .widthIn(max = CHROME_MESSAGE_MAX_WIDTH),
-                        )
+                        ) {
+                            selectionChrome.state?.let { chrome ->
+                                SelectionSummaryTier(chrome, hazeState)
+                            }
+                            ChromeMessageHost(appSnackbar, hazeState)
+                        }
                     }
                     // On a wide window the rail and its spine occupy the same
                     // edge and swap: whichever is not showing has slid out.
@@ -711,6 +716,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             // two tiers, one clock. Phones only — the rail has
                             // no "above" to dock to.
                             if (!windowShape.wide) {
+                                // What is picked, and why a verb might be grey.
+                                // The pill has no room for a sentence, so it
+                                // rides directly above it in the same glass.
+                                selectionChrome.state?.let { chrome ->
+                                    SelectionSummaryTier(chrome, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
+                                }
                                 ChromeMessageHost(appSnackbar, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                             }
                             NavPill(

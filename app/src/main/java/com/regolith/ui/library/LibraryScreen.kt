@@ -57,7 +57,6 @@ import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.LocalSelectionChrome
-import com.regolith.ui.components.SelectionBar
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.ArtworkImage
@@ -95,7 +94,6 @@ import com.regolith.domain.library.ViewMode
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.regolith.ui.theme.scaledDp
 import androidx.activity.compose.BackHandler
-import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.util.SelectionUiState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -262,33 +260,41 @@ fun LibraryScreen(
                 )
                 val devicePicked = state.device.picked
                 if (devicePicked != null) {
+                    // The same chrome as every other selection in the app: the
+                    // pill becomes the toolbar, the tier above it carries the
+                    // count. Removing copies is a different act from
+                    // downloading them, but it is the same GESTURE, so it must
+                    // not look like a different feature.
                     val n = devicePicked.size
-                    SelectionBar(
-                        summary = when {
-                            n == 0 -> "Nothing picked"
-                            n == 1 -> "1 video · ${formatBytes(state.device.pickedBytes())}"
-                            else -> "$n videos · ${formatBytes(state.device.pickedBytes())}"
-                        },
-                        detail = if (n == 0) {
-                            "Hold or tap a copy to start"
-                        } else {
-                            "The share keeps them — this frees the space here"
-                        },
-                        actionText = "Remove",
-                        actionEnabled = n > 0,
-                        destructive = true,
-                        onAction = viewModel::askRemovePicked,
-                        onCancel = viewModel::cancelDeviceSelection,
-                        testTag = "device_select_bar",
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(
-                                start = Spacing.s18,
-                                end = Spacing.s18,
-                                bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+                    val deviceChrome = LocalSelectionChrome.current
+                    DisposableEffect(devicePicked) {
+                        deviceChrome.show(
+                            SelectionChromeState(
+                                verbs = listOf(
+                                    SelectionVerb(
+                                        label = "Remove",
+                                        icon = R.drawable.rg_ic_trash,
+                                        onClick = viewModel::askRemovePicked,
+                                        testTag = "device_select_remove",
+                                        enabled = n > 0,
+                                        destructive = true,
+                                    ),
+                                ),
+                                onCancel = viewModel::cancelDeviceSelection,
+                                summary = when {
+                                    n == 0 -> "Nothing picked"
+                                    n == 1 -> "1 video · ${formatBytes(state.device.pickedBytes())}"
+                                    else -> "$n videos · ${formatBytes(state.device.pickedBytes())}"
+                                },
+                                detail = if (n == 0) {
+                                    "Hold or tap a copy to start"
+                                } else {
+                                    "The share keeps them — this frees the space here"
+                                },
                             ),
-                    )
+                        )
+                        onDispose { deviceChrome.clear() }
+                    }
                 }
             }
             if (state.device.confirmRemove != null) {
@@ -422,6 +428,8 @@ fun LibraryScreen(
                             SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "library_select_download", enabled = live.canDownload),
                         ),
                         onCancel = viewModel::cancelSelection,
+                        summary = live.summary,
+                        detail = live.detail,
                     ),
                 )
             }

@@ -97,7 +97,7 @@ fun NavPill(
     selection: SelectionChromeState? = null,
 ) {
     val colors = RegolithTheme.colors
-    val frosted = navChromeFrost(hazeState, PillShape)
+    val frosted = Modifier.navChromeFrost(hazeState, PillShape)
     val cell: @Composable (MainTab, Modifier) -> Unit = { tab, cellModifier ->
         NavCell(tab, selected = tab == selected, dimmed = tab in dimmed, dot = tab in dots, onSelect = onSelect, modifier = cellModifier)
     }
@@ -213,7 +213,7 @@ private fun CancelCircle(onClick: () -> Unit, hazeState: HazeState) {
     Box(
         modifier = Modifier
             .size(62.dp)
-            .then(navChromeFrost(hazeState, PillShape))
+            .navChromeFrost(hazeState, PillShape)
             .clickable(interactionSource = null, indication = null, role = Role.Button, onClick = onClick)
             .testTag("nav_selection_cancel"),
         contentAlignment = Alignment.Center,
@@ -237,7 +237,7 @@ private fun CancelCircle(onClick: () -> Unit, hazeState: HazeState) {
  * different surface docked to the pill rather than part of it.
  */
 @Composable
-fun navChromeFrost(hazeState: HazeState, shape: Shape): Modifier {
+fun Modifier.navChromeFrost(hazeState: HazeState, shape: Shape): Modifier {
     val colors = RegolithTheme.colors
     val style = HazeStyle(
         backgroundColor = colors.ground,
@@ -245,7 +245,7 @@ fun navChromeFrost(hazeState: HazeState, shape: Shape): Modifier {
         blurRadius = 20.dp,
         noiseFactor = 0f,
     )
-    return Modifier
+    return this
         .shadow(elevation = 12.dp, shape = shape, ambientColor = colors.ground, spotColor = colors.ground)
         .clip(shape)
         .hazeEffect(state = hazeState, style = style)
