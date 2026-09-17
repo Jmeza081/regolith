@@ -29,10 +29,10 @@ class SidecarWriter @Inject constructor(
         val part = pathFor(folderRelPath, videoName, ChapterSidecar.PART_SUFFIX)
         val mtime = gateway.write(host, credentials, share, part, text.toByteArray(Charsets.UTF_8))
         try {
-            gateway.rename(host, credentials, share, part, real)
+            gateway.rename(host, credentials, share, part, real, replace = true)
         } catch (e: SmbFailure.Other) {
             gateway.delete(host, credentials, share, real)
-            gateway.rename(host, credentials, share, part, real)
+            gateway.rename(host, credentials, share, part, real, replace = true)
         } catch (e: SmbFailure) {
             // Leave nothing behind under the temporary name either.
             runCatching { gateway.delete(host, credentials, share, part) }

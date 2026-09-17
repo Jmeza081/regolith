@@ -25,6 +25,14 @@ class FakeSmbGateway : SmbGateway {
     var readOnly = false
     /** A server that refuses to rename onto an existing name (some NAS do); the writer must delete first. */
     var renameOverExistingFails = false
+
+    /**
+     * The share drops after this many renames, the way a Wi-Fi blip does
+     * mid-batch. There is no other way to reach the case the SMB probe
+     * proved matters most: everything already renamed stays renamed.
+     */
+    var unreachableAfterRenames: Int? = null
+    var renameCount = 0
     /** Each write's clock: the next write gets this time, then it advances by a second. */
     var clockMs = DEFAULT_MTIME + 1_000
     val writes = mutableListOf<String>()
@@ -52,11 +60,16 @@ class FakeSmbGateway : SmbGateway {
         return at
     }
 
-    override suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String) {
+    override suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String, replace: Boolean) {
+        unreachableAfterRenames?.let { limit -> if (renameCount >= limit) throw SmbFailure.Unreachable(host.host) }
+        renameCount++
         checkWritable(host, credentials, share)
         val all = files.getValue(share)
         val bytes = all[fromRelPath] ?: throw SmbFailure.NotFound("$share/$fromRelPath")
-        if (renameOverExistingFails && all.containsKey(toRelPath)) throw SmbFailure.Other("$toRelPath exists")
+        // Without [replace] the real server refuses rather than overwriting,
+        // and so must this: the whole point of the flag is that a clobber
+        // is never silent.
+        if ((!replace || renameOverExistingFails) && all.containsKey(toRelPath)) throw SmbFailure.Other("$toRelPath exists")
         all.remove(fromRelPath); all[toRelPath] = bytes
         val m = mtimes.getOrPut(share) { mutableMapOf() }
         m[toRelPath] = m.remove(fromRelPath) ?: DEFAULT_MTIME

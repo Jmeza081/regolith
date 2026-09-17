@@ -262,12 +262,18 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             }
         }
 
-    override suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String) =
-        withContext(Dispatchers.IO) {
-            withDialect(host, credentials, "$share/$fromRelPath") { ctx ->
-                SmbFile(fileUrl(host, share, fromRelPath), ctx).renameTo(SmbFile(fileUrl(host, share, toRelPath), ctx), true)
-            }
+    override suspend fun rename(
+        host: SmbHost,
+        credentials: SmbCredentials,
+        share: String,
+        fromRelPath: String,
+        toRelPath: String,
+        replace: Boolean,
+    ) = withContext(Dispatchers.IO) {
+        withDialect(host, credentials, "$share/$fromRelPath") { ctx ->
+            SmbFile(fileUrl(host, share, fromRelPath), ctx).renameTo(SmbFile(fileUrl(host, share, toRelPath), ctx), replace)
         }
+    }
 
     override suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) =
         withContext(Dispatchers.IO) {
