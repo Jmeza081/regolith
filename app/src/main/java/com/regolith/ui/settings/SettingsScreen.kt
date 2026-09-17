@@ -55,6 +55,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.regolith.domain.security.BiometricAvailability
+import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
@@ -201,6 +202,30 @@ fun SettingsScreen(
                             label = "Don't ask first", note = "Skip the ten-second Up next card and go straight in.",
                             checked = state.autoplayImmediately, onCheckedChange = viewModel::setAutoplayImmediately,
                             enabled = state.autoplayNext, testTag = "settings_autoplay_immediately_switch",
+                        )
+                    }
+                }
+            }
+
+            // Its own section rather than a row inside Playback: this does not
+            // change how anything plays, it decides what reaches the feed at
+            // all. A file longer than this simply is not there.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                Eyebrow("Shorts", muted = true)
+                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    Column(
+                        Modifier.padding(vertical = Spacing.s12),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        Text("Longest clip", style = TextStyles.settingLabel, color = colors.ink)
+                        Text(
+                            "Vertical videos up to this long appear in Shorts.",
+                            style = TextStyles.settingMeta, color = colors.metadata,
+                        )
+                        SegmentedTabs(
+                            segments = ShortsLength.entries.map { Segment(it.label, "settings_shorts_length_${it.maxMs / 1000}") },
+                            selected = ShortsLength.entries.indexOf(state.shortsLength),
+                            onSelect = { viewModel.setShortsLength(ShortsLength.entries[it]) },
                         )
                     }
                 }

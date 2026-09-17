@@ -11,6 +11,7 @@ import com.regolith.data.prefs.AppPreferences
 import android.app.Activity
 import com.regolith.data.security.BiometricGate
 import com.regolith.domain.security.AuthResult
+import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.DemoSource
@@ -108,6 +109,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoplayImmediately.collect { v -> _uiState.update { it.copy(autoplayImmediately = v) } } }
         viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
+        viewModelScope.launch { prefs.shortsLength.collect { v -> _uiState.update { it.copy(shortsLength = v) } } }
         viewModelScope.launch {
             demo.installed.collect { installed ->
                 val bytes = withContext(Dispatchers.IO) { demo.usedBytes() }
@@ -235,6 +237,9 @@ class SettingsViewModel @Inject constructor(
     fun setAutoHideRail(enabled: Boolean) = viewModelScope.launch { prefs.setAutoHideRail(enabled) }.let { }
 
     fun setAmbientLight(enabled: Boolean) = viewModelScope.launch { prefs.setAmbientLight(enabled) }.let { }
+
+    /** Settings › Shorts: the longest a clip may be and still reach the feed. */
+    fun setShortsLength(length: ShortsLength) = viewModelScope.launch { prefs.setShortsLength(length) }.let { }
 
     /**
      * Settings › Demo library. Installing replaces whatever was there, so

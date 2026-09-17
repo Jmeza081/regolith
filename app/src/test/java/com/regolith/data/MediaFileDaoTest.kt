@@ -9,6 +9,7 @@ import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareEntity
+import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.media.ShortsRule
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -135,10 +136,11 @@ class MediaFileDaoTest {
         db.mediaFileDao().upsert(file("unmeasured.mkv"))     // nothing has opened it yet
         db.mediaFileDao().markMissingNotIn(folderId, listOf("portrait.mkv", "turned.mkv", "landscape.mkv", "long.mkv", "unmeasured.mkv"))
 
-        val candidates = db.mediaFileDao().observeShortCandidates(listOf(shareId), ShortsRule.MAX_DURATION_MS).first()
+        val max = ShortsLength.DEFAULT.maxMs
+        val candidates = db.mediaFileDao().observeShortCandidates(listOf(shareId), max).first()
         assertEquals(listOf("landscape.mkv", "portrait.mkv", "turned.mkv"), candidates.map { it.name }.sorted())
 
-        val shorts = candidates.filter { ShortsRule.isShort(it.durationMs, it.width, it.height, it.rotationDegrees) }
+        val shorts = candidates.filter { ShortsRule.isShort(it.durationMs, it.width, it.height, it.rotationDegrees, max) }
         assertEquals(listOf("portrait.mkv", "turned.mkv"), shorts.map { it.name }.sorted())
     }
 

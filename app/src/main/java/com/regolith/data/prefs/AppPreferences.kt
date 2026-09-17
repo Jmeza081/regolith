@@ -9,6 +9,7 @@ import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
+import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -46,6 +47,7 @@ class AppPreferences @Inject constructor(
         val appLock = booleanPreferencesKey("app_lock")
         val appLockAfter = stringPreferencesKey("app_lock_after")
         val shortsAutoAdvance = booleanPreferencesKey("shorts_auto_advance")
+        val shortsLength = stringPreferencesKey("shorts_length")
     }
 
     /** Settings › Privacy: ask for a fingerprint, face or screen lock before showing the library. */
@@ -103,6 +105,19 @@ class AppPreferences @Inject constructor(
 
     suspend fun setShortsAutoAdvance(enabled: Boolean) {
         store.edit { it[Keys.shortsAutoAdvance] = enabled }
+    }
+
+    /**
+     * Settings › Shorts: how long a clip may be and still reach the feed.
+     *
+     * Stored by enum name rather than a raw number of seconds, so the
+     * offered set can change later without stranding anyone on a value that
+     * is no longer one of the choices.
+     */
+    val shortsLength: Flow<ShortsLength> = store.data.map { ShortsLength.of(it[Keys.shortsLength]) }
+
+    suspend fun setShortsLength(length: ShortsLength) {
+        store.edit { it[Keys.shortsLength] = length.name }
     }
 
     /** Settings › Playback › Scrub thumbnails. Consumed in Phase 3. */

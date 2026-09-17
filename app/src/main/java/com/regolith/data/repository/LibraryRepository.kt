@@ -293,12 +293,12 @@ class LibraryRepository @Inject constructor(
      * the row and are simply absent, which is what [ShortsRule] means by
      * refusing to guess.
      */
-    fun observeShorts(shareIds: List<Long>): Flow<List<MediaFileEntity>> =
+    fun observeShorts(shareIds: List<Long>, maxDurationMs: Long): Flow<List<MediaFileEntity>> =
         if (shareIds.isEmpty()) {
             flowOf(emptyList())
         } else {
-            mediaFileDao.observeShortCandidates(shareIds, ShortsRule.MAX_DURATION_MS)
-                .map { rows -> rows.filter { ShortsRule.isShort(it.durationMs, it.width, it.height, it.rotationDegrees) } }
+            mediaFileDao.observeShortCandidates(shareIds, maxDurationMs)
+                .map { rows -> rows.filter { ShortsRule.isShort(it.durationMs, it.width, it.height, it.rotationDegrees, maxDurationMs) } }
         }
 
     fun observeNewest(limit: Int): Flow<List<MediaFileEntity>> = mediaFileDao.observeNewest(limit)

@@ -3,6 +3,7 @@ package com.regolith.ui.settings
 import com.regolith.data.artwork.PrefetchStatus
 import com.regolith.domain.playback.UserChapterStats
 import com.regolith.domain.security.BiometricAvailability
+import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
 import com.regolith.domain.transfer.QueueProgress
 import com.regolith.ui.util.formatBytes
@@ -69,6 +70,8 @@ data class SettingsUiState(
     /** One switch per enabled share: does Done write a chapter file beside each film there (P10). */
     val shareWrites: List<ShareWriteRow> = emptyList(),
     // --- Privacy: the app lock (P11).
+    /** Settings › Shorts: how long a clip may be and still reach the feed. */
+    val shortsLength: ShortsLength = ShortsLength.DEFAULT,
     val appLock: Boolean = false,
     val appLockAfter: LockAfter = LockAfter.DEFAULT,
     /** What the device can do about biometrics; the switch is only usable when it is ready. */

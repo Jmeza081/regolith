@@ -1,5 +1,6 @@
 package com.regolith.domain
 
+import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.media.ShortsRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,7 +11,8 @@ import org.junit.Test
 /** The Shorts feed's whole admission rule, against sizes real files actually have. */
 class ShortsRuleTest {
 
-    private fun short(w: Int?, h: Int?, rot: Int?, ms: Long?) = ShortsRule.isShort(ms, w, h, rot)
+    private fun short(w: Int?, h: Int?, rot: Int?, ms: Long?, max: Long = ShortsLength.DEFAULT.maxMs) =
+        ShortsRule.isShort(ms, w, h, rot, max)
 
     @Test fun `upright portrait clips are shorts`() {
         assertTrue(short(1080, 1920, null, 15_000))   // 9:16
@@ -35,10 +37,29 @@ class ShortsRuleTest {
         assertFalse(short(1080, 1920, 90, 15_000))   // portrait turned onto its side
     }
 
-    @Test fun `over a minute is not a short, however tall`() {
+    @Test fun `over the limit is not a short, however tall`() {
         assertTrue(short(1080, 1920, null, 60_000))   // the boundary is inclusive
         assertFalse(short(1080, 1920, null, 60_001))
         assertFalse(short(1080, 1920, null, 90_000))
+    }
+
+    /** The same clip is a Short or not depending on the setting, which is the point. */
+    @Test fun `the limit is the setting, not a constant`() {
+        val clip = 45_000L
+        assertFalse(short(1080, 1920, null, clip, max = ShortsLength.THIRTY.maxMs))
+        assertTrue(short(1080, 1920, null, clip, max = ShortsLength.SIXTY.maxMs))
+        assertTrue(short(1080, 1920, null, clip, max = ShortsLength.NINETY.maxMs))
+        // Every boundary is inclusive, at every setting.
+        assertTrue(short(1080, 1920, null, 30_000, max = ShortsLength.THIRTY.maxMs))
+        assertFalse(short(1080, 1920, null, 30_001, max = ShortsLength.THIRTY.maxMs))
+        assertTrue(short(1080, 1920, null, 90_000, max = ShortsLength.NINETY.maxMs))
+        assertFalse(short(1080, 1920, null, 90_001, max = ShortsLength.NINETY.maxMs))
+    }
+
+    @Test fun `a stored name survives reordering, and nonsense falls back`() {
+        assertEquals(ShortsLength.NINETY, ShortsLength.of("NINETY"))
+        assertEquals(ShortsLength.DEFAULT, ShortsLength.of(null))
+        assertEquals(ShortsLength.DEFAULT, ShortsLength.of("FORTY_TWO"))
     }
 
     @Test fun `unmeasured is never a short, rather than a guess`() {

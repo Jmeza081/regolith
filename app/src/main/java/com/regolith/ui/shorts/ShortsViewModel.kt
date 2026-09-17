@@ -80,8 +80,14 @@ class ShortsViewModel @Inject constructor(
      */
     private val _shuffleSeed = MutableStateFlow<Long?>(null)
 
-    private val shorts = sources.observeEnabledShares()
-        .flatMapLatest { shares -> if (shares.isEmpty()) flowOf(emptyList()) else library.observeShorts(shares.map { it.id }) }
+    // The length is folded in UPSTREAM rather than into `uiState`: it changes
+    // which files qualify, not how they are drawn, so it belongs in the query.
+    // (It also could not go in the combine below, which is already at the
+    // five-flow overload.)
+    private val shorts = combine(sources.observeEnabledShares(), prefs.shortsLength) { shares, length -> shares to length }
+        .flatMapLatest { (shares, length) ->
+            if (shares.isEmpty()) flowOf(emptyList()) else library.observeShorts(shares.map { it.id }, length.maxMs)
+        }
 
     val uiState: StateFlow<ShortsUiState> = combine(
         shorts, transfers.observeDoneFileIds(), artwork.observe(), _folderId, _shuffleSeed,

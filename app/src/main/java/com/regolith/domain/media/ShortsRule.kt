@@ -1,7 +1,30 @@
 package com.regolith.domain.media
 
 /**
- * Which files the Shorts feed plays: vertical, and a minute or less.
+ * How long a clip may be and still count as a Short.
+ *
+ * Stored by [name] so the order of this enum can change without moving
+ * anyone's setting — the same contract [com.regolith.domain.security.LockAfter]
+ * keeps. The label is what the segmented control shows.
+ */
+enum class ShortsLength(val label: String, val maxMs: Long) {
+    THIRTY("30s", 30_000L),
+    SIXTY("60s", 60_000L),
+    NINETY("90s", 90_000L),
+    ;
+
+    companion object {
+        /** A minute is what the feed promised before this was a choice. */
+        val DEFAULT = SIXTY
+
+        /** Reads a stored name back; anything unknown falls back to [DEFAULT]. */
+        fun of(name: String?): ShortsLength = entries.firstOrNull { it.name == name } ?: DEFAULT
+    }
+}
+
+/**
+ * Which files the Shorts feed plays: vertical, and no longer than the
+ * length the owner picked.
  *
  * This sits beside [MediaFileTypes] because it answers the same shape of
  * question — "does this file belong in this list?" — and, like it, decides
@@ -10,9 +33,6 @@ package com.regolith.domain.media
  * no device.
  */
 object ShortsRule {
-
-    /** "A minute or less", as the feed promises. */
-    const val MAX_DURATION_MS = 60_000L
 
     /**
      * Width divided by height AS DISPLAYED, with the container's rotation
@@ -34,7 +54,11 @@ object ShortsRule {
     }
 
     /**
-     * Taller than it is wide, and short.
+     * Taller than it is wide, and no longer than [maxDurationMs].
+     *
+     * The limit is a parameter rather than a constant because it is now a
+     * setting: the same file is a Short at 90s and not at 30s, so nothing
+     * downstream may cache the answer.
      *
      * Anything not yet measured is NOT a Short. Null means "we have not
      * looked", and a feed that guessed would show landscape films between
@@ -42,8 +66,8 @@ object ShortsRule {
      * ruling out by construction. Square is out too: the test is strictly
      * less than 1, so 1:1 falls on the landscape side of the line.
      */
-    fun isShort(durationMs: Long?, width: Int?, height: Int?, rotationDegrees: Int?): Boolean {
-        if (durationMs == null || durationMs <= 0 || durationMs > MAX_DURATION_MS) return false
+    fun isShort(durationMs: Long?, width: Int?, height: Int?, rotationDegrees: Int?, maxDurationMs: Long): Boolean {
+        if (durationMs == null || durationMs <= 0 || durationMs > maxDurationMs) return false
         val aspect = displayAspect(width, height, rotationDegrees) ?: return false
         return aspect < 1f
     }
