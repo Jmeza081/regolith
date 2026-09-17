@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --ground:#0A0A0A; --surface:#0F0F0F; --hairline:#1F1F1F; --raised:#2E2E2E;
+      --metadata:#6E6E6E; --body:#A0A0A0; --ink:#FFFFFF; --inkSoft:#EDEDED;
+      --red:#E11B17; --badge:#1A1A1A; --notice:#141414; --disabledInk:#4A4A4A;
+      --frost:rgba(255,255,255,.06); --frostBorder:rgba(255,255,255,.18);
+      --pillBg:rgba(0,0,0,.52); --pillBorder:rgba(255,255,255,.16);
+    }
+    body{margin:0;background:var(--ground);font-family:"Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+    a{color:#E11B17;} a:hover{color:#EDEDED;}
+    .mich{font-family:Michroma,Verdana,sans-serif;text-transform:uppercase;font-weight:400;}
+    .screen{width:411px;height:914px;position:relative;overflow:hidden;background:var(--ground);}
+    .col{display:flex;flex-direction:column;}
+    .row{display:flex;flex-direction:row;align-items:center;}
+    .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;}
+    .eyebrow{font-size:14.1px;line-height:14.1px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--metadata);}
+    .meta{font-size:14.1px;line-height:19.7px;color:var(--metadata);}
+    .rowLabelSm{font-size:16.6px;line-height:21.8px;font-weight:500;color:var(--ink);}
+    .thumb{width:66.6px;height:37.4px;border-radius:7px;background:linear-gradient(140deg,#243040,#121820);flex:none;}
+    .navcell{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .navlabel{font-size:12.8px;line-height:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+    .chrome{position:absolute;left:18px;right:18px;background:var(--pillBg);border:1px solid var(--pillBorder);}
+    .verb{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .verbLabel{font-size:12.8px;line-height:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#EDEDED;}
+    .count{font-size:16.6px;line-height:20px;font-weight:500;color:var(--ink);}
+    .tag{display:inline-block;font-size:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;}
+    .warn{background:rgba(225,27,23,.14);color:#E11B17;}
+    .ok{background:var(--frost);color:#EDEDED;border:1px solid var(--frostBorder);}
+  </style>
+</helmet>
+
+<div class="screen">
+  <div class="row" style="padding:32px 8px 8px 18px;align-items:flex-start;">
+    <div class="col" style="flex:1;gap:8px;">
+      <div class="mich" style="font-size:19.2px;line-height:25px;color:var(--ink);">Films</div>
+      <div style="font-size:15.4px;line-height:15.4px;color:var(--metadata);">media / Films</div>
+    </div>
+  </div>
+  <div class="col" style="padding:0 18px;gap:12px;margin-top:12px;">
+    <div class="col" style="gap:8px;">
+      <div class="eyebrow">4 files</div>
+      <div class="card" style="padding:0 12px;">
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Heat.1995.1080p.mkv</div><div class="meta">1080p · 6.1 GB</div></div>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Hard.Boiled.1992.mkv</div><div class="meta">1080p · 2.8 GB</div></div>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Long.Test.2026.mp4</div><div class="meta">4K · 31.2 MB</div></div>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Sicario.2015.2160p.mkv</div><div class="meta">4K · 18.4 GB</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the message rides in the chrome, directly above the pill -->
+  <div class="chrome row" style="bottom:96px;height:56px;border-radius:26px;padding:0 6px 0 18px;gap:12px;">
+    <div style="flex:1;font-size:16.6px;line-height:21px;font-weight:500;color:var(--ink);">Moved 4 videos to Archive</div>
+    <div style="height:44px;display:flex;align-items:center;padding:0 12px;font-size:16.6px;font-weight:600;color:#FFFFFF;">Undo</div>
+  </div>
+
+  <div class="chrome row" style="bottom:26px;height:62px;border-radius:999px;padding:0 10px;">
+<div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20H4z"/></svg><span class="navlabel" style="color:#8A8A8A;">Home</span></div><div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg><span class="navlabel" style="color:#8A8A8A;">Library</span></div><div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="navlabel" style="color:#FFFFFF;">Browse</span></div><div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg><span class="navlabel" style="color:#8A8A8A;">Search</span></div><div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M10.6 8.9 15 12l-4.4 3.1z"/></svg><span class="navlabel" style="color:#8A8A8A;">Shorts</span></div>
+  </div>
+
+  <div style="position:absolute;left:18px;right:18px;bottom:176px;">
+    <span class="tag ok">One line only · the pill can't hold two</span>
+  </div>
+  <div style="position:absolute;left:18px;right:18px;bottom:222px;">
+    <span class="tag warn">Anything longer, or unmissable, still goes to InlineStatus at the top</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

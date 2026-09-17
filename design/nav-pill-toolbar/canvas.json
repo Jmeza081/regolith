@@ -1,0 +1,32 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",        "x": 0,    "y": 0,    "w": 411, "h": 914, "title": "1 - Morph" },
+    { "file": "Stack.dc.html",       "x": 511,  "y": 0,    "w": 411, "h": 914, "title": "2 - Stack (recommended)" },
+    { "file": "Expand.dc.html",      "x": 1022, "y": 0,    "w": 411, "h": 914, "title": "3 - Expand" },
+    { "file": "Message.dc.html",     "x": 1533, "y": 0,    "w": 411, "h": 914, "title": "Messages in the chrome" },
+    { "file": "Feasibility.dc.html", "x": 0,    "y": 1140, "w": 980, "h": 880, "title": "Feasibility + cost" }
+  ],
+  "annotations": [
+    {
+      "id": "already-true",
+      "x": 0, "y": -175, "w": 520,
+      "text": "WHY THIS IS CHEAPER THAN IT LOOKS\nThree prerequisites already exist: SelectionStore is @Singleton (the selection is app-scoped, so the nav graph can read it), NavGraph already computes canSelectHere, and LocalNavChromeHold landed this week. The prize is not the animation - it is that FOUR screens currently draw their own SelectionBar (Library twice, Search, Browse) and the chrome would draw one."
+    },
+    {
+      "id": "breaks-tabs",
+      "x": 0, "y": 960, "w": 430,
+      "text": "Morph is the boldest and the cheapest to draw, but it spends something you built on purpose: a pick is meant to survive walking between Browse, Library and Search. With the tabs replaced you cannot reach the other two. 375x62dp also cannot hold a count, four verbs and a way out."
+    },
+    {
+      "id": "recommended",
+      "x": 511, "y": 960, "w": 430,
+      "text": "Stack keeps the tabs, so cross-tab picking still works, and there is room for the count line and four verbs. It is today's bar re-homed into the chrome - the smallest behavioural change for the biggest structural win."
+    },
+    {
+      "id": "one-system",
+      "x": 1533, "y": 960, "w": 430,
+      "text": "The message tier and the verb tier are the same idea at two heights: dock something above the pill, in the pill's own material. That is what makes snackbars and selection stop being two systems. One line only - anything longer, or anything that must not be missed, still belongs in InlineStatus at the top."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

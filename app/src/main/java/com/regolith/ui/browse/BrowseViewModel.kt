@@ -2,6 +2,7 @@ package com.regolith.ui.browse
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
@@ -10,8 +11,14 @@ import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.playback.VideoInfo
+import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.smb.SmbFailure
+import com.regolith.ui.components.MoveChild
+import com.regolith.ui.components.MoveSheetState
+import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.SelectionPresenter
+import com.regolith.ui.util.SelectionUiState
+import com.regolith.ui.util.formatBytes
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -40,6 +47,7 @@ class BrowseViewModel @AssistedInject constructor(
     private val sources: SourceRepository,
     private val prefs: AppPreferences,
     private val selection: SelectionPresenter,
+    private val fileOps: FileOpsRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -54,7 +62,18 @@ class BrowseViewModel @AssistedInject constructor(
         if (folderId == null) observeRoot() else observeFolder(folderId)
         viewModelScope.launch { prefs.browseViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         observeTree()
-        viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
+        viewModelScope.launch {
+            selection.observe().collect { sel ->
+                _uiState.update {
+                    it.copy(
+                        selection = sel,
+                        canActOnFiles = sel != null && sel.pickedFolders.isEmpty() && sel.pickedFiles.isNotEmpty(),
+                        canRename = sel != null && sel.pickedFolders.isEmpty() && sel.pickedFiles.size == 1,
+                        selectionHint = hintFor(sel),
+                    )
+                }
+            }
+        }
         _uiState.update { it.copy(currentFolderId = folderId) }
     }
 
@@ -180,6 +199,166 @@ class BrowseViewModel @AssistedInject constructor(
     /** Queue the batch and leave selection mode. */
     fun downloadSelection() {
         viewModelScope.launch { selection.download() }
+    }
+
+    // ── Managing files on the share (P12) ──────────────────────────────
+    //
+    // Files only. A picked folder leaves Download alone but takes the three
+    // verbs out, because a folder move would drag a subtree of rows behind
+    // it and a folder delete is the one mistake with no way back.
+
+    private fun hintFor(sel: SelectionUiState?): String? = when {
+        sel == null -> null
+        sel.pickedFolders.isNotEmpty() -> "Move, rename and delete are for files only"
+        sel.pickedFiles.size > 1 -> "Rename works on one at a time"
+        else -> null
+    }
+
+    private fun pickedFileIds(): List<Long>? =
+        _uiState.value.selection?.pickedFiles?.toList()?.takeIf { it.isNotEmpty() }
+
+    fun startRename() {
+        val id = pickedFileIds()?.singleOrNull() ?: return
+        viewModelScope.launch {
+            val row = library.file(id) ?: return@launch
+            _uiState.update { it.copy(renaming = RenameTarget(id, row.name)) }
+        }
+    }
+
+    fun rename(newBaseName: String) {
+        val target = _uiState.value.renaming ?: return
+        _uiState.update { it.copy(renaming = null) }
+        viewModelScope.launch {
+            val result = fileOps.rename(target.fileId, newBaseName)
+            selection.cancel()
+            report(result, verb = "rename", past = "Renamed")
+        }
+    }
+
+    fun startDelete() {
+        val ids = pickedFileIds() ?: return
+        viewModelScope.launch {
+            val rows = library.filesInOrder(ids)
+            _uiState.update {
+                it.copy(
+                    confirmingDelete = DeleteTarget(
+                        fileIds = ids,
+                        names = rows.map { r -> r.name },
+                        sizeLabel = formatBytes(rows.sumOf { r -> r.sizeBytes }),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun confirmDelete() {
+        val target = _uiState.value.confirmingDelete ?: return
+        _uiState.update { it.copy(confirmingDelete = null) }
+        viewModelScope.launch {
+            val result = fileOps.delete(target.fileIds)
+            selection.cancel()
+            report(result, verb = "delete", past = "Deleted")
+        }
+    }
+
+    /** Open the destination picker, rooted where the user already is. */
+    fun startMove() {
+        val ids = pickedFileIds() ?: return
+        val here = folderId ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(moveSheet = sheetFor(here, chosenId = here, count = ids.size)) }
+        }
+    }
+
+    /** Walk into a folder. Walking in also chooses it — that is what walking in means here. */
+    fun moveWalk(folderId: Long) {
+        viewModelScope.launch {
+            val count = _uiState.value.moveSheet?.videoCount ?: return@launch
+            _uiState.update { it.copy(moveSheet = sheetFor(folderId, chosenId = folderId, count = count)) }
+        }
+    }
+
+    fun moveUp() {
+        viewModelScope.launch {
+            val sheet = _uiState.value.moveSheet ?: return@launch
+            val parent = library.folder(sheet.currentFolderId)?.parentId ?: return@launch
+            _uiState.update { it.copy(moveSheet = sheetFor(parent, chosenId = parent, count = sheet.videoCount)) }
+        }
+    }
+
+    /** Choose a folder without walking into it. */
+    fun moveChoose(chosenId: Long) {
+        viewModelScope.launch {
+            val sheet = _uiState.value.moveSheet ?: return@launch
+            _uiState.update { it.copy(moveSheet = sheetFor(sheet.currentFolderId, chosenId = chosenId, count = sheet.videoCount)) }
+        }
+    }
+
+    fun cancelRename() = _uiState.update { it.copy(renaming = null) }
+
+    fun cancelDelete() = _uiState.update { it.copy(confirmingDelete = null) }
+
+    fun dismissMove() = _uiState.update { it.copy(moveSheet = null) }
+
+    fun confirmMove() {
+        val sheet = _uiState.value.moveSheet ?: return
+        val ids = pickedFileIds() ?: return
+        val from = folderId ?: return
+        _uiState.update { it.copy(moveSheet = null) }
+        viewModelScope.launch {
+            val result = fileOps.move(ids, sheet.chosenFolderId)
+            selection.cancel()
+            report(
+                result, verb = "move", past = "Moved", where = sheet.chosenName,
+                // Only when every file made it: a half-done batch undone
+                // halfway is a worse place to be than where it stopped.
+                undo = if (result.ok && result.done.isNotEmpty()) UndoMove(result.done, from) else null,
+            )
+        }
+    }
+
+    /** Put them back. The inverse of a move is the same single rename. */
+    fun undoMove() {
+        val undo = _uiState.value.fileOpMessage?.undo ?: return
+        _uiState.update { it.copy(fileOpMessage = null) }
+        viewModelScope.launch {
+            val result = fileOps.move(undo.fileIds, undo.backToFolderId)
+            report(result, verb = "move", past = "Moved back")
+        }
+    }
+
+    fun clearFileOpMessage() = _uiState.update { it.copy(fileOpMessage = null) }
+
+    private fun report(result: FileOpResult, verb: String, past: String, where: String? = null, undo: UndoMove? = null) {
+        val text = FileOpMessages.forResult(result, verb, past, where)
+        // ONE message, always. A failure used to set a banner as well, so the
+        // same sentence arrived twice — once floating and once in the layout.
+        // A failure earns more TIME instead (see the screen's duration), not a
+        // second copy of itself.
+        _uiState.update { it.copy(fileOpMessage = FileOpMessage(text, undo, failed = !result.ok)) }
+    }
+
+    /** The sheet as it looks with [chosenId] picked while looking at [currentId]. */
+    private suspend fun sheetFor(currentId: Long, chosenId: Long, count: Int): MoveSheetState? {
+        val current = library.folder(currentId) ?: return null
+        val chosen = library.folder(chosenId) ?: return null
+        val shareName = library.shareLabel(current.shareId).substringAfter(" · ")
+        val source = folderId
+        return MoveSheetState(
+            videoCount = count,
+            shareName = shareName,
+            breadcrumb = (listOf(shareName) + current.relPath.split('/').filter { it.isNotEmpty() }).joinToString(" / "),
+            currentFolderId = current.id,
+            children = library.subfolders(current.id).map { f ->
+                MoveChild(f.id, f.name, if (f.fileCount > 0) "${f.fileCount} videos · ${formatBytes(f.byteCount)}" else null)
+            },
+            chosenFolderId = chosen.id,
+            chosenName = chosen.name,
+            canUp = current.parentId != null,
+            currentChoosable = current.id != source,
+            confirmEnabled = chosen.id != source,
+            note = if (current.id == source) "They're already here" else null,
+        )
     }
 
     private fun BrowseRow.FolderRow.toPick() =

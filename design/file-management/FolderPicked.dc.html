@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --ground:#0A0A0A; --surface:#0F0F0F; --hairline:#1F1F1F; --raised:#2E2E2E;
+      --metadata:#6E6E6E; --body:#A0A0A0; --ink:#FFFFFF; --inkSoft:#EDEDED;
+      --red:#E11B17; --badge:#1A1A1A; --disabledBg:#161616; --disabledInk:#4A4A4A;
+      --notice:#141414; --frost:rgba(255,255,255,.06); --frostBorder:rgba(255,255,255,.18);
+    }
+    body{margin:0;background:var(--ground);font-family:"Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+    a{color:#E11B17;} a:hover{color:#EDEDED;}
+    .mich{font-family:Michroma,Verdana,sans-serif;text-transform:uppercase;font-weight:400;}
+    .screen{width:411px;height:914px;position:relative;overflow:hidden;background:var(--ground);}
+    .col{display:flex;flex-direction:column;}
+    .row{display:flex;flex-direction:row;align-items:center;}
+    .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;}
+    .eyebrow{font-size:14.1px;line-height:14.1px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--metadata);}
+    .meta{font-size:14.1px;line-height:19.7px;color:var(--metadata);}
+    .meta12{font-size:15.4px;line-height:15.4px;color:var(--metadata);}
+    .bodyTxt{font-size:17.9px;line-height:26.9px;color:var(--body);}
+    .rowLabel{font-size:19.2px;line-height:24.3px;font-weight:500;color:var(--ink);}
+    .rowLabelSm{font-size:16.6px;line-height:21.8px;font-weight:500;color:var(--ink);}
+    .notice{font-size:16.6px;line-height:24.3px;font-weight:500;color:var(--inkSoft);}
+    .thumb{width:66.6px;height:37.4px;border-radius:7px;background:linear-gradient(140deg,#243040,#121820);flex:none;}
+    .pickbox{width:48.6px;height:48.6px;border-radius:10px;background:var(--disabledBg);display:flex;align-items:center;justify-content:center;flex:none;}
+    .pickbox.on{background:var(--ink);}
+    .dialog{background:var(--surface);border:1px solid var(--raised);border-radius:20px;padding:18px;}
+    .dlgTitle{font-size:19.2px;line-height:26.9px;color:var(--ink);}
+    .btnPrimary{height:61px;border-radius:999px;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:19.2px;font-weight:700;color:#fff;}
+    .btnSecondary{height:61px;border-radius:999px;background:var(--frost);border:1px solid var(--frostBorder);display:flex;align-items:center;justify-content:center;font-size:19.2px;font-weight:600;color:var(--inkSoft);}
+    .btnDestructive{height:61px;border-radius:999px;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:17.9px;font-weight:600;color:#fff;}
+    .pillAction{height:53.8px;border-radius:999px;background:var(--frost);border:1px solid var(--frostBorder);display:flex;align-items:center;justify-content:center;gap:8px;font-size:16.6px;font-weight:600;color:var(--inkSoft);flex:1;}
+    .pillAction.off{background:var(--disabledBg);border-color:transparent;color:var(--disabledInk);}
+    .navpill{position:absolute;left:18px;right:18px;bottom:26px;height:62px;border-radius:999px;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.16);display:flex;align-items:center;}
+    .navcell{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .navlabel{font-size:12.8px;line-height:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+  </style>
+</helmet>
+
+<div class="screen">
+  <!-- Selection top bar: the count is the title, select-all and cancel are the actions (as today) -->
+  <div class="row" style="padding:36px 8px 18px 18px;">
+    <div class="mich" style="flex:1;font-size:19.2px;line-height:25px;color:var(--ink);">2 selected</div>
+    <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+      <svg width="24.3" height="24.3" viewBox="0 0 24 24" fill="none" stroke="#A0A0A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg>
+    </div>
+    <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">
+      <svg width="24.3" height="24.3" viewBox="0 0 24 24" fill="none" stroke="#A0A0A0" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </div>
+  </div>
+
+  <div class="col" style="padding:0 18px;gap:12px;">
+    <div class="col" style="gap:8px;">
+      <div class="eyebrow">2 folders</div>
+      <div class="card" style="padding:0 12px;">
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="pickbox on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabel">Archive</div><div class="meta">12 videos · 48.2 GB</div></div>
+          <svg width="19.2" height="19.2" viewBox="0 0 24 24" fill="none" stroke="#6E6E6E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="pickbox"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#6E6E6E" stroke-width="2.5" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabel">Keep for later</div><div class="meta">3 videos · 9.1 GB</div></div>
+          <svg width="19.2" height="19.2" viewBox="0 0 24 24" fill="none" stroke="#6E6E6E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="col" style="gap:8px;">
+      <div class="eyebrow">5 files</div>
+      <div class="card" style="padding:0 12px;">
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Arrival.2016.1080p.mkv</div><div class="meta">1080p · 4.0 GB · 44m left</div></div>
+          <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"/></svg>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Hard.Boiled.1992.mkv</div><div class="meta">1080p · 2.8 GB</div></div>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Heat.1995.1080p.mkv</div><div class="meta">1080p · 6.1 GB</div></div>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Long.Test.2026.mp4</div><div class="meta">4K · 31.2 MB</div></div>
+        </div>
+        <div style="height:1px;background:var(--hairline);"></div>
+        <div class="row" style="min-height:72px;gap:12px;">
+          <div class="thumb"></div>
+          <div class="col" style="flex:1;gap:2px;"><div class="rowLabelSm">Sicario.2015.2160p.mkv</div><div class="meta">4K · 18.4 GB</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The selection bar, one line taller than today: the count and the one
+       red Download stay where they are; the three new verbs get their own row. -->
+  <div class="card col" style="position:absolute;left:18px;right:18px;bottom:96px;padding:12px;gap:8px;">
+    <div class="row" style="gap:4px;">
+      <div class="col" style="flex:1;gap:2px;">
+        <div class="notice" style="color:var(--ink);">13 videos · 52.2 GB</div>
+        <div class="meta">Move, rename and delete are for files only</div>
+      </div>
+      <div style="height:56.3px;display:flex;align-items:center;padding:0 18px;font-size:17.9px;font-weight:600;color:var(--ink);">Cancel</div>
+      <div style="height:53.8px;border-radius:999px;background:var(--red);display:flex;align-items:center;padding:0 18px;font-size:16.6px;font-weight:600;color:#fff;">Download</div>
+    </div>
+    <div class="row" style="gap:8px;">
+      <div class="pillAction off">
+        <svg width="20.5" height="20.5" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5a2 2 0 0 1 2-2h3.3l2 2H14a2 2 0 0 1 2 2v5.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M15.2 8.8 20.5 3.5"/><path d="M16.6 3.5h3.9v3.9"/></svg>
+        Move
+      </div>
+      <div class="pillAction off">
+        <svg width="20.5" height="20.5" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.2 3.3a2.6 2.6 0 0 1 3.7 3.7L8.2 19.7 3 21l1.3-5.2z"/><path d="m15.4 5.1 3.7 3.7"/></svg>
+        Rename
+      </div>
+      <div class="pillAction off">
+        <svg width="20.5" height="20.5" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Delete
+      </div>
+    </div>
+  </div>
+  <div class="navpill">
+    <div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20H4z"/></svg><span class="navlabel" style="color:#8A8A8A;">Home</span></div>
+    <div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg><span class="navlabel" style="color:#8A8A8A;">Library</span></div>
+    <div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="navlabel" style="color:#FFFFFF;">Browse</span></div>
+    <div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg><span class="navlabel" style="color:#8A8A8A;">Search</span></div>
+    <div class="navcell"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2.5" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M10.6 8.9 15 12l-4.4 3.1z" fill="#8A8A8A"/></svg><span class="navlabel" style="color:#8A8A8A;">Shorts</span></div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

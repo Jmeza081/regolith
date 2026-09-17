@@ -29,10 +29,12 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -54,6 +56,10 @@ import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.LocalSelectionChrome
+import com.regolith.ui.components.SelectionBar
+import com.regolith.ui.components.SelectionChromeState
+import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
@@ -89,13 +95,14 @@ import com.regolith.domain.library.ViewMode
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.regolith.ui.theme.scaledDp
 import androidx.activity.compose.BackHandler
-import com.regolith.ui.components.SelectionBar
 import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.util.SelectionUiState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import com.regolith.ui.theme.PillShape
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.regolith.ui.theme.DialogMaxWidth
 import com.regolith.ui.theme.DialogShape
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.SecondaryButton
@@ -318,8 +325,7 @@ fun LibraryScreen(
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
-                    bottom = LocalNavPillInsets.current.calculateBottomPadding() +
-                        if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp,
+                    bottom = LocalNavPillInsets.current.calculateBottomPadding(),
                 ),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s8),
@@ -354,8 +360,7 @@ fun LibraryScreen(
                 modifier = Modifier.fillMaxSize().testTag("library_rows"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
-                    bottom = LocalNavPillInsets.current.calculateBottomPadding() +
-                        if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp,
+                    bottom = LocalNavPillInsets.current.calculateBottomPadding(),
                 ),
             ) {
                 if (showUnreachable) item { unreachableBlock() }
@@ -402,23 +407,25 @@ fun LibraryScreen(
         SortSheet(selected = state.sort, onSelect = viewModel::setSort, onDismiss = { viewModel.openSortSheet(false) })
     }
 
-        if (selection != null) {
-            SelectionBar(
-                summary = selection.summary,
-                detail = selection.detail,
-                actionEnabled = selection.canDownload,
-                onAction = viewModel::downloadSelection,
-                onCancel = viewModel::cancelSelection,
-                testTag = "library_select_bar",
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = Spacing.s18,
-                        end = Spacing.s18,
-                        bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+        // The pill becomes this selection's toolbar (SelectionChrome). This
+        // screen only knows how to download a pick, so that is the one verb
+        // it lends; Cancel is drawn by the pill itself.
+        val selectionChrome = LocalSelectionChrome.current
+        DisposableEffect(selection) {
+            val live = selection
+            if (live == null) {
+                selectionChrome.clear()
+            } else {
+                selectionChrome.show(
+                    SelectionChromeState(
+                        verbs = listOf(
+                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "library_select_download", enabled = live.canDownload),
+                        ),
+                        onCancel = viewModel::cancelSelection,
                     ),
-            )
+                )
+            }
+            onDispose { selectionChrome.clear() }
         }
     }
 }
@@ -589,9 +596,12 @@ private fun TileRow(
 @Composable
 private fun RemoveCopiesDialog(count: Int, onConfirm: () -> Unit, onKeep: () -> Unit) {
     val colors = RegolithTheme.colors
-    Dialog(onDismissRequest = onKeep) {
+    // The app's gutter rather than the platform's dialog width, as everywhere else.
+    Dialog(onDismissRequest = onKeep, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = Spacing.s18), contentAlignment = Alignment.Center) {
         Column(
             Modifier
+                .widthIn(max = DialogMaxWidth)
                 .fillMaxWidth()
                 .background(colors.surface, DialogShape)
                 .border(1.dp, colors.raised, DialogShape)
@@ -621,6 +631,7 @@ private fun RemoveCopiesDialog(count: Int, onConfirm: () -> Unit, onKeep: () -> 
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
         }
     }
 }
@@ -848,7 +859,7 @@ private fun DeviceTab(
         Modifier.fillMaxSize().testTag("library_device_list"),
         contentPadding = PaddingValues(
             start = Spacing.s18, end = Spacing.s18,
-            bottom = if (selecting) 126.dp + SELECTION_BAR_HEIGHT + Spacing.s8 else 126.dp,
+            bottom = 126.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(Spacing.s18),
     ) {

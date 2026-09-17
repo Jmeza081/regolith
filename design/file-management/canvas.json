@@ -1,0 +1,49 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",              "x": 0,    "y": 0,    "w": 411, "h": 914, "title": "Title Detail — manage file" },
+    { "file": "Rename.dc.html",            "x": 511,  "y": 0,    "w": 411, "h": 914, "title": "Rename dialog" },
+    { "file": "ConfirmDelete.dc.html",     "x": 1022, "y": 0,    "w": 411, "h": 914, "title": "Confirm delete — one video" },
+    { "file": "Deleted.dc.html",           "x": 1533, "y": 0,    "w": 411, "h": 914, "title": "Deleted — back in Browse" },
+
+    { "file": "Selected.dc.html",          "x": 0,    "y": 1220, "w": 411, "h": 914, "title": "Browse — one picked" },
+    { "file": "MultiSelected.dc.html",     "x": 511,  "y": 1220, "w": 411, "h": 914, "title": "Browse — four picked" },
+    { "file": "FolderPicked.dc.html",      "x": 1022, "y": 1220, "w": 411, "h": 914, "title": "A folder in the pick" },
+    { "file": "MoveSheet.dc.html",         "x": 1533, "y": 1220, "w": 411, "h": 914, "title": "Move to…" },
+    { "file": "ConfirmDeleteBulk.dc.html", "x": 2044, "y": 1220, "w": 411, "h": 914, "title": "Confirm delete — four videos" },
+    { "file": "Moved.dc.html",             "x": 2555, "y": 1220, "w": 411, "h": 914, "title": "Moved, with undo" },
+    { "file": "MovePartial.dc.html",       "x": 3066, "y": 1220, "w": 411, "h": 914, "title": "Share dropped mid-move" }
+  ],
+  "annotations": [
+    {
+      "id": "flow-detail",
+      "x": 0, "y": -180, "w": 470,
+      "text": "TITLE DETAIL\nRename and Delete sit at the foot of the screen, under the facts card, built from the same row the Settings screen uses. Neither carries a chevron: a chevron means a way in, and these open dialogs. The flow reads left to right and ends back in Browse with the row gone."
+    },
+    {
+      "id": "flow-browse",
+      "x": 0, "y": 980, "w": 470,
+      "text": "BROWSE\nHold a row to select, exactly as today. The bar keeps its count and its one red Download; the three new verbs get a second line. Rename greys out unless exactly one thing is picked. NOTE FOR BUILD: this makes the bar ~144px, not the 92px SELECTION_BAR_HEIGHT exports today — that constant and the list's bottom padding both have to grow, or the last row hides under it."
+    },
+    {
+      "id": "one-red",
+      "x": 511, "y": 980, "w": 400,
+      "text": "The red FILL stays on Download — one per screen, per the design system. Delete carries the accent on its glyph only. The red button appears where it belongs: in the confirm dialog."
+    },
+    {
+      "id": "files-only",
+      "x": 1022, "y": 980, "w": 470,
+      "text": "FOLDERS: DOWNLOAD ONLY.\nMove, rename and delete are for FILES. Folders keep their pick box and keep feeding Download exactly as they do today — so the moment a folder joins the pick, the three new verbs go dead and the bar's detail line says why, while Download stays live. Nothing about the existing download behaviour changes."
+    },
+    {
+      "id": "no-undo-delete",
+      "x": 2044, "y": 980, "w": 400,
+      "text": "Delete has no Undo — it is a real unlink, so the modal is the only gate. That is why its copy names the size and what else goes: the chapters you wrote and where you left off. Only files reach this dialog, so it never has to explain a subtree."
+    },
+    {
+      "id": "grounded-in-probe",
+      "x": 2555, "y": 980, "w": 470,
+      "text": "Grounded in the SMB probe (17 Sep): each file's move is ONE metadata operation — 32 MB moved in 7 ms — so a batch is N independent renames and a dropped share leaves each file either moved or not, never half-moved. That is what this notice can honestly promise, and why Undo is cheap: the inverse is the same rename back."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

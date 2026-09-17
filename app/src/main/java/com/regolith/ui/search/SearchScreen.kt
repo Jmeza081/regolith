@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +60,9 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ViewMode
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.LocalSelectionChrome
+import com.regolith.ui.components.SelectionChromeState
+import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.FilterChip
@@ -77,7 +81,6 @@ import com.regolith.ui.theme.scaledDp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.alpha
-import com.regolith.ui.components.SelectionBar
 import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.util.SelectionUiState
 
@@ -183,8 +186,7 @@ fun SearchScreen(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = Spacing.s18, end = Spacing.s18,
-                bottom = LocalNavPillInsets.current.calculateBottomPadding() +
-                    if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp,
+                bottom = LocalNavPillInsets.current.calculateBottomPadding(),
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
@@ -327,23 +329,25 @@ fun SearchScreen(
         }
     }
 
-        if (selection != null) {
-            SelectionBar(
-                summary = selection.summary,
-                detail = selection.detail,
-                actionEnabled = selection.canDownload,
-                onAction = viewModel::downloadSelection,
-                onCancel = viewModel::cancelSelection,
-                testTag = "search_select_bar",
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = Spacing.s18,
-                        end = Spacing.s18,
-                        bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+        // The pill becomes this selection's toolbar (SelectionChrome). This
+        // screen only knows how to download a pick, so that is the one verb
+        // it lends; Cancel is drawn by the pill itself.
+        val selectionChrome = LocalSelectionChrome.current
+        DisposableEffect(selection) {
+            val live = selection
+            if (live == null) {
+                selectionChrome.clear()
+            } else {
+                selectionChrome.show(
+                    SelectionChromeState(
+                        verbs = listOf(
+                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "search_select_download", enabled = live.canDownload),
+                        ),
+                        onCancel = viewModel::cancelSelection,
                     ),
-            )
+                )
+            }
+            onDispose { selectionChrome.clear() }
         }
         if (momentSheet) {
             MomentFilterSheet(

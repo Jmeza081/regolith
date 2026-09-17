@@ -2,13 +2,18 @@ package com.regolith.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -24,12 +30,17 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.regolith.R
+import com.regolith.ui.theme.DialogMaxWidth
 import com.regolith.ui.theme.DialogShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
+import com.regolith.ui.theme.scaledDp
 import com.regolith.ui.theme.TextStyles
 
 /**
@@ -80,9 +91,16 @@ fun PromptDialog(
     // The keyboard is the whole point of this dialog; making the user tap
     // the field first is a tap that never had anything else to be.
     LaunchedEffect(Unit) { focus.requestFocus() }
-    Dialog(onDismissRequest = onCancel) {
+    // usePlatformDefaultWidth = false: Compose's default caps a dialog at the
+    // platform's own width (~280dp), which left this card noticeably narrower
+    // than every other surface in the app. Off, the window is full-width and
+    // the card takes the app's own 18dp screen gutter instead, so a filename
+    // has the same room to breathe here as it does in the row behind it.
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = Spacing.s18), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.fillMaxWidth().background(colors.surface, DialogShape).border(1.dp, colors.raised, DialogShape).padding(Spacing.s18)
+            Modifier.widthIn(max = DialogMaxWidth).fillMaxWidth()
+                .background(colors.surface, DialogShape).border(1.dp, colors.raised, DialogShape).padding(Spacing.s18)
                 // A Dialog is its own window, so the root Scaffold's setting
                 // does not reach it and nothing inside would have a resource id.
                 .semantics { testTagsAsResourceId = true }
@@ -101,12 +119,37 @@ fun PromptDialog(
                 modifier = Modifier.focusRequester(focus),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onConfirm(draft) }),
+                // Only there when there is something to clear: a permanent X
+                // beside an empty field is a control that does nothing. The
+                // field keeps focus, so clearing leaves you typing rather
+                // than reaching for the field again.
+                trailingIcon = if (draft.isEmpty()) {
+                    null
+                } else {
+                    {
+                        Box(
+                            Modifier
+                                .size(44.dp)
+                                .clickable(interactionSource = null, indication = null, onClick = { draft = "" })
+                                .testTag("${testTag}_clear"),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.rg_ic_close_small),
+                                contentDescription = "Clear the name",
+                                tint = colors.metadata,
+                                modifier = Modifier.size(16.scaledDp()),
+                            )
+                        }
+                    }
+                },
             )
             if (note != null) Text(note, style = TextStyles.meta12, color = colors.metadata)
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                 SecondaryButton(text = cancelLabel, onClick = onCancel, testTag = "${testTag}_cancel_button", modifier = Modifier.weight(1f))
                 PrimaryButton(text = confirmLabel, onClick = { onConfirm(draft) }, testTag = "${testTag}_confirm_button", modifier = Modifier.weight(1f))
             }
+        }
         }
     }
 }

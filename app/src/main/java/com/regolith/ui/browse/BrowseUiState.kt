@@ -4,6 +4,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ViewMode
+import com.regolith.ui.components.MoveSheetState
 import com.regolith.ui.util.SelectionUiState
 
 /** One entry on the Browse screen: a row at the root, a tile inside a folder. */
@@ -88,4 +89,41 @@ data class BrowseUiState(
     val currentFolderId: Long? = null,
     /** Non-null while a multi-selection is running (the contextual bar is up). */
     val selection: SelectionUiState? = null,
+    // --- Managing files on the share (P12). Files only: a picked FOLDER
+    // still feeds Download exactly as before, but the three new verbs go
+    // dead rather than dragging a subtree behind them.
+    /** Move and Delete need at least one file picked and no folders. */
+    val canActOnFiles: Boolean = false,
+    /** Rename needs exactly one file. */
+    val canRename: Boolean = false,
+    /** Why a verb is off, for the bar's detail line. */
+    val selectionHint: String? = null,
+    val renaming: RenameTarget? = null,
+    val confirmingDelete: DeleteTarget? = null,
+    val moveSheet: MoveSheetState? = null,
+    /** One-shot line for the snackbar, with an Undo when the move can be walked back. */
+    val fileOpMessage: FileOpMessage? = null,
 )
+
+/** The one file a rename is about. */
+data class RenameTarget(val fileId: Long, val fileName: String)
+
+/** What a delete would take, named and totalled, so the dialog can say it. */
+data class DeleteTarget(val fileIds: List<Long>, val names: List<String>, val sizeLabel: String)
+
+/**
+ * What just happened, for the snackbar.
+ *
+ * [undo] is only ever offered for a move, and only when every file made it:
+ * the inverse of a move is the same single rename back, which is why it can
+ * be offered at all. A delete is a real unlink and has none.
+ */
+data class FileOpMessage(
+    val text: String,
+    val undo: UndoMove? = null,
+    /** Something did not go through, so it is shown for longer and carries no Undo. */
+    val failed: Boolean = false,
+)
+
+/** Put these files back where they came from. */
+data class UndoMove(val fileIds: List<Long>, val backToFolderId: Long)

@@ -1,0 +1,27 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",    "x": 0,    "y": 0,    "w": 411, "h": 914, "title": "The problem, at 4s" },
+    { "file": "OptionA.dc.html", "x": 511,  "y": 0,    "w": 411, "h": 914, "title": "A - one clock" },
+    { "file": "OptionB.dc.html", "x": 1022, "y": 0,    "w": 411, "h": 914, "title": "B - inline strip" },
+    { "file": "OptionC.dc.html", "x": 1533, "y": 0,    "w": 411, "h": 914, "title": "C - floating toast" },
+    { "file": "Compare.dc.html", "x": 0,    "y": 1140, "w": 980, "h": 820, "title": "Diagnosis + comparison" }
+  ],
+  "annotations": [
+    {
+      "id": "diagnosis",
+      "x": 0, "y": -150, "w": 500,
+      "text": "THE PROBLEM\nThe snackbar and the pill run on two clocks that were never introduced. The pill hides after 3s of no touches (RAIL_IDLE_MS); a snackbar lasts 4s (SnackbarDuration.Short) and longer if the OS extends it for accessibility. Showing a message is not a touch, so the pill leaves first - and LocalNavPillInsets is a constant 112dp, so nothing closes the gap."
+    },
+    {
+      "id": "cheapest",
+      "x": 511, "y": 960, "w": 420,
+      "text": "A is nearly free: LocalNavChromeVisible (NavPill.kt:308) already publishes pill visibility and ShortsScreen already consumes it. The work is holding the pill open while a message is up, and animating the inset instead of returning a constant."
+    },
+    {
+      "id": "reuse",
+      "x": 1022, "y": 960, "w": 420,
+      "text": "B is not a new visual language: NoticeCard is already the app's inline banner (the 'Couldn't reach media' card), and Browse already shows a persistent one for a partial move. This makes that the general case rather than a one-off."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

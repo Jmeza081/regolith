@@ -21,8 +21,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import kotlinx.coroutines.delay
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,13 +61,19 @@ import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.components.MediaTile
+import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
-import com.regolith.ui.components.SelectionBar
+import com.regolith.ui.components.ConfirmDialog
+import com.regolith.ui.components.MoveToSheet
+import com.regolith.ui.components.PromptDialog
+import com.regolith.ui.components.LocalAppSnackbar
+import com.regolith.ui.components.LocalSelectionChrome
+import com.regolith.ui.components.SelectionChromeState
+import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.util.SelectionUiState
-import com.regolith.ui.components.SELECTION_BAR_HEIGHT
 import com.regolith.ui.components.TopBarAction
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -184,6 +194,7 @@ private fun BrowseContent(
             )
         }
 
+
         if (state.loaded && state.noSource) {
             NoSourceContent(onAddServer = onAddServer)
             return
@@ -268,8 +279,9 @@ private fun BrowseContent(
             flashed = null
         }
         // The bar floats over the pill, so the last row has to clear both.
-        val bottomPadding = LocalNavPillInsets.current.calculateBottomPadding() +
-            if (selecting) SELECTION_BAR_HEIGHT + Spacing.s8 else 0.dp
+        // No extra room for a selection bar any more: the verbs are in the
+        // pill, and the pill's clearance was always already reserved.
+        val bottomPadding = LocalNavPillInsets.current.calculateBottomPadding()
         // Shares are never tiles: a share has no artwork, and at the root the
         // question is "which share", not "which film".
         val shareSection = @Composable {
@@ -452,22 +464,92 @@ private fun BrowseContent(
         // Over the list rather than in it, so the count stays put while the
         // list scrolls under it. Sits above the nav pill on a phone and at
         // the foot of the pane on a wide window, from the same insets.
-        if (selection != null) {
-            SelectionBar(
-                summary = selection.summary,
-                detail = selection.detail,
-                actionEnabled = selection.canDownload,
-                onAction = viewModel::downloadSelection,
-                onCancel = viewModel::cancelSelection,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        start = Spacing.s18,
-                        end = Spacing.s18,
-                        bottom = LocalNavPillInsets.current.calculateBottomPadding() + Spacing.s8,
+        // The nav pill becomes this selection's toolbar (SelectionChrome):
+        // the screen keeps the behaviour — the dialogs, the repository, the
+        // undo — and lends the chrome its buttons. Cancel is drawn by the
+        // pill, in the cell where Home sits when it is a nav.
+        val selectionChrome = LocalSelectionChrome.current
+        DisposableEffect(selection, state.canActOnFiles, state.canRename) {
+            val live = selection
+            if (live == null) {
+                selectionChrome.clear()
+            } else {
+                selectionChrome.show(
+                    SelectionChromeState(
+                        verbs = listOf(
+                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "browse_select_download", enabled = live.canDownload),
+                            SelectionVerb("Move", R.drawable.rg_ic_folder_go, viewModel::startMove, "browse_select_move", enabled = state.canActOnFiles),
+                            SelectionVerb("Rename", R.drawable.rg_ic_rename, viewModel::startRename, "browse_select_rename", enabled = state.canRename),
+                            SelectionVerb("Delete", R.drawable.rg_ic_trash, viewModel::startDelete, "browse_select_delete", enabled = state.canActOnFiles, destructive = true),
+                        ),
+                        onCancel = viewModel::cancelSelection,
                     ),
+                )
+            }
+            onDispose { selectionChrome.clear() }
+        }
+
+        state.renaming?.let { target ->
+            val ext = target.fileName.substringAfterLast('.', "")
+            PromptDialog(
+                title = "Rename video",
+                label = "Name",
+                initialValue = FileNames.baseOf(target.fileName),
+                confirmLabel = "Rename",
+                onConfirm = viewModel::rename,
+                onCancel = viewModel::cancelRename,
+                testTag = "browse_rename",
+                note = if (ext.isEmpty()) {
+                    "Chapters and your place follow the new name."
+                } else {
+                    "Keeps .$ext — chapters and your place follow the new name."
+                },
+                maxLength = FileNames.MAX_BASE,
             )
+        }
+
+        state.confirmingDelete?.let { target ->
+            val n = target.fileIds.size
+            ConfirmDialog(
+                title = if (n == 1) "Delete this video?" else "Delete $n videos?",
+                body = if (n == 1) {
+                    "${target.names.first()} leaves the share for good — ${target.sizeLabel}. " +
+                        "This can't be undone, and the chapters you wrote and where you left off go with it."
+                } else {
+                    "${target.sizeLabel} leaves the share for good. This can't be undone, and the chapters " +
+                        "you wrote and where you left off go with them."
+                },
+                confirmLabel = if (n == 1) "Delete video" else "Delete $n videos",
+                keepLabel = if (n == 1) "Keep it" else "Keep them",
+                onConfirm = viewModel::confirmDelete,
+                onKeep = viewModel::cancelDelete,
+                testTag = "browse_delete",
+            )
+        }
+
+        state.moveSheet?.let { sheet ->
+            MoveToSheet(
+                state = sheet,
+                onUp = viewModel::moveUp,
+                onOpen = viewModel::moveWalk,
+                onChoose = viewModel::moveChoose,
+                onConfirm = viewModel::confirmMove,
+                onDismiss = viewModel::dismissMove,
+            )
+        }
+
+        // One host for the whole app, drawn by the chrome above the pill.
+        val snackbar = LocalAppSnackbar.current
+        LaunchedEffect(state.fileOpMessage) {
+            val message = state.fileOpMessage ?: return@LaunchedEffect
+            val result = snackbar.showSnackbar(
+                message.text,
+                actionLabel = if (message.undo != null) "Undo" else null,
+                // Something that went wrong is worth reading twice; the fuse
+                // under the tier shows the longer life running down.
+                duration = if (message.failed) SnackbarDuration.Long else SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) viewModel.undoMove() else viewModel.clearFileOpMessage()
         }
     }
 }

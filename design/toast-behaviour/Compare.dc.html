@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --ground:#0A0A0A; --surface:#0F0F0F; --hairline:#1F1F1F; --raised:#2E2E2E;
+      --metadata:#6E6E6E; --body:#A0A0A0; --ink:#FFFFFF; --inkSoft:#EDEDED;
+      --red:#E11B17; --badge:#1A1A1A; --notice:#141414;
+      --frost:rgba(255,255,255,.06); --frostBorder:rgba(255,255,255,.18);
+    }
+    body{margin:0;background:var(--ground);font-family:"Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+    a{color:#E11B17;} a:hover{color:#EDEDED;}
+    .mich{font-family:Michroma,Verdana,sans-serif;text-transform:uppercase;font-weight:400;}
+    .screen{width:411px;height:914px;position:relative;overflow:hidden;background:var(--ground);}
+    .col{display:flex;flex-direction:column;}
+    .row{display:flex;flex-direction:row;align-items:center;}
+    .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;}
+    .eyebrow{font-size:14.1px;line-height:14.1px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--metadata);}
+    .meta{font-size:14.1px;line-height:19.7px;color:var(--metadata);}
+    .rowLabel{font-size:19.2px;line-height:24.3px;font-weight:500;color:var(--ink);}
+    .rowLabelSm{font-size:16.6px;line-height:21.8px;font-weight:500;color:var(--ink);}
+    .notice{font-size:16.6px;line-height:24.3px;font-weight:500;color:var(--inkSoft);}
+    .thumb{width:66.6px;height:37.4px;border-radius:7px;background:linear-gradient(140deg,#243040,#121820);flex:none;}
+    .snack{background:var(--surface);border:1px solid var(--raised);border-radius:14px;padding:12px 18px;min-height:56px;}
+    .snackText{font-size:19.2px;line-height:24.3px;font-weight:500;color:var(--ink);}
+    .undo{height:44px;display:flex;align-items:center;padding:0 12px;font-size:17.9px;font-weight:600;color:var(--ink);}
+    .navpill{position:absolute;left:18px;right:18px;bottom:26px;height:62px;border-radius:999px;background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.16);display:flex;align-items:center;}
+    .navcell{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .navlabel{font-size:12.8px;line-height:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+    .ghost{position:absolute;left:18px;right:18px;bottom:26px;height:62px;border-radius:999px;border:1px dashed rgba(225,27,23,.55);}
+    .ghostLabel{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(225,27,23,.8);}
+    .tag{display:inline-block;font-size:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;border-radius:999px;}
+  </style>
+  <style>
+    .board{width:980px;min-height:800px;background:var(--ground);padding:40px;box-sizing:border-box;}
+    .h1{font-size:26px;line-height:32px;color:var(--ink);}
+    .h2{font-size:14.1px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--metadata);}
+    .p{font-size:16px;line-height:25px;color:var(--body);}
+    .opt{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:20px;flex:1;}
+    .optName{font-size:18px;line-height:24px;font-weight:600;color:var(--ink);}
+    .pro{font-size:14.5px;line-height:22px;color:var(--inkSoft);}
+    .con{font-size:14.5px;line-height:22px;color:var(--metadata);}
+    .cell{font-size:15px;line-height:22px;color:var(--inkSoft);padding:10px 0;}
+    .cellMuted{font-size:15px;line-height:22px;color:var(--metadata);padding:10px 0;}
+    .rule{height:1px;background:var(--hairline);}
+  </style>
+</helmet>
+
+<div class="board col" style="gap:30px;">
+
+  <div class="col" style="gap:12px;">
+    <div class="mich h1">Why it looks orphaned</div>
+    <div class="p" style="max-width:800px;">
+      Nothing is wrong with the snackbar. The pill and the message are on two independent clocks, and
+      the message outlives the pill — so for the last second or so it sits on 112dp of reserved
+      nothing.
+    </div>
+  </div>
+
+  <div class="col" style="gap:0;">
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:190px;">0.0s</div><div class="cell" style="flex:1;">Move finishes, snackbar appears. Showing it is not a touch, so the pill&#39;s idle timer is never reset.</div></div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:190px;color:#E11B17;">3.0s</div><div class="cell" style="flex:1;color:#E11B17;">RAIL_IDLE_MS elapses — the pill slides out. LocalNavPillInsets keeps returning a constant 112dp, so nothing reflows.</div></div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:190px;">4.0s+</div><div class="cell" style="flex:1;">SnackbarDuration.Short (4000ms) ends — later still if the OS extends it for accessibility.</div></div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cellMuted" style="width:190px;">the gap</div><div class="cellMuted" style="flex:1;">~1s of a card floating above empty space. Longer on a slow batch, and every time on a device with a longer recommended timeout.</div></div>
+    <div class="rule"></div>
+  </div>
+
+  <div class="col" style="gap:16px;">
+    <div class="h2">Three ways out</div>
+    <div class="row" style="gap:18px;align-items:stretch;">
+
+      <div class="opt col" style="gap:12px;">
+        <div class="optName">A · Keep them on one clock</div>
+        <div class="pro">The message holds the pill open for as long as it is up, and the inset animates rather than jumping. Stays where Material puts a snackbar.</div>
+        <div class="con">Cheapest: LocalNavChromeVisible already exists and Shorts already reads it. Keeps Undo in the thumb&#39;s reach.</div>
+        <div class="con">But: the pill lingering is itself a change, and the message still covers the thing it is about.</div>
+      </div>
+
+      <div class="opt col" style="gap:12px;">
+        <div class="optName">B · Inline strip at the top</div>
+        <div class="pro">Sits under the title and pushes the list down, the way the &ldquo;Couldn&#39;t reach media&rdquo; card already does. Can persist until dismissed.</div>
+        <div class="con">Never collides with the pill or the thumb zone, and a message that must not be missed can simply stay.</div>
+        <div class="con">But: it reflows the list, and Undo ends up at the far end of the screen from the thumb.</div>
+      </div>
+
+      <div class="opt col" style="gap:12px;">
+        <div class="optName">C · Floating toast at the top</div>
+        <div class="pro">Same corner as B but overlaid, so nothing reflows. Auto-dismisses like a snackbar does today.</div>
+        <div class="con">No collision with the pill, no layout movement, and it reads as a notification — which is what the top of the screen already means on Android.</div>
+        <div class="con">But: it covers the top of the list, and it is a new surface to own rather than one the app already has.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="col" style="gap:12px;background:rgba(225,27,23,.08);border:1px solid rgba(225,27,23,.4);border-radius:14px;padding:20px;">
+    <div class="h2" style="color:#E11B17;">What I would do</div>
+    <div class="p" style="color:var(--inkSoft);max-width:820px;">
+      A and B together, split by whether the message matters. Transient confirmations that carry Undo stay
+      at the bottom and hold the pill open (A) — Undo belongs under the thumb, and Material is explicit that a
+      snackbar may be nudged up to clear navigation. Anything the user must not miss — a partial move, a
+      read-only share — goes to the inline strip (B) and stays until dismissed, which Browse already does with
+      its own banner. The rule to keep: if it is acceptable for the message to fade, it is acceptable for it to
+      have been missed.
+    </div>
+  </div>
+
+  <div class="col" style="gap:8px;">
+    <div class="h2">Where this comes from</div>
+    <div class="con">Material Components: setAnchorView exists to place a snackbar above bottom navigation · M3: a snackbar may be nudged up and must not cover navigation · Compose SnackbarHost: Short = 4000ms, Long = 10000ms, extended by the platform&#39;s recommended accessibility timeout, one at a time · Atlassian: never auto-dismiss anything critical · Carbon: confirmations 2&ndash;3s, informational 4&ndash;6s.</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

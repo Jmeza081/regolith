@@ -28,6 +28,18 @@ data class TitleDetailUiState(
     val transfer: TransferView? = null,
     /** Other files in the same title folder (design: "IN THIS COLLECTION"). */
     val siblings: List<SiblingFile> = emptyList(),
+    // --- Managing the file itself (P12). The share is someone's media, so
+    // every one of these is behind a dialog.
+    /** The filename WITH its extension, which the dialogs name and the field edits. */
+    val fileName: String = "",
+    /** "4.0 GB", for the delete dialog: the size is half of what makes it a decision. */
+    val sizeLabel: String = "",
+    val renaming: Boolean = false,
+    val confirmingDelete: Boolean = false,
+    /** Why the last rename or delete did not happen. */
+    val fileOpError: String? = null,
+    /** The file is gone from the share; the screen has nothing left to show. */
+    val deleted: Boolean = false,
 )
 
 /** A sibling file in a title folder: its thumb, filename, "1h 56m · 8.4 GB". */

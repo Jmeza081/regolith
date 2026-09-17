@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --ground:#0A0A0A; --surface:#0F0F0F; --hairline:#1F1F1F; --raised:#2E2E2E;
+      --metadata:#6E6E6E; --body:#A0A0A0; --ink:#FFFFFF; --inkSoft:#EDEDED;
+      --red:#E11B17; --badge:#1A1A1A; --notice:#141414; --disabledInk:#4A4A4A;
+      --frost:rgba(255,255,255,.06); --frostBorder:rgba(255,255,255,.18);
+      --pillBg:rgba(0,0,0,.52); --pillBorder:rgba(255,255,255,.16);
+    }
+    body{margin:0;background:var(--ground);font-family:"Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+    a{color:#E11B17;} a:hover{color:#EDEDED;}
+    .mich{font-family:Michroma,Verdana,sans-serif;text-transform:uppercase;font-weight:400;}
+    .screen{width:411px;height:914px;position:relative;overflow:hidden;background:var(--ground);}
+    .col{display:flex;flex-direction:column;}
+    .row{display:flex;flex-direction:row;align-items:center;}
+    .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;}
+    .eyebrow{font-size:14.1px;line-height:14.1px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--metadata);}
+    .meta{font-size:14.1px;line-height:19.7px;color:var(--metadata);}
+    .rowLabelSm{font-size:16.6px;line-height:21.8px;font-weight:500;color:var(--ink);}
+    .thumb{width:66.6px;height:37.4px;border-radius:7px;background:linear-gradient(140deg,#243040,#121820);flex:none;}
+    .navcell{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .navlabel{font-size:12.8px;line-height:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;}
+    .chrome{position:absolute;left:18px;right:18px;background:var(--pillBg);border:1px solid var(--pillBorder);}
+    .verb{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+    .verbLabel{font-size:12.8px;line-height:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#EDEDED;}
+    .count{font-size:16.6px;line-height:20px;font-weight:500;color:var(--ink);}
+    .tag{display:inline-block;font-size:12.8px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;}
+    .warn{background:rgba(225,27,23,.14);color:#E11B17;}
+    .ok{background:var(--frost);color:#EDEDED;border:1px solid var(--frostBorder);}
+  </style>
+  <style>
+    .board{width:980px;min-height:880px;background:var(--ground);padding:40px;box-sizing:border-box;}
+    .h1{font-size:26px;line-height:32px;color:var(--ink);}
+    .h2{font-size:14.1px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--metadata);}
+    .p{font-size:16px;line-height:25px;color:var(--body);}
+    .opt{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:20px;flex:1;}
+    .optName{font-size:18px;line-height:24px;font-weight:600;color:var(--ink);}
+    .t{font-size:14.5px;line-height:22px;color:var(--inkSoft);}
+    .m{font-size:14.5px;line-height:22px;color:var(--metadata);}
+    .rule{height:1px;background:var(--hairline);}
+    .cell{font-size:15px;line-height:22px;color:var(--inkSoft);padding:10px 0;}
+  </style>
+</helmet>
+
+<div class="board col" style="gap:28px;">
+
+  <div class="col" style="gap:12px;">
+    <div class="mich h1">Can the pill be the toolbar?</div>
+    <div class="p" style="max-width:820px;">
+      Yes — and three of the four things it needs are already in the codebase. What it costs is not
+      engineering, it is a behaviour you already designed on purpose.
+    </div>
+  </div>
+
+  <div class="col" style="gap:10px;">
+    <div class="h2">Already true today</div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:250px;">SelectionStore is @Singleton</div><div class="cell" style="flex:1;">The selection is app-scoped, not screen-scoped, so the nav graph can observe it directly. No new plumbing.</div></div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:250px;">canSelectHere in NavGraph</div><div class="cell" style="flex:1;">The graph ALREADY computes whether this destination can act on a selection. That is exactly the gate a nav-level toolbar needs.</div></div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:250px;">LocalNavChromeHold</div><div class="cell" style="flex:1;">Built this session so a message can keep the chrome on screen. A toolbar needs the same thing, permanently.</div></div>
+    <div class="rule"></div>
+    <div class="row" style="gap:18px;"><div class="cell" style="width:250px;">Four SelectionBar call sites</div><div class="cell" style="flex:1;">Library twice, Search, Browse. Moving it into the chrome makes that ONE. This is the real prize, not the animation.</div></div>
+    <div class="rule"></div>
+  </div>
+
+  <div class="col" style="gap:16px;">
+    <div class="h2">Three shapes</div>
+    <div class="row" style="gap:18px;align-items:stretch;">
+      <div class="opt col" style="gap:10px;">
+        <div class="optName">1 · Morph</div>
+        <div class="t">Tabs become verbs in the same 62dp pill.</div>
+        <div class="m">Boldest, and the cheapest to draw. But 375&times;62dp cannot hold a count AND four verbs AND a way out — something has to be an icon with no label.</div>
+        <div class="m" style="color:#E11B17;">Breaks picking across tabs: you cannot reach Library while the tabs are gone.</div>
+      </div>
+      <div class="opt col" style="gap:10px;">
+        <div class="optName">2 · Stack &nbsp;<span style="color:#E11B17;">&#9679;</span></div>
+        <div class="t">A contextual tier docks above the pill, same blur, same family.</div>
+        <div class="m">Tabs stay reachable, so a selection still spans Browse, Library and Search — the behaviour the shared store exists for.</div>
+        <div class="m">Room for the count line AND four verbs. Closest to what is already shipping, re-homed.</div>
+      </div>
+      <div class="opt col" style="gap:10px;">
+        <div class="optName">3 · Expand</div>
+        <div class="t">The pill&#39;s 50% radius animates into a 22dp card holding everything.</div>
+        <div class="m">The most expressive, and the only one that feels like the pill BECAME something.</div>
+        <div class="m" style="color:#E11B17;">Tabs hidden while active, and the app&#39;s one blurred surface becomes a resizing one — the most expensive thing on screen, now animating.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col" style="gap:10px;">
+    <div class="h2">What it would cost either way</div>
+    <div class="m">&bull; The pill auto-hides after three seconds; a toolbar must not. It would need a permanent hold, which is why NavChromeHold arriving this week matters.</div>
+    <div class="m">&bull; The pill is a navigation landmark to TalkBack. Swapping its contents mid-flight changes what that landmark means; a docked second tier does not.</div>
+    <div class="m">&bull; Scroll-to-hide has to stand down while selecting, or the toolbar vanishes under the thumb that is using it.</div>
+    <div class="m">&bull; Four screens stop owning their own bar. That is a refactor with real test surface, and worth doing once rather than per screen.</div>
+  </div>
+
+  <div class="col" style="gap:12px;background:rgba(225,27,23,.08);border:1px solid rgba(225,27,23,.4);border-radius:14px;padding:20px;">
+    <div class="h2" style="color:#E11B17;">What I would do</div>
+    <div class="p" style="color:var(--inkSoft);max-width:840px;">
+      Option 2. It buys the architectural win — one toolbar in the nav chrome instead of four bars in four
+      screens — without spending the behaviour you deliberately built, which is that a pick survives walking
+      between tabs. It is also the only one where the message tier and the verb tier are the same idea at two
+      heights, so snackbars and selection stop being two systems. Keep Option 3 as the thing to try once the
+      chrome owns the toolbar: by then the morph is an animation, not an architecture change.
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -68,6 +68,20 @@ single unnamed mark; tapping the current tab's cell in the nav pill brings
 that tab back to its top. `docs/CHAPTERS.md` is the
 file's specification.
 
+Files on the share can be renamed, moved and deleted from the app. A
+video's own page carries Rename and Delete at the foot of the screen; in
+Browse, holding a video starts a selection as it always did, and the bar
+that appears now offers Move, Rename and Delete beside Download. It is
+files only — a picked folder still feeds Download and greys the other
+three, because a folder move drags a whole subtree behind it and a folder
+delete is the one mistake with no way back. A move is a single rename on
+the server, so it is instant, nothing is copied, and the share dropping
+halfway leaves every video either where it was or where it was going,
+never half-moved; that is measured rather than assumed
+(`SmbMutationProbeTest` against a real Samba server). Deleting is
+permanent and asks first, naming the size and saying that the chapters you
+wrote and where you left off go with it.
+
 ## Build and run
 
 Requirements: Android Studio 2026.1 (for its bundled JDK 21 and the SDK),

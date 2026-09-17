@@ -121,6 +121,18 @@ object TextStyles {
     val sectionTitle = sg(FontWeight.SemiBold, 13, 13f, 0.12f)
     /** Nav pill label: `600 10px/1`, `.06em`, uppercase. */
     val navLabel = sg(FontWeight.SemiBold, 10, 10f, 0.06f)
+
+    /**
+     * The pill's label while it is a SELECTION toolbar: `600 9px/1`, `.06em`.
+     *
+     * One point down from [navLabel], and only here. Four tabs carry words
+     * like "Home" and "Search"; four verbs carry "Download" and "Rename", so
+     * at 10px the labels ran cell to cell with no air between them. The
+     * tracking does NOT come down with the size — tracked caps need their
+     * spacing more as they get smaller, which is the rule the rest of this
+     * file follows.
+     */
+    val navLabelSelection = sg(FontWeight.SemiBold, 9, 9f, 0.06f)
     /** Field label inside a text field: `600 10px/1`, `.12em`, uppercase. */
     val fieldLabel = sg(FontWeight.SemiBold, 10, 10f, 0.12f)
     /** Pull-to-refresh status: `600 10px/1`, `.12em`, uppercase. */

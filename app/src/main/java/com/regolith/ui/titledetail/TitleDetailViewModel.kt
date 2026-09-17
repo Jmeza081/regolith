@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import com.regolith.data.db.MediaFileEntity
+import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.PlaybackRepository
 import com.regolith.data.transfer.TransferRepository
@@ -16,6 +17,7 @@ import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.player.MediaProbe
+import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDurationShort
 import dagger.assisted.Assisted
@@ -41,6 +43,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val playback: PlaybackRepository,
     private val probe: MediaProbe,
     private val transfers: TransferRepository,
+    private val fileOps: FileOpsRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -78,6 +81,8 @@ class TitleDetailViewModel @AssistedInject constructor(
                         videoLine = if (file.probedAtMs != null) infoOf(file).videoLine else null,
                         audioLine = if (file.probedAtMs != null) infoOf(file).audioLine else null,
                         modifiedAtMs = file.modifiedAtMs,
+                        fileName = file.name,
+                        sizeLabel = formatBytes(file.sizeBytes),
                     )
                 }
                 if (file.probedAtMs == null && !probed) runProbe()
@@ -113,6 +118,45 @@ class TitleDetailViewModel @AssistedInject constructor(
 
     /** Cancel a transfer in flight, or remove the finished copy. The share is untouched either way. */
     fun removeFromDevice() = viewModelScope.launch { transfers.remove(fileId) }.let { }
+
+    // ── Managing the file on the share (P12) ───────────────────────────
+    //
+    // Both verbs go through a dialog, and both report back onto this state
+    // rather than throwing: the share refusing is an ordinary thing that
+    // the screen has a sentence for.
+
+    fun startRename() = _uiState.update { it.copy(renaming = true, fileOpError = null) }
+
+    fun startDelete() = _uiState.update { it.copy(confirmingDelete = true, fileOpError = null) }
+
+    fun dismissFileOp() = _uiState.update { it.copy(renaming = false, confirmingDelete = false) }
+
+    fun dismissFileOpError() = _uiState.update { it.copy(fileOpError = null) }
+
+    /** [newBaseName] is what the field holds: the name without its extension. */
+    fun rename(newBaseName: String) {
+        _uiState.update { it.copy(renaming = false) }
+        viewModelScope.launch {
+            val result = fileOps.rename(fileId, newBaseName)
+            // The row keeps its id, so the screen's own flows redraw the new
+            // name; only a failure needs saying.
+            result.failures.firstOrNull()?.let { f ->
+                _uiState.update { it.copy(fileOpError = FileOpMessages.forFailure(f, "rename")) }
+            }
+        }
+    }
+
+    fun confirmDelete() {
+        _uiState.update { it.copy(confirmingDelete = false) }
+        viewModelScope.launch {
+            val result = fileOps.delete(listOf(fileId))
+            if (result.ok) {
+                _uiState.update { it.copy(deleted = true) }
+            } else {
+                _uiState.update { it.copy(fileOpError = FileOpMessages.forFailure(result.failures.first(), "delete")) }
+            }
+        }
+    }
 
     private fun runProbe() {
         probed = true

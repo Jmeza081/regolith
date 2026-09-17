@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
 import androidx.compose.ui.platform.testTag
@@ -73,7 +75,15 @@ import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
+import com.regolith.ui.components.LocalNavChromeHold
+import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
+import com.regolith.ui.components.ChromeMessageHost
+import com.regolith.ui.components.LocalAppSnackbar
+import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
+import com.regolith.ui.components.NavChromeHold
+import androidx.compose.material3.SnackbarHostState
+import com.regolith.ui.components.SelectionChrome
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
@@ -184,7 +194,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val railHidden by appViewModel.railHidden.collectAsStateWithLifecycle()
     val autoHideRail by appViewModel.autoHideRail.collectAsStateWithLifecycle()
     var railIdle by remember { mutableStateOf(false) }
-    val railVisible = windowShape.wide && !railHidden && !railIdle
+    // The selection toolbar lives in the nav chrome, so the chrome must be
+    // there whenever a selection is. That outranks BOTH ways the rail goes
+    // away — idling (a timer) and being pinned away (a preference). A pinned
+    // rail would otherwise leave a wide window with no way to act on a
+    // selection at all, which is exactly what it did.
+    val selectionChrome = remember { SelectionChrome() }
+    val selecting = selectionChrome.state != null
+    val railVisible = windowShape.wide && (selecting || (!railHidden && !railIdle))
     // A phone's pill hides on the same timer, minus the pinning: there is no
     // spine to pin it to, so going idle is the only way it leaves, and any
     // touch brings it straight back.
@@ -197,7 +214,20 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // own scroll. Arriving on it with the nav still scrolled away would
     // punish you for where you had got to on the LAST screen.
     LaunchedEffect(currentTab) { pillScroll.reveal() }
-    val navVisible = if (windowShape.wide) railVisible else !railIdle && !pillScroll.hidden
+    // Something is saying "not yet" — today, a snackbar that is still on
+    // screen. Phones only: on a wide window the rail is on the side edge and
+    // a message at the bottom never sat on top of it, so there is nothing to
+    // put back in step.
+    val navChromeHold = remember { NavChromeHold() }
+    // Every tab screen's messages land here, so the chrome can dock them
+    // above the pill instead of each screen floating its own.
+    val appSnackbar = remember { SnackbarHostState() }
+    val messageUp = appSnackbar.currentSnackbarData != null
+    val navVisible = if (windowShape.wide) {
+        railVisible
+    } else {
+        selecting || messageUp || navChromeHold.held || (!railIdle && !pillScroll.hidden)
+    }
     // F6 reserved the rail's 102dp even while it was slid away, so nothing
     // would reflow. What that actually produced was a screen with an obvious
     // empty stripe down the side and no rail in it — and the two ways of
@@ -358,6 +388,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         // The same answer the pill acts on, published for screens that float
         // their own chrome. One timer, so nothing can drift out of step.
         LocalNavChromeVisible provides navVisible,
+        LocalNavChromeHold provides navChromeHold,
+        LocalSelectionChrome provides selectionChrome,
+        LocalAppSnackbar provides appSnackbar,
     ) {
         Box(
             Modifier
@@ -616,6 +649,21 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 }
 
                 if (currentTab != null && !splash && locked != true) {
+                    // A wide window's message has no pill to ride above, so it
+                    // docks to the bottom of the window instead, clear of the
+                    // rail on the start edge. Without this the message was
+                    // shown into a host that was never composed: it never
+                    // appeared, and since nothing could dismiss it, it held the
+                    // queue's lock and swallowed every message after it.
+                    if (windowShape.wide) {
+                        ChromeMessageHost(
+                            appSnackbar,
+                            hazeState,
+                            Modifier.align(Alignment.BottomCenter)
+                                .padding(start = railInset, end = Spacing.s18, bottom = Spacing.s18)
+                                .widthIn(max = CHROME_MESSAGE_MAX_WIDTH),
+                        )
+                    }
                     // On a wide window the rail and its spine occupy the same
                     // edge and swap: whichever is not showing has slid out.
                     AnimatedVisibility(
@@ -658,7 +706,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         // plainly a control — the same 44dp frosted circle the
                         // detail pane closes with. They slide as one group, so
                         // the edge never shows half a nav.
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                            // The message tier rides with the pill: one object,
+                            // two tiers, one clock. Phones only — the rail has
+                            // no "above" to dock to.
+                            if (!windowShape.wide) {
+                                ChromeMessageHost(appSnackbar, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
+                            }
                             NavPill(
                                 selected = currentTab,
                                 onSelect = { navigateToTab(it) },
@@ -666,16 +720,42 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 dimmed = dimmedTabs,
                                 dots = tabDots,
                                 vertical = windowShape.wide,
+                                // BOTH shapes morph. The rail was left out of
+                                // this at first, on the theory that a nav on the
+                                // side edge never had to be taken over — but the
+                                // screens had already stopped drawing their own
+                                // bars, so that left a wide window with no way
+                                // to act on a selection at all.
+                                selection = selectionChrome.state,
                             )
                             if (windowShape.wide) {
-                                IconCircleButton(
-                                    icon = painterResource(R.drawable.rg_ic_chevron_left),
-                                    contentDescription = "Hide the rail",
-                                    onClick = { appViewModel.setRailHidden(true) },
-                                    size = 44.dp,
-                                    iconSize = 20.dp,
-                                    testTag = "nav_rail_hide_button",
-                                )
+                                // The circle under the rail is whichever control
+                                // the moment calls for: normally "put the rail
+                                // away", and while selecting the way OUT of the
+                                // selection — which is also the phone's shape,
+                                // where cancel is a circle beside the pill.
+                                // Hiding the rail mid-selection would take the
+                                // toolbar with it, so that control stands down.
+                                val chrome = selectionChrome.state
+                                if (chrome == null) {
+                                    IconCircleButton(
+                                        icon = painterResource(R.drawable.rg_ic_chevron_left),
+                                        contentDescription = "Hide the rail",
+                                        onClick = { appViewModel.setRailHidden(true) },
+                                        size = 44.dp,
+                                        iconSize = 20.dp,
+                                        testTag = "nav_rail_hide_button",
+                                    )
+                                } else {
+                                    IconCircleButton(
+                                        icon = painterResource(R.drawable.rg_ic_close),
+                                        contentDescription = "Cancel selection",
+                                        onClick = chrome.onCancel,
+                                        size = 44.dp,
+                                        iconSize = 20.dp,
+                                        testTag = "nav_selection_cancel",
+                                    )
+                                }
                             }
                         }
                     }

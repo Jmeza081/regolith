@@ -14,6 +14,19 @@ val ThumbShape = RoundedCornerShape(7.dp)
 val BoxShape = RoundedCornerShape(10.dp)
 /** Dialogs. */
 val DialogShape = RoundedCornerShape(20.dp)
+
+/**
+ * How wide a dialog is allowed to get: exactly the width it already has on a
+ * phone — 411dp of screen less the two 18dp gutters.
+ *
+ * Dialogs stopped using the platform's own width so they would match the
+ * app's surfaces rather than Android's, which is right on a phone and badly
+ * wrong on a tablet, where "the gutters" is most of a 900dp window and the
+ * card became a banner. Capping it here says the rule in one line — a dialog
+ * never gets wider than it is on a phone — and keeps the copy at the line
+ * length that was tuned there. Only a NARROW screen makes a dialog smaller.
+ */
+val DialogMaxWidth = 375.dp
 val SheetShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 val PillShape = RoundedCornerShape(percent = 50)
 
