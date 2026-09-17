@@ -241,6 +241,15 @@ interface MediaFileDao {
     @Query("UPDATE media_files SET missing = 1 WHERE folderId = :folderId AND relPath NOT IN (:seenPaths)")
     suspend fun markMissingNotIn(folderId: Long, seenPaths: List<String>)
 
+    /**
+     * The user deleted these from the share, so the rows go — unlike a
+     * rescan, which only marks missing (guardrail G3). Progress, chapters,
+     * artwork and any transfer row cascade away with them, which is exactly
+     * what the confirm dialog promises.
+     */
+    @Query("DELETE FROM media_files WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     /** What frame extraction learns in passing; never overwrites a value the full probe set. */
     @Query(
         "UPDATE media_files SET durationMs = COALESCE(durationMs, :durationMs), width = COALESCE(width, :width), height = COALESCE(height, :height), " +

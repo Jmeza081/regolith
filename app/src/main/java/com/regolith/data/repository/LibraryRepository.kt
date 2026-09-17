@@ -425,6 +425,15 @@ class LibraryRepository @Inject constructor(
 
     suspend fun filesInFolder(folderId: Long): List<MediaFileEntity> = mediaFileDao.inFolder(folderId)
 
+    /**
+     * The folders directly inside one folder, as Room knows them. The move
+     * sheet walks these rather than listing the share again: the destination
+     * is chosen from what has already been seen, and the move itself is what
+     * talks to the server.
+     */
+    suspend fun subfolders(folderId: Long): List<FolderEntity> =
+        folderDao.children(folderId).sortedBy { it.name.lowercase() }
+
     /** Remember what the container probe found, so Title Detail and the chips never probe twice. */
     suspend fun saveProbe(fileId: Long, info: MediaInfo) {
         mediaFileDao.saveProbe(
