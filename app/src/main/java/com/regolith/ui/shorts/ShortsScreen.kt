@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -32,13 +34,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -51,7 +57,6 @@ import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import com.regolith.R
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.OrbitArt
@@ -257,33 +262,33 @@ private fun ShortPage(
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
             Column(
-                Modifier.padding(end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
-                verticalArrangement = Arrangement.spacedBy(Spacing.s18),
+                Modifier.padding(end = Spacing.s8, bottom = LocalNavPillInsets.current.calculateBottomPadding()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
             ) {
-                IconCircleButton(
+                RailAction(
                     painterResource(R.drawable.rg_ic_library), "Choose which folder to play from", onPickSource,
-                    "shorts_source_button", onMedia = true, selected = filtered,
+                    "shorts_source_button", selected = filtered,
                 )
-                IconCircleButton(
+                RailAction(
                     painterResource(R.drawable.rg_ic_shuffle), if (shuffled) "Shuffling — tap to stop" else "Shuffle these clips",
-                    onShuffle, "shorts_shuffle_button", onMedia = true, selected = shuffled,
+                    onShuffle, "shorts_shuffle_button", selected = shuffled,
                 )
-                IconCircleButton(
+                RailAction(
                     painterResource(R.drawable.rg_ic_skip_next),
                     if (autoAdvance) "Auto-advance is on — tap to stop" else "Play the next clip automatically",
-                    onAutoAdvance, "shorts_autoadvance_button", onMedia = true, selected = autoAdvance,
+                    onAutoAdvance, "shorts_autoadvance_button", selected = autoAdvance,
                 )
-                IconCircleButton(
-                    painterResource(R.drawable.rg_ic_browse), "Show where this is", onLocate, "shorts_locate_button", onMedia = true,
+                RailAction(
+                    painterResource(R.drawable.rg_ic_browse), "Show where this is", onLocate, "shorts_locate_button",
                 )
-                IconCircleButton(
+                RailAction(
                     painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download),
                     if (item.onDevice) "Already on this device" else "Keep on this device",
-                    onKeep, "shorts_download_button", onMedia = true, selected = item.onDevice,
+                    onKeep, "shorts_download_button", selected = item.onDevice,
                 )
-                IconCircleButton(
+                RailAction(
                     painterResource(R.drawable.rg_ic_sliders), "Sound and brightness", onSettings,
-                    "shorts_settings_button", onMedia = true,
+                    "shorts_settings_button",
                 )
             }
         }
@@ -357,6 +362,54 @@ private fun SourceSheet(state: ShortsUiState, onPick: (Long?) -> Unit, onDismiss
         }
     }
 }
+
+/**
+ * One bare glyph on the feed's rail — a deliberate deviation from
+ * [IconCircleButton] and from the design system, for this screen only.
+ *
+ * A feed is a different animal. The frosted circle this app puts over media
+ * is right for one or two controls beside a film, and wrong for six stacked
+ * down the edge of a video you are trying to watch: the containers end up
+ * louder than the picture. Every other surface keeps the circles.
+ *
+ * What the circle was doing BESIDES decoration is contrast — a white glyph
+ * on a snowy frame is invisible. So the mark is drawn twice: a dark blurred
+ * copy a pixel below, then the glyph on top. That is the same trick TikTok
+ * uses, and it is what lets the container go without the icons going with
+ * it. The shadow copy carries no content description, so a screen reader
+ * announces the control once.
+ *
+ * [RAIL_HIT] is 44dp and deliberately NOT scaled: it is an ergonomic floor
+ * rather than a proportion (see `Type.kt`). [RAIL_GLYPH] is a literal dp
+ * because there is no design-export number to scale from — this shape is
+ * not in the design.
+ */
+@Composable
+private fun RailAction(
+    icon: Painter,
+    contentDescription: String,
+    onClick: () -> Unit,
+    testTag: String,
+    selected: Boolean = false,
+) {
+    val colors = RegolithTheme.colors
+    Box(
+        Modifier
+            .size(RAIL_HIT)
+            .clickable(interactionSource = null, indication = null, role = Role.Button, onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, null, Modifier.size(RAIL_GLYPH).offset(y = 1.dp).blur(3.dp), tint = Color.Black.copy(alpha = 0.55f))
+        Icon(icon, contentDescription, Modifier.size(RAIL_GLYPH), tint = if (selected) colors.accent else colors.ink)
+    }
+}
+
+/** The ergonomic floor, unscaled — the same 44dp hit area `TopBar` puts around a small glyph. */
+private val RAIL_HIT = 44.dp
+
+/** Bigger than a contained glyph: without a circle around it, a mark has to carry itself. */
+private val RAIL_GLYPH = 26.dp
 
 /**
  * Sound and brightness, because the feed cannot carry the player's edge
