@@ -22,11 +22,30 @@ enum class FileOpError {
     /** The name has characters a share will not take, or is empty. */
     BAD_NAME,
 
+    /** A folder was aimed at itself, at its own subtree, or at another share. */
+    BAD_DESTINATION,
+
     OTHER,
 }
 
+/**
+ * One thing an operation is about: a file, or a folder and everything under it.
+ *
+ * Why not a bare id. Folders and files are different tables and both number
+ * from 1, so in a batch holding some of each a `Long` says nothing about
+ * what it points at. The flag travels WITH the id for the same reason a
+ * foreign key names its table.
+ */
+data class FileOpTarget(val id: Long, val isFolder: Boolean) {
+    companion object {
+        fun file(id: Long) = FileOpTarget(id, isFolder = false)
+        fun folder(id: Long) = FileOpTarget(id, isFolder = true)
+        fun files(ids: Collection<Long>): List<FileOpTarget> = ids.map(::file)
+    }
+}
+
 /** One item that did not make it, with enough to name it in a message. */
-data class FileOpFailure(val fileId: Long, val name: String, val error: FileOpError)
+data class FileOpFailure(val target: FileOpTarget, val name: String, val error: FileOpError)
 
 /**
  * The outcome of one rename, move or delete batch.
@@ -36,7 +55,7 @@ data class FileOpFailure(val fileId: Long, val name: String, val error: FileOpEr
  * so there is no third state to represent.
  */
 data class FileOpResult(
-    val done: List<Long> = emptyList(),
+    val done: List<FileOpTarget> = emptyList(),
     val failures: List<FileOpFailure> = emptyList(),
 ) {
     val ok: Boolean get() = failures.isEmpty()
@@ -45,9 +64,12 @@ data class FileOpResult(
     /** The share dropped mid-batch, so the remainder was never attempted. */
     val dropped: Boolean get() = failures.any { it.error == FileOpError.UNREACHABLE }
 
+    /** The ids of the files that made it, for callers that only ever pass files. */
+    val doneFileIds: List<Long> get() = done.filterNot { it.isFolder }.map { it.id }
+
     companion object {
-        fun failed(fileId: Long, name: String, error: FileOpError) =
-            FileOpResult(failures = listOf(FileOpFailure(fileId, name, error)))
+        fun failed(target: FileOpTarget, name: String, error: FileOpError) =
+            FileOpResult(failures = listOf(FileOpFailure(target, name, error)))
     }
 }
 
@@ -82,6 +104,12 @@ object FileNames {
         if (trimmed == "." || trimmed == "..") return null
         return trimmed
     }
+
+    /**
+     * A folder's whole name goes through [cleanBase] unchanged: a folder has
+     * no extension to protect, so what the user types is what it is called.
+     */
+    fun cleanFolderName(input: String): String? = cleanBase(input)
 
     /** "Heat.1995" + "mkv" -> "Heat.1995.mkv"; a file with no extension keeps none. */
     fun withExtension(base: String, ext: String): String = if (ext.isEmpty()) base else "$base.$ext"

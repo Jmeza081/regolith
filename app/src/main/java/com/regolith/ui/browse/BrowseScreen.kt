@@ -122,6 +122,13 @@ fun BrowseScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val offline = state.offlineMessage
 
+    // Deleting the folder you are standing in leaves nothing to draw, so the
+    // screen leaves with it. The "Deleted 1 folder" message goes unshown and
+    // that is fine: only a SUCCESS can pop this screen, and arriving back in
+    // the parent with the row gone says the same thing. A failure leaves the
+    // folder — and this screen — exactly where they were, message and all.
+    LaunchedEffect(state.gone) { if (state.gone) onBack?.invoke() }
+
     // The tree stands beside the list only where both fit. Measured on this
     // screen's own width, not the window's: with a Title Detail pane open
     // beside it Browse is a third of the window, and the list has to win.
@@ -469,7 +476,7 @@ private fun BrowseContent(
         // undo — and lends the chrome its buttons. Cancel is drawn by the
         // pill, in the cell where Home sits when it is a nav.
         val selectionChrome = LocalSelectionChrome.current
-        DisposableEffect(selection, state.canActOnFiles, state.canRename) {
+        DisposableEffect(selection, state.canManage, state.canRename) {
             val live = selection
             if (live == null) {
                 selectionChrome.clear()
@@ -478,9 +485,9 @@ private fun BrowseContent(
                     SelectionChromeState(
                         verbs = listOf(
                             SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "browse_select_download", enabled = live.canDownload),
-                            SelectionVerb("Move", R.drawable.rg_ic_folder_go, viewModel::startMove, "browse_select_move", enabled = state.canActOnFiles),
+                            SelectionVerb("Move", R.drawable.rg_ic_folder_go, viewModel::startMove, "browse_select_move", enabled = state.canManage),
                             SelectionVerb("Rename", R.drawable.rg_ic_rename, viewModel::startRename, "browse_select_rename", enabled = state.canRename),
-                            SelectionVerb("Delete", R.drawable.rg_ic_trash, viewModel::startDelete, "browse_select_delete", enabled = state.canActOnFiles, destructive = true),
+                            SelectionVerb("Delete", R.drawable.rg_ic_trash, viewModel::startDelete, "browse_select_delete", enabled = state.canManage, destructive = true),
                         ),
                         onCancel = viewModel::cancelSelection,
                         summary = live.summary,
@@ -494,37 +501,33 @@ private fun BrowseContent(
         }
 
         state.renaming?.let { target ->
-            val ext = target.fileName.substringAfterLast('.', "")
+            // A folder has no extension to protect, so the whole name is
+            // the field; a video keeps its suffix outside it, where it
+            // cannot be typed away.
+            val ext = if (target.isFolder) "" else target.name.substringAfterLast('.', "")
             PromptDialog(
-                title = "Rename video",
+                title = if (target.isFolder) "Rename folder" else "Rename video",
                 label = "Name",
-                initialValue = FileNames.baseOf(target.fileName),
+                initialValue = if (target.isFolder) target.name else FileNames.baseOf(target.name),
                 confirmLabel = "Rename",
                 onConfirm = viewModel::rename,
                 onCancel = viewModel::cancelRename,
                 testTag = "browse_rename",
-                note = if (ext.isEmpty()) {
-                    "Chapters and your place follow the new name."
-                } else {
-                    "Keeps .$ext — chapters and your place follow the new name."
+                note = when {
+                    target.isFolder -> "Everything inside keeps its place — the folder moves as one."
+                    ext.isEmpty() -> "Chapters and your place follow the new name."
+                    else -> "Keeps .$ext — chapters and your place follow the new name."
                 },
                 maxLength = FileNames.MAX_BASE,
             )
         }
 
         state.confirmingDelete?.let { target ->
-            val n = target.fileIds.size
             ConfirmDialog(
-                title = if (n == 1) "Delete this video?" else "Delete $n videos?",
-                body = if (n == 1) {
-                    "${target.names.first()} leaves the share for good — ${target.sizeLabel}. " +
-                        "This can't be undone, and the chapters you wrote and where you left off go with it."
-                } else {
-                    "${target.sizeLabel} leaves the share for good. This can't be undone, and the chapters " +
-                        "you wrote and where you left off go with them."
-                },
-                confirmLabel = if (n == 1) "Delete video" else "Delete $n videos",
-                keepLabel = if (n == 1) "Keep it" else "Keep them",
+                title = deleteTitle(target),
+                body = deleteBody(target),
+                confirmLabel = deleteConfirmLabel(target),
+                keepLabel = if (target.targets.size == 1) "Keep it" else "Keep them",
                 onConfirm = viewModel::confirmDelete,
                 onKeep = viewModel::cancelDelete,
                 testTag = "browse_delete",
@@ -537,8 +540,27 @@ private fun BrowseContent(
                 onUp = viewModel::moveUp,
                 onOpen = viewModel::moveWalk,
                 onChoose = viewModel::moveChoose,
+                onNewFolder = viewModel::startNewFolder,
                 onConfirm = viewModel::confirmMove,
                 onDismiss = viewModel::dismissMove,
+            )
+        }
+
+        // Over the sheet rather than instead of it: the folder is being made
+        // as an answer to "where?", so the picker stays open behind and comes
+        // back with the new folder already chosen.
+        if (state.newFolderIn != null) {
+            PromptDialog(
+                title = "New folder",
+                label = "Name",
+                initialValue = "",
+                placeholder = "Season 02",
+                confirmLabel = "Create",
+                onConfirm = viewModel::createFolder,
+                onCancel = viewModel::cancelNewFolder,
+                testTag = "browse_new_folder",
+                note = "Made on the share, inside ${state.moveSheet?.breadcrumb?.substringAfterLast(" / ") ?: "this folder"}.",
+                maxLength = FileNames.MAX_BASE,
             )
         }
 
@@ -554,6 +576,60 @@ private fun BrowseContent(
                 duration = if (message.failed) SnackbarDuration.Long else SnackbarDuration.Short,
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.undoMove() else viewModel.clearFileOpMessage()
+        }
+    }
+}
+
+/**
+ * The delete dialog's three lines, kept together because they have to agree.
+ *
+ * A folder is the case worth being careful with: the server's delete is
+ * recursive and takes files the app never indexed — subtitles, artwork,
+ * other formats — so the body says what Regolith can count AND admits to
+ * what it cannot. The counts come from rows already on the device, which is
+ * why the dialog opens instantly instead of behind a network walk.
+ */
+private fun deleteTitle(target: DeleteTarget): String = when {
+    target.folderCount == 0 -> if (target.targets.size == 1) "Delete this video?" else "Delete ${target.targets.size} videos?"
+    target.targets.size == 1 -> "Delete this folder?"
+    else -> "Delete ${target.targets.size} items?"
+}
+
+private fun deleteConfirmLabel(target: DeleteTarget): String = when {
+    target.folderCount == 0 -> if (target.targets.size == 1) "Delete video" else "Delete ${target.targets.size} videos"
+    target.targets.size == 1 -> "Delete folder"
+    else -> "Delete ${target.targets.size} items"
+}
+
+/** "1 video" / "9 videos" — the delete dialog counts films, not files on disk. */
+private fun videos(n: Int): String = if (n == 1) "1 video" else "$n videos"
+
+private fun deleteBody(target: DeleteTarget): String {
+    val forever = "This can't be undone"
+    val insideFolders = "A folder takes everything inside it, including files Regolith doesn't list"
+    val alsoGone = "the chapters you wrote and where you left off go with"
+    return when {
+        // Files only: the shape this dialog had before folders existed.
+        target.folderCount == 0 && target.targets.size == 1 ->
+            "${target.names.first()} leaves the share for good — ${target.sizeLabel}. $forever, and $alsoGone it."
+        target.folderCount == 0 ->
+            "${target.sizeLabel} leaves the share for good. $forever, and $alsoGone them."
+        // One folder, named, with what is known to be inside it.
+        target.targets.size == 1 -> {
+            val holds = if (target.videoCount == 0) {
+                "Regolith doesn't list anything in it"
+            } else {
+                "${videos(target.videoCount)} · ${target.sizeLabel}"
+            }
+            "${target.names.first()} and everything inside it leaves the share for good — $holds. " +
+                "$insideFolders. $forever, and $alsoGone them."
+        }
+        else -> {
+            val folders = if (target.folderCount == 1) "1 folder" else "${target.folderCount} folders"
+            val files = target.targets.size - target.folderCount
+            val picked = if (files == 0) folders else "$folders and ${videos(files)}"
+            "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all. " +
+                "$insideFolders. $forever."
         }
     }
 }

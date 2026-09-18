@@ -59,13 +59,19 @@ opens the film at that moment.
 
 ### Manages the files, not just the library
 
-Hold any video to start picking, and the floating nav pill stops being a nav and
-becomes that selection's toolbar: Download, Move, Rename, Delete. A move is a
-**single rename on the server** — one metadata operation, nothing copied — so it
-is instant, and a share that drops halfway leaves every video either where it was
-or where it was going, never half-moved. That is measured rather than assumed, by
-a probe suite run against a real Samba server. Deleting is permanent and asks
-first, naming the size and saying that the chapters you wrote go with it.
+Hold any video — or any folder — to start picking, and the floating nav pill stops
+being a nav and becomes that selection's toolbar: Download, Move, Rename, Delete.
+A move is a **single rename on the server** — one metadata operation, nothing
+copied — so it is instant, and a share that drops halfway leaves every video
+either where it was or where it was going, never half-moved. That is measured
+rather than assumed, by a probe suite run against a real Samba server.
+
+Folders move and rename the same way, whole: the server does a directory and
+everything under it in that same single operation. Deleting is permanent and asks
+first, naming the size and saying that the chapters you wrote go with it — and for
+a folder, that everything inside goes too, including files Regolith never listed.
+When the folder you want to move something into doesn't exist yet, the move sheet
+makes it for you and drops the files straight in.
 
 ### Takes a batch offline
 

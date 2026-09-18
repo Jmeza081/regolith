@@ -13,6 +13,7 @@ import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareRootDao
+import com.regolith.data.db.SubtreeDao
 import com.regolith.data.db.TransferDao
 import com.regolith.data.db.ChapterSyncDao
 import com.regolith.data.db.UserChapterDao
@@ -45,6 +46,7 @@ object DatabaseModule {
     @Provides fun provideRecentSearchDao(db: RegolithDatabase): RecentSearchDao = db.recentSearchDao()
     @Provides fun provideTransferDao(db: RegolithDatabase): TransferDao = db.transferDao()
     @Provides fun provideShareRootDao(db: RegolithDatabase): ShareRootDao = db.shareRootDao()
+    @Provides fun provideSubtreeDao(db: RegolithDatabase): SubtreeDao = db.subtreeDao()
     @Provides fun provideDownloadPickDao(db: RegolithDatabase): DownloadPickDao = db.downloadPickDao()
     @Provides fun provideUserChapterDao(db: RegolithDatabase): UserChapterDao = db.userChapterDao()
     @Provides fun provideChapterSyncDao(db: RegolithDatabase): ChapterSyncDao = db.chapterSyncDao()

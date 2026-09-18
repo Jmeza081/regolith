@@ -4,6 +4,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ViewMode
+import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.MoveSheetState
 import com.regolith.ui.util.SelectionUiState
 
@@ -89,27 +90,46 @@ data class BrowseUiState(
     val currentFolderId: Long? = null,
     /** Non-null while a multi-selection is running (the contextual bar is up). */
     val selection: SelectionUiState? = null,
-    // --- Managing files on the share (P12). Files only: a picked FOLDER
-    // still feeds Download exactly as before, but the three new verbs go
-    // dead rather than dragging a subtree behind them.
-    /** Move and Delete need at least one file picked and no folders. */
-    val canActOnFiles: Boolean = false,
-    /** Rename needs exactly one file. */
+    // --- Managing things on the share (P12, folders added in P13). A
+    // picked folder is now a first-class target: moved and deleted whole,
+    // subtree and all.
+    /** Move and Delete need at least one thing picked, of either kind. */
+    val canManage: Boolean = false,
+    /** Rename needs exactly one thing picked — a file or a folder. */
     val canRename: Boolean = false,
     /** Why a verb is off, for the bar's detail line. */
     val selectionHint: String? = null,
     val renaming: RenameTarget? = null,
     val confirmingDelete: DeleteTarget? = null,
     val moveSheet: MoveSheetState? = null,
+    /** The folder a new one would be made in, while the name is being typed. */
+    val newFolderIn: Long? = null,
+    /** The folder this screen was showing has been deleted; the screen should pop. */
+    val gone: Boolean = false,
     /** One-shot line for the snackbar, with an Undo when the move can be walked back. */
     val fileOpMessage: FileOpMessage? = null,
 )
 
-/** The one file a rename is about. */
-data class RenameTarget(val fileId: Long, val fileName: String)
+/** The one thing a rename is about — a file, or a folder. */
+data class RenameTarget(val target: FileOpTarget, val name: String) {
+    val isFolder: Boolean get() = target.isFolder
+}
 
-/** What a delete would take, named and totalled, so the dialog can say it. */
-data class DeleteTarget(val fileIds: List<Long>, val names: List<String>, val sizeLabel: String)
+/**
+ * What a delete would take, named and totalled, so the dialog can say it.
+ *
+ * [videoCount] and [sizeLabel] count THROUGH picked folders — everything
+ * the recursive delete would reach that the app knows about — while
+ * [folderCount] counts the folders actually picked. The dialog needs both:
+ * one is what is going, the other is what is being tapped.
+ */
+data class DeleteTarget(
+    val targets: List<FileOpTarget>,
+    val names: List<String>,
+    val sizeLabel: String,
+    val videoCount: Int,
+    val folderCount: Int,
+)
 
 /**
  * What just happened, for the snackbar.
@@ -125,5 +145,5 @@ data class FileOpMessage(
     val failed: Boolean = false,
 )
 
-/** Put these files back where they came from. */
-data class UndoMove(val fileIds: List<Long>, val backToFolderId: Long)
+/** Put these back where they came from. */
+data class UndoMove(val targets: List<FileOpTarget>, val backToFolderId: Long)

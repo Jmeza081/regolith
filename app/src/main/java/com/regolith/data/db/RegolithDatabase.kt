@@ -82,6 +82,7 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun downloadPickDao(): DownloadPickDao
     abstract fun userChapterDao(): UserChapterDao
     abstract fun chapterSyncDao(): ChapterSyncDao
+    abstract fun subtreeDao(): SubtreeDao
 
     /** An external-content FTS table starts empty; `rebuild` indexes what the content table already holds. */
     class RebuildFts : AutoMigrationSpec {

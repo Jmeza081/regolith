@@ -17,6 +17,7 @@ import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.player.MediaProbe
+import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDurationShort
@@ -137,7 +138,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     fun rename(newBaseName: String) {
         _uiState.update { it.copy(renaming = false) }
         viewModelScope.launch {
-            val result = fileOps.rename(fileId, newBaseName)
+            val result = fileOps.rename(FileOpTarget.file(fileId), newBaseName)
             // The row keeps its id, so the screen's own flows redraw the new
             // name; only a failure needs saying.
             result.failures.firstOrNull()?.let { f ->
@@ -149,7 +150,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     fun confirmDelete() {
         _uiState.update { it.copy(confirmingDelete = false) }
         viewModelScope.launch {
-            val result = fileOps.delete(listOf(fileId))
+            val result = fileOps.delete(listOf(FileOpTarget.file(fileId)))
             if (result.ok) {
                 _uiState.update { it.copy(deleted = true) }
             } else {

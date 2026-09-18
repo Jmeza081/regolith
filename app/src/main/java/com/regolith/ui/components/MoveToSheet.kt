@@ -28,8 +28,20 @@ import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.scaledDp
 
-/** One folder offered as a destination. */
-data class MoveChild(val folderId: Long, val name: String, val meta: String?)
+/**
+ * One folder offered as a destination.
+ *
+ * [enabled] is false for a folder that is itself being moved, or that sits
+ * inside one: a folder cannot become its own parent. The row stays visible
+ * with [meta] saying why, because a destination that silently vanished
+ * would read as a missing folder rather than a refused one.
+ */
+data class MoveChild(
+    val folderId: Long,
+    val name: String,
+    val meta: String?,
+    val enabled: Boolean = true,
+)
 
 /**
  * Everything the move sheet draws, computed by the ViewModel that owns the
@@ -40,7 +52,8 @@ data class MoveChild(val folderId: Long, val name: String, val meta: String?)
  * is no such thing as no destination.
  */
 data class MoveSheetState(
-    val videoCount: Int,
+    /** "4 videos", "1 folder", "5 items" — what is being moved, in the title. */
+    val itemsLabel: String,
     val shareName: String,
     /** "media / Films" — where the walk currently is. */
     val breadcrumb: String,
@@ -55,6 +68,16 @@ data class MoveSheetState(
     val confirmEnabled: Boolean = true,
     /** Why it is off, or null. */
     val note: String? = null,
+    /**
+     * Something went wrong while the sheet was open — a folder that could
+     * not be made.
+     *
+     * It is carried HERE rather than sent to the snackbar because the
+     * snackbar draws at the foot of the screen, which is where this sheet
+     * is: the message would be delivered underneath the thing the user is
+     * looking at. A message nobody can see is the same as no message.
+     */
+    val error: String? = null,
 )
 
 /**
@@ -64,6 +87,11 @@ data class MoveSheetState(
  * cannot cross shares — the server answers "cannot rename between
  * different trees" — so a picker that offered another share would be
  * promising a copy-then-delete, which is the shape that loses files.
+ *
+ * [onNewFolder] makes the destination that does not exist yet. It is first
+ * in the list rather than last because it is the answer to the question the
+ * sheet just asked — "where?" — for anyone who is here to tidy up. The new
+ * folder is created immediately and chosen, so the move lands in it.
  */
 @Composable
 fun MoveToSheet(
@@ -71,12 +99,13 @@ fun MoveToSheet(
     onUp: () -> Unit,
     onOpen: (folderId: Long) -> Unit,
     onChoose: (folderId: Long) -> Unit,
+    onNewFolder: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = RegolithTheme.colors
     RegolithSheet(
-        title = if (state.videoCount == 1) "Move 1 video" else "Move ${state.videoCount} videos",
+        title = "Move ${state.itemsLabel}",
         subtitle = "Pick a folder on ${state.shareName}. A move can't leave the share it started on.",
         onDismiss = onDismiss,
         testTag = "move_sheet",
@@ -116,16 +145,56 @@ fun MoveToSheet(
             testTag = "move_sheet_here",
         )
 
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 64.dp)
+                .clickable(interactionSource = null, indication = null, onClick = onNewFolder)
+                .testTag("move_sheet_new_folder"),
+        ) {
+            Box(Modifier.size(34.scaledDp()).background(colors.badgeBg, BoxShape), contentAlignment = Alignment.Center) {
+                Icon(
+                    painterResource(R.drawable.rg_ic_folder_plus),
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(17.scaledDp()),
+                )
+            }
+            Spacer(Modifier.width(Spacing.s12))
+            Column(Modifier.weight(1f)) {
+                Text("New folder", style = TextStyles.settingLabel, color = colors.ink, maxLines = 1)
+                Text(
+                    "Made here, and chosen",
+                    style = TextStyles.meta,
+                    color = colors.metadata,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
         state.children.forEach { child ->
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
             DestinationRow(
                 name = child.name,
                 meta = child.meta,
                 chosen = state.chosenFolderId == child.folderId,
-                enabled = true,
+                enabled = child.enabled,
                 onChoose = { onChoose(child.folderId) },
+                // Still walkable when it cannot be chosen: a folder being
+                // moved may hold the folder you actually want.
                 onOpen = { onOpen(child.folderId) },
                 testTag = "move_sheet_folder_${child.folderId}",
+            )
+        }
+
+        if (state.error != null) {
+            Spacer(Modifier.height(Spacing.s12))
+            Text(
+                state.error,
+                style = TextStyles.meta,
+                color = colors.accent,
+                modifier = Modifier.fillMaxWidth().testTag("move_sheet_error"),
             )
         }
 
@@ -139,7 +208,8 @@ fun MoveToSheet(
         )
         Spacer(Modifier.height(Spacing.s12))
         Text(
-            "Each video moves in one step on the server — nothing is copied, so no file can be left half-moved.",
+            "Each one moves in a single step on the server — nothing is copied, so nothing can be left " +
+                "half-moved. A folder takes everything inside it.",
             style = TextStyles.meta,
             color = colors.metadata,
             modifier = Modifier.fillMaxWidth().testTag("move_sheet_note"),

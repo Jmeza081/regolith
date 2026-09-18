@@ -191,6 +191,94 @@ interface FolderDao {
 
     @Query("SELECT folders.* FROM folders JOIN folder_fts ON folders.id = folder_fts.rowid WHERE folder_fts MATCH :match AND folders.parentId IS NOT NULL LIMIT :limit")
     fun searchFolders(match: String, limit: Int): Flow<List<FolderEntity>>
+
+    /**
+     * Drop folder rows outright — a folder the user deleted off the share.
+     *
+     * `media_files` has a CASCADE foreign key on `folderId`, so the files
+     * inside go with them, and their chapters, progress and transfers
+     * cascade in turn. `folders.parentId` has NO such key, so subfolders do
+     * NOT follow: the caller passes the whole subtree.
+     */
+    @Query("DELETE FROM folders WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+}
+
+/**
+ * The local mirror's half of a folder move or rename.
+ *
+ * On the share this is ONE metadata operation: the server renames the
+ * directory and every path beneath it follows, with nothing copied. Room
+ * has no such luxury — `relPath` is denormalised onto every folder and file
+ * row, so all of them are now wrong, and `share_roots` (the chosen-folders
+ * allowlist) can be pointing at the old path too.
+ *
+ * Three UPDATEs rather than a row-per-loop, and one [Transaction] around
+ * them, so a subtree of any size is a single statement each and the mirror
+ * is never half-rewritten. `substr` rather than `LIKE` because a folder may
+ * legitimately be called `Season_01` or `100%`, and those are wildcards to
+ * `LIKE`.
+ *
+ * Room's FTS tables are external-content with triggers in SQLite itself, so
+ * they re-index from these UPDATEs without being told.
+ */
+@Dao
+interface SubtreeDao {
+
+    /**
+     * Repoint [folderId] and everything under it, from [oldPath] to [newPath].
+     *
+     * [newParentId] is where the folder now hangs (unchanged for a rename);
+     * [newName] is its last segment.
+     */
+    @Transaction
+    suspend fun relocate(
+        folderId: Long,
+        shareId: Long,
+        oldPath: String,
+        newPath: String,
+        newName: String,
+        newParentId: Long?,
+    ) {
+        moveFolderRow(folderId, newPath, newName, newParentId)
+        val oldPrefix = "$oldPath/"
+        val newPrefix = "$newPath/"
+        val cut = oldPrefix.length
+        rewriteFolderPaths(shareId, oldPrefix, newPrefix, cut, cut + 1)
+        rewriteFilePaths(shareId, oldPrefix, newPrefix, cut, cut + 1)
+        rewriteRootPaths(shareId, oldPath, newPath, oldPrefix, newPrefix, cut, cut + 1)
+    }
+
+    @Query("UPDATE folders SET relPath = :newPath, name = :newName, parentId = :newParentId WHERE id = :id")
+    suspend fun moveFolderRow(id: Long, newPath: String, newName: String, newParentId: Long?)
+
+    @Query(
+        "UPDATE folders SET relPath = :newPrefix || substr(relPath, :from) " +
+            "WHERE shareId = :shareId AND substr(relPath, 1, :cut) = :oldPrefix",
+    )
+    suspend fun rewriteFolderPaths(shareId: Long, oldPrefix: String, newPrefix: String, cut: Int, from: Int)
+
+    @Query(
+        "UPDATE media_files SET relPath = :newPrefix || substr(relPath, :from) " +
+            "WHERE shareId = :shareId AND substr(relPath, 1, :cut) = :oldPrefix",
+    )
+    suspend fun rewriteFilePaths(shareId: Long, oldPrefix: String, newPrefix: String, cut: Int, from: Int)
+
+    /**
+     * A chosen root that WAS the folder, or sat inside it, follows it.
+     * Otherwise narrowing a library to `Films/Kids` and then moving that
+     * folder would quietly empty the library.
+     */
+    @Query(
+        "UPDATE share_roots SET relPath = CASE WHEN relPath = :oldPath THEN :newPath " +
+            "ELSE :newPrefix || substr(relPath, :from) END " +
+            "WHERE shareId = :shareId AND (relPath = :oldPath OR substr(relPath, 1, :cut) = :oldPrefix)",
+    )
+    suspend fun rewriteRootPaths(shareId: Long, oldPath: String, newPath: String, oldPrefix: String, newPrefix: String, cut: Int, from: Int)
+
+    /** A deleted folder takes its chosen-root rows with it; nothing points at it any more. */
+    @Query("DELETE FROM share_roots WHERE shareId = :shareId AND (relPath = :path OR substr(relPath, 1, :cut) = :prefix)")
+    suspend fun dropRootsUnder(shareId: Long, path: String, prefix: String, cut: Int)
 }
 
 @Dao
