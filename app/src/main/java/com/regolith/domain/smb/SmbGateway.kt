@@ -57,4 +57,33 @@ interface SmbGateway {
 
     /** Delete one file. Deleting a file that is not there is not an error. */
     suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String)
+
+    // --- Folders (P13). [rename] already moves a directory — the server
+    // does the whole subtree in one metadata operation — but a folder
+    // cannot be CREATED or DELETED through the file calls above: both of
+    // them address a path without a trailing slash, which is how jcifs is
+    // told "this is a file", and neither one matches a directory.
+
+    /**
+     * Create one directory. The parent must already exist; this does not
+     * make a path, only its last segment.
+     *
+     * Fails if anything already has that name, which is deliberate — a
+     * silent success on an existing folder would let "new folder" quietly
+     * mean "the one that is already there".
+     */
+    suspend fun mkdir(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String)
+
+    /**
+     * Delete a directory **and everything inside it**, however deep.
+     *
+     * Separate from [delete] because the difference is not a detail: this
+     * one takes files the app never listed — subtitles, artwork, other
+     * formats — and there is no undo. Only ever call it behind a confirm
+     * dialog that says so.
+     *
+     * [relPath] must name a folder inside the share; the share root itself
+     * is rejected rather than emptied.
+     */
+    suspend fun deleteFolder(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String)
 }

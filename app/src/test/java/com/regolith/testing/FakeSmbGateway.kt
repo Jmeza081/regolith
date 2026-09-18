@@ -10,12 +10,20 @@ import com.regolith.domain.smb.SmbShareInfo
 
 /**
  * In-memory SMB server for JVM tests: a map of share -> path -> bytes.
- * Directories are implied by the file paths. Set [acceptedCredentials] to
+ * Directories are implied by the file paths, except empty ones, which live
+ * in [dirs] because nothing else can imply them. Set [acceptedCredentials] to
  * make anything else fail with [SmbFailure.AuthFailed]; set [reachable]
  * false to fail with [SmbFailure.Unreachable].
  */
 class FakeSmbGateway : SmbGateway {
     val files = mutableMapOf<String, MutableMap<String, ByteArray>>() // share -> relPath -> bytes
+    /**
+     * Directories that exist in their own right, share -> relPath. A folder
+     * holding files is implied by their paths and need not be in here; one
+     * that is EMPTY has no other way to exist, which is the whole point of
+     * `mkdir`.
+     */
+    val dirs = mutableMapOf<String, MutableSet<String>>()
     /** Modified times, share -> relPath -> ms; [DEFAULT_MTIME] when unset. */
     val mtimes = mutableMapOf<String, MutableMap<String, Long>>()
     var acceptedCredentials: SmbCredentials? = null
@@ -38,8 +46,24 @@ class FakeSmbGateway : SmbGateway {
     val writes = mutableListOf<String>()
 
     fun addFile(share: String, relPath: String, bytes: ByteArray, modifiedAtMs: Long = DEFAULT_MTIME) {
-        files.getOrPut(share) { mutableMapOf() }[relPath] = bytes
+        addShare(share)
+        files.getValue(share)[relPath] = bytes
         mtimes.getOrPut(share) { mutableMapOf() }[relPath] = modifiedAtMs
+    }
+
+    /** A folder that is there before anything is in it. */
+    fun addDir(share: String, relPath: String) {
+        addShare(share)
+        dirs.getOrPut(share) { mutableSetOf() } += relPath
+    }
+
+    /**
+     * An empty share. A share exists here iff it is a key in [files], and a
+     * test that only ever makes FOLDERS would otherwise be talking to a
+     * server that says the whole share is missing.
+     */
+    fun addShare(share: String) {
+        files.getOrPut(share) { mutableMapOf() }
     }
 
     fun mtime(share: String, relPath: String): Long = mtimes[share]?.get(relPath) ?: DEFAULT_MTIME
@@ -65,6 +89,9 @@ class FakeSmbGateway : SmbGateway {
         renameCount++
         checkWritable(host, credentials, share)
         val all = files.getValue(share)
+        // A directory rename is ONE operation on a real server: the whole
+        // subtree arrives or none of it does. Here that is a prefix swap.
+        if (isDir(share, fromRelPath)) return renameDir(share, fromRelPath, toRelPath)
         val bytes = all[fromRelPath] ?: throw SmbFailure.NotFound("$share/$fromRelPath")
         // Without [replace] the real server refuses rather than overwriting,
         // and so must this: the whole point of the flag is that a clobber
@@ -81,6 +108,46 @@ class FakeSmbGateway : SmbGateway {
         mtimes[share]?.remove(relPath)
     }
 
+    override suspend fun mkdir(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) {
+        checkWritable(host, credentials, share)
+        if (isDir(share, relPath) || files.getValue(share).containsKey(relPath)) throw SmbFailure.Other("$relPath exists")
+        dirs.getOrPut(share) { mutableSetOf() } += relPath
+    }
+
+    override suspend fun deleteFolder(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) {
+        checkWritable(host, credentials, share)
+        val prefix = "$relPath/"
+        files.getValue(share).keys.filter { it.startsWith(prefix) }.forEach {
+            files.getValue(share).remove(it)
+            mtimes[share]?.remove(it)
+        }
+        dirs[share]?.removeAll { it == relPath || it.startsWith(prefix) }
+    }
+
+    /** Is there a folder at this path — explicitly made, or implied by a file under it? */
+    fun isDir(share: String, relPath: String): Boolean {
+        if (relPath.isEmpty()) return true
+        if (dirs[share]?.contains(relPath) == true) return true
+        return files[share]?.keys?.any { it.startsWith("$relPath/") } == true
+    }
+
+    private fun renameDir(share: String, from: String, to: String) {
+        if (isDir(share, to) || files.getValue(share).containsKey(to)) throw SmbFailure.Other("$to exists")
+        val all = files.getValue(share)
+        val m = mtimes.getOrPut(share) { mutableMapOf() }
+        for (path in all.keys.filter { it.startsWith("$from/") }.toList()) {
+            val moved = to + path.removePrefix(from)
+            all[moved] = all.remove(path)!!
+            m.remove(path)?.let { m[moved] = it }
+        }
+        val d = dirs.getOrPut(share) { mutableSetOf() }
+        for (path in d.filter { it == from || it.startsWith("$from/") }.toList()) {
+            d.remove(path)
+            d += to + path.removePrefix(from)
+        }
+        d += to
+    }
+
     private fun check(host: SmbHost, credentials: SmbCredentials) {
         if (!reachable) throw SmbFailure.Unreachable(host.host)
         acceptedCredentials?.let { if (it != credentials) throw SmbFailure.AuthFailed() }
@@ -95,7 +162,7 @@ class FakeSmbGateway : SmbGateway {
         check(host, credentials)
         val all = files[share] ?: throw SmbFailure.NotFound(share)
         val prefix = if (relPath.isEmpty()) "" else "$relPath/"
-        val dirs = mutableSetOf<String>()
+        val childDirs = mutableSetOf<String>()
         val entries = mutableListOf<SmbEntry>()
         for ((path, bytes) in all) {
             if (!path.startsWith(prefix)) continue
@@ -104,10 +171,16 @@ class FakeSmbGateway : SmbGateway {
             if (slash < 0) {
                 entries += SmbEntry(rest, isDirectory = false, sizeBytes = bytes.size.toLong(), modifiedAtMs = mtime(share, path))
             } else {
-                dirs += rest.substring(0, slash)
+                childDirs += rest.substring(0, slash)
             }
         }
-        entries += dirs.map { SmbEntry(it, isDirectory = true, sizeBytes = 0, modifiedAtMs = DEFAULT_MTIME) }
+        // Folders made by mkdir, which no file path implies.
+        for (path in dirs[share].orEmpty()) {
+            if (!path.startsWith(prefix)) continue
+            val rest = path.removePrefix(prefix)
+            if (rest.isNotEmpty() && !rest.contains('/')) childDirs += rest
+        }
+        entries += childDirs.map { SmbEntry(it, isDirectory = true, sizeBytes = 0, modifiedAtMs = DEFAULT_MTIME) }
         return entries
     }
 

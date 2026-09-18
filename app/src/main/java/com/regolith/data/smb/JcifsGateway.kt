@@ -283,6 +283,58 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             }
         }
 
+    /**
+     * Both folder calls address the path WITH the trailing slash `urlFor`
+     * appends, which is how jcifs is told the name is a directory. Through
+     * a slashless URL a folder does not even report `exists()`, which is
+     * why [delete] no-ops on one instead of destroying it — a guardrail
+     * worth keeping now that the recursive version exists beside it.
+     */
+    override suspend fun mkdir(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): Unit =
+        withContext(Dispatchers.IO) {
+            require(relPath.isNotEmpty()) { "mkdir needs a name" }
+            withDialect(host, credentials, "$share/$relPath") { ctx ->
+                try {
+                    SmbFile(urlFor(host, share, relPath), ctx).mkdir()
+                } catch (e: SmbException) {
+                    // A refused mkdir can still leave a folder behind. MEASURED
+                    // against Samba 4.24 on macOS, with `smbclient` reproducing
+                    // it exactly, so this is the server's doing and not
+                    // jcifs's: the directory appears with mode 0000 and the
+                    // call answers ACCESS_DENIED.
+                    //
+                    // "Is it there" is therefore the wrong question — a folder
+                    // nothing can enter is not a folder anyone wanted. So the
+                    // test is whether it can be LISTED, which is the cheapest
+                    // thing that proves it is usable, and it runs only on the
+                    // error path. A fresh handle, because the one that failed
+                    // carries cached attributes.
+                    val usable = runCatching { SmbFile(urlFor(host, share, relPath), ctx).listFiles() }.isSuccess
+                    if (!usable) {
+                        // Clear the unusable stub so the name is free to try
+                        // again. Best effort: the server that refused the
+                        // create will very likely refuse this too.
+                        runCatching { SmbFile(urlFor(host, share, relPath), ctx).delete() }
+                        throw e
+                    }
+                    Log.i(TAG, "mkdir of $share/$relPath reported '${e.message}' but the folder works")
+                }
+            }
+        }
+
+    override suspend fun deleteFolder(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) =
+        withContext(Dispatchers.IO) {
+            // Not a guard against a user mistake — a guard against a bug.
+            // An empty relPath here would hand jcifs the share root and it
+            // would recursively empty the whole share without complaint.
+            require(relPath.isNotEmpty()) { "refusing to delete the share root" }
+            withDialect(host, credentials, "$share/$relPath") { ctx ->
+                val dir = SmbFile(urlFor(host, share, relPath), ctx)
+                // jcifs deletes a directory recursively, contents and all.
+                if (dir.exists()) dir.delete()
+            }
+        }
+
     private fun fileUrl(host: SmbHost, share: String, relPath: String): String = urlFor(host, share, relPath).trimEnd('/')
 
     /** Raw smb:// URL. jcifs-ng takes path characters as-is (no percent-decoding), so nothing is encoded. */
