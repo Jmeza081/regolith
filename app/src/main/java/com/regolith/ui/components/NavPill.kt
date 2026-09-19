@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
@@ -288,15 +290,31 @@ private fun PillCell(
 private const val MODE_MS = 140
 
 /**
- * The rail retracted (F6): a [NAV_RAIL_SPINE_WIDTH] column of four dots on
- * the start edge, one per tab, coloured exactly as the rail's labels are —
- * white for the tab you are on, #8A8A8A otherwise, 22% white when dimmed.
+ * The rail retracted (F6): a [NAV_RAIL_SPINE_WIDTH] column of one dot per
+ * tab on the start edge, coloured exactly as the rail's labels are — white
+ * for the tab you are on, #8A8A8A otherwise, 22% white when dimmed.
  * Tapping anywhere on it brings the rail back.
  *
  * It is deliberately the *same* nav in a smaller form rather than a generic
  * "menu" button: the lit dot still answers "where am I", which a hamburger
  * would not. Same frosted treatment as the pill, so the app still has only
  * one blurred surface.
+ *
+ * WHAT YOU TAP IS NOT WHAT YOU SEE. The dots stay 14dp wide, but they sit
+ * inside an invisible [NAV_RAIL_SPINE_TOUCH_WIDTH] x
+ * [NAV_RAIL_SPINE_TOUCH_HEIGHT] target that starts at the screen edge, and
+ * that target — not the dots — carries the click and the test tag. 14dp is
+ * under a third of the 48dp Android asks of a touch target, and on a
+ * foldable's inner display it is about three millimetres of glass.
+ *
+ * It also calls [systemGestureExclusion]. Android reserves a strip down each
+ * edge for the back gesture and the SYSTEM WINS TIES, so a thumb aimed at a
+ * spine sitting 8dp from the edge was being read as "go back" instead. This
+ * modifier is the app asking for that rectangle back. Android grants each
+ * side a budget (200dp total, most recent callers first) and silently
+ * ignores anything past it; this is the app's only caller, so it always
+ * fits. Web analogy: `touch-action` on an element that overlaps a browser's
+ * own edge-swipe.
  */
 @Composable
 fun NavRailSpine(
@@ -315,34 +333,47 @@ fun NavRailSpine(
         blurRadius = 20.dp,
         noiseFactor = 0f,
     )
-    Column(
+    Box(
         modifier = modifier
-            .width(NAV_RAIL_SPINE_WIDTH)
-            .shadow(elevation = 12.dp, shape = PillShape, ambientColor = colors.ground, spotColor = colors.ground)
-            .clip(PillShape)
-            .hazeEffect(state = hazeState, style = style)
-            .background(colors.pillBg)
-            .border(1.dp, colors.pillBorder, PillShape)
+            .width(NAV_RAIL_SPINE_TOUCH_WIDTH)
+            .heightIn(min = NAV_RAIL_SPINE_TOUCH_HEIGHT)
+            .systemGestureExclusion()
             .clickable(interactionSource = null, indication = null, onClick = onExpand)
-            .padding(vertical = 10.dp)
             .testTag("nav_rail_spine"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
     ) {
-        MainTab.entries.forEach { tab ->
-            val badged = tab in dots
-            val ink = when {
-                badged -> colors.accent
-                tab == selected -> colors.ink
-                tab in dimmed -> colors.navDimmed
-                else -> colors.navIdle
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                // The gutter the spine floats in, moved INSIDE the target so the
+                // target itself begins at x=0. The edge is where a thumb sliding
+                // in from off-screen arrives, and it was the one part of the
+                // reach that the app was not listening to at all.
+                .padding(start = Spacing.s8)
+                .width(NAV_RAIL_SPINE_WIDTH)
+                .shadow(elevation = 12.dp, shape = PillShape, ambientColor = colors.ground, spotColor = colors.ground)
+                .clip(PillShape)
+                .hazeEffect(state = hazeState, style = style)
+                .background(colors.pillBg)
+                .border(1.dp, colors.pillBorder, PillShape)
+                .padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+        ) {
+            MainTab.entries.forEach { tab ->
+                val badged = tab in dots
+                val ink = when {
+                    badged -> colors.accent
+                    tab == selected -> colors.ink
+                    tab in dimmed -> colors.navDimmed
+                    else -> colors.navIdle
+                }
+                Box(
+                    Modifier
+                        .size(if (badged) 6.dp else 4.dp)
+                        .background(ink, PillShape)
+                        .then(if (badged) Modifier.testTag("${tab.testTag}_dot") else Modifier),
+                )
             }
-            Box(
-                Modifier
-                    .size(if (badged) 6.dp else 4.dp)
-                    .background(ink, PillShape)
-                    .then(if (badged) Modifier.testTag("${tab.testTag}_dot") else Modifier),
-            )
         }
     }
 }
@@ -400,13 +431,36 @@ private val NAV_RAIL_CELL_HEIGHT: Dp = 66.dp
  */
 val NAV_RAIL_INSET: Dp = Spacing.s18 + NAV_RAIL_WIDTH
 
-/** The retracted rail: four dots and the padding around them. */
+/** The retracted rail as DRAWN: one dot per tab and the padding around them. */
 val NAV_RAIL_SPINE_WIDTH: Dp = 14.dp
+
+/**
+ * The retracted rail as TAPPED: a target from the screen edge inwards, wide
+ * enough to hit without aiming.
+ *
+ * 36dp and not 48dp because of what lies beyond it. A tab screen's content
+ * starts at [NAV_RAIL_SPINE_INSET] plus its own s18 gutter — 40dp in — so
+ * 36dp is every pixel available before an invisible target would start
+ * swallowing taps meant for the first column of tiles. Paired with
+ * [NAV_RAIL_SPINE_TOUCH_HEIGHT] the target clears Android's 48x48dp
+ * minimum by area with room over, and the height is free: nothing else is
+ * drawn in that gutter at any point down it.
+ */
+val NAV_RAIL_SPINE_TOUCH_WIDTH: Dp = 36.dp
+
+/** As [NAV_RAIL_SPINE_TOUCH_WIDTH], down the edge: comfortably past the dots at either end. */
+val NAV_RAIL_SPINE_TOUCH_HEIGHT: Dp = 120.dp
 
 /**
  * What a tab screen leaves free when the rail is pinned away: the spine and
  * the s8 gutter it hugs. 102dp of reserved width becomes 22dp, which is the
  * 80dp that puts the Library wall's third tile back at its full width.
+ *
+ * This follows what is DRAWN, not what is tapped: the spine's touch target
+ * is wider than the spine, and deliberately spends the screen's own gutter
+ * rather than asking for more reserved width. See
+ * [NAV_RAIL_SPINE_TOUCH_WIDTH] — if either number moves, check they still
+ * clear each other.
  */
 val NAV_RAIL_SPINE_INSET: Dp = Spacing.s8 + NAV_RAIL_SPINE_WIDTH
 

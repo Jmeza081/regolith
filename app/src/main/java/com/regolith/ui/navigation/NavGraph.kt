@@ -671,11 +671,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     }
                     // On a wide window the rail and its spine occupy the same
                     // edge and swap: whichever is not showing has slid out.
+                    //
+                    // No start padding: the spine now carries its own s8
+                    // gutter inside its touch target, so the target itself
+                    // reaches the screen edge and a thumb coming in from
+                    // off-screen lands on it. See NAV_RAIL_SPINE_TOUCH_WIDTH.
                     AnimatedVisibility(
                         visible = !railVisible && windowShape.wide,
                         enter = fadeIn(),
                         exit = fadeOut(),
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = Spacing.s8),
+                        modifier = Modifier.align(Alignment.CenterStart),
                     ) {
                         NavRailSpine(
                             selected = currentTab,
