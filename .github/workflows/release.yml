@@ -1,0 +1,121 @@
+# A push to main that touches the app builds it, tests it, and publishes a
+# release with the APK attached.
+#
+# Documentation-only pushes are filtered out below so the Releases tab stays a
+# list of real builds — their commits are not lost, they are folded into the
+# notes of the next release that does ship, under "Under the hood".
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'design/**'
+      - '.gitignore'
+  # The escape hatch: publish on demand, and force a bump the trailers did not
+  # ask for. Useful when a release is worth calling a minor after the fact.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump'
+        required: true
+        default: auto
+        type: choice
+        options: [auto, patch, minor, major]
+
+concurrency:
+  # Never two at once: they would compute the same next version and the second
+  # one's tag would collide. Queued, not cancelled — a release half-made is
+  # worse than a release made late.
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # create the tag and the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history and every tag: the version is computed from the
+          # last tag, and a shallow clone would not have one.
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          # 21, to match the Android Studio JBR that builds this locally —
+          # AGP 9.4 accepts 17, but a runner on a different JDK than the
+          # machine the code is written on is a class of failure nobody needs.
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # Before anything is published. A release built from a red commit is a
+      # release someone will install.
+      - name: Test and lint
+        run: ./gradlew test lint -Dorg.gradle.java.home="$JAVA_HOME"
+
+      - name: Work out the version and write the notes
+        id: notes
+        # A `choice` input can only be one of the four listed values, so this
+        # one cannot carry anything nasty — it goes through env anyway, so the
+        # rule "nothing interpolated into a shell line" has no exceptions to
+        # remember.
+        env:
+          FORCE_BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          .github/scripts/release_notes.py \
+            --force-bump "$FORCE_BUMP" \
+            --notes-out "$RUNNER_TEMP/notes.md" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Build the release APK
+        env:
+          VERSION: ${{ steps.notes.outputs.version }}
+          CODE: ${{ steps.notes.outputs.code }}
+        run: |
+          ./gradlew assembleRelease \
+            -Dorg.gradle.java.home="$JAVA_HOME" \
+            -Pregolith.versionName="$VERSION" \
+            -Pregolith.versionCode="$CODE"
+
+      - name: Name the APK after the version
+        env:
+          VERSION: ${{ steps.notes.outputs.version }}
+        run: |
+          mv app/build/outputs/apk/release/app-release.apk \
+             "$RUNNER_TEMP/regolith-$VERSION.apk"
+
+      # `gh` is on the runner already, so this needs no third-party action —
+      # one less thing with write access to the repository. It creates the tag
+      # as part of the release, so nothing has to push a tag separately.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.notes.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "Regolith $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --target "$GITHUB_SHA" \
+            "$RUNNER_TEMP/regolith-$VERSION.apk"
+
+      - name: Say what shipped
+        env:
+          VERSION: ${{ steps.notes.outputs.version }}
+          CODE: ${{ steps.notes.outputs.code }}
+          BUMP: ${{ steps.notes.outputs.bump }}
+          PREVIOUS: ${{ steps.notes.outputs.previous }}
+        run: |
+          {
+            echo "### Regolith $VERSION published"
+            echo ""
+            echo "\`$BUMP\` bump from \`${PREVIOUS:-no previous tag}\`, versionCode $CODE."
+            echo ""
+            cat "$RUNNER_TEMP/notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"

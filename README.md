@@ -105,6 +105,19 @@ The section is behind `BuildConfig.DEMO_LIBRARY`, true in both build types today
 because the side-load (`assembleRelease`) build is the one that gets tested on a
 phone. Set it false — and delete `res/raw/demo_*.mp4` — before any store upload.
 
+## Install a build
+
+Every push to `main` that touches the app builds it, runs the tests and lint,
+and publishes a [release](https://github.com/Jmeza081/regolith/releases) with
+the APK attached — notes grouped into what is new, what was fixed, and what
+changed under the hood. Version numbers are semver, worked out from the
+`Release:` trailers on the commits in that range (CLAUDE.md explains them).
+A documentation-only push builds but publishes nothing; those commits appear in
+the next release that ships.
+
+Take the newest `regolith-x.y.z.apk` from that page. It installs over the
+previous build, keeping your library, chapters and resume points.
+
 ## Build and run
 
 You need Android Studio 2026.1 (for its bundled JDK 21 and the SDK), SDK platform

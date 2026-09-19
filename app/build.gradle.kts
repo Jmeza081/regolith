@@ -19,8 +19,17 @@ android {
         // user-initiated transfer jobs all exist without version branches.
         minSdk = 34
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1"
+        // CI owns the version. `.github/workflows/release.yml` works out the
+        // next semver from the `Release:` trailers on the commits since the
+        // last tag and passes both numbers in; a local build keeps the
+        // fallbacks, which are deliberately below anything ever released so a
+        // hand-built APK can never masquerade as a newer one.
+        //
+        // versionCode is DERIVED from the name (0.2.0 -> 200) rather than
+        // being a second number to remember: Android refuses to install over a
+        // build whose code is not lower, so it has to rise every release.
+        versionCode = (providers.gradleProperty("regolith.versionCode").orNull ?: "1").toInt()
+        versionName = providers.gradleProperty("regolith.versionName").orNull ?: "0.1.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

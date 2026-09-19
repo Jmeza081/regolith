@@ -152,3 +152,44 @@ database (Android refuses to update an app whose signature changed).
 
 - Small, focused commits with a message that explains the *why*.
 - Don't commit `repomix-output.xml`, `local.properties`, `.gradle/`, `build/`.
+
+### Release trailers
+
+A push to `main` that touches the app publishes a GitHub Release with an APK
+(`.github/workflows/release.yml`). The version and the notes come from **git
+trailers** — machine-readable lines in the trailer block at the foot of the
+message, beside the `Co-Authored-By:` that is already there. The subject and
+body stay prose; nothing about the style above changes.
+
+```
+Move, rename and delete whole folders, and make one while moving
+
+<the usual body, explaining the why>
+
+Release: minor
+Notes: Folders can be moved, renamed and deleted whole, and the move sheet
+  can make a new one to move things into.
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+```
+
+| Trailer | What it does |
+|---|---|
+| `Release: major` | Breaking change. `1.4.2` → `2.0.0`, listed under **Breaking changes**. |
+| `Release: minor` | Something new. `1.4.2` → `1.5.0`, listed under **New**. |
+| `Release: patch` | A fix or a refinement. `1.4.2` → `1.4.3`, under **Fixed and improved**. |
+| `Release: skip` | No bump; listed under **Under the hood**. |
+| `Notes: …` | The line a user reads, in their words. Indent continuation lines. |
+
+Both are optional and both have sane defaults: a commit touching only `docs/`,
+`design/` or markdown is `skip`, anything else is `patch`, and a missing
+`Notes:` falls back to the subject line. **Write them anyway** — a release
+whose notes are all subject lines is a changelog, and the point of the
+Releases tab is to say what changed for someone holding the phone.
+
+The highest trailer in a release wins: one `Release: minor` among six patches
+makes the whole release a minor. Preview what the next release would say
+before pushing:
+
+```
+.github/scripts/release_notes.py
+```
