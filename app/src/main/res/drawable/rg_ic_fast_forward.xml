@@ -1,0 +1,13 @@
+<!--
+  Fast forward: two solid triangles, the same house shape as rg_ic_play
+  doubled. Filled rather than stroked because the transport glyphs (play,
+  skip) are solid, and drawn to the same 3..21 span so it sits on the
+  optical centre of a 24dp box like the rest of them.
+
+  It exists because rg_ic_seek_forward is a CIRCULAR arrow (jump ahead ten
+  seconds), which over a video reads as replay or reload, not as speed.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M3 5.5v13l9-6.5z" android:fillColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="butt" android:strokeLineJoin="miter" />
+    <path android:pathData="M12 5.5v13l9-6.5z" android:fillColor="#FFFFFF" android:strokeWidth="2" android:strokeLineCap="butt" android:strokeLineJoin="miter" />
+</vector>

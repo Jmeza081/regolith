@@ -60,6 +60,19 @@ class ShortsViewModel @Inject constructor(
     val bindVersion: StateFlow<Int> = _bindVersion
 
     /**
+     * Whether a finger is holding the right half down for 2x.
+     *
+     * A flow of its own rather than a field on [ShortsUiState], for the same
+     * reason [bindVersion] is: the feed's state is assembled by combining
+     * the library, the folder pick and the artwork walk, and a value that
+     * flips twice per gesture has no business rebuilding that. It mirrors
+     * what `PlaybackSession` already keeps for the full player, so both
+     * screens can say the same sentence about the same gesture.
+     */
+    private val _holdingFast = MutableStateFlow(false)
+    val holdingFast: StateFlow<Boolean> = _holdingFast
+
+    /**
      * Auto-advance, from preferences so it survives leaving the feed.
      *
      * Kept OUT of [uiState] deliberately: that combine is already at the
@@ -144,10 +157,20 @@ class ShortsViewModel @Inject constructor(
 
     fun togglePlayPause() = pool.togglePlayPause()
 
-    fun holdFast(hold: Boolean) = pool.holdFast(hold)
+    fun holdFast(hold: Boolean) {
+        _holdingFast.value = hold
+        pool.holdFast(hold)
+    }
 
     /** Leaving the screen: silence without giving up the prepared window. */
-    fun pauseAll() = pool.pauseAll()
+    fun pauseAll() {
+        // A hold is released by `tryAwaitRelease`, which never arrives if the
+        // gesture layer is disposed under the finger -- swiping to another
+        // tab mid-hold, say. Clearing it here means the label cannot be left
+        // on screen describing a speed nothing is playing at.
+        _holdingFast.value = false
+        pool.pauseAll()
+    }
 
     /** [folderId] null plays everything again. */
     fun pickFolder(folderId: Long?) {

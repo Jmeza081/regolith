@@ -95,6 +95,7 @@ import com.regolith.domain.playback.SeekStacker
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.player.PlaybackState
 import com.regolith.ui.components.StrataLoader
+import com.regolith.ui.components.OnMediaLabel
 import com.regolith.ui.titledetail.TransferView
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.playback.ChapterDraft
@@ -1467,15 +1468,6 @@ private fun ScrubPreview(ms: Long, frame: android.graphics.Bitmap?, fraction: Fl
             Text(formatClock(ms), style = TextStyles.chipOverArt, color = colors.ink, modifier = Modifier.background(colors.overArt, PillShape).padding(horizontal = Spacing.s8, vertical = Spacing.s2).testTag("player_scrub_time"))
         }
     }
-}
-
-/** A frosted label over the picture: 700 15px white, white 14% fill, 28% hairline, 8/18 padding. */
-@Composable
-private fun OnMediaLabel(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text, style = TextStyles.buttonPrimary, color = Color.White,
-        modifier = modifier.background(Color(0x24FFFFFF), PillShape).border(1.dp, Color(0x47FFFFFF), PillShape).padding(horizontal = Spacing.s18, vertical = Spacing.s8),
-    )
 }
 
 /**

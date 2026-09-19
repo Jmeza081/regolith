@@ -4,6 +4,9 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -65,6 +68,7 @@ import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.OnMediaLabel
 import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.ProgressEdge
 import com.regolith.ui.components.RegolithSheet
@@ -152,6 +156,8 @@ fun ShortsScreen(
 
     // settledPage, not currentPage: binding mid-swipe would tear down the
     // player you are still looking at.
+    val holdingFast by viewModel.holdingFast.collectAsStateWithLifecycle()
+
     LaunchedEffect(pager.settledPage, state.items) {
         if (state.items.isNotEmpty()) viewModel.bind(pager.settledPage)
     }
@@ -179,6 +185,7 @@ fun ShortsScreen(
                     filtered = state.folderId != null,
                     autoAdvance = autoAdvance,
                     chromeVisible = chromeVisible,
+                    holdingFast = holdingFast,
                     // Only the clip you are looking at may move the feed. A
                     // prewarmed neighbour wrapping would otherwise scroll the
                     // page out from under a finger that never asked.
@@ -225,6 +232,7 @@ private fun ShortPage(
     filtered: Boolean,
     autoAdvance: Boolean,
     chromeVisible: Boolean,
+    holdingFast: Boolean,
     onWrapped: suspend () -> Unit,
     onTap: () -> Unit,
     onHoldFast: (Boolean) -> Unit,
@@ -300,18 +308,50 @@ private fun ShortPage(
             }
         }
 
-        AnimatedVisibility(
-            visible = chromeVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomStart),
+        // The foot of the page is ONE column, not two things aimed at the
+        // same corner. The speed label and the clip's name both want the
+        // bottom edge above the nav pill, and when they were placed
+        // independently they simply drew on top of each other. Stacking
+        // them means the layout guarantees the clearance instead of a
+        // hard-coded number that would drift the moment the name wrapped.
+        //
+        // They keep SEPARATE visibility rules: the name is chrome and
+        // leaves on the chrome's clock, while the speed label answers a
+        // finger and must show whether or not the chrome has gone. Each
+        // AnimatedVisibility collapses to nothing when hidden, so the other
+        // one settles onto the edge on its own.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(bottom = LocalNavPillInsets.current.calculateBottomPadding()),
         ) {
-            Column(Modifier.padding(start = Spacing.s18, end = 96.dp, bottom = LocalNavPillInsets.current.calculateBottomPadding())) {
-                Text(item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
-                    style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            AnimatedVisibility(
+                visible = holdingFast,
+                // Up from the edge it sits on: the shortest way in, and it
+                // reads as the label arriving rather than blinking into being.
+                enter = slideInVertically(tween(HUD_MS)) { it } + fadeIn(tween(HUD_MS)),
+                exit = slideOutVertically(tween(HUD_MS)) { it } + fadeOut(tween(HUD_MS)),
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                OnMediaLabel(
+                    // The SAME sentence the full player's pill uses for the
+                    // same gesture. Two screens describing one hold in two
+                    // different ways is how an app starts sounding like two.
+                    text = "2× while held",
+                    icon = painterResource(R.drawable.rg_ic_fast_forward),
+                    pulsing = true,
+                    modifier = Modifier.padding(bottom = Spacing.s8).testTag("shorts_speed_pill"),
                 )
+            }
+            AnimatedVisibility(visible = chromeVisible, enter = fadeIn(), exit = fadeOut()) {
+                Column(Modifier.padding(start = Spacing.s18, end = 96.dp)) {
+                    Text(item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
+                        style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
@@ -397,6 +437,14 @@ private fun SourceSheet(state: ShortsUiState, onPick: (Long?) -> Unit, onDismiss
 }
 
 /** Three across: small enough that a folder's frame still reads, wide enough to name it. */
+/**
+ * How long the speed label takes to arrive and leave. Short, because it is
+ * answering a gesture already in progress: the app's own tab cross-fade is
+ * 140ms and anything slower here would still be sliding in when a quick
+ * hold has already ended.
+ */
+private const val HUD_MS = 140
+
 private const val SOURCE_COLUMNS = 3
 
 /**
