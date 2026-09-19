@@ -43,8 +43,13 @@ fun DisplayText(
 
 /**
  * Section eyebrow ("CONTINUE WATCHING", "3 FOLDERS"): Space Grotesk 600
- * 11px, tracked .14em, uppercase. #A0A0A0 by default; Browse and Search
- * use #6E6E6E ([muted]).
+ * 11px, tracked .14em, uppercase. #A0A0A0 by default; Browse uses #6E6E6E
+ * ([muted]), as does Search for anything that labels one thing.
+ *
+ * [large] is 13px at .12em — tracking eases off as the size grows, which is
+ * how tracked caps stay even. Use it where the label names a GROUP that
+ * something else could follow: Home's rows, and Search's two result groups,
+ * where the label is the only thing saying one wall has ended.
  */
 @Composable
 fun Eyebrow(text: String, modifier: Modifier = Modifier, muted: Boolean = false, large: Boolean = false) {

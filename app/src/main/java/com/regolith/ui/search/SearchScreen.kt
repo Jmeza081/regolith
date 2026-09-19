@@ -245,7 +245,17 @@ fun SearchScreen(
             }
             if (state.searched && state.hits.isNotEmpty()) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        // s12 ON TOP OF the list's own s18 between items, so
+                        // the seam between the two groups is s30 where every
+                        // other gap on the screen is s18 — the next step up
+                        // the scale, and the thing that tells you the wall
+                        // has ended and another has started. Only when there
+                        // IS a group above: alone, the matches are just the
+                        // results and sit under the chips like anything else.
+                        modifier = Modifier.padding(top = if (state.moments.isEmpty()) 0.dp else Spacing.s12),
+                    ) {
                         // One toggle for both groups: it sits on whichever label comes first.
                         ResultsLabel(
                             "${state.hits.size} match" + (if (state.hits.size == 1) "" else "es"), "search_count",
@@ -518,11 +528,19 @@ private fun activate(
  * carry the toggle, so it rides on the first label of the results, and one
  * toggle switches both groups: a grid above a list would read as two
  * different kinds of thing.
+ *
+ * The LARGE eyebrow (13px, and #A0A0A0 rather than Search's usual muted
+ * #6E6E6E), which is the same one Home gives its rows. Search is the only
+ * screen that stacks two grids of the same-looking tiles, and at 11px muted
+ * the label between them was quieter than the metadata under the tiles
+ * either side of it — so the two groups read as one long wall. That is the
+ * exact case [Eyebrow]'s `large` was added for: naming a GROUP, not
+ * labelling the thing beneath it.
  */
 @Composable
 private fun ResultsLabel(text: String, tag: String, showToggle: Boolean, mode: ViewMode, onToggle: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Eyebrow(text, Modifier.weight(1f).testTag(tag), muted = true)
+        Eyebrow(text, Modifier.weight(1f).testTag(tag), large = true)
         if (showToggle) {
             // The same glyph and words as the switch on Library and Browse.
             val action = viewModeAction(mode, "search_view_mode_button", onToggle)
