@@ -467,7 +467,11 @@ private fun HitRow(
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             Text(highlight(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(hit.meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // The meta line is highlighted as well as the title. A row now
+            // stands for the whole file, so the match is just as likely to
+            // be in the filename or the path down here as in the name above
+            // -- and a result with nothing marked on it reads as a mistake.
+            Text(highlight(hit.meta, query, colors.accent), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (hit is SearchHit.Moment) Tag("Point of interest", Modifier.padding(top = Spacing.s2))
         }
         if (picked) {

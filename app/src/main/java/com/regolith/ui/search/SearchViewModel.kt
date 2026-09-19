@@ -51,6 +51,12 @@ sealed interface SearchHit {
     val shareId: Long
     val relPath: String
 
+    /**
+     * A video whose filename parsed into a recognisable title. The title is
+     * the primary line and the filename rides in [meta]; a file is listed
+     * as EITHER this or [File], never both. See the hits loop in
+     * [SearchViewModel] for why.
+     */
     data class Title(
         val fileId: Long,
         override val primary: String,
@@ -63,6 +69,7 @@ sealed interface SearchHit {
         override val testTag get() = "search_title_$fileId"
     }
 
+    /** A video whose name did not parse into a title, so the filename IS the row. */
     data class File(
         val fileId: Long,
         override val primary: String,
@@ -222,25 +229,33 @@ class SearchViewModel @Inject constructor(
             }
             val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
             val res = VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null }
-            val folderName = file.relPath.substringBeforeLast('/', "").substringAfterLast('/')
+            // ONE ROW PER FILE. A file whose name parses into a title wears
+            // the title and carries its filename in the meta line; one that
+            // does not is its filename. Both open the same screen, so a
+            // second row was never a second destination -- just the same
+            // video listed twice under one heading, which made "12 matches"
+            // mean six. The filename stays visible because it is often where
+            // the match actually is, and the meta line is highlighted too so
+            // a row can always say why it is here.
             if (parsed.matched) {
                 hits += SearchHit.Title(
                     fileId = file.id,
                     primary = parsed.display,
-                    meta = listOfNotNull(res, file.durationMs?.let { formatDurationShort(it) }, folderName.ifEmpty { null }).joinToString(" · "),
+                    meta = listOfNotNull(res, file.durationMs?.let { formatDurationShort(it) }, file.name).joinToString(" · "),
+                    shareId = file.shareId,
+                    relPath = file.relPath.substringBeforeLast('/', ""),
+                    sizeBytes = file.sizeBytes,
+                )
+            } else {
+                hits += SearchHit.File(
+                    fileId = file.id,
+                    primary = file.name,
+                    meta = listOfNotNull(res, formatBytes(file.sizeBytes), "/" + file.relPath.substringBeforeLast('/', "")).joinToString(" · "),
                     shareId = file.shareId,
                     relPath = file.relPath.substringBeforeLast('/', ""),
                     sizeBytes = file.sizeBytes,
                 )
             }
-            hits += SearchHit.File(
-                fileId = file.id,
-                primary = file.name,
-                meta = listOfNotNull(res, formatBytes(file.sizeBytes), "/" + file.relPath.substringBeforeLast('/', "")).joinToString(" · "),
-                shareId = file.shareId,
-                relPath = file.relPath.substringBeforeLast('/', ""),
-                sizeBytes = file.sizeBytes,
-            )
         }
         if (f == SearchFilter.ALL) {
             for (folder in folders) {
@@ -347,9 +362,10 @@ class SearchViewModel @Inject constructor(
     }
 
     /**
-     * Every result on screen. Title and File hits can name the SAME file —
-     * a matched video appears as both — and the store keys files by id, so
-     * the duplicate collapses rather than being picked twice.
+     * Every result on screen. One row per file since the two kinds stopped
+     * being emitted together, but the `distinctBy` stays: the selection
+     * store keys files by id anyway, so this costs nothing and keeps the
+     * guarantee local to the code that relies on it.
      */
     fun selectAllHere() {
         val hits = uiState.value.hits
