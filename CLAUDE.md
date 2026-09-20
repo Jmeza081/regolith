@@ -104,7 +104,36 @@ app dependency. Config lives in `repomix.config.json`; output is gitignored.
   duplicated components, or writing/refreshing `docs/ARCHITECTURE.md`.
 - Don't paste the whole output into a response; read it and summarize.
 
-## Running & testing on the emulator (argent)
+## Running & testing on a device or the emulator
+
+**Look for the real phone first.** `adb devices` before booting anything: the
+owner's Galaxy Z Fold 8 (`SM-F971U`, Android 17) is often plugged in over USB,
+and when it is, it beats every AVD here. It is the device the app is actually
+for, it is the only way to see the cover screen, `TABLE_TOP` and flex mode at
+all (no emulator on this machine reaches them — see below), and it is the only
+place a real SMB share, real files and real playback exist. Prefer it for
+anything you are trying to *confirm*, and say which one you used.
+
+    adb devices                 # `device` = ready; `unauthorized` = accept the
+                                # dialog on the phone; empty = fall back to an AVD
+
+Two things to know before installing to it:
+
+- A debug build's `versionCode` defaults to **1**, and a phone carrying a
+  release will refuse it (`INSTALL_FAILED_VERSION_DOWNGRADE`). Pass a higher
+  one, the way the release workflow does:
+  `./gradlew installDebug -Pregolith.versionCode=<higher> -Pregolith.versionName="<something-obvious>"`.
+  Use a name the owner can recognise, since it replaces the build they were
+  using; offer to put the release back afterwards.
+- `adb logcat -s Regolith/SMB` (or `Regolith/Artwork`) on the real phone is the
+  best diagnostic the project has, and several failures are only visible there
+  — `errorDetail` is rendered on the Add-server screen and nowhere else, so a
+  failure on any other screen shows a bare message and the status code reaches
+  the log only.
+
+**Fall back to the emulator** when no device is attached, and for anything that
+should hold on any machine — unit and Compose tests, layout at sizes the Fold
+cannot be, and CI-shaped checks.
 
 Emulator control goes through the **argent MCP tools** (`mcp__argent__*`)
 when they are loaded in the session. They are not always: check first, and
@@ -119,8 +148,8 @@ no `avdmanager` either — see the README for how these were made):
 | `Samsung_Galaxy_Main_Display` | 1848×2448 @ 400 dpi = 739×979 dp. Hand-written, generic `google_apis` at API 36.1. Hinge declared. | The wide window and `BOOK`. The one that is known to work. |
 | `Pixel_9_Pro_Fold` | 2076×2152 @ 390 dpi, SDK `pixel_9_pro_fold` profile on a `google_apis_playstore` API 37.2 image, cover region declared. | Untested — it will not boot on this machine's current free disk. See `docs/FOLDABLE_PLAN.md`. |
 
-- Check what is running first (`list-devices`, or `adb devices`) and boot
-  `Samsung_Galaxy_Main_Display` if nothing is.
+- With no phone attached, check what is running (`list-devices`, or
+  `adb devices`) and boot `Samsung_Galaxy_Main_Display` if nothing is.
 - Build + install: `./gradlew installDebug`, then `launch-app` with the
   applicationId (or `adb shell am start -n com.regolith/.MainActivity`).
 - **Never guess tap coordinates.** Call `describe` (reads the accessibility
