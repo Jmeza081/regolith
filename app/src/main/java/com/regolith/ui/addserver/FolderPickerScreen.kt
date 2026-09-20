@@ -94,7 +94,7 @@ fun FolderPickerScreen(
                 }
                 state.error != null -> item {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                        ErrorCard(message = state.error!!, testTag = "addserver_folders_error")
+                        ErrorCard(message = state.error!!, detail = state.errorDetail, testTag = "addserver_folders_error")
                         SecondaryButton(text = "Try again", onClick = viewModel::load, compact = true, testTag = "addserver_folders_retry")
                     }
                 }

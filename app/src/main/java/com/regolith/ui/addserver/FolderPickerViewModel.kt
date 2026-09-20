@@ -45,6 +45,14 @@ data class FolderPickerUiState(
     val chosenCount: Int = 0,
     val loading: Boolean = true,
     val error: String? = null,
+    /**
+     * The status code behind [error] ("0xC0000034 … · SMB311"), shown as the
+     * card's small print. It used to be collected and then thrown away
+     * everywhere except the Add-server screen, so a failure here showed a
+     * bare sentence and the one line that identified the cause reached the
+     * log only.
+     */
+    val errorDetail: String? = null,
 ) {
     /** "media / Films / 2016" */
     val breadcrumb: String get() = (listOf(shareName) + relPath.split('/').filter { it.isNotEmpty() }).joinToString(" / ")
@@ -96,6 +104,7 @@ class FolderPickerViewModel @AssistedInject constructor(
             chosenCount = roots.size,
             loading = listed == null,
             error = listed?.exceptionOrNull()?.message,
+            errorDetail = (listed?.exceptionOrNull() as? SmbFailure)?.detail,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FolderPickerUiState(relPath = relPath))
 

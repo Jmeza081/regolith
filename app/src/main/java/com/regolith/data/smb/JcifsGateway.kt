@@ -6,6 +6,7 @@ import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
+import com.regolith.domain.smb.shareRootRefusal
 import com.regolith.domain.smb.SmbShareInfo
 import jcifs.CIFSContext
 import jcifs.CIFSException
@@ -152,7 +153,25 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         // Guest sessions have no session key and can never sign; insisting on
         // a signed IPC$ channel would refuse every guest share on the planet.
         val lenient = credentials is SmbCredentials.Guest || host in lenientHosts
-        pinnedDialect[host]?.let { d -> return wrap(host, path, d) { block(context(host, credentials, d, lenient)) } }
+        pinnedDialect[host]?.let { d ->
+            try {
+                return wrap(host, path, d) { block(context(host, credentials, d, lenient)) }
+            } catch (e: SmbFailure.AuthFailed) {
+                throw e
+            } catch (e: SmbFailure) {
+                // A pin with no way out is a trap, because the pin is set by
+                // whichever call ran FIRST -- in practice share enumeration,
+                // which talks to IPC$ rather than to a share. macOS accepts
+                // SMB311 on IPC$ and then refuses to open a real share's root
+                // for listing at that dialect, so every later call inherited a
+                // dialect that had only ever been proven for a different kind
+                // of request, and the ladder below -- which exists for exactly
+                // this -- never ran again. Drop the pin and re-walk.
+                if (e.isTcpLevel()) throw e
+                Log.w(TAG, "pinned $d failed for ${host.host}/$path; dropping the pin and re-walking the ladder")
+                pinnedDialect.remove(host)
+            }
+        }
         var last: SmbFailure? = null
         for (d in dialectLadder) {
             try {
@@ -359,7 +378,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
         // The full cause chain: jcifs folds transport-thread failures into one status code.
-        Log.w(TAG, "SMB failure on $dialect for ${host.host}$path", e)
+        Log.w(TAG, "SMB failure on $dialect for ${host.host}/$path", e)
         throw when (e.ntStatus) {
             NtStatus.NT_STATUS_LOGON_FAILURE,
             NtStatus.NT_STATUS_ACCOUNT_DISABLED,
@@ -374,11 +393,11 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             NtStatus.NT_STATUS_OBJECT_PATH_NOT_FOUND,
             NtStatus.NT_STATUS_BAD_NETWORK_NAME,
             NtStatus.NT_STATUS_NO_SUCH_FILE,
-            -> SmbFailure.NotFound(path, e, detail(e, dialect))
+            -> SmbFailure.NotFound(path, e, detail(e, dialect), explanation = shareRootRefusal(path))
             else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
         }
     } catch (e: CIFSException) {
-        Log.w(TAG, "CIFS failure on $dialect for ${host.host}$path", e)
+        Log.w(TAG, "CIFS failure on $dialect for ${host.host}/$path", e)
         throw if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
     } catch (e: UnknownHostException) {
         throw SmbFailure.Unreachable(host.host, e, "DNS lookup failed · $dialect")

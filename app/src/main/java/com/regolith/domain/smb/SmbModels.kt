@@ -47,8 +47,21 @@ sealed class SmbFailure(
     class Forbidden(what: String, cause: Throwable? = null, detail: String? = null) : SmbFailure("Access denied: $what", cause, detail)
     /** No route, connection refused, timed out, name did not resolve. */
     class Unreachable(host: String, cause: Throwable? = null, detail: String? = null) : SmbFailure("$host is out of reach", cause, detail)
-    /** The path or share is gone. */
-    class NotFound(path: String, cause: Throwable? = null, detail: String? = null) : SmbFailure("$path was not found", cause, detail)
+    /**
+     * The path or share is gone.
+     *
+     * [explanation] replaces the default wording when the app can say
+     * something more useful than "not found" — see the share-root case in
+     * `JcifsGateway`, where the server hands over the share and then refuses
+     * to open it, which is a permission on the SERVER and reads as nonsense
+     * otherwise.
+     */
+    class NotFound(
+        path: String,
+        cause: Throwable? = null,
+        detail: String? = null,
+        explanation: String? = null,
+    ) : SmbFailure(explanation ?: "$path was not found", cause, detail)
     class Other(message: String, cause: Throwable? = null, detail: String? = null) : SmbFailure(message, cause, detail)
 }
 
@@ -64,4 +77,32 @@ fun SmbCredentials.Companion.fromFields(username: String, password: String): Smb
     val at = u.indexOf('@')
     if (at > 0) return SmbCredentials.Password(u.substring(0, at), password, domain = u.substring(at + 1))
     return SmbCredentials.Password(u, password)
+}
+
+/**
+ * "Not found" on a SHARE'S OWN ROOT, worded as what it actually is.
+ *
+ * The server let us connect to the share and then said its root does not
+ * exist, which cannot be true — we are holding a tree handle to it. In every
+ * case seen so far the server could not READ the directory it is sharing and
+ * reported that outward as a missing name. The owner lost an afternoon to
+ * this one: macOS hands the share over happily while the kernel denies `smbd`
+ * itself (`System Policy: smbd deny file-read-data /Volumes/...`), because
+ * sharing an external volume needs a Full Disk Access grant that a fresh
+ * install does not have. Every account failed identically, every dialect
+ * failed identically, and the app said "not found" about a folder sitting
+ * right there.
+ *
+ * Only the root qualifies: [path] is `share/` with nothing after it. A
+ * missing path deeper in really is missing and should keep saying so.
+ *
+ * @param path the failing path as the gateway spells it, `"$share/$relPath"`.
+ * @return the sentence to show instead, or null to keep the default wording.
+ */
+fun shareRootRefusal(path: String): String? {
+    if (!path.endsWith("/")) return null
+    val share = path.removeSuffix("/")
+    if (share.isEmpty() || share.contains('/')) return null
+    return "$share opened, but the server would not read it. That is a permission on the server, " +
+        "not on this phone — on a Mac, give smbd Full Disk Access in Privacy & Security."
 }
