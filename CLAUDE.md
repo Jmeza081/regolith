@@ -106,18 +106,31 @@ app dependency. Config lives in `repomix.config.json`; output is gitignored.
 
 ## Running & testing on the emulator (argent)
 
-Emulator control goes through the **argent MCP tools** (`mcp__argent__*`),
-which are already installed globally. Follow `~/.claude/rules/argent.md`.
-Short version:
+Emulator control goes through the **argent MCP tools** (`mcp__argent__*`)
+when they are loaded in the session. They are not always: check first, and
+fall back to `adb` plus `uiautomator dump` if they are missing — that is what
+argent drives underneath, so the rules below hold either way.
 
-- `list-devices` first; boot the `Pixel_10` AVD with `boot-device` if it's not
-  running.
+The AVDs on this machine (`emulator -list-avds`; there is no phone AVD, and
+no `avdmanager` either — see the README for how these were made):
+
+| AVD | What it is | Use it for |
+|---|---|---|
+| `Samsung_Galaxy_Main_Display` | 1848×2448 @ 400 dpi = 739×979 dp. Hand-written, generic `google_apis` at API 36.1. Hinge declared. | The wide window and `BOOK`. The one that is known to work. |
+| `Pixel_9_Pro_Fold` | 2076×2152 @ 390 dpi, SDK `pixel_9_pro_fold` profile on a `google_apis_playstore` API 37.2 image, cover region declared. | Untested — it will not boot on this machine's current free disk. See `docs/FOLDABLE_PLAN.md`. |
+
+- Check what is running first (`list-devices`, or `adb devices`) and boot
+  `Samsung_Galaxy_Main_Display` if nothing is.
 - Build + install: `./gradlew installDebug`, then `launch-app` with the
-  applicationId.
+  applicationId (or `adb shell am start -n com.regolith/.MainActivity`).
 - **Never guess tap coordinates.** Call `describe` (reads the accessibility
-  tree via uiautomator) before every tap.
+  tree via uiautomator) before every tap; by hand that is
+  `adb shell uiautomator dump` and read the `bounds` off the node you want.
 - Use `await-ui-element` to wait for screens instead of polling screenshots.
 - Verify any visible UI change on the emulator, not just by compiling.
+- `run-as` reads an app's private files, but ONLY for a debuggable build. On
+  a release APK it fails with "package not debuggable", and a redirected
+  error there reads exactly like an empty directory.
 
 To make the app navigable by argent, follow these conventions in Compose:
 

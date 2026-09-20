@@ -62,11 +62,12 @@ APK sent to the owner.
    screens with a `LocalNavPillInsets: PaddingValues` set by the nav graph
    (bottom on the phone, start on wide). This is the prerequisite for the
    rail and a cleanup in its own right.
-4. Create a foldable AVD from the SDK's `pixel_10_pro_fold` skin on the API
-   37 image already installed (`avdmanager create avd -n Pixel_Fold -d
-   pixel_10_pro_fold -k <image>`). Posture switches with `adb emu fold` /
-   `adb emu unfold` and `adb shell cmd device_state state <id>` for
-   half-open. Record the ids in README.
+4. Create a foldable AVD. ~~From the SDK's `pixel_10_pro_fold` skin
+   (`avdmanager create avd -n Pixel_Fold …`)~~ — **this is not what happened.**
+   There is no `avdmanager` on this machine, so the AVD was written by hand
+   and is `Samsung_Galaxy_Main_Display`; `adb emu fold` / `unfold` do nothing
+   on it and postures go through `adb shell cmd device_state state <id>`
+   alone. The README carries the real config and the ids.
 
 Docs: ARCHITECTURE decision-log entry **"Adaptive layouts key on window
 shape, not device"** and guardrail G10 (one back stack, panes are scenes).
@@ -184,6 +185,27 @@ publishes a fake `FoldingFeature` through `WindowLayoutInfoPublisherRule` and
 asserts the posture and the split position. That covers the decision; the
 *look* of the deck still needs real hardware, as the paragraph above says.
 
+**Amendment (2026-09-20): those two limits are `Samsung_Galaxy_Main_Display`'s,
+not every emulator's.** The reason given above — a generic `google_apis` image
+carries no device-specific framework overlay — is a claim about THAT image, and
+it predicts its own exception: an AVD built on a real device profile with a
+vendor overlay should manage both. There is one sitting on this machine,
+`Pixel_9_Pro_Fold`: the SDK's own `pixel_9_pro_fold` profile, 2076×2152 @ 390
+dpi, on a `google_apis_playstore` API 37.2 image, and it declares the cover
+region (`hw.displayRegion.0.1` = 1080×2424) whose absence is the whole
+explanation for the first bullet.
+
+**It is untested.** It would not boot: the emulator wants roughly three times
+its `disk.dataPartition.size` free on the host, and this machine had 3.4 GB.
+Shrinking the partition does not escape the ratio. So the two bullets stand as
+*observations about the AVD they were made on*, and whether an emulator here
+can reach tabletop and the cover screen is an open question, not a settled no.
+Free ~8 GB, boot `Pixel_9_Pro_Fold`, and the checks are: `adb shell cmd
+device_state state 1` for the cover panel, and `state 2` plus
+`user_rotation 1` watching for `posture=TABLE_TOP` in `adb logcat -s Regolith`.
+If it works, the flex deck becomes checkable by eye without a real Fold, and
+`WindowShapeFoldTest` keeps its value as the part that runs on CI.
+
 ## Risks
 
 - **Adaptive 1.3.0 against navigation3 1.1.7.** Probably fine, gated by F0. If
@@ -273,9 +295,12 @@ a trigger, a card and a switch.
 - The switch is `Settings › Playback › Autoplay next` and is mirrored in the
   player's playback sheet, the way Decoder mirrors hardware decoding.
 
-Verified on the Pixel_Fold AVD in both postures: reset from both extremes,
+Verified on the `Pixel_Fold` AVD in both postures: reset from both extremes,
 reset on close, Browse panes, idle retract, pin and unpin, autoplay through
-two episodes, cancel, and the cover screen unchanged.
+two episodes, cancel, and the cover screen unchanged. (That AVD was 2076×2152
+@ 390 dpi and hand-made; it has since been replaced by
+`Samsung_Galaxy_Main_Display`, a different panel — see the emulator table in
+`CLAUDE.md`.)
 
 ---
 
@@ -399,7 +424,8 @@ poster and thumb aspect. A sidecar still wins: dropping one in and
 rescanning drops the mosaic row and the next request finds the real image.
 
 
-Verified on the Pixel_Fold AVD: the detached rail button, both Settings
+Verified on the `Pixel_Fold` AVD — 2076×2152 @ 390 dpi, since replaced by
+`Samsung_Galaxy_Main_Display` — the detached rail button, both Settings
 sections, the drag in both directions mid-gesture, Play all from both a
 Library wall (queue of 7) and a Browse folder (queue of 4), shuffle, and
 twelve-frame sheets generated one at a time with a `moving_tile_*` canvas

@@ -184,21 +184,31 @@ adb logcat -s Regolith                    # prints "window shape: …" on every 
 `WindowShape` (`ui/adaptive/`) is what the app sees, and the logcat line above
 is the quickest way to watch it change.
 
-**Two things this AVD cannot do**, both because a generic `google_apis` system
-image has no device-specific framework overlay:
+**Two things this AVD cannot do**, both apparently because a generic
+`google_apis` system image has no device-specific framework overlay:
 
 - **No cover screen.** `hw.displayRegion.0.1.*` is ignored — folding to CLOSED
-  leaves one 1848×2448 display. Compact-width checks need a phone AVD or
-  `adb shell wm size 1248x1972` to stand in for the outer panel.
+  leaves one 1848×2448 display. Compact-width checks need
+  `adb shell wm size 1248x1972` to stand in for the outer panel; there is no
+  phone AVD on this machine.
 - **No tabletop.** Half open, the hinge is reported correctly and rotates with
   the window, but Material 3's `isTabletop` stays false, so the app sees
   `FLAT` where a real Fold would say `TABLE_TOP` and the player would go into
   flex mode. Flex mode is covered by `WindowShapeFoldTest` instead, which
   publishes a fake `FoldingFeature` and needs no hinge at all.
 
-So: this AVD is the one for the inner display and for `BOOK`; flex mode is
-tested by `./gradlew connectedAndroidTest`, and confirmed by eye only on real
-hardware.
+Both are observations about **this** AVD, and the overlay explanation predicts
+its own exception. A second AVD, `Pixel_9_Pro_Fold`, is the SDK's own
+`pixel_9_pro_fold` profile (2076×2152 @ 390 dpi) on a `google_apis_playstore`
+API 37.2 image, and it *does* declare a cover region — so it may well manage
+both. It is untested: the emulator needs roughly three times its data
+partition free on the host and would not start. See
+[`docs/FOLDABLE_PLAN.md`](docs/FOLDABLE_PLAN.md) for the checks to run if you
+free the space.
+
+So, today: `Samsung_Galaxy_Main_Display` is the one for the inner display and
+for `BOOK`; flex mode is tested by `./gradlew connectedAndroidTest`, and
+confirmed by eye only on real hardware.
 
 </details>
 
