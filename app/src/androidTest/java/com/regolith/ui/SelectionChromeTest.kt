@@ -1,27 +1,33 @@
 package com.regolith.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.longClick
+import com.regolith.R
 import com.regolith.ui.components.ListRow
+import com.regolith.ui.components.NavPill
 import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
-import com.regolith.ui.components.SelectionBar
+import com.regolith.ui.components.SelectionChromeState
+import com.regolith.ui.components.SelectionSummaryTier
+import com.regolith.ui.components.SelectionVerb
+import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.util.SelectionUiState
+import dev.chrisbanes.haze.HazeState
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -34,6 +40,11 @@ import org.junit.Test
  * would not fit. Compose's test harness drives the composition directly,
  * so it does not depend on the device's accessibility service — which is
  * also why these are worth having when `uiautomator` is having a bad day.
+ *
+ * The toolbar half of this is the nav pill in its selection mode plus the
+ * summary tier above it, which is how the chrome is actually assembled by
+ * the nav graph — see [SelectionChromeState]. There is no separate
+ * selection bar to test any more.
  */
 class SelectionChromeTest {
 
@@ -210,80 +221,122 @@ class SelectionChromeTest {
         assertEquals(1, toggled)
     }
 
+    // ── The chrome ─────────────────────────────────────────────────────
+    //
+    // The selection's toolbar is no longer a bar of its own: the nav pill
+    // MORPHS into it, and the tally sits in a tier above. So these drive
+    // the two pieces the nav graph draws — [NavPill] with a non-null
+    // `selection`, and [SelectionSummaryTier] — which is also what makes
+    // the assertions meaningful: a verb that is grey in the real pill is
+    // grey here for the same reason.
+
+    /** The nav graph's pair, composed the way the graph stacks them. */
+    @Composable
+    private fun Chrome(state: SelectionChromeState) {
+        val haze = remember { HazeState() }
+        RegolithTheme {
+            Column {
+                SelectionSummaryTier(state = state, hazeState = haze)
+                NavPill(
+                    selected = MainTab.entries.first(),
+                    onSelect = { },
+                    hazeState = haze,
+                    selection = state,
+                )
+            }
+        }
+    }
+
     @Test
-    fun theBarCanCarryADestructiveAction() {
-        // The On-this-device page reuses the bar to REMOVE copies, so the
+    fun thePillCanCarryADestructiveVerb() {
+        // The On-this-device page reuses the chrome to REMOVE copies, so the
         // gesture reads the same wherever it is used and only the word and
         // the confirm change.
         var removed = 0
         compose.setContent {
-            RegolithTheme {
-                SelectionBar(
+            Chrome(
+                SelectionChromeState(
+                    verbs = listOf(
+                        SelectionVerb(
+                            label = "Remove",
+                            icon = R.drawable.rg_ic_trash,
+                            onClick = { removed++ },
+                            testTag = "device_select_remove",
+                            destructive = true,
+                        ),
+                    ),
+                    onCancel = { },
                     summary = "3 videos · 6.3 GB",
                     detail = "The share keeps them — this frees the space here",
-                    actionText = "Remove",
-                    destructive = true,
-                    onAction = { removed++ },
-                    onCancel = { },
-                    testTag = "device_select_bar",
-                )
-            }
+                ),
+            )
         }
-        compose.onNodeWithText("Remove").assertIsDisplayed()
-        compose.onNodeWithTag("device_select_bar_download").performClick()
+
+        // The pill uppercases its own labels (PillCell), so the verb reads
+        // REMOVE on screen even though the state spells it "Remove".
+        compose.onNodeWithText("REMOVE").assertIsDisplayed()
+        compose.onNodeWithTag("device_select_remove").performClick()
         assertEquals(1, removed)
     }
 
     @Test
-    fun aDestructiveActionStillRefusesWhenNothingIsPicked() {
+    fun aDestructiveVerbStillRefusesWhenNothingIsPicked() {
         var removed = 0
         compose.setContent {
-            RegolithTheme {
-                SelectionBar(
+            Chrome(
+                SelectionChromeState(
+                    verbs = listOf(
+                        SelectionVerb(
+                            label = "Remove",
+                            icon = R.drawable.rg_ic_trash,
+                            onClick = { removed++ },
+                            testTag = "device_select_remove",
+                            enabled = false,
+                            destructive = true,
+                        ),
+                    ),
+                    onCancel = { },
                     summary = "Nothing picked",
                     detail = "Hold or tap a copy to start",
-                    actionText = "Remove",
-                    destructive = true,
-                    actionEnabled = false,
-                    onAction = { removed++ },
-                    onCancel = { },
-                    testTag = "device_select_bar",
-                )
-            }
+                ),
+            )
         }
-        compose.onNodeWithTag("device_select_bar_download").assertIsNotEnabled()
-        compose.onNodeWithTag("device_select_bar_download").performClick()
-        assertEquals(0, removed)
+        compose.onNodeWithTag("device_select_remove").assertIsNotEnabled()
+        compose.onNodeWithTag("device_select_remove").performClick()
+        assertEquals("a disabled verb must not fire", 0, removed)
     }
 
-    // ── The bar ────────────────────────────────────────────────────────
-
     @Test
-    fun theBarShowsTheTallyAndBothWaysOut() {
+    fun theChromeShowsTheTallyAndBothWaysOut() {
         var downloaded = 0
         var cancelled = 0
         val state = SelectionUiState(itemCount = 4, fileCount = 34, byteCount = 61_200_000_000)
         compose.setContent {
-            RegolithTheme {
-                Column {
-                    SelectionBar(
-                        summary = state.summary,
-                        detail = state.detail,
-                        actionEnabled = state.canDownload,
-                        onAction = { downloaded++ },
-                        onCancel = { cancelled++ },
-                    )
-                }
-            }
+            Chrome(
+                SelectionChromeState(
+                    verbs = listOf(
+                        SelectionVerb(
+                            label = "Download",
+                            icon = R.drawable.rg_ic_download,
+                            onClick = { downloaded++ },
+                            testTag = "browse_select_download",
+                            enabled = state.canDownload,
+                        ),
+                    ),
+                    onCancel = { cancelled++ },
+                    summary = state.summary,
+                    detail = state.detail,
+                ),
+            )
         }
 
-        compose.onNodeWithTag("browse_select_bar").assertIsDisplayed()
-        compose.onNodeWithTag("browse_select_bar_summary").assertIsDisplayed()
+        compose.onNodeWithTag("selection_summary").assertIsDisplayed()
         compose.onNodeWithText("34 videos · 61 GB").assertIsDisplayed()
 
-        compose.onNodeWithTag("browse_select_bar_download").assertIsEnabled().performClick()
+        compose.onNodeWithTag("browse_select_download").assertIsEnabled().performClick()
         assertEquals(1, downloaded)
-        compose.onNodeWithTag("browse_select_bar_cancel").performClick()
+        // The way out is the circle beside the pill, not a cell inside it.
+        compose.onNodeWithTag("nav_selection_cancel").performClick()
         assertEquals(1, cancelled)
     }
 
@@ -295,58 +348,71 @@ class SelectionChromeTest {
             hasRoom = false, shortfall = 4_500_000_000,
         )
         compose.setContent {
-            RegolithTheme {
-                SelectionBar(
-                    summary = state.summary,
-                    detail = state.detail,
-                    actionEnabled = state.canDownload,
-                    onAction = { downloaded++ },
-                    onCancel = { },
-                )
-            }
+            Chrome(downloadChrome(state) { downloaded++ })
         }
 
+        // The grey verb and its reason are a pair: the tier carries the
+        // sentence because the pill has nowhere to put one.
         compose.onNodeWithText("Not enough room · free 4.5 GB more").assertIsDisplayed()
-        compose.onNodeWithTag("browse_select_bar_download").assertIsNotEnabled()
-        compose.onNodeWithTag("browse_select_bar_download").performClick()
+        compose.onNodeWithTag("browse_select_download").assertIsNotEnabled()
+        compose.onNodeWithTag("browse_select_download").performClick()
         assertEquals("a disabled Download must not fire", 0, downloaded)
     }
 
     @Test
     fun anEmptySelectionInvitesTheGestureAndCannotBeDownloaded() {
         val state = SelectionUiState()
-        compose.setContent {
-            RegolithTheme {
-                SelectionBar(
-                    summary = state.summary,
-                    detail = state.detail,
-                    actionEnabled = state.canDownload,
-                    onAction = { },
-                    onCancel = { },
-                )
-            }
-        }
+        compose.setContent { Chrome(downloadChrome(state) { }) }
+
         compose.onNodeWithText("Nothing picked").assertIsDisplayed()
         compose.onNodeWithText("Hold or tap a video to start").assertIsDisplayed()
-        compose.onNodeWithTag("browse_select_bar_download").assertIsNotEnabled()
+        compose.onNodeWithTag("browse_select_download").assertIsNotEnabled()
     }
 
     @Test
-    fun theBarTakesItsOwnTagSoEachScreenIsAddressable() {
+    fun eachScreensVerbTakesItsOwnTagSoTheyStayAddressable() {
+        // Addressability moved with the toolbar: it used to be the bar's tag
+        // prefix, and it is now the VERB's tag, which is what argent and
+        // these tests reach for. Library and Browse both offer Download, so
+        // the two must not answer to the same name.
         val state = SelectionUiState(itemCount = 1, fileCount = 1, byteCount = 2_100_000_000)
         compose.setContent {
-            RegolithTheme {
-                SelectionBar(
+            Chrome(
+                SelectionChromeState(
+                    verbs = listOf(
+                        SelectionVerb(
+                            label = "Download",
+                            icon = R.drawable.rg_ic_download,
+                            onClick = { },
+                            testTag = "library_select_download",
+                            enabled = state.canDownload,
+                        ),
+                    ),
+                    onCancel = { },
                     summary = state.summary,
                     detail = state.detail,
-                    onAction = { },
-                    onCancel = { },
-                    testTag = "library_select_bar",
-                )
-            }
+                ),
+            )
         }
-        compose.onNodeWithTag("library_select_bar").assertIsDisplayed()
-        compose.onNodeWithTag("library_select_bar_download").assertIsDisplayed()
-        assertTrue(true)
+        compose.onNodeWithTag("nav_pill").assertIsDisplayed()
+        compose.onNodeWithTag("library_select_download").assertIsDisplayed()
+        compose.onNodeWithTag("browse_select_download").assertDoesNotExist()
     }
+
+    /** Browse's Download-only chrome, which three of these need verbatim. */
+    private fun downloadChrome(state: SelectionUiState, onDownload: () -> Unit) =
+        SelectionChromeState(
+            verbs = listOf(
+                SelectionVerb(
+                    label = "Download",
+                    icon = R.drawable.rg_ic_download,
+                    onClick = onDownload,
+                    testTag = "browse_select_download",
+                    enabled = state.canDownload,
+                ),
+            ),
+            onCancel = { },
+            summary = state.summary,
+            detail = state.detail,
+        )
 }
