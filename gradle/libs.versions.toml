@@ -22,8 +22,12 @@ navigation3 = "1.1.7"
 # Material 3 adaptive: window size class + fold posture (`currentWindowAdaptiveInfo`)
 # and the Navigation 3 list-detail scene strategy. 1.3.0 is built with Kotlin
 # 2.1.20, under the 2.3 metadata ceiling (see coil below), and pulls in
-# androidx.window 1.5.0 itself, so there is no separate window pin.
+# androidx.window 1.5.0 itself, so the app needs no separate window pin.
 material3Adaptive = "1.3.0"
+# Pinned only for `window-testing`, which is not on the adaptive artifact's
+# dependency tree. Keep it on whatever androidx.window version the line above
+# resolves to, or the fake FoldingFeature and the real one drift apart.
+window = "1.5.0"
 room = "2.8.4"
 datastore = "1.2.1"
 work = "2.11.2"
@@ -118,6 +122,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-window-testing = { group = "androidx.window", name = "window-testing", version.ref = "window" }
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }

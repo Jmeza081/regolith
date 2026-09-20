@@ -145,26 +145,58 @@ driving and QA go through the argent MCP tools; see [`CLAUDE.md`](CLAUDE.md).
 <summary><strong>Foldable emulator</strong></summary>
 
 The inner display gets its own layouts ([`docs/FOLDABLE_PLAN.md`](docs/FOLDABLE_PLAN.md)).
-A second AVD, `Pixel_Fold`, uses the SDK's Pixel 10 Pro Fold profile (inner
-2076×2152 @ 390 dpi, cover 1080×2364) on the same API 37 image as `Pixel_10`.
-This machine has no `avdmanager`, so it was written by hand:
-`~/.android/avd/Pixel_Fold.ini` plus `Pixel_Fold.avd/config.ini` copied from
-`Pixel_10` with the profile's `hw.lcd.*`, `hw.sensor.hinge.*` and
-`hw.displayRegion.0.1.*` keys.
+The AVD `Samsung_Galaxy_Main_Display` matches the Galaxy Z Fold 8's inner
+panel: **1848×2448 at 400 dpi**, which is 739×979 dp — so `wide` is true and
+every two-pane layout is live there. The pixel count and the 7.6″ diagonal are
+the real panel's (403.58 ppi); 400 is the nearest Android density bucket, and
+`hw.lcd.density` wants a bucket, not the physical ppi.
+
+It was written by hand — this machine has no `avdmanager` — so the display and
+hinge keys in `~/.android/avd/Samsung_Galaxy_Main_Display.avd/config.ini` are
+the whole profile:
+
+```ini
+hw.lcd.width=1848
+hw.lcd.height=2448
+hw.lcd.density=400
+hw.sensor.hinge=yes
+hw.sensor.hinge.areas=924-0-0-2448          # zero-width crease down the middle
+hw.sensor.hinge.ranges=0-180
+hw.sensor.hinge_angles_posture_definitions=0-30, 30-150, 150-180
+hw.sensor.posture_list=1, 2, 3              # closed / half-opened / opened
+```
+
+The matching hardware profile in `~/.android/devices.xml` carries the same
+numbers. Edit the AVD in Android Studio's Device Manager and it re-applies that
+profile over `config.ini`, so the two have to move together.
 
 Postures, once it is running:
 
 ```
-adb emu fold                              # cover screen (compact)
-adb emu unfold                            # inner display, fully open
-adb shell cmd device_state print-states   # lists the ids: closed / half-opened / opened
-adb shell cmd device_state state 1        # half open (flex mode); `state reset` releases it
+adb shell cmd device_state print-states   # CLOSED=1, HALF_OPENED=2, OPENED=3
+adb shell cmd device_state state 2        # half open; `state reset` releases it
+adb shell settings get global display_features   # hinge-[924,0,924,2448]
 adb logcat -s Regolith                    # prints "window shape: …" on every change (debug builds)
 ```
 
-`WindowShape` (`ui/adaptive/`) is what the app sees: `wide` is true on the inner
-display and false on the cover, so every wide layout can be checked on one
-emulator by folding it.
+`WindowShape` (`ui/adaptive/`) is what the app sees, and the logcat line above
+is the quickest way to watch it change.
+
+**Two things this AVD cannot do**, both because a generic `google_apis` system
+image has no device-specific framework overlay:
+
+- **No cover screen.** `hw.displayRegion.0.1.*` is ignored — folding to CLOSED
+  leaves one 1848×2448 display. Compact-width checks need a phone AVD or
+  `adb shell wm size 1248x1972` to stand in for the outer panel.
+- **No tabletop.** Half open, the hinge is reported correctly and rotates with
+  the window, but Material 3's `isTabletop` stays false, so the app sees
+  `FLAT` where a real Fold would say `TABLE_TOP` and the player would go into
+  flex mode. Flex mode is covered by `WindowShapeFoldTest` instead, which
+  publishes a fake `FoldingFeature` and needs no hinge at all.
+
+So: this AVD is the one for the inner display and for `BOOK`; flex mode is
+tested by `./gradlew connectedAndroidTest`, and confirmed by eye only on real
+hardware.
 
 </details>
 

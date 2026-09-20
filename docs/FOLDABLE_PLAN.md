@@ -164,6 +164,26 @@ Each cell: argent `describe` for the tags, screenshot, and once per phase a
 not move. Then the release APK on the real Fold; the emulator's hinge is not
 the Fold 8's hinge.
 
+**What the emulator can actually reach (2026-09-19).** The
+`Samsung_Galaxy_Main_Display` AVD now declares a hinge, so the "Inner, book"
+column is checkable there: half open in portrait, the app reports
+`posture=BOOK, hinge=Rect(924, 0, 924, 2448)`. The other two columns are not:
+
+- **Cover (compact)** — a generic `google_apis` image ignores
+  `hw.displayRegion.0.1.*`, so folding to CLOSED does not switch panels. Use
+  `adb shell wm size 1248x1972` (the Fold 8's outer panel) as a stand-in, or a
+  phone AVD.
+- **Inner, half-open (flex deck)** — unreachable by device state. The hinge
+  rotates with the window as it should, to `Rect(0, 924, 2448, 924)`, but
+  Material 3's `Posture.isTabletop` stays false, so `rememberWindowShape`
+  falls through to `FLAT` and the flex branch never runs. `state 2` plus
+  `user_rotation 1` is not enough.
+
+So flex mode is verified by `WindowShapeFoldTest` (`androidTest`), which
+publishes a fake `FoldingFeature` through `WindowLayoutInfoPublisherRule` and
+asserts the posture and the split position. That covers the decision; the
+*look* of the deck still needs real hardware, as the paragraph above says.
+
 ## Risks
 
 - **Adaptive 1.3.0 against navigation3 1.1.7.** Probably fine, gated by F0. If
