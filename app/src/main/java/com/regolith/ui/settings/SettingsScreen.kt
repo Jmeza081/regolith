@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -471,6 +472,18 @@ fun SettingsScreen(
                     }
                 }
             }
+            // Which build this is, for a bug report or a "what am I running?".
+            // Last thing on the page and deliberately quiet: metadata grey,
+            // the smallest text the app uses, centred under everything else.
+            // The build number rides along because the version name alone
+            // cannot tell two builds of the same version apart.
+            Text(
+                "Regolith ${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}",
+                style = TextStyles.meta,
+                color = colors.metadata,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().testTag("settings_version"),
+            )
             Spacer(Modifier.height(LocalNavPillInsets.current.calculateBottomPadding() - Spacing.s18))
         }
     }
