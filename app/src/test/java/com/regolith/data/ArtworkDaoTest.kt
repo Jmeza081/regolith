@@ -36,7 +36,7 @@ class ArtworkDaoTest {
             val second = db.artworkDao().upsert(row("THUMB", source = "SIDECAR"))
             db.artworkDao().upsert(row("POSTER"))
             assertEquals(first.id, second.id)
-            assertEquals("SIDECAR", db.artworkDao().get("file", 7, "THUMB")!!.source)
+            assertEquals("SIDECAR", db.artworkDao().get("file", 7, "", "THUMB")!!.source)
             assertEquals(2, db.artworkDao().observeCount().first())
             db.artworkDao().deleteAll()
             assertEquals(0, db.artworkDao().observeCount().first())
@@ -46,7 +46,7 @@ class ArtworkDaoTest {
     }
 
     @Test
-    fun `version 1 database migrates to 10 with its files intact and indexed`() {
+    fun `version 1 database migrates to 11 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->
             v1.execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
@@ -59,64 +59,95 @@ class ArtworkDaoTest {
         }
         // Every step of the chain, up to the current version: the whole point
         // of exporting schemas is that an old install can still be opened.
-        val v3 = migrations.runMigrationsAndValidate(name, 10, true)
-        v3.query("SELECT name, width, probedAtMs, titleParsed FROM media_files").use { c ->
+        val v10 = migrations.runMigrationsAndValidate(name, 10, true)
+        v10.query("SELECT name, width, probedAtMs, titleParsed FROM media_files").use { c ->
             assertEquals(true, c.moveToFirst())
             assertEquals("a.mkv", c.getString(0))
             assertEquals(true, c.isNull(1))
             assertEquals(true, c.isNull(3))
         }
-        v3.query("SELECT COUNT(*) FROM transfers").use { c ->
+        v10.query("SELECT COUNT(*) FROM transfers").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
-        v3.query("SELECT COUNT(*) FROM artwork").use { c ->
+        v10.query("SELECT COUNT(*) FROM artwork").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
         // v5: a share with no rows here is still the whole share, which is
         // what every share was before folders could be chosen.
-        v3.query("SELECT COUNT(*) FROM share_roots").use { c ->
+        v10.query("SELECT COUNT(*) FROM share_roots").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
         // v6: nothing is owed on an install that has never picked a folder.
         // v7: the exclusion columns exist and default to empty.
-        v3.query("SELECT COUNT(*), COALESCE(MAX(excludedFileIds), ''), COALESCE(MAX(excludedPaths), '') FROM download_picks").use { c ->
+        v10.query("SELECT COUNT(*), COALESCE(MAX(excludedFileIds), ''), COALESCE(MAX(excludedPaths), '') FROM download_picks").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
             assertEquals("", c.getString(1))
             assertEquals("", c.getString(2))
         }
         // v8: no chapters written yet, and the index over them exists and is empty.
-        v3.query("SELECT COUNT(*) FROM user_chapters").use { c ->
+        v10.query("SELECT COUNT(*) FROM user_chapters").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
-        v3.query("SELECT COUNT(*) FROM user_chapter_fts WHERE user_chapter_fts MATCH '\"a\"*'").use { c ->
+        v10.query("SELECT COUNT(*) FROM user_chapter_fts WHERE user_chapter_fts MATCH '\"a\"*'").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
         // v9: nothing to sync yet, and every existing share writes chapters by default.
-        v3.query("SELECT COUNT(*) FROM chapter_sync").use { c ->
+        v10.query("SELECT COUNT(*) FROM chapter_sync").use { c ->
             c.moveToFirst()
             assertEquals(0, c.getInt(0))
         }
-        v3.query("SELECT writeChapters FROM shares WHERE id = 1").use { c ->
+        v10.query("SELECT writeChapters FROM shares WHERE id = 1").use { c ->
             c.moveToFirst()
             assertEquals(1, c.getInt(0))
         }
         // v10: the rotation column is there, and null on a row nothing has
         // measured yet -- which is what keeps it out of the Shorts feed.
-        v3.query("SELECT rotationDegrees FROM media_files WHERE id = 1").use { c ->
+        v10.query("SELECT rotationDegrees FROM media_files WHERE id = 1").use { c ->
             c.moveToFirst()
             assertEquals(true, c.isNull(0))
         }
         // The full-text index was rebuilt from the rows that already existed.
-        v3.query("SELECT COUNT(*) FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid WHERE media_fts MATCH '\"a\"*'").use { c ->
+        v10.query("SELECT COUNT(*) FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid WHERE media_fts MATCH '\"a\"*'").use { c ->
             c.moveToFirst()
             assertEquals(1, c.getInt(0))
         }
-        v3.close()
+
+        // v11 gets its own step, because the risk it carries is not "does the
+        // column appear" but "does an image cached BEFORE it survive". A row
+        // written the old way has to come out the other side addressable, and
+        // it is only addressable if ownerVariant defaulted to ''.
+        v10.execSQL(
+            "INSERT INTO artwork (ownerType, ownerId, kind, source, relPath, width, height, updatedAtMs) " +
+                "VALUES ('file', 1, 'THUMB', 'FRAMEGRAB', 'file/1/thumb.jpg', 320, 180, 1)",
+        )
+        v10.close()
+
+        val v11 = migrations.runMigrationsAndValidate(name, 11, true)
+        v11.query("SELECT ownerVariant, relPath FROM artwork WHERE ownerType = 'file' AND ownerId = 1 AND kind = 'THUMB'").use { c ->
+            assertEquals(true, c.moveToFirst())
+            assertEquals("a thumb cached before v11 keeps its identity", "", c.getString(0))
+            assertEquals("file/1/thumb.jpg", c.getString(1))
+        }
+        // And the widened unique key lets one film hold a frame per mark, which
+        // the old three-column index would have rejected as a duplicate.
+        v11.execSQL(
+            "INSERT INTO artwork (ownerType, ownerId, ownerVariant, kind, source, relPath, width, height, updatedAtMs) " +
+                "VALUES ('moment', 1, '60000', 'THUMB', 'FRAMEGRAB', 'moment/1/60000/thumb.jpg', 320, 180, 1)",
+        )
+        v11.execSQL(
+            "INSERT INTO artwork (ownerType, ownerId, ownerVariant, kind, source, relPath, width, height, updatedAtMs) " +
+                "VALUES ('moment', 1, '120000', 'THUMB', 'FRAMEGRAB', 'moment/1/120000/thumb.jpg', 320, 180, 1)",
+        )
+        v11.query("SELECT COUNT(*) FROM artwork WHERE ownerType = 'moment' AND ownerId = 1").use { c ->
+            c.moveToFirst()
+            assertEquals("two marks in one film are two rows", 2, c.getInt(0))
+        }
+        v11.close()
     }
 }

@@ -485,11 +485,11 @@ interface PlaybackProgressDao {
 
 @Dao
 interface ArtworkDao {
-    @Query("SELECT * FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND kind = :kind")
-    suspend fun get(ownerType: String, ownerId: Long, kind: String): ArtworkEntity?
+    @Query("SELECT * FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND ownerVariant = :ownerVariant AND kind = :kind")
+    suspend fun get(ownerType: String, ownerId: Long, ownerVariant: String, kind: String): ArtworkEntity?
 
-    @Query("SELECT * FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND kind = :kind")
-    fun observe(ownerType: String, ownerId: Long, kind: String): Flow<ArtworkEntity?>
+    @Query("SELECT * FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND ownerVariant = :ownerVariant AND kind = :kind")
+    fun observe(ownerType: String, ownerId: Long, ownerVariant: String, kind: String): Flow<ArtworkEntity?>
 
     @Insert
     suspend fun insert(artwork: ArtworkEntity): Long
@@ -497,14 +497,27 @@ interface ArtworkDao {
     @Update
     suspend fun update(artwork: ArtworkEntity)
 
-    /** Replace by (ownerType, ownerId, kind); the row id is not meaningful to anyone. */
+    /** Replace by (ownerType, ownerId, ownerVariant, kind); the row id is not meaningful to anyone. */
     @Transaction
     suspend fun upsert(artwork: ArtworkEntity): ArtworkEntity {
-        val existing = get(artwork.ownerType, artwork.ownerId, artwork.kind) ?: return artwork.copy(id = insert(artwork))
+        val existing = get(artwork.ownerType, artwork.ownerId, artwork.ownerVariant, artwork.kind)
+            ?: return artwork.copy(id = insert(artwork))
         val merged = artwork.copy(id = existing.id)
         update(merged)
         return merged
     }
+
+    /**
+     * Every moment frame held for one film, so a chapter save can tell which
+     * of them no longer answers to a mark (see
+     * `ArtworkRepository.pruneMoments`).
+     */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'moment' AND ownerId = :fileId")
+    suspend fun momentsOf(fileId: Long): List<ArtworkEntity>
+
+    /** One moment's rows, dropped when its mark moves or goes. */
+    @Query("DELETE FROM artwork WHERE ownerType = 'moment' AND ownerId = :fileId AND ownerVariant = :startMs")
+    suspend fun deleteMoment(fileId: Long, startMs: String)
 
     @Query("SELECT COUNT(*) FROM artwork WHERE source != 'PLACEHOLDER'")
     fun observeCount(): Flow<Int>
@@ -673,6 +686,10 @@ interface UserChapterDao {
 
     @Query("DELETE FROM user_chapters")
     suspend fun deleteAll()
+
+    /** The films carrying any mark, so a bulk clear knows whose frames to drop. */
+    @Query("SELECT DISTINCT fileId FROM user_chapters")
+    suspend fun filesWithChapters(): List<Long>
 
     @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
     suspend fun forFile(fileId: Long): List<UserChapterEntity>

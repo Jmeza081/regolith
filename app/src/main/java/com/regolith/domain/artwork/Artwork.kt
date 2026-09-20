@@ -58,12 +58,45 @@ sealed interface ArtworkOwner {
     val typeName: String
     val id: Long
 
+    /**
+     * Tells apart several images belonging to the same [id], and empty for
+     * the owners that have exactly one — which is why adding it changed
+     * nothing for [File] and [Folder].
+     *
+     * It exists for [Moment]: a film has as many moment frames as the user
+     * placed marks, so [id] alone cannot address them. Part of the cache
+     * path and of the `artwork` table's unique key, so it must be a stable
+     * function of the thing it names, never a row id.
+     */
+    val variant: String get() = ""
+
     data class File(override val id: Long) : ArtworkOwner {
         override val typeName get() = "file"
     }
 
     data class Folder(override val id: Long) : ArtworkOwner {
         override val typeName get() = "folder"
+    }
+
+    /**
+     * One named chapter's own frame: the picture at [startMs] of the film,
+     * rather than the film's poster frame. Search draws a point of interest
+     * with this so two marks in the same film do not show the same picture
+     * under two different clocks.
+     *
+     * **Keyed by ([fileId], [startMs]), deliberately not by the chapter's
+     * row id.** `user_chapters` rows are rewritten wholesale on every save
+     * (`UserChapterDao.replaceForFile`), so their ids are regenerated when
+     * any one mark in the film is renamed — a row-id key would throw away
+     * every frame in a film to rename a single chapter. The time is what the
+     * frame actually depends on, so the time is the key: renaming is free,
+     * and MOVING a mark misses and re-grabs, which is exactly right because
+     * the picture genuinely changed.
+     */
+    data class Moment(val fileId: Long, val startMs: Long) : ArtworkOwner {
+        override val typeName get() = "moment"
+        override val id get() = fileId
+        override val variant get() = startMs.toString()
     }
 }
 

@@ -55,7 +55,9 @@ player's chapter sheet has a pencil — mark a place at the playhead, name it, d
 its handle — and those become the film's chapters. Save writes a small
 `mkvmerge`-format text file beside the video on the share, so the work is
 readable by other tools and survives a reinstall. Search finds chapter names and
-opens the film at that moment.
+opens the film at that moment — and each result shows the frame *at* that moment,
+so two marks in the same film are two different pictures rather than the film's
+poster twice.
 
 ### Manages the files, not just the library
 
@@ -235,6 +237,14 @@ progress notification you can stop. One frame grab writes all three sizes.
 
 A library scanned before this existed has no walk queued for it: tap **Settings ›
 Media › Prepare artwork**, or rescan the share.
+
+The one exception is a point of interest's frame, which is grabbed when a search
+result asks for it. The walk cannot make those ahead of time — there is no wall of
+them to get ready, and a mark's frame is wanted by one row — so they are cached on
+first sight and kept, under the mark's own time. Move a mark and its old frame is
+dropped and a new one taken; rename it and nothing is re-read. If the file's key
+frames are too far apart to land within ten seconds of the mark, the row shows the
+film's own thumbnail instead, rather than a picture claiming to be a time it is not.
 
 </details>
 

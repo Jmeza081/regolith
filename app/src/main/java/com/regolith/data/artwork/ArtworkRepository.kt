@@ -16,6 +16,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
+import com.regolith.domain.artwork.MomentFrames
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
@@ -64,7 +65,7 @@ class ArtworkRepository @Inject constructor(
     private val local: com.regolith.player.LocalMedia,
     private val durations: DurationProbe,
     private val grabber: FrameGrabber,
-) {
+) : MomentFrames {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Two extractions at a time: enough to fill a grid, not enough to starve the player. */
@@ -96,13 +97,14 @@ class ArtworkRepository @Inject constructor(
     private val listingsLock = Mutex()
 
     fun observe(request: ArtworkRequest): Flow<ArtworkEntity?> =
-        artworkDao.observe(request.owner.typeName, request.owner.id, request.kind.name)
+        artworkDao.observe(request.owner.typeName, request.owner.id, request.owner.variant, request.kind.name)
 
     fun observeCount(): Flow<Int> = artworkDao.observeCount()
 
     /** The cached row if it is usable now, without touching the share. */
     suspend fun cached(request: ArtworkRequest): ArtworkEntity? {
-        val row = artworkDao.get(request.owner.typeName, request.owner.id, request.kind.name) ?: return null
+        val row = artworkDao.get(request.owner.typeName, request.owner.id, request.owner.variant, request.kind.name)
+            ?: return null
         return when {
             row.source == ArtworkSource.PLACEHOLDER.name -> row.takeIf { System.currentTimeMillis() - it.updatedAtMs < PLACEHOLDER_TTL_MS }
             store.fileFor(row.relPath).exists() -> row
@@ -121,7 +123,14 @@ class ArtworkRepository @Inject constructor(
         // one, so it is never written alongside the stills — it has its own
         // key, its own in-flight entry and its own trip through the source
         // order, run for the one title you opened.
-        val kinds = if (request.kind == ArtworkKind.BACKDROP) BACKDROP_ONLY else ArtworkKind.stills
+        val kinds = when {
+            request.kind == ArtworkKind.BACKDROP -> BACKDROP_ONLY
+            // A moment is only ever drawn 16:9 — an 82dp row thumb or a tile.
+            // Nobody wants a 2:3 poster of an instant, so writing one would be
+            // half the bytes and half the crop work for nothing.
+            request.owner is ArtworkOwner.Moment -> THUMB_ONLY
+            else -> ArtworkKind.stills
+        }
         val key = request.owner to (request.kind == ArtworkKind.BACKDROP)
         joinOrStart(key) { extractionSlots.withPermit { resolveOwner(request.owner, kinds) } }
         return cached(request)
@@ -142,6 +151,12 @@ class ArtworkRepository @Inject constructor(
      * rather than grind through a thousand files that will all fail.
      */
     suspend fun prefetch(owner: ArtworkOwner): Boolean {
+        // Moments are resolved on demand only. The walk exists to have a
+        // library's tiles ready before anyone scrolls to them; a moment frame
+        // is wanted by one search result, and grabbing every mark in the
+        // library up front would be a seek per mark for pictures nobody asked
+        // to see.
+        require(owner !is ArtworkOwner.Moment) { "moment frames are on-demand only" }
         ensureGeneration()
         if (ArtworkKind.entries.all { cached(ArtworkRequest(owner, it)) != null }) return true
         return joinOrStart(owner to false) {
@@ -223,6 +238,7 @@ class ArtworkRepository @Inject constructor(
             when (owner) {
                 is ArtworkOwner.File -> resolveFile(owner, kinds)
                 is ArtworkOwner.Folder -> resolveFolder(owner, kinds)
+                is ArtworkOwner.Moment -> resolveMoment(owner, kinds)
             }
             true
         } catch (e: SmbFailure) {
@@ -313,6 +329,116 @@ class ArtworkRepository @Inject constructor(
             saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB, kinds)
         } finally {
             frame.recycle()
+        }
+    }
+
+    /**
+     * One named chapter's frame: the picture at the mark, not the film's.
+     *
+     * **Media3 only, no retriever fallback.** [grabFrame] tries the platform
+     * `MediaMetadataRetriever` when Media3 comes up empty, and can afford to:
+     * a poster is unlabelled, so a frame from the wrong place is merely a
+     * dull tile. Here the frame is drawn under a clock that claims to be its
+     * time, and the retriever's one failure mode is handing back the OPENING
+     * frame when it cannot seek — without saying so. The usual defence is
+     * fingerprinting several frames against each other
+     * (`OnDemandScrubThumbnails`), which needs more than one frame and a
+     * moment asks for exactly one. So this path only trusts the extractor
+     * that reports where it actually landed.
+     *
+     * A grab that lands further than [MOMENT_SEEK_TOLERANCE_MS] away, or
+     * fails outright, falls back to [fallBackToFilm] rather than the
+     * placeholder: a point of interest showed the film's thumb before this
+     * feature existed, and it must never come out worse than that.
+     */
+    private suspend fun resolveMoment(owner: ArtworkOwner.Moment, kinds: List<ArtworkKind>) {
+        val file = mediaFileDao.byId(owner.fileId)
+        if (file == null) {
+            placeholder(owner, kinds)
+            return
+        }
+        val grabbed = grabber.frameAt(owner.fileId, owner.startMs, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)
+        if (grabbed == null) {
+            Log.i(TAG, "${file.name}: no frame at ${owner.startMs}ms for its mark; showing the film's thumb")
+            fallBackToFilm(owner, kinds)
+            return
+        }
+        val off = grabbed.presentationTimeMs - owner.startMs
+        try {
+            if (abs(off) > MOMENT_SEEK_TOLERANCE_MS) {
+                // Too far to sit under this mark's clock. The film's own thumb
+                // at least does not claim to be a time it is not.
+                Log.w(
+                    TAG,
+                    "${file.name}: mark at ${owner.startMs}ms got ${grabbed.presentationTimeMs}ms (${off}ms off) " +
+                        "— beyond ${MOMENT_SEEK_TOLERANCE_MS}ms, showing the film's thumb",
+                )
+                fallBackToFilm(owner, kinds)
+                return
+            }
+            Log.i(TAG, "${file.name}: frame at ${grabbed.presentationTimeMs}ms for its mark at ${owner.startMs}ms")
+            if (!saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds)) fallBackToFilm(owner, kinds)
+        } finally {
+            grabbed.bitmap.recycle()
+        }
+    }
+
+    /**
+     * Point a moment's row at the FILM's thumb, so the row looks exactly as it
+     * did before moment frames existed.
+     *
+     * No bytes are copied: the `artwork` row simply carries the film's
+     * [ArtworkEntity.relPath], which two rows may share. If the film's thumb
+     * is later deleted the moment's row stops resolving ([cached] checks the
+     * file exists), the moment resolves again, and it lands back here — so
+     * the shortcut heals itself rather than going stale.
+     */
+    private suspend fun fallBackToFilm(owner: ArtworkOwner.Moment, kinds: List<ArtworkKind>) {
+        val film = ArtworkOwner.File(owner.fileId)
+        for (kind in kinds) {
+            val row = resolve(ArtworkRequest(film, kind))
+            if (row == null || row.source == ArtworkSource.PLACEHOLDER.name || row.relPath.isEmpty()) {
+                placeholder(owner, listOf(kind))
+                continue
+            }
+            artworkDao.upsert(
+                ArtworkEntity(
+                    ownerType = owner.typeName,
+                    ownerId = owner.id,
+                    ownerVariant = owner.variant,
+                    kind = kind.name,
+                    source = row.source,
+                    relPath = row.relPath,
+                    width = row.width,
+                    height = row.height,
+                    updatedAtMs = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    /** Every moment frame for one film, when its marks go altogether (a revert). */
+    override suspend fun dropMoments(fileId: Long) {
+        store.deleteMoments(fileId)
+        for (row in artworkDao.momentsOf(fileId)) artworkDao.deleteMoment(fileId, row.ownerVariant)
+    }
+
+    /**
+     * Drop the moment frames for [fileId] that no longer stand on a mark.
+     *
+     * Called after a film's chapters are rewritten. Because a frame is keyed
+     * by its TIME, a renamed mark keeps its picture and a moved one is simply
+     * a miss that re-grabs — but the frame at the time it moved AWAY from
+     * would sit in the cache for good with nothing pointing at it, so it is
+     * collected here.
+     */
+    override suspend fun pruneMoments(fileId: Long, keepStartMs: Collection<Long>) {
+        val keep = keepStartMs.mapTo(mutableSetOf()) { it.toString() }
+        for (row in artworkDao.momentsOf(fileId)) {
+            if (row.ownerVariant in keep) continue
+            val startMs = row.ownerVariant.toLongOrNull() ?: continue
+            store.delete(ArtworkOwner.Moment(fileId, startMs))
+            artworkDao.deleteMoment(fileId, row.ownerVariant)
         }
     }
 
@@ -490,6 +616,7 @@ class ArtworkRepository @Inject constructor(
             ArtworkEntity(
                 ownerType = owner.typeName,
                 ownerId = owner.id,
+                ownerVariant = owner.variant,
                 kind = kind.name,
                 source = source.name,
                 relPath = store.relPathFor(owner, kind),
@@ -506,6 +633,7 @@ class ArtworkRepository @Inject constructor(
                 ArtworkEntity(
                     ownerType = owner.typeName,
                     ownerId = owner.id,
+                    ownerVariant = owner.variant,
                     kind = kind.name,
                     source = ArtworkSource.PLACEHOLDER.name,
                     relPath = "",
@@ -574,6 +702,21 @@ class ArtworkRepository @Inject constructor(
          * comes back minutes early means the seek was ignored.
          */
         const val SEEK_TOLERANCE_MS = 30_000L
+
+        /**
+         * The same question for a MOMENT's frame, answered far more strictly.
+         *
+         * 30 s is generous for a poster because nothing says where a poster
+         * came from. A moment is drawn under its own clock, so the picture has
+         * to belong to that time. One key-frame interval
+         * ([com.regolith.domain.playback.FrameIndex.DEFAULT_INTERVAL_MS]) is
+         * the tightest bound that does not reject ordinary files: seeking
+         * lands on the key frame at or before the mark, and 10 s apart is
+         * normal encoding. Past that the film's own thumb is shown instead,
+         * which is honest rather than merely wrong.
+         */
+        const val MOMENT_SEEK_TOLERANCE_MS = com.regolith.domain.playback.FrameIndex.DEFAULT_INTERVAL_MS
         val BACKDROP_ONLY = listOf(ArtworkKind.BACKDROP)
+        val THUMB_ONLY = listOf(ArtworkKind.THUMB)
     }
 }

@@ -54,7 +54,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserChapterFtsEntity::class,
         ChapterSyncEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -66,6 +66,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 7, to = 8),
         AutoMigration(from = 8, to = 9),
         AutoMigration(from = 9, to = 10),
+        // v11: artwork.ownerVariant, so a film can hold one frame per
+        // named chapter. Defaults to "", which is what every existing row
+        // means, so Room adds the column and rebuilds the unique index
+        // without anyone losing a cached thumbnail.
+        AutoMigration(from = 10, to = 11),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

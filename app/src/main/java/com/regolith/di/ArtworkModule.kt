@@ -6,12 +6,14 @@ import coil3.request.CachePolicy
 import coil3.request.crossfade
 import com.regolith.data.artwork.ArtworkFetcher
 import com.regolith.data.artwork.ArtworkKeyer
+import com.regolith.data.artwork.ArtworkRepository
 import com.regolith.data.artwork.DurationProbe
 import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.artwork.RetrieverFrameSource
 import com.regolith.data.transfer.TransferScheduler
 import com.regolith.data.transfer.WorkManagerTransferScheduler
+import com.regolith.domain.artwork.MomentFrames
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -30,6 +32,9 @@ abstract class ArtworkModule {
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     @Binds abstract fun bindFrameGrabber(impl: com.regolith.player.Media3Frames): FrameGrabber
     @Binds abstract fun bindTransferScheduler(impl: WorkManagerTransferScheduler): TransferScheduler
+    // The chapter side prunes moment frames through this seam rather than
+    // depending on the resolver itself; see MomentFrames.
+    @Binds abstract fun bindMomentFrames(impl: ArtworkRepository): MomentFrames
 
     companion object {
         /** The artwork pipeline's last resort for a runtime: the container probe. */

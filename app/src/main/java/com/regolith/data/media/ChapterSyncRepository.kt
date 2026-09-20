@@ -10,6 +10,7 @@ import com.regolith.data.transfer.DownloadStore
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.UserChapterDao
 import com.regolith.data.db.UserChapterEntity
+import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.media.ChapterSidecar
 import com.regolith.domain.media.DemoSource
 import com.regolith.domain.playback.Chapter
@@ -61,6 +62,7 @@ class ChapterSyncRepository @Inject constructor(
     private val scheduler: ChapterSyncScheduler,
     private val transfers: TransferDao,
     private val store: DownloadStore,
+    private val moments: MomentFrames,
 ) {
     /** The sheet's state for one film, live. */
     fun observe(fileId: Long): Flow<ChapterSync> {
@@ -170,6 +172,9 @@ class ChapterSyncRepository @Inject constructor(
                 val chapters = ChapterSidecar.parse(text, video.durationMs ?: 0L)
                 val now = System.currentTimeMillis()
                 chapterDao.replaceForFile(video.id, chapters.map { UserChapterEntity(fileId = video.id, startMs = it.startMs, title = it.title, updatedAtMs = now) })
+                // The share's set has replaced ours, so the marks that went
+                // take their cached frames with them.
+                moments.pruneMoments(video.id, chapters.map { it.startMs })
                 syncDao.upsert(ChapterSyncEntity(video.id, shareMtimeMs = entry.modifiedAtMs, dirty = false, origin = ORIGIN_SHARE, note = note, updatedAtMs = now))
                 mirrorLocal(video.id, text)
                 Log.d(TAG, "imported ${chapters.size} chapters for ${video.relPath}")
@@ -251,6 +256,7 @@ class ChapterSyncRepository @Inject constructor(
      */
     suspend fun revert(fileId: Long) {
         chapterDao.deleteForFile(fileId)
+        moments.dropMoments(fileId)
         dropLocal(fileId)
         val row = syncDao.byFile(fileId)
         if (row == null || (row.shareMtimeMs == null && !row.dirty)) { syncDao.delete(fileId); return }
@@ -269,8 +275,13 @@ class ChapterSyncRepository @Inject constructor(
 
     /** Settings › Chapters › Clear: the phone's cache only. Films with a file on the share get theirs back at the next scan. */
     suspend fun clearLocal() {
+        val files = chapterDao.filesWithChapters()
         chapterDao.deleteAll()
         syncDao.deleteAll()
+        // Settings › Chapters › Clear takes the marks, so it takes the frames
+        // that were grabbed for them too — they are worth nothing once there
+        // is no mark to draw them under.
+        files.forEach { moments.dropMoments(it) }
         store.sidecars().forEach { it.delete() }
     }
 

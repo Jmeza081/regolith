@@ -45,7 +45,7 @@ class ArtworkFetcher(
 /** Memory-cache key. Without a keyer Coil would not cache a custom model at all. */
 class ArtworkKeyer @Inject constructor() : Keyer<ArtworkRequest> {
     override fun key(data: ArtworkRequest, options: Options): String =
-        "artwork:${data.owner.typeName}:${data.owner.id}:${data.kind.name.lowercase()}"
+        "artwork:${data.owner.typeName}:${data.owner.id}:${data.owner.variant}:${data.kind.name.lowercase()}"
 }
 
 /** Coil reports this as the error state; the tile draws the wedge placeholder. */

@@ -12,7 +12,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The artwork directory (guardrail G5): `filesDir/artwork/{owner}/{id}/{kind}.jpg`.
+ * The artwork directory (guardrail G5): `filesDir/artwork/{owner}/{id}/{kind}.jpg`,
+ * with a `{variant}` segment before the filename for the owners that hold
+ * more than one image ([relPathFor]).
  * App-private storage, so no permission is needed and uninstalling removes
  * it. Coil's own disk cache is deliberately not used: it evicts by size and
  * a frame grab over SMB is too expensive to lose to eviction, and the
@@ -26,7 +28,18 @@ import javax.inject.Singleton
 class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
     val root: File = File(context.filesDir, "artwork")
 
-    fun relPathFor(owner: ArtworkOwner, kind: ArtworkKind): String = "${owner.typeName}/${owner.id}/${kind.fileName}"
+    /**
+     * `file/12/thumb.jpg`, and `moment/12/754000/thumb.jpg` for an owner with
+     * a [ArtworkOwner.variant] — the variant is its own path segment so a
+     * film's moment frames sit together under one directory and
+     * [delete] can still take the whole film out in one call.
+     */
+    fun relPathFor(owner: ArtworkOwner, kind: ArtworkKind): String =
+        if (owner.variant.isEmpty()) {
+            "${owner.typeName}/${owner.id}/${kind.fileName}"
+        } else {
+            "${owner.typeName}/${owner.id}/${owner.variant}/${kind.fileName}"
+        }
 
     fun fileFor(relPath: String): File = File(root, relPath)
 
@@ -101,8 +114,25 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
         }
     }
 
+    /**
+     * Everything cached for [owner]. Given an owner with a
+     * [ArtworkOwner.variant] this removes that ONE variant; given a plain
+     * [ArtworkOwner.File] it removes the film's own images and, because the
+     * moment frames live under a different `typeName`, leaves those alone —
+     * [deleteMoments] is how a film's moments go.
+     */
     fun delete(owner: ArtworkOwner) {
-        File(root, "${owner.typeName}/${owner.id}").deleteRecursively()
+        val path = if (owner.variant.isEmpty()) {
+            "${owner.typeName}/${owner.id}"
+        } else {
+            "${owner.typeName}/${owner.id}/${owner.variant}"
+        }
+        File(root, path).deleteRecursively()
+    }
+
+    /** Every moment frame held for one film. */
+    fun deleteMoments(fileId: Long) {
+        File(root, "moment/$fileId").deleteRecursively()
     }
 
     fun clear() {

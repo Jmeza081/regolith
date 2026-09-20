@@ -11,6 +11,7 @@ import com.regolith.data.db.ShareEntity
 import com.regolith.data.db.TransferEntity
 import com.regolith.data.db.UserChapterEntity
 import com.regolith.data.transfer.DownloadStore
+import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.ChapterWriteOutcome
@@ -65,6 +66,9 @@ class ChapterSyncRepositoryTest {
             scheduler = object : ChapterSyncScheduler { override fun enqueue() { enqueued++ } },
             transfers = db.transferDao(),
             store = store,
+            // Nothing here looks at moment frames; the seam exists so this
+            // test does not have to build the artwork resolver to find out.
+            moments = MomentFrames.None,
         )
     }
 

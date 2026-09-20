@@ -5,6 +5,7 @@ import com.regolith.data.db.UserChapterDao
 import com.regolith.data.db.UserChapterHitRow
 import com.regolith.data.db.UserChapterEntity
 import com.regolith.data.media.ChapterSyncRepository
+import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.playback.ChapterFacet
@@ -27,6 +28,7 @@ import javax.inject.Singleton
 class UserChapterRepository @Inject constructor(
     private val dao: UserChapterDao,
     private val sync: ChapterSyncRepository,
+    private val moments: MomentFrames,
 ) {
     /** Sorted by start; empty when the user has written nothing for this file. */
     fun observe(fileId: Long): Flow<List<Chapter>> =
@@ -41,6 +43,11 @@ class UserChapterRepository @Inject constructor(
                 UserChapterEntity(fileId = fileId, startMs = it.startMs, title = it.title?.takeIf { t -> t.isNotBlank() }, updatedAtMs = now)
             },
         )
+        // Search draws each mark with the frame at its own time, cached under
+        // that time. A mark that MOVED leaves its old frame behind with nothing
+        // pointing at it, so the set is collected down to the times that
+        // survived. Renaming changes no time and therefore costs no frame.
+        moments.pruneMoments(fileId, chapters.map { it.startMs })
         sync.markDirty(fileId)
     }
 

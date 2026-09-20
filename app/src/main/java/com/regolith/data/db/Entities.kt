@@ -217,13 +217,24 @@ data class RecentSearchEntity(
  */
 @Entity(
     tableName = "artwork",
-    indices = [Index(value = ["ownerType", "ownerId", "kind"], unique = true)],
+    indices = [Index(value = ["ownerType", "ownerId", "ownerVariant", "kind"], unique = true)],
 )
 data class ArtworkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    /** "file" or "folder" ([com.regolith.domain.artwork.ArtworkOwner.typeName]). */
+    /** "file", "folder" or "moment" ([com.regolith.domain.artwork.ArtworkOwner.typeName]). */
     val ownerType: String,
     val ownerId: Long,
+    /**
+     * [com.regolith.domain.artwork.ArtworkOwner.variant]: which of several
+     * images for this owner, and "" for the owners that have only one.
+     *
+     * Schema v11 added it, with "" as the default, so every row written
+     * before it keeps its identity — a file's thumb was and remains
+     * ("file", id, "", "THUMB"). It is in the unique index because a film
+     * carries one frame per named chapter and they must not collide.
+     */
+    @ColumnInfo(defaultValue = "")
+    val ownerVariant: String = "",
     /** [com.regolith.domain.artwork.ArtworkKind] name. */
     val kind: String,
     /** [com.regolith.domain.artwork.ArtworkSource] name. PLACEHOLDER means nothing was readable. */

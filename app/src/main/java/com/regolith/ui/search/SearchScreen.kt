@@ -436,10 +436,13 @@ private fun HitRow(
                 }
                 is SearchHit.Title -> ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
                 is SearchHit.File -> ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
-                // The film's thumb with the time over it: the picture says
-                // which film, the clock says where in it.
+                // The frame at the mark itself, with the time over it. Two marks
+                // in one film are two different pictures, which is the whole
+                // point: the clock says where, and now the picture agrees.
+                // Falls back to the film's own thumb when the seek cannot be
+                // trusted (ArtworkRepository.resolveMoment).
                 is SearchHit.Moment -> Box(Modifier.fillMaxSize()) {
-                    ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.meta)
+                    ArtworkImage(ArtworkRequest(ArtworkOwner.Moment(hit.fileId, hit.startMs), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.meta)
                     Text(
                         formatClock(hit.startMs), style = TextStyles.meta, color = colors.inkSoft,
                         modifier = Modifier.align(Alignment.BottomStart).padding(3.dp).background(colors.overArt, PillShape).padding(horizontal = 5.dp, vertical = 1.dp),
@@ -579,7 +582,7 @@ private fun HitGrid(hits: List<SearchHit>, tile: @Composable (SearchHit, Modifie
  * One result as a tile: the same 16:9 thumb Browse's grid shows, with the
  * name and meta line under it. A folder shows its count and, while
  * selecting, keeps two targets (the marker picks, the tile opens); a point
- * of interest wears its time as the chip over the film's thumb.
+ * of interest wears its time as the chip over the frame AT that time.
  */
 @Composable
 private fun HitTile(
@@ -615,7 +618,7 @@ private fun HitTile(
             modifier = modifier,
         )
         is SearchHit.Moment -> MediaTile(
-            artwork = ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB),
+            artwork = ArtworkRequest(ArtworkOwner.Moment(hit.fileId, hit.startMs), ArtworkKind.THUMB),
             kind = ArtworkKind.THUMB,
             title = hit.primary,
             meta = hit.meta,
