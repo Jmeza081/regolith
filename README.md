@@ -238,6 +238,41 @@ folder.
 </details>
 
 <details>
+<summary><strong>Reaching your library from outside the house</strong></summary>
+
+The share does not have to be on the same network as the phone. Put
+[Tailscale](https://tailscale.com) on both — it is a WireGuard mesh that gives
+every device a stable name and a private address wherever it is, and the free
+Personal plan (6 users, unlimited devices, MagicDNS) covers this with room to
+spare. Nothing is exposed to the public internet, which matters: an SMB share
+on a forwarded port is not a thing to do.
+
+**Add the server by its tailnet name, and use that name at home too.** A
+server is keyed by `host` ([`ServerEntity`](app/src/main/java/com/regolith/data/db/Entities.kt)),
+so adding `192.168.x.x` at home and `box.tailnet.ts.net` away makes *two*
+servers — two scans, two libraries, two sets of artwork, and chapters and
+resume points that do not follow you between them. One name avoids all of it,
+and costs nothing at home: Tailscale connects two devices on the same network
+directly, so the LAN path is still the LAN path.
+
+What actually limits this is **your home upload speed**, not the VPN. Every
+byte leaves the house over your upstream. A 1080p file at 8–15 Mbps is
+comfortable on most connections; a 4K remux at 60–80 Mbps wants symmetric
+fibre. When the link is not up to it, **Downloads** is the better tool:
+queue titles at home at full LAN speed and *On this device* plays them with no
+network at all.
+
+Two things on the machine holding the drive:
+
+- It has to stay awake with the share mounted — `sudo pmset -c sleep 0`, or
+  the Energy settings equivalent.
+- If playback takes a few seconds to start after a long idle, that is the disk
+  spinning up, not the app. `pmset -g custom` shows `disksleep`; set it to `0`
+  to keep an external media drive spinning.
+
+</details>
+
+<details>
 <summary><strong>Artwork is made ahead of time</strong></summary>
 
 Every poster, thumbnail and backdrop is a frame pulled off the share, which costs

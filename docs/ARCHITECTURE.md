@@ -498,6 +498,16 @@ Settings row used to identify a server by its name, which only worked while
 the name WAS the address. `ServerRow.meta` now prints the address under the
 nickname, or two renamed NAS boxes would be indistinguishable.
 
+Identity still rests on `host`, which is worth saying out loud because one
+share can legitimately answer to more than one address — a LAN IP at home and
+a tailnet name from outside it. Those are two servers as far as the schema is
+concerned: two scans, two libraries, and progress that does not follow you
+between them. The README's "Reaching your library from outside the house"
+tells a reader to pick ONE address and use it in both places, which is the
+cheap answer. Teaching the app that two hosts are one server would mean a
+server identity independent of how you dial it, and nothing has needed that
+yet.
+
 ## Decision log
 
 | Date | Decision | Why |
