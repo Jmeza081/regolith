@@ -148,6 +148,14 @@ fun LibraryScreen(
     val unreachable = state.unreachable
     val readyCount = state.device.ready.size
 
+    // With no server left but copies still here, open on the tab that has
+    // something on it. Keyed on the CONDITION, not on the state, so it fires
+    // once when the last server goes and never fights a later tap on Network.
+    val onlyDeviceHasContent = state.loaded && state.noSource && readyCount > 0
+    LaunchedEffect(onlyDeviceHasContent) {
+        if (onlyDeviceHasContent) tab = LibraryTab.ON_DEVICE
+    }
+
     val selection = state.selection
     val selecting = selection != null
 
@@ -213,7 +221,14 @@ fun LibraryScreen(
             )
         }
 
-        if (state.loaded && state.noSource) {
+        // No server AND nothing kept here: there is genuinely nothing to show,
+        // so the whole screen is the invitation to add one.
+        //
+        // With copies on the device the tabs have to stay, even with no server
+        // at all. Disconnecting the last one is exactly when someone goes
+        // looking for what they kept, and returning here would have made those
+        // files unreachable from Library — the one screen that lists them.
+        if (state.loaded && state.noSource && readyCount == 0) {
             NoSource(onAddServer)
             return
         }
@@ -322,6 +337,12 @@ fun LibraryScreen(
                 onTryAgain = viewModel::tryAgain,
                 onGoDevice = { tab = LibraryTab.ON_DEVICE },
             )
+        }
+        // Network with no server: the invitation belongs on this tab, not over
+        // the whole screen, because the other tab still has files on it.
+        if (state.loaded && state.noSource) {
+            NoSource(onAddServer)
+            return
         }
         val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, onScan = viewModel::scanAll) }
 

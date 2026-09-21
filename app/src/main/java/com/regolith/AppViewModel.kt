@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.repository.StorageSweeper
 import com.regolith.data.transfer.SelectionStore
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
@@ -22,8 +23,10 @@ import com.regolith.domain.security.AuthResult
 import com.regolith.domain.security.AppLock
 import com.regolith.domain.security.LockAfter
 import com.regolith.player.PlaybackSession
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -43,6 +46,7 @@ class AppViewModel @Inject constructor(
     private val selection: SelectionStore,
     private val playback: PlaybackSession,
     private val biometrics: BiometricGate,
+    private val sweeper: StorageSweeper,
 ) : ViewModel() {
 
     // --- The app lock (fingerprint, face, or the screen lock).
@@ -117,6 +121,12 @@ class AppViewModel @Inject constructor(
         // would read as "arriving" forever. Put them back in the queue once,
         // at startup, which is the only place that can know a restart happened.
         viewModelScope.launch { transfers.resumeInterrupted() }
+        // Downloads and artwork whose rows have gone. Startup for the same
+        // reason: nothing else in the app's life is a safe moment to decide
+        // that a file on disk is unclaimed, and this is the one place that
+        // knows no worker is mid-write. It walks two directories, so it goes
+        // off the main thread.
+        viewModelScope.launch { withContext(Dispatchers.IO) { sweeper.sweep() } }
         viewModelScope.launch {
             // The cold-start decision, made once and before anything draws.
             lockAfter = prefs.appLockAfter.first()

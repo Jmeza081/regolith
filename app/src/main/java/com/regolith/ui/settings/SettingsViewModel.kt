@@ -13,8 +13,10 @@ import com.regolith.data.security.BiometricGate
 import com.regolith.domain.security.AuthResult
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
+import com.regolith.data.repository.DeviceLibrary
 import com.regolith.data.repository.SourceRepository
-import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.DeviceSource
+import com.regolith.domain.media.LocalSource
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
@@ -54,6 +56,7 @@ class SettingsViewModel @Inject constructor(
     private val transfers: TransferRepository,
     private val userChapters: UserChapterRepository,
     private val biometrics: BiometricGate,
+    private val deviceLibrary: DeviceLibrary,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -63,7 +66,14 @@ class SettingsViewModel @Inject constructor(
             val shares = sources.observeEnabledShares()
             val runs = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
             combine(sources.observeServers(), shares, runs) { servers, shareList, runList ->
-                servers.map { server ->
+                servers.mapNotNull { server ->
+                    // "On this device" is not a source server: it has no
+                    // address, nothing to scan and nothing to disconnect FROM.
+                    // It is already represented by the Downloads card below and
+                    // by Library's own tab, and a Disconnect button beside it
+                    // would offer to delete the copies this whole source exists
+                    // to keep ([DeviceSource]).
+                    if (DeviceSource.isDevice(server.host.host)) return@mapNotNull null
                     val own = shareList.filter { it.serverId == server.id }
                     val ownRuns = runList.filter { r -> own.any { it.id == r.shareId } }
                     val running = ownRuns.filter { it.status == ScanRunEntity.RUNNING }
@@ -75,9 +85,9 @@ class SettingsViewModel @Inject constructor(
                         free != null -> "${formatBytes(free)} free"
                         else -> "${own.size} share" + if (own.size == 1) "" else "s"
                     }
-                    // The demo library is not on the network, so it has no
-                    // address to print under its name.
-                    val host = if (DemoSource.isDemo(server.host.host)) {
+                    // A source on the phone is not on the network, so it has
+                    // no address to print under its name.
+                    val host = if (LocalSource.isLocal(server.host.host)) {
                         ""
                     } else {
                         server.host.host + if (server.host.port != 445) ":${server.host.port}" else ""
@@ -123,8 +133,8 @@ class SettingsViewModel @Inject constructor(
             combine(sources.observeServers(), sources.observeEnabledShares()) { servers, shares ->
                 shares.mapNotNull { share ->
                     val server = servers.firstOrNull { it.id == share.serverId } ?: return@mapNotNull null
-                    // The demo library has no share to write to; a switch for it would be a lie.
-                    if (DemoSource.isDemo(server.host.host)) return@mapNotNull null
+                    // A source on the phone has no share to write to; a switch for it would be a lie.
+                    if (LocalSource.isLocal(server.host.host)) return@mapNotNull null
                     ShareWriteRow(share.id, "${share.name} on ${server.name}", share.writeChapters)
                 }
             }.collect { rows -> _uiState.update { it.copy(shareWrites = rows) } }
@@ -163,7 +173,22 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { scans.scanAll(serverId) }
     }
 
-    fun askDisconnect(row: ServerRow?) = _uiState.update { it.copy(confirmDisconnect = row) }
+    /**
+     * Open (or close) the "Disconnect X?" confirm.
+     *
+     * The count of copies it would keep is fetched after the dialog is
+     * already up rather than before, so opening it never waits on a query;
+     * the sentence fills in. The guard on the way back matters — the user
+     * can dismiss and open another server's dialog while this is in flight.
+     */
+    fun askDisconnect(row: ServerRow?) {
+        _uiState.update { it.copy(confirmDisconnect = row, confirmDisconnectKeeps = 0) }
+        val target = row ?: return
+        viewModelScope.launch {
+            val keeps = deviceLibrary.downloadedCount(target.serverId)
+            _uiState.update { if (it.confirmDisconnect?.serverId == target.serverId) it.copy(confirmDisconnectKeeps = keeps) else it }
+        }
+    }
 
     /** Tapping a server's name opens the rename dialog; null closes it. */
     fun askRename(row: ServerRow?) = _uiState.update { it.copy(renaming = row) }
@@ -224,9 +249,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userChapters.clearAll() }
     }
 
-    /** "The media list is removed from this device. Nothing on the share is touched." */
+    /**
+     * "The media list is removed from this device. Nothing on the share is
+     * touched." Copies already on the phone are adopted into the device
+     * source first, so they outlive the server ([DeviceLibrary]).
+     */
     fun disconnect(row: ServerRow) {
-        _uiState.update { it.copy(confirmDisconnect = null) }
+        _uiState.update { it.copy(confirmDisconnect = null, confirmDisconnectKeeps = 0) }
         viewModelScope.launch { sources.removeServer(row.serverId) }
     }
 

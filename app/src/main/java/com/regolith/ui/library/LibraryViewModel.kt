@@ -85,7 +85,9 @@ class LibraryViewModel @AssistedInject constructor(
         viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
         viewModelScope.launch {
-            val shares = sources.observeEnabledShares()
+            // The wall behind the "Network" tab, so an adopted copy shows on
+            // the "On this device" tab only rather than on both.
+            val shares = sources.observeNetworkShares()
             val servers = sources.observeServers()
             val parents: kotlinx.coroutines.flow.Flow<List<FolderEntity>> = if (folderId == null) {
                 shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else library.observeRoots(list.map { it.id }) }

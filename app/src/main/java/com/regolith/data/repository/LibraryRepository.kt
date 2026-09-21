@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.LocalSource
 import com.regolith.domain.media.ShortsRule
 
 /**
@@ -112,8 +113,10 @@ class LibraryRepository @Inject constructor(
         val folder = checkNotNull(folderDao.byId(folderId)) { "folder $folderId" }
         val share = checkNotNull(shareDao.byId(folder.shareId)) { "share ${folder.shareId}" }
         val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
-        // Nothing to re-list: the demo library's rows are all there ever was.
-        if (DemoSource.isDemo(server.host)) return FolderOutcome(folderDao.children(folderId), folder.fileCount)
+        // Nothing to re-list: a source on the phone has no share behind it,
+        // so its rows are all there ever was (the demo library, and the copies
+        // adopted from a disconnected server).
+        if (LocalSource.isLocal(server.host)) return FolderOutcome(folderDao.children(folderId), folder.fileCount)
         // A share narrowed to chosen folders (schema v5): anything that is
         // not a chosen folder, or inside one, is never read off the share —
         // not by the scan and not by Browse opening it. That includes the

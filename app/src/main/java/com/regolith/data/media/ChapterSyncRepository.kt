@@ -12,7 +12,7 @@ import com.regolith.data.db.UserChapterDao
 import com.regolith.data.db.UserChapterEntity
 import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.media.ChapterSidecar
-import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.LocalSource
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterSync
 import com.regolith.domain.playback.ChapterSyncNote
@@ -213,7 +213,7 @@ class ChapterSyncRepository @Inject constructor(
         val file = mediaFileDao.byId(row.fileId) ?: run { syncDao.delete(row.fileId); return ChapterWriteOutcome.PHONE_ONLY }
         val share = shareDao.byId(file.shareId) ?: return ChapterWriteOutcome.PHONE_ONLY
         val server = serverDao.byId(share.serverId) ?: return ChapterWriteOutcome.PHONE_ONLY
-        if (DemoSource.isDemo(server.host)) {
+        if (LocalSource.isLocal(server.host)) {
             // Nothing to write to, ever: the row is settled, not waiting.
             syncDao.upsert(row.copy(dirty = false, shareMtimeMs = null, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis()))
             return ChapterWriteOutcome.PHONE_ONLY
@@ -263,7 +263,7 @@ class ChapterSyncRepository @Inject constructor(
         val file = mediaFileDao.byId(fileId) ?: run { syncDao.delete(fileId); return }
         val share = shareDao.byId(file.shareId) ?: run { syncDao.delete(fileId); return }
         val server = serverDao.byId(share.serverId) ?: run { syncDao.delete(fileId); return }
-        if (DemoSource.isDemo(server.host) || !share.writeChapters || row.shareMtimeMs == null) { syncDao.delete(fileId); return }
+        if (LocalSource.isLocal(server.host) || !share.writeChapters || row.shareMtimeMs == null) { syncDao.delete(fileId); return }
         try {
             writer.delete(SmbHost(server.host, server.port), credentials.credentialsFor(server.id), share.name, file.relPath.substringBeforeLast('/', ""), file.name)
             syncDao.delete(fileId)

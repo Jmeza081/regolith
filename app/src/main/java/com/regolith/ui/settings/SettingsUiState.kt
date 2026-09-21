@@ -45,6 +45,13 @@ data class SettingsUiState(
     val servers: List<ServerRow> = emptyList(),
     /** Server the "Disconnect X?" confirm is open for. */
     val confirmDisconnect: ServerRow? = null,
+    /**
+     * Finished copies that server has on the phone, counted when the confirm
+     * opens. The dialog cannot promise what becomes of them without it, and
+     * it used to promise nothing at all — which was the honest reading of a
+     * disconnect that stranded them.
+     */
+    val confirmDisconnectKeeps: Int = 0,
     /** Server the rename dialog is open for. */
     val renaming: ServerRow? = null,
     val hardwareDecoding: Boolean = true,
@@ -138,3 +145,22 @@ data class DownloadsStatus(
 }
 
 enum class DownloadDot { ARRIVING, FAILED, IDLE }
+
+/**
+ * The body of "Disconnect TOWER?".
+ *
+ * The middle sentence is the one that matters: a disconnect takes the media
+ * LIST away, and everything already copied to the phone stays, re-homed
+ * under "On this device" with its resume point and its chapters
+ * ([com.regolith.domain.media.DeviceSource]). Saying so is the difference
+ * between a destructive-looking button and a reversible one.
+ */
+fun disconnectBody(keeps: Int): String {
+    val kept = when (keeps) {
+        0 -> ""
+        1 -> "The video you kept stays on this phone, under On this device. "
+        else -> "The $keeps videos you kept stay on this phone, under On this device. "
+    }
+    return "The media list is removed from this device. $kept" +
+        "Nothing on the share is touched, and you can add it back with the same address."
+}

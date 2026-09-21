@@ -515,7 +515,7 @@ fun SettingsScreen(
     state.confirmDisconnect?.let { row ->
         ConfirmDialog(
             title = "Disconnect ${row.name}?",
-            body = "The media list is removed from this device. Nothing on the share is touched, and you can add it back with the same address.",
+            body = disconnectBody(state.confirmDisconnectKeeps),
             confirmLabel = "Disconnect", keepLabel = "Keep it",
             onConfirm = { viewModel.disconnect(row) }, onKeep = { viewModel.askDisconnect(null) },
             testTag = "settings_disconnect",

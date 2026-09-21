@@ -202,6 +202,10 @@ interface FolderDao {
      */
     @Query("DELETE FROM folders WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
+
+    /** Every folder id there is, for the startup sweep. */
+    @Query("SELECT id FROM folders")
+    suspend fun allIds(): List<Long>
 }
 
 /**
@@ -305,6 +309,48 @@ interface MediaFileDao {
 
     @Query("SELECT * FROM media_files WHERE shareId = :shareId AND relPath = :relPath")
     suspend fun byPath(shareId: Long, relPath: String): MediaFileEntity?
+
+    /**
+     * Files under [serverId] that have a finished copy on this device.
+     *
+     * The rows a disconnect ADOPTS rather than cascades away
+     * ([com.regolith.domain.media.DeviceSource]). Joined through `shares`
+     * because a transfer knows its file, and a file knows its share, but
+     * neither knows its server.
+     */
+    @Query(
+        "SELECT media_files.* FROM media_files " +
+            "JOIN shares ON shares.id = media_files.shareId " +
+            "JOIN transfers ON transfers.fileId = media_files.id " +
+            "WHERE shares.serverId = :serverId AND transfers.status = 'DONE'",
+    )
+    suspend fun downloadedUnderServer(serverId: Long): List<MediaFileEntity>
+
+    /** The same count, for the sentence the disconnect dialog has to be able to promise. */
+    @Query(
+        "SELECT COUNT(*) FROM media_files " +
+            "JOIN shares ON shares.id = media_files.shareId " +
+            "JOIN transfers ON transfers.fileId = media_files.id " +
+            "WHERE shares.serverId = :serverId AND transfers.status = 'DONE'",
+    )
+    suspend fun downloadedCountUnderServer(serverId: Long): Int
+
+    /** Every transfer row under [serverId], finished or not, so the bytes of the unfinished ones can go. */
+    @Query(
+        "SELECT transfers.* FROM transfers " +
+            "JOIN media_files ON media_files.id = transfers.fileId " +
+            "JOIN shares ON shares.id = media_files.shareId " +
+            "WHERE shares.serverId = :serverId",
+    )
+    suspend fun transfersUnderServer(serverId: Long): List<TransferEntity>
+
+    /** How many files a share holds, missing or not — the sweep's test for an empty "This device". */
+    @Query("SELECT COUNT(*) FROM media_files WHERE shareId = :shareId")
+    suspend fun countInShare(shareId: Long): Int
+
+    /** Every file id there is, for the startup sweep's "does anything still own this directory?". */
+    @Query("SELECT id FROM media_files")
+    suspend fun allIds(): List<Long>
 
     @Query("SELECT * FROM media_files WHERE folderId = :folderId AND missing = 0 ORDER BY name COLLATE NOCASE")
     fun observeInFolder(folderId: Long): Flow<List<MediaFileEntity>>
@@ -523,6 +569,26 @@ interface ArtworkDao {
     fun observeCount(): Flow<Int>
 
     /** Rows the app made itself, as opposed to an image found on the share. */
+    /**
+     * Artwork whose owner has been deleted.
+     *
+     * `artwork` deliberately has NO foreign key — it is keyed by a loose
+     * (ownerType, ownerId) pair so a rescan that keeps a file id keeps its
+     * pictures (guardrail G5). The cost of that is exactly this: when rows
+     * really do go, nothing collects the images behind them, and before the
+     * startup sweep existed a disconnected server left its whole wall of
+     * thumbnails on disk and in the Settings count forever.
+     */
+    @Query(
+        "SELECT * FROM artwork WHERE " +
+            "(ownerType IN ('file', 'moment') AND ownerId NOT IN (SELECT id FROM media_files)) OR " +
+            "(ownerType = 'folder' AND ownerId NOT IN (SELECT id FROM folders))",
+    )
+    suspend fun orphans(): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Query("SELECT * FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun generated(): List<ArtworkEntity>
 

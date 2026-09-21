@@ -17,7 +17,7 @@ import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.ChapterSidecar
-import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.LocalSource
 import com.regolith.domain.smb.CredentialSource
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
@@ -449,11 +449,11 @@ class FileOpsRepository @Inject constructor(
         for (id in fileIds) transfers.byFile(id)?.let { downloads.delete(it.localPath) }
     }
 
-    /** Null when the share cannot be written to at all (the demo library). */
+    /** Null when there is no share to write to: the demo library, or "On this device". */
     private suspend fun ctxFor(shareId: Long): ShareCtx? {
         val share = shareDao.byId(shareId) ?: return null
         val server = serverDao.byId(share.serverId) ?: return null
-        if (DemoSource.isDemo(server.host)) return null
+        if (LocalSource.isLocal(server.host)) return null
         return ShareCtx(SmbHost(server.host, server.port), credentials.credentialsFor(server.id), share.name)
     }
 

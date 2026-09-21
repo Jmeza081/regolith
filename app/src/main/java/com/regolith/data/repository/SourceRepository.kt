@@ -28,7 +28,8 @@ import kotlinx.coroutines.runBlocking
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
-import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.DeviceSource
+import com.regolith.domain.media.LocalSource
 
 /**
  * Source servers and their shares: the "Add source server" flow, plus the
@@ -45,6 +46,7 @@ class SourceRepository @Inject constructor(
     private val shareDao: ShareDao,
     private val shareRootDao: ShareRootDao,
     private val credentialStore: CredentialStore,
+    private val deviceLibrary: DeviceLibrary,
 ) : CredentialSource {
     /**
      * Passwords the user chose NOT to save live here for this process only.
@@ -57,6 +59,23 @@ class SourceRepository @Inject constructor(
     fun observeShares(serverId: Long): Flow<List<Share>> = withRoots(shareDao.observeForServer(serverId))
 
     fun observeEnabledShares(): Flow<List<Share>> = withRoots(shareDao.observeEnabled())
+
+    /**
+     * Enabled shares minus "On this device".
+     *
+     * Library's two tabs are "Network" and "On this device", so a copy that
+     * has been adopted into the device source ([DeviceSource]) belongs on
+     * the second and must not also be built into the first — it is on the
+     * phone, which is the whole point of having adopted it.
+     *
+     * The demo library is deliberately NOT excluded. It is also local, but
+     * it is a sample LIBRARY, meant to be walked like any other.
+     */
+    fun observeNetworkShares(): Flow<List<Share>> =
+        combine(observeEnabledShares(), serverDao.observeAll()) { shares, servers ->
+            val deviceIds = servers.filter { DeviceSource.isDevice(it.host) }.map { it.id }.toSet()
+            shares.filterNot { it.serverId in deviceIds }
+        }
 
     /** One share with its chosen folders, live; null once it is gone. */
     fun observeShare(shareId: Long): Flow<Share?> =
@@ -192,10 +211,28 @@ class SourceRepository @Inject constructor(
         serverDao.rename(serverId, serverNameOrDefault(typed, SmbHost(server.host, server.port)))
     }
 
-    suspend fun removeServer(serverId: Long) {
+    /**
+     * Disconnect a server: its media list goes, its downloads do not.
+     *
+     * The adoption has to happen FIRST, and that ordering is the whole fix.
+     * `transfers` cascades from `media_files`, which cascades from `shares`,
+     * which cascades from `servers` — so deleting the server used to delete
+     * every download row while leaving the bytes on disk, which is how
+     * Settings came to report gigabytes that the On-this-device page could
+     * not list. [DeviceLibrary.adopt] re-points the finished copies at a
+     * source that is not being deleted, which takes them out of the cascade
+     * without touching their ids (so resume points, chapters and artwork
+     * come with them), and throws away the half-copied ones that could
+     * never be resumed now.
+     *
+     * @return how many copies were kept, for the confirmation the UI gave.
+     */
+    suspend fun removeServer(serverId: Long): Int {
+        val adopted = deviceLibrary.adopt(serverId)
         credentialStore.clear(serverId)
         sessionCredentials.remove(serverId)
         serverDao.delete(serverId) // shares, folders, files cascade
+        return adopted.kept
     }
 
     /** Credentials for a stored server: this session's, else the saved password, else guest. */
@@ -227,8 +264,8 @@ class SourceRepository @Inject constructor(
     /** "Try again": one cheap listing of the first enabled share's root. Returns true when the server answered. */
     suspend fun probeReachable(serverId: Long): Boolean {
         val server = serverDao.byId(serverId) ?: return false
-        // The demo library has no host; it is never out of reach.
-        if (DemoSource.isDemo(server.host)) return true
+        // A source on the phone has no host; it is never out of reach.
+        if (LocalSource.isLocal(server.host)) return true
         val share = shareDao.observeForServer(serverId).first().firstOrNull { it.enabled } ?: return false
         return try {
             gateway.list(SmbHost(server.host, server.port), credentialsFor(serverId), share.name, "")

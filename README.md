@@ -82,6 +82,11 @@ including folders the app has never scanned, which it walks over SMB as the
 download runs. A foreground notification carries progress across the whole batch;
 the copies live under **Library › On this device**.
 
+A copy belongs to the phone, not to the share it came from. Disconnecting a
+server takes its media list away and leaves everything already downloaded
+where it is, re-homed under *On this device* with its resume point and any
+chapters you wrote — the file keeps its identity, so nothing about it resets.
+
 ### Opens out on a foldable
 
 The inner display gets its own layouts: a nav rail that retracts to a spine, the

@@ -10,7 +10,7 @@ import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
-import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.LocalSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -34,14 +34,14 @@ class ScanRepository @Inject constructor(
 ) {
     /**
      * Scan every enabled share of [serverId], or of every server when null.
-     * The demo library is skipped: there is no host to walk, and failing to
-     * reach it would mark it out of reach ([DemoSource]).
+     * Sources that live on the phone are skipped: there is no host to walk,
+     * and failing to reach one would mark it out of reach ([LocalSource]).
      */
     suspend fun scanAll(serverId: Long? = null) {
-        val demoServerIds = serverDao.observeAll().first().filter { DemoSource.isDemo(it.host) }.map { it.id }.toSet()
+        val localServerIds = serverDao.observeAll().first().filter { LocalSource.isLocal(it.host) }.map { it.id }.toSet()
         val shares = shareDao.observeEnabled().first()
             .filter { serverId == null || it.serverId == serverId }
-            .filterNot { it.serverId in demoServerIds }
+            .filterNot { it.serverId in localServerIds }
         shares.forEach { enqueue(it.id) }
     }
 
