@@ -81,9 +81,29 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             // SMB2 minimum: SMB1 is off by default on every modern NAS and
             // Windows, and jcifs-ng's SMB1 path is the slow one anyway.
             setProperty("jcifs.smb.client.minVersion", "SMB202")
-            setProperty("jcifs.smb.client.connTimeout", "5000")
-            setProperty("jcifs.smb.client.responseTimeout", "15000")
-            setProperty("jcifs.smb.client.soTimeout", "20000")
+            // Two different questions, and only one of them should be
+            // answered quickly.
+            //
+            // connTimeout is "is anything there?" — a server that is off or
+            // unplugged fails to CONNECT, and that should be found out fast,
+            // because it is what every "out of reach" card waits on.
+            //
+            // responseTimeout and soTimeout are "is it answering fast
+            // enough?", and 15 s was a LAN number. SMB is a chatty protocol
+            // designed for a network with sub-millisecond round trips, and
+            // over a VPN relay — a Tailscale peer that could not hole-punch
+            // and is bouncing through a DERP in another city — one round
+            // trip is 150 ms or worse, so a listing that takes 200 ms at
+            // home takes half a minute from a hotel. It was hitting 15 s and
+            // being reported as a share that had gone offline.
+            //
+            // The cost of being generous here is small and the benefit is
+            // large: a genuinely dead server still fails at connTimeout
+            // regardless of these, so this only lengthens the wait in the
+            // case where the server IS talking to us, just slowly.
+            setProperty("jcifs.smb.client.connTimeout", "10000")
+            setProperty("jcifs.smb.client.responseTimeout", "60000")
+            setProperty("jcifs.smb.client.soTimeout", "75000")
             // Plain DNS: NetBIOS broadcast lookups add seconds on Wi-Fi and
             // the user types IPs or DNS names anyway.
             setProperty("jcifs.resolveOrder", "DNS")

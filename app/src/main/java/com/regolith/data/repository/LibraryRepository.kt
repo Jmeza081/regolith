@@ -20,7 +20,12 @@ import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.model.rootsCover
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
+import android.util.Log
+import com.regolith.domain.smb.SmbEntry
+import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
+import com.regolith.domain.smb.listingRetryDelayMs
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -127,12 +132,7 @@ class LibraryRepository @Inject constructor(
         val host = SmbHost(server.host, server.port)
         val credentials = sources.credentialsFor(server.id)
 
-        val entries = try {
-            gateway.list(host, credentials, share.name, folder.relPath)
-        } catch (e: SmbFailure.Unreachable) {
-            sources.markUnreachable(server.id)
-            throw e
-        }
+        val entries = listWithRetry(host, credentials, share.name, folder.relPath, server.id)
         sources.markReachable(server.id)
         val now = System.currentTimeMillis()
         val prefix = if (folder.relPath.isEmpty()) "" else "${folder.relPath}/"
@@ -200,6 +200,44 @@ class LibraryRepository @Inject constructor(
             ),
         )
         return FolderOutcome(subfolders, fileCount)
+    }
+
+    /**
+     * List one folder, with one more go if the connection dropped.
+     *
+     * A scan is thousands of listings in a row, and before this a single
+     * dropped connection anywhere in that sequence marked the whole server
+     * out of reach and ended the walk. On a LAN that is almost always the
+     * truth. Over a VPN relay it is almost always a blip — the tunnel
+     * re-keyed, or the relay closed a socket it thought was idle — and the
+     * very next attempt succeeds.
+     *
+     * [listingRetryDelayMs] decides, so what is retried and what is not is
+     * stated in one place and tested.
+     */
+    private suspend fun listWithRetry(
+        host: SmbHost,
+        credentials: SmbCredentials,
+        share: String,
+        relPath: String,
+        serverId: Long,
+    ): List<SmbEntry> {
+        var attempt = 1
+        while (true) {
+            try {
+                return gateway.list(host, credentials, share, relPath)
+            } catch (e: SmbFailure) {
+                val pause = listingRetryDelayMs(attempt, e)
+                if (pause == null) {
+                    // Only a transport failure says anything about the SERVER.
+                    if (e is SmbFailure.Unreachable) sources.markUnreachable(serverId)
+                    throw e
+                }
+                Log.i(TAG, "listing '$relPath' failed (${e.message}); one more go in ${pause}ms")
+                delay(pause)
+                attempt++
+            }
+        }
     }
 
     /**
@@ -401,6 +439,8 @@ class LibraryRepository @Inject constructor(
     suspend fun clearRecentSearches() = recentSearchDao.clear()
 
     companion object {
+        private const val TAG = "Regolith/SMB"
+
         /** SQLite binds at most 999 variables per statement; 900 leaves room for the rest of the query. */
         private const val FILES_CHUNK = 900
 
@@ -488,4 +528,5 @@ class LibraryRepository @Inject constructor(
         val index = siblings.indexOfFirst { it.id == fileId }
         return if (index <= 0) null else siblings[index - 1]
     }
+
 }

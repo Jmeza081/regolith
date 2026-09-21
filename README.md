@@ -260,8 +260,24 @@ resume points that do not follow you between them. One name avoids all of it,
 and costs nothing at home: Tailscale connects two devices on the same network
 directly, so the LAN path is still the LAN path.
 
-What actually limits this is **your home upload speed**, not the VPN. Every
-byte leaves the house over your upstream. A 1080p file at 8–15 Mbps is
+Check that the connection is **direct** before blaming anything else. Tailscale
+guarantees your devices can always reach each other; it does not guarantee they
+do it peer-to-peer. When NAT traversal fails — which is most of the time on
+cellular, because carrier CGNAT is usually hard NAT — it falls back to a DERP
+relay, and every packet takes a detour through another city. The Tailscale app
+says *Direct* or *Relayed* per peer; `tailscale status` shows a relay name
+instead of an address when it is relayed.
+
+That distinction matters more here than raw bandwidth, because SMB was built
+for a LAN and is extremely chatty: a scan is thousands of small round trips, so
+150 ms of extra latency is multiplied by thousands rather than paid once.
+Relayed, expect scanning and artwork to crawl; on Wi-Fi with a direct path they
+behave like they do at home. Streaming survives a relay far better than
+scanning does — it is bulk sequential reads with read-ahead, so latency is paid
+once and amortised — but it is still limited by the relay's throughput.
+
+What actually limits a direct connection is **your home upload speed**, not the
+VPN. Every byte leaves the house over your upstream. A 1080p file at 8–15 Mbps is
 comfortable on most connections; a 4K remux at 60–80 Mbps wants symmetric
 fibre. When the link is not up to it, **Downloads** is the better tool:
 queue titles at home at full LAN speed and *On this device* plays them with no
@@ -270,7 +286,8 @@ network at all.
 Two things on the machine holding the drive:
 
 - It has to stay awake with the share mounted — `sudo pmset -c sleep 0`, or
-  the Energy settings equivalent.
+  the Energy settings equivalent. Set `sudo pmset -c disksleep 0` too: a disk
+  that has spun down can take most of a listing's budget just waking up.
 - If playback takes a few seconds to start after a long idle, that is the disk
   spinning up, not the app. `pmset -g custom` shows `disksleep`; set it to `0`
   to keep an external media drive spinning.
