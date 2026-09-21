@@ -127,7 +127,7 @@ fun ChromeMessageHost(state: SnackbarHostState, hazeState: HazeState, modifier: 
             // different material reads as something stuck onto it, and text
             // over unblurred artwork is the readability problem this fixes.
             Modifier.fillMaxWidth()
-                .navChromeFrost(hazeState, MessageTierShape)
+                .navChromeFrost(hazeState, ChromeTierShape)
                 .testTag("chrome_message"),
         ) {
             Row(
@@ -167,8 +167,8 @@ fun ChromeMessageHost(state: SnackbarHostState, hazeState: HazeState, modifier: 
     }
 }
 
-/** The tier's corners: the pill's family, softened for a rectangle. */
-private val MessageTierShape = RoundedCornerShape(26.dp)
+/** A chrome tier's corners: the pill's family, softened for a rectangle. Shared with `BackgroundWorkTier`. */
+val ChromeTierShape = RoundedCornerShape(26.dp)
 
 /**
  * The message channel every tab screen shares, so they all land in the one

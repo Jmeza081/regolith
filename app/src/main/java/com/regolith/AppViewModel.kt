@@ -3,12 +3,18 @@ package com.regolith
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.prefs.AppPreferences
+import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.scan.ScanRepository
 import com.regolith.data.repository.StorageSweeper
 import com.regolith.data.transfer.SelectionStore
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.transfer.TransferStatus
+import com.regolith.domain.library.ArtworkTally
+import com.regolith.domain.library.BackgroundWork
+import com.regolith.domain.library.ScanTally
+import com.regolith.domain.library.backgroundWork
 import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.navigation.RegolithKey
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.regolith.data.security.BiometricGate
@@ -47,6 +54,8 @@ class AppViewModel @Inject constructor(
     private val playback: PlaybackSession,
     private val biometrics: BiometricGate,
     private val sweeper: StorageSweeper,
+    scans: ScanRepository,
+    prefetcher: ArtworkPrefetcher,
 ) : ViewModel() {
 
     // --- The app lock (fingerprint, face, or the screen lock).
@@ -156,6 +165,30 @@ class AppViewModel @Inject constructor(
             if (notable) setOf(MainTab.SETTINGS) else emptySet()
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /**
+     * The scan or the artwork walk, for the tier the nav chrome draws above
+     * the pill ([com.regolith.ui.components.BackgroundWorkTier]).
+     *
+     * App-level because the work is: a scan outlives the tab that started
+     * it and changes what every other tab can show. Home, Library, Search
+     * and Settings each used to say their own version of this, so the
+     * answer to "is it still going?" depended on which screen you were on
+     * and vanished the moment you left it.
+     *
+     * Both sources already exist and neither is new state: scan progress is
+     * `scan_runs` rows (guardrail G3) and the artwork walk rides
+     * WorkManager's own progress. This only joins them into one sentence.
+     */
+    val backgroundWork: StateFlow<BackgroundWork?> = combine(
+        scans.observeRunning(),
+        prefetcher.observe(),
+    ) { runs, prefetch ->
+        backgroundWork(
+            scan = runs.takeIf { it.isNotEmpty() }?.let { ScanTally(shares = it.size, files = it.sumOf { r -> r.filesFound }) },
+            artwork = prefetch.takeIf { it.running }?.let { ArtworkTally(done = it.done, total = it.total) },
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Leaving the tab that was selecting ends the selection. */
     fun clearSelection() = selection.clear()

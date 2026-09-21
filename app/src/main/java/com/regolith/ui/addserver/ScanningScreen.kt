@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.em
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.ProgressBar
 import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.SweepBar
 import com.regolith.ui.theme.PillShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -189,20 +190,5 @@ fun ScanningScreen(
             }
         }
         Spacer(Modifier.height(Spacing.s8))
-    }
-}
-
-/** The design's 6dp red bar with a sheen sweeping along it while the total is unknown. */
-@Composable
-private fun SweepBar(modifier: Modifier = Modifier) {
-    val colors = RegolithTheme.colors
-    val transition = rememberInfiniteTransition(label = "sweep")
-    val x by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "x")
-    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().height(6.dp).clip(PillShape).background(colors.accent)) {
-        val sheen = maxWidth * 0.22f
-        Box(
-            Modifier.width(sheen).fillMaxHeight().offset(x = (maxWidth + sheen) * x - sheen)
-                .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0x8CFFFFFF), Color.Transparent))),
-        )
     }
 }

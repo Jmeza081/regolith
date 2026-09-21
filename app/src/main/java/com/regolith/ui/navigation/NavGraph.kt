@@ -90,6 +90,7 @@ import com.regolith.ui.components.NAV_PILL_CLEARANCE
 import com.regolith.ui.components.NAV_RAIL_INSET
 import com.regolith.ui.components.NAV_RAIL_SPINE_INSET
 import com.regolith.ui.components.NavRailSpine
+import com.regolith.ui.components.BackgroundWorkTier
 import com.regolith.ui.components.NavPill
 import com.regolith.ui.home.ContinueWatchingScreen
 import com.regolith.ui.home.HomeScreen
@@ -142,6 +143,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val start by appViewModel.startDestination.collectAsStateWithLifecycle()
     val dimmedTabs by appViewModel.dimmedTabs.collectAsStateWithLifecycle()
     val tabDots by appViewModel.tabDots.collectAsStateWithLifecycle()
+    val backgroundWork by appViewModel.backgroundWork.collectAsStateWithLifecycle()
     val locked by appViewModel.locked.collectAsStateWithLifecycle()
     // null = preferences still loading; the system splash is covering us.
     val startKey = start ?: return
@@ -676,6 +678,25 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // gutter inside its touch target, so the target itself
                     // reaches the screen edge and a thumb coming in from
                     // off-screen lands on it. See NAV_RAIL_SPINE_TOUCH_WIDTH.
+                    // A wide window's nav is a vertical rail on the start
+                    // edge, which has no tier above it to dock to — so on the
+                    // inner display this reports from the window's own bottom
+                    // edge instead, capped at a readable width rather than
+                    // stretched across 739dp. It is deliberately NOT inside the
+                    // rail's AnimatedVisibility: the rail retracts after three
+                    // idle seconds, and a scan that is still running is exactly
+                    // what someone who has stopped touching the screen wants to
+                    // be able to see.
+                    if (windowShape.wide) {
+                        BackgroundWorkTier(
+                            backgroundWork,
+                            hazeState,
+                            Modifier.align(Alignment.BottomCenter)
+                                .widthIn(max = BACKGROUND_WORK_MAX_WIDTH)
+                                .navigationBarsPadding()
+                                .padding(horizontal = Spacing.s18, vertical = Spacing.s18),
+                        )
+                    }
                     AnimatedVisibility(
                         visible = !railVisible && windowShape.wide,
                         enter = fadeIn(),
@@ -721,6 +742,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             // two tiers, one clock. Phones only — the rail has
                             // no "above" to dock to.
                             if (!windowShape.wide) {
+                                // What the app is doing on its own: the scan
+                                // that is still filling the library, or the
+                                // artwork pass behind it. Above the selection
+                                // and the message because it is the longest
+                                // lived of the three and should not shuffle
+                                // when one of them appears. A wide window has
+                                // no "above" — see the bottom-docked copy below.
+                                BackgroundWorkTier(backgroundWork, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                                 // What is picked, and why a verb might be grey.
                                 // The pill has no room for a sentence, so it
                                 // rides directly above it in the same glass.
@@ -813,3 +842,11 @@ private fun NoTitleChosen() {
         Eyebrow("Choose a title", muted = true)
     }
 }
+
+/**
+ * How wide the background-work tier may get on a wide window. The chrome is
+ * a sentence and a bar; stretched across a 739dp inner display it would read
+ * as a banner, and the eye would have to travel the whole width to learn one
+ * number.
+ */
+private val BACKGROUND_WORK_MAX_WIDTH = 420.dp
