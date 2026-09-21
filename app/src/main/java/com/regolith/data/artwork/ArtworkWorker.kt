@@ -20,6 +20,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Generates the artwork for one share ahead of anyone looking at it.
@@ -52,17 +53,7 @@ class ArtworkWorker @AssistedInject constructor(
         val shareId = inputData.getLong(KEY_SHARE_ID, -1)
         if (shareId < 0) return Result.failure()
 
-        // Folders first: they are far fewer, and they are the wall the
-        // Library opens on. Then the files, newest first, because that is
-        // the order Home shows them in — so the two screens someone is
-        // likeliest to open next fill in before the deep back catalogue.
-        val folders = library.observeFoldersInShares(listOf(shareId)).first()
-            .filter { it.parentId != null }
-            .map { ArtworkOwner.Folder(it.id) }
-        val files = library.observeFilesInShares(listOf(shareId)).first()
-            .sortedByDescending { it.addedAtMs }
-            .map { ArtworkOwner.File(it.id) }
-        val owners = folders + files
+        val owners = ownersOf(shareId)
         if (owners.isEmpty()) return Result.success()
 
         runCatching { setForeground(foregroundInfo(0, owners.size)) }
@@ -72,14 +63,44 @@ class ArtworkWorker @AssistedInject constructor(
         return try {
             for (owner in owners) {
                 if (isStopped) return Result.success()
+                // The repository time-boxes each owner itself and hands back
+                // true when it gives up, so reaching this timeout means the
+                // one case it cannot escape: a native decoder or GL context
+                // that never returns, with no suspension point to cancel at.
+                // The permits are still held by that job, so the next item
+                // would wait on them for ever — which is exactly the freeze
+                // this is here to refuse.
+                val ok = withTimeoutOrNull(STUCK_MS) { artwork.prefetch(owner) }
+                if (ok == null) {
+                    // Deliberately NOT a retry. The wedged job still holds the
+                    // repository's permits, so another pass in this process
+                    // would stall on the very first item — a pass that restarts
+                    // for ever is worse than one that stops and says why.
+                    logStuckThreads(owner, done, owners.size)
+                    return Result.failure()
+                }
                 // False means the share stopped answering. Everything already
                 // written stays written, and WorkManager brings us back.
-                if (!artwork.prefetch(owner)) {
+                if (!ok) {
                     Log.i(TAG, "share $shareId went quiet after $done of ${owners.size}; will resume")
                     return Result.retry()
                 }
                 done++
                 report(done, owners.size)
+            }
+            // The list was a SNAPSHOT taken before the first frame was
+            // grabbed, and a walk of a real library outlives the scan that
+            // started it — so by now the scan has very likely written rows
+            // this pass never knew about. The scan does re-enqueue us when it
+            // finishes, but `KEEP` drops that while this job is still
+            // running, and the pass would end reporting "900 of 900" over a
+            // library of three thousand. Asking again is what closes it; it
+            // is the same re-check `TransferQueueWorker` ends on, for the
+            // same reason.
+            val now = ownersOf(shareId)
+            if (now.size > owners.size) {
+                Log.i(TAG, "share $shareId: ${now.size - owners.size} more arrived while walking; going round again")
+                return Result.retry()
             }
             Log.i(TAG, "share $shareId: artwork ready for ${owners.size} items")
             Result.success()
@@ -89,6 +110,24 @@ class ArtworkWorker @AssistedInject constructor(
             Log.e(TAG, "artwork walk of share $shareId crashed", e)
             Result.failure()
         }
+    }
+
+    /**
+     * Everything on [shareId] that could want a picture.
+     *
+     * Folders first: they are far fewer, and they are the wall the Library
+     * opens on. Then the files, newest first, because that is the order Home
+     * shows them in — so the two screens someone is likeliest to open next
+     * fill in before the deep back catalogue.
+     */
+    private suspend fun ownersOf(shareId: Long): List<ArtworkOwner> {
+        val folders = library.observeFoldersInShares(listOf(shareId)).first()
+            .filter { it.parentId != null }
+            .map { ArtworkOwner.Folder(it.id) }
+        val files = library.observeFilesInShares(listOf(shareId)).first()
+            .sortedByDescending { it.addedAtMs }
+            .map { ArtworkOwner.File(it.id) }
+        return folders + files
     }
 
     private suspend fun report(done: Int, total: Int) {
@@ -117,10 +156,39 @@ class ArtworkWorker @AssistedInject constructor(
         return ForegroundInfo(RegolithNotifications.ARTWORK_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
+    /**
+     * What the walk was doing when it stopped answering.
+     *
+     * The stall this exists for is reproducible and hardware-specific — it
+     * lands on the same item every time on a real device and never on the
+     * emulator, which decodes in software — so the stack is the only thing
+     * that can say whether it is wedged in the decoder, in GL, or on the
+     * share. Logged at ERROR so it survives a filtered logcat.
+     */
+    private fun logStuckThreads(owner: ArtworkOwner, done: Int, total: Int) {
+        Log.e(TAG, "STUCK on $owner after $done of $total items; thread dump follows")
+        Thread.getAllStackTraces()
+            .filterKeys { t -> INTERESTING.any { t.name.contains(it, ignoreCase = true) } }
+            .forEach { (thread, stack) ->
+                Log.e(TAG, "  thread '${thread.name}' ${thread.state}")
+                stack.take(STACK_DEPTH).forEach { Log.e(TAG, "      at $it") }
+            }
+    }
+
     companion object {
         const val KEY_SHARE_ID = "shareId"
         const val KEY_DONE = "done"
         const val KEY_TOTAL = "total"
         private const val TAG = "Regolith/Artwork"
+
+        /**
+         * The backstop, above the repository's own 90 s. Only a wedge the
+         * repository could not cancel ever reaches it.
+         */
+        private const val STUCK_MS = 120_000L
+
+        /** Thread names worth printing: the decoder, GL, the loader, the coroutine pools. */
+        private val INTERESTING = listOf("Dispatcher", "ExoPlayer", "Codec", "Loader", "GL", "media", "jcifs", "Thread-")
+        private const val STACK_DEPTH = 18
     }
 }

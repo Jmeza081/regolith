@@ -21,6 +21,7 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
+import com.regolith.domain.smb.isAboutTheServer
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import kotlin.math.abs
@@ -34,6 +35,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -160,7 +162,25 @@ class ArtworkRepository @Inject constructor(
         ensureGeneration()
         if (ArtworkKind.entries.all { cached(ArtworkRequest(owner, it)) != null }) return true
         return joinOrStart(owner to false) {
-            prefetchSlots.withPermit { extractionSlots.withPermit { resolveOwner(owner, ArtworkKind.entries) } }
+            prefetchSlots.withPermit {
+                extractionSlots.withPermit {
+                    // Time-boxed INSIDE both permits, which is the only place
+                    // it does any good: the job runs in this repository's own
+                    // scope, so a caller that walked away from `await()` would
+                    // leave it here holding the permits, and the next item
+                    // would wait on them for ever. Cancelling from in here
+                    // unwinds the `withPermit` frames and hands the slots back.
+                    withTimeoutOrNull(OWNER_TIMEOUT_MS) { resolveOwner(owner, ArtworkKind.entries) }
+                        ?: run {
+                            Log.w(TAG, "$owner gave up after ${OWNER_TIMEOUT_MS / 1000}s; moving on")
+                            // True, not false: false means "the share went
+                            // quiet", which stops the whole walk. One file the
+                            // decoder will not do is not a reason to abandon
+                            // the other nine hundred.
+                            true
+                        }
+                }
+            }
         }
     }
 
@@ -232,7 +252,27 @@ class ArtworkRepository @Inject constructor(
 
     // --- the pipeline
 
-    /** False only when the share could not be reached; anything else is dealt with here. */
+    /**
+     * False only when the SERVER is the problem; anything else is dealt with
+     * here.
+     *
+     * The distinction is the whole point. This used to answer false to any
+     * [SmbFailure] at all, and the walk above reads false as "the share went
+     * quiet" and abandons the pass — so ONE file the server would not hand
+     * over stopped the artwork for the entire library, WorkManager retried,
+     * the walk skipped everything already cached, reached the same file, and
+     * gave up again. From the outside that is a pass that restarts for ever
+     * and never gets past the same picture.
+     *
+     * A file can be refused for reasons that say nothing about the share: it
+     * was deleted or renamed since the scan listed it (NotFound), it sits
+     * under an ACL the login cannot read (Forbidden), or the server simply
+     * would not open it (Other). Those get a placeholder, like any other file
+     * that cannot be turned into a picture, and the walk carries on.
+     *
+     * Only [SmbFailure.Unreachable] and [SmbFailure.AuthFailed] are about the
+     * connection rather than the file, and only those stop the pass.
+     */
     private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>): Boolean {
         return try {
             when (owner) {
@@ -242,8 +282,14 @@ class ArtworkRepository @Inject constructor(
             }
             true
         } catch (e: SmbFailure) {
-            Log.w(TAG, "artwork for $owner deferred: ${e.message}")
-            false
+            if (e.isAboutTheServer) {
+                Log.w(TAG, "artwork for $owner deferred: ${e.message}")
+                return false
+            }
+            // This file, not the share. Placeholder it and keep going.
+            Log.w(TAG, "artwork for $owner skipped: ${e.message}")
+            placeholder(owner, kinds)
+            true
         } catch (e: Exception) {
             Log.w(TAG, "artwork for $owner failed: $e")
             placeholder(owner, kinds)
@@ -685,6 +731,17 @@ class ArtworkRepository @Inject constructor(
     }
 
     private companion object {
+        /**
+         * How long one owner may take before the walk gives up on it.
+         *
+         * Generous on purpose: a cold seek into a 4K remux on a slow share
+         * legitimately takes tens of seconds, and Media3's own frame grab is
+         * allowed 30 of them. This is the backstop for the case that has no
+         * timeout of its own — a native decoder or GL context that never
+         * comes back — not a performance budget.
+         */
+        const val OWNER_TIMEOUT_MS = 90_000L
+
         const val TAG = "Regolith/Artwork"
         const val LISTING_TTL_MS = 5 * 60_000L
         const val PLACEHOLDER_TTL_MS = 24 * 3_600_000L

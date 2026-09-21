@@ -106,3 +106,23 @@ fun shareRootRefusal(path: String): String? {
     return "$share opened, but the server would not read it. That is a permission on the server, " +
         "not on this phone — on a Mac, give smbd Full Disk Access in Privacy & Security."
 }
+
+/**
+ * Whether a failure is about the SERVER or about the one path that provoked
+ * it.
+ *
+ * A batch that walks a share — the artwork pass, a folder download — has to
+ * tell these apart, and getting it wrong is expensive in both directions.
+ * Treat every failure as the server's and one unreadable file abandons the
+ * whole library; treat every failure as the file's and a share that has gone
+ * off the network writes a placeholder over every picture in it.
+ *
+ * [SmbFailure.Unreachable] and [SmbFailure.AuthFailed] are the two that are
+ * true of the CONNECTION: nothing else on that server will work either, so
+ * there is no point trying the next thousand files. Everything else is a
+ * statement about one path — it was deleted or renamed since the scan listed
+ * it, it sits under an ACL this login cannot read, or the server simply
+ * refused to open it — and says nothing about the file beside it.
+ */
+val SmbFailure.isAboutTheServer: Boolean
+    get() = this is SmbFailure.Unreachable || this is SmbFailure.AuthFailed

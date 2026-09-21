@@ -69,7 +69,19 @@ class Media3Frames @Inject constructor(
                     .setEffects(listOf(Presentation.createForWidthAndHeight(maxWidth, maxHeight, Presentation.LAYOUT_SCALE_TO_FIT)))
                     .build()
                     .use { extractor ->
-                        val frame = extractor.getFrame(positionMs).get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                        // Cancelled before `use` closes the extractor, not
+                        // left running. Closing one while a frame request is
+                        // still outstanding means tearing down the GL context
+                        // and the decoder under work that still believes it
+                        // owns them, which is a far better way to wedge than
+                        // to fail.
+                        val pending = extractor.getFrame(positionMs)
+                        val frame = try {
+                            pending.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                        } catch (e: Exception) {
+                            pending.cancel(/* mayInterruptIfRunning = */ true)
+                            throw e
+                        }
                         GrabbedFrame(frame.bitmap, frame.presentationTimeMs)
                     }
             }
