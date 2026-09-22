@@ -100,6 +100,9 @@ class LibraryRepository @Inject constructor(
         }
     }
 
+    /** Which server a share belongs to. */
+    suspend fun serverIdForShare(shareId: Long): Long? = shareDao.byId(shareId)?.serverId
+
     /** How many playable files a set of shares holds, live. */
     fun observeFileCountInShares(shareIds: List<Long>): Flow<Int> = mediaFileDao.observeCountInShares(shareIds)
 

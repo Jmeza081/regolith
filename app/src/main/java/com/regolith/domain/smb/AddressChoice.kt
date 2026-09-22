@@ -42,3 +42,27 @@ fun slowdownFactor(chosen: AddressProbe?, others: List<AddressProbe>): Double? {
     if (best <= 0) return null
     return mine.toDouble() / best.toDouble()
 }
+
+/**
+ * How much slower a link has to be before it is worth saying so.
+ *
+ * Three times. Not a round number pulled from nowhere: the owner's own
+ * addresses measured 30 ms on the LAN against 92 ms over the tunnel, which
+ * is a factor of three and is the point at which "this will take a while"
+ * stops being pedantry — a scan is thousands of round trips, so three times
+ * the latency is three times the wall clock, and an artwork pass that takes
+ * two hours at home takes six.
+ */
+const val SLOW_LINK_FACTOR = 3.0
+
+/**
+ * Whether the route in use is slow enough that unattended work should wait.
+ *
+ * Deliberately a comparison and not an absolute: a library on a NAS at the
+ * end of a slow home connection is not "far away", it is just what this
+ * person's setup costs, and telling them so on every screen would be noise.
+ * What matters is that a FASTER way in exists and is not available from
+ * here — which is exactly the case where waiting gets you something.
+ */
+fun isSlowLink(chosen: AddressProbe?, others: List<AddressProbe>): Boolean =
+    (slowdownFactor(chosen, others) ?: 1.0) >= SLOW_LINK_FACTOR

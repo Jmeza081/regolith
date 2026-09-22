@@ -46,6 +46,7 @@ class ScanWorker @AssistedInject constructor(
     private val library: LibraryRepository,
     private val scanRunDao: ScanRunDao,
     private val artwork: ArtworkPrefetcher,
+    private val addresses: com.regolith.data.repository.ServerAddressResolver,
     private val chapterSync: com.regolith.data.media.ChapterSyncScheduler,
 ) : CoroutineWorker(context, params) {
 
@@ -122,7 +123,20 @@ class ScanWorker @AssistedInject constructor(
             // it starts here rather than being something the user has to ask
             // for. It skips whatever is already cached, so a rescan that
             // found nothing new costs a pass over the table and no network.
-            artwork.enqueue(shareId)
+            //
+            // Unless a faster way to this server exists and is not available
+            // from here: a frame grab is a seek and a decode per file, so a
+            // pass that takes two hours at home takes six over a tunnel, and
+            // starting it unasked is how someone ends up watching a progress
+            // bar crawl all evening. Held back, not cancelled — the server's
+            // own page offers it anyway, and the next scan from somewhere
+            // faster starts it without being asked.
+            val slowLink = library.serverIdForShare(shareId)?.let { addresses.isSlowLinkFor(it) } ?: false
+            if (slowLink) {
+                Log.i(TAG, "share $shareId: holding artwork back, the way in to this server is the slow one")
+            } else {
+                artwork.enqueue(shareId)
+            }
             // Chapters edited while the share was asleep or refusing writes get another go (P10).
             chapterSync.enqueue()
             Result.success()

@@ -8,6 +8,7 @@ import com.regolith.domain.media.LocalSource
 import com.regolith.domain.smb.AddressProbe
 import com.regolith.domain.smb.SmbHost
 import com.regolith.domain.smb.chooseAddress
+import com.regolith.domain.smb.isSlowLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -72,6 +73,36 @@ class ServerAddressResolver @Inject constructor(
 
         chosen[serverId]?.let { if (System.currentTimeMillis() - it.atMs < CACHE_MS) return it.host }
         return race(serverId, addresses) ?: current
+    }
+
+    /**
+     * Whether the route in use for [serverId] is slow enough that
+     * unattended work should wait for a better one.
+     *
+     * Read from the timings the last race wrote, so it costs a query and
+     * never a probe — the caller is usually a worker about to decide
+     * whether to start hours of work, not a screen.
+     */
+    suspend fun isSlowLinkFor(serverId: Long): Boolean {
+        val server = serverDao.byId(serverId) ?: return false
+        val rows = addressDao.forServer(serverId)
+        if (rows.size <= 1) return false
+        val probes = rows.map { AddressProbe(it.id, it.host, it.port, it.lastRttMs) }
+        val chosen = probes.firstOrNull { it.host == server.host && it.port == server.port }
+        return isSlowLink(chosen, probes.filter { it.id != chosen?.id })
+    }
+
+    /**
+     * Race now, rather than at whatever the next SMB call turns out to be.
+     *
+     * Choosing "Automatic", or adding an address, is a decision that should
+     * land when it is made: without this the page went on naming the route
+     * it had been pinned to, which is true but stale, and reads exactly like
+     * the setting not having worked.
+     */
+    suspend fun refresh(serverId: Long) {
+        forget(serverId)
+        hostFor(serverId)
     }
 
     /** Forget the cached winner: the network changed, or the user edited the addresses. */

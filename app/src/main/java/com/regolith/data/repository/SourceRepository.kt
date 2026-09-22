@@ -273,7 +273,9 @@ class SourceRepository @Inject constructor(
                 createdAtMs = System.currentTimeMillis(),
             ),
         )
-        addresses.forget(serverId)
+        // Time it now, so the page can say how it answered instead of
+        // leaving a new address blank until something happens to use it.
+        addresses.refresh(serverId)
         return AddAddressResult.Added
     }
 
@@ -289,16 +291,29 @@ class SourceRepository @Inject constructor(
         if (addressDao.countFor(row.serverId) <= 1) return false
         addressDao.delete(addressId)
         addresses.forget(row.serverId)
+        // Re-raced below once the fallback is settled.
         // Pinned to the address that just went: fall back to choosing.
         val server = serverDao.byId(row.serverId)
         if (server != null && server.host == row.host && server.port == row.port) {
             addressDao.forServer(row.serverId).firstOrNull()?.let { serverDao.setAddress(row.serverId, it.host, it.port) }
             serverDao.setAddressMode(row.serverId, AddressMode.AUTO.name)
         }
+        addresses.refresh(row.serverId)
         return true
     }
 
     suspend fun setAddressLabel(addressId: Long, label: String) = addressDao.setLabel(addressId, label.trim())
+
+    /**
+     * Re-measure a server's addresses now.
+     *
+     * Called when its page opens. The stored timings and the address in use
+     * are only ever as fresh as the last thing that needed a connection, so
+     * a page that just displayed them would be showing you the route you
+     * were on in the coffee shop this morning. Two TCP connects to make the
+     * screen true is a fair price for the one screen that is ABOUT them.
+     */
+    suspend fun refreshAddresses(serverId: Long) = addresses.refresh(serverId)
 
     /** Use this address and no other, until the owner says otherwise. */
     suspend fun pinAddress(serverId: Long, addressId: Long) {
@@ -311,7 +326,7 @@ class SourceRepository @Inject constructor(
     /** Go back to measuring: whichever address answers fastest wins, every time. */
     suspend fun useFastestAddress(serverId: Long) {
         serverDao.setAddressMode(serverId, AddressMode.AUTO.name)
-        addresses.forget(serverId)
+        addresses.refresh(serverId)
     }
 
     /**

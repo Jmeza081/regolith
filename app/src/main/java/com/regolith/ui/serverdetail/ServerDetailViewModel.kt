@@ -11,7 +11,10 @@ import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.domain.model.AddressMode
 import com.regolith.domain.model.ServerAddress
+import com.regolith.domain.smb.AddressProbe
 import com.regolith.domain.smb.SmbAddressParser
+import com.regolith.domain.smb.isSlowLink
+import com.regolith.domain.smb.slowdownFactor
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -54,6 +57,9 @@ class ServerDetailViewModel @AssistedInject constructor(
     val uiState: StateFlow<ServerDetailUiState> = _uiState.asStateFlow()
 
     init {
+        // The page is ABOUT the addresses, so it measures them rather than
+        // printing whatever the last connection happened to leave behind.
+        viewModelScope.launch { sources.refreshAddresses(serverId) }
         viewModelScope.launch {
             val shares = sources.observeShares(serverId)
             val runs = shares.flatMapLatest { list ->
@@ -71,6 +77,10 @@ class ServerDetailViewModel @AssistedInject constructor(
             ) { servers, addresses, shareList, runList, fileCount ->
                 val server = servers.firstOrNull { it.id == serverId }
                 val running = runList.filter { it.status == ScanRunEntity.RUNNING }
+                // The timings the resolver wrote the last time it raced.
+                val probes = addresses.map { AddressProbe(it.id, it.host.host, it.host.port, it.lastRttMs) }
+                val chosen = probes.firstOrNull { p -> server != null && p.host == server.host.host && p.port == server.host.port }
+                val others = probes.filter { it.id != chosen?.id }
                 ServerDetailUiState(
                     loaded = server != null,
                     name = server?.name.orEmpty(),
@@ -86,6 +96,8 @@ class ServerDetailViewModel @AssistedInject constructor(
                     scanning = running.isNotEmpty(),
                     scanFilesFound = running.sumOf { it.filesFound },
                     unreachable = server?.unreachableSinceMs != null,
+                    slowdown = slowdownFactor(chosen, others),
+                    slowLink = isSlowLink(chosen, others),
                 )
             }.collect { built ->
                 // Onto the live state, so an open dialog is not closed by a
@@ -102,6 +114,7 @@ class ServerDetailViewModel @AssistedInject constructor(
                         artworkRunning = live.artworkRunning,
                         artworkDone = live.artworkDone,
                         artworkTotal = live.artworkTotal,
+                        overrideSlowLink = live.overrideSlowLink,
                     )
                 }
             }
@@ -167,6 +180,15 @@ class ServerDetailViewModel @AssistedInject constructor(
     }
 
     fun useFastest() = viewModelScope.launch { sources.useFastestAddress(serverId) }.let { }
+
+    /**
+     * "Do it anyway" on a slow link.
+     *
+     * Kept on the state rather than in a preference: the hold is a fact
+     * about where the phone is right now, and a decision made in a hotel
+     * should not still be in force next week at home.
+     */
+    fun overrideSlowLink() = _uiState.update { it.copy(overrideSlowLink = true) }
 
     // --- Name, library, disconnect
 

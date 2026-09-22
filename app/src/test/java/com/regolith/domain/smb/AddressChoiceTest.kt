@@ -1,6 +1,8 @@
 package com.regolith.domain.smb
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -45,5 +47,23 @@ class AddressChoiceTest {
     fun `nothing to compare gives no factor`() {
         assertNull(slowdownFactor(null, listOf(probe(1, 2))))
         assertNull(slowdownFactor(probe(1, null), listOf(probe(2, null))))
+    }
+
+    @Test
+    fun `the owner's own two addresses are a slow link`() {
+        assertTrue("30 ms on the LAN against 92 over the tunnel", isSlowLink(probe(2, 92), listOf(probe(1, 30))))
+    }
+
+    @Test
+    fun `the fast way in is never the slow one`() {
+        assertFalse(isSlowLink(probe(1, 30), listOf(probe(2, 92))))
+    }
+
+    @Test
+    fun `one address alone is never slow, however far away it is`() {
+        assertFalse(
+            "a NAS at the end of a slow line is not far away, it is just what this setup costs",
+            isSlowLink(probe(1, 400), emptyList()),
+        )
     }
 }

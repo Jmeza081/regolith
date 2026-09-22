@@ -112,11 +112,20 @@ fun ServerDetailScreen(
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("How to reach it", muted = true)
                 SurfaceCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                    // Only once there is a choice to make. With one address
+                    // "Automatic" and "that one" are the same thing, and a
+                    // control whose two settings do nothing different is
+                    // worse than no control.
+                    if (state.rows.size > 1) {
+                        AutomaticRow(selected = state.automatic, onSelect = viewModel::useFastest)
+                        Divider()
+                    }
                     state.rows.forEachIndexed { index, row ->
                         if (index > 0) Divider()
                         AddressRowView(
                             row = row,
                             automatic = state.automatic,
+                            multiple = state.rows.size > 1,
                             onChoose = { viewModel.chooseAddress(row) },
                             onLabel = { viewModel.askLabel(row.address) },
                             onRemove = { viewModel.askRemove(row.address) },
@@ -155,6 +164,7 @@ fun ServerDetailScreen(
             // --- Its library
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("Its library", muted = true)
+                if (state.holdingBack) SlowLinkNotice(state, onAnyway = viewModel::overrideSlowLink)
                 SurfaceCard(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     Row(
                         Modifier
@@ -187,8 +197,20 @@ fun ServerDetailScreen(
                         }
                         Spacer(Modifier.width(Spacing.s12))
                         SecondaryButton(
-                            text = if (state.scanning) "Stop" else "Scan now",
-                            onClick = { if (state.scanning) viewModel.stopScan() else viewModel.scanNow() },
+                            text = when {
+                                state.scanning -> "Stop"
+                                state.holdingBack -> "Anyway"
+                                else -> "Scan now"
+                            },
+                            onClick = {
+                                when {
+                                    state.scanning -> viewModel.stopScan()
+                                    // An explicit tap is consent: it runs, and it
+                                    // lifts the hold for the rest of this visit so
+                                    // the artwork behind it is not asked again.
+                                    else -> { viewModel.overrideSlowLink(); viewModel.scanNow() }
+                                }
+                            },
                             compact = true,
                             testTag = "server_scan_button",
                         )
@@ -204,8 +226,15 @@ fun ServerDetailScreen(
                             }
                             Spacer(Modifier.width(Spacing.s12))
                             SecondaryButton(
-                                text = if (state.artworkRunning) "Stop" else "Prepare",
-                                onClick = { if (state.artworkRunning) viewModel.stopArtwork() else viewModel.prepareArtwork() },
+                                text = when {
+                                    state.artworkRunning -> "Stop"
+                                    state.holdingBack -> "Anyway"
+                                    else -> "Prepare"
+                                },
+                                onClick = {
+                                    if (state.artworkRunning) viewModel.stopArtwork()
+                                    else { viewModel.overrideSlowLink(); viewModel.prepareArtwork() }
+                                },
                                 compact = true,
                                 testTag = "server_artwork_button",
                             )
@@ -329,6 +358,7 @@ private fun Divider() {
 private fun AddressRowView(
     row: AddressRow,
     automatic: Boolean,
+    multiple: Boolean,
     onChoose: () -> Unit,
     onLabel: () -> Unit,
     onRemove: () -> Unit,
@@ -342,22 +372,28 @@ private fun AddressRowView(
             .testTag(row.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Filled red = the choice you made. A bare white dot on the title
+        // row = the address actually in use. They are different claims and
+        // are drawn differently on purpose.
         Box(
-            Modifier.size(18.dp).clip(PillShape).background(if (row.inUse) colors.accent else colors.raised),
+            Modifier.size(18.dp).clip(PillShape).background(if (row.pinned) colors.accent else colors.raised),
             contentAlignment = Alignment.Center,
         ) {
-            if (row.inUse) Box(Modifier.size(6.dp).clip(PillShape).background(colors.inkSoft))
+            if (row.pinned) Box(Modifier.size(6.dp).clip(PillShape).background(colors.inkSoft))
         }
         Spacer(Modifier.width(Spacing.s12))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(row.address.title, style = TextStyles.settingLabel, color = colors.ink)
-                if (row.pinned) {
+                if (row.inUse) {
                     Spacer(Modifier.width(Spacing.s8))
-                    Text("PINNED", style = TextStyles.eyebrow, color = colors.metadata, modifier = Modifier.testTag("${row.testTag}_pinned"))
-                } else if (row.inUse && automatic) {
+                    Box(Modifier.size(6.dp).clip(PillShape).background(colors.ink))
                     Spacer(Modifier.width(Spacing.s8))
-                    Text("IN USE", style = TextStyles.eyebrow, color = colors.metadata)
+                    Text(
+                        if (row.pinned) "PINNED" else "IN USE",
+                        style = TextStyles.eyebrow, color = colors.metadata,
+                        modifier = Modifier.testTag("${row.testTag}_state"),
+                    )
                 }
             }
             val detail = row.address.detail
@@ -456,5 +492,85 @@ private fun AddAddressDialog(
                 }
             }
         }
+    }
+}
+
+/**
+ * "Automatic": let the fastest answer decide, every time.
+ *
+ * It sits above the addresses rather than beside them because it is not
+ * one of them — it is the rule that picks between them, and drawing it as
+ * a fourth address would invite the question of what happens when you
+ * choose "Automatic" and an address at the same time.
+ */
+@Composable
+private fun AutomaticRow(selected: Boolean, onSelect: () -> Unit) {
+    val colors = RegolithTheme.colors
+    Row(
+        Modifier
+            .defaultMinSize(minHeight = SettingsRowHeight)
+            .clickable(interactionSource = null, indication = null, onClick = onSelect)
+            .padding(vertical = Spacing.s12)
+            .testTag("server_address_automatic"),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            Modifier.size(18.dp).clip(PillShape).background(if (selected) colors.accent else colors.raised),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) Box(Modifier.size(6.dp).clip(PillShape).background(colors.inkSoft))
+        }
+        Spacer(Modifier.width(Spacing.s12))
+        Column(Modifier.weight(1f)) {
+            Text("Automatic", style = TextStyles.settingLabel, color = colors.ink)
+            Text(
+                "Tries every address at once and uses whichever answers first.",
+                style = TextStyles.settingMeta,
+                color = colors.metadata,
+            )
+        }
+    }
+}
+
+/**
+ * Why the library is not reading itself right now.
+ *
+ * Shown only when a FASTER way in exists and cannot be reached from here,
+ * which is the one case where waiting actually buys something — a library
+ * at the end of a slow line is not far away, it is just what that setup
+ * costs, and saying so on every screen would be noise.
+ *
+ * It states the cost in wall-clock rather than in multiples, because
+ * "3x slower" is a fact about the link and "about six hours" is a fact
+ * about the decision in front of you.
+ */
+@Composable
+private fun SlowLinkNotice(state: ServerDetailUiState, onAnyway: () -> Unit) {
+    val colors = RegolithTheme.colors
+    SurfaceCard(Modifier.fillMaxWidth().testTag("server_slow_link")) {
+        Text("Waiting for a faster way in", style = TextStyles.settingLabel, color = colors.ink)
+        Spacer(Modifier.height(Spacing.s8))
+        state.slowLinkLine?.let {
+            Text(it, style = TextStyles.settingMeta, color = colors.metadata)
+            Spacer(Modifier.height(Spacing.s4))
+        }
+        Text(
+            slowLinkBody(state.fileCount, state.slowdown),
+            style = TextStyles.body,
+            color = colors.body,
+        )
+        Spacer(Modifier.height(Spacing.s12))
+        Text(
+            "Your library, its artwork and where you got to in each film are already on this phone. Playing and downloading work from here.",
+            style = TextStyles.settingMeta,
+            color = colors.metadata,
+        )
+        Spacer(Modifier.height(Spacing.s18))
+        SecondaryButton(
+            text = "Read it anyway",
+            onClick = onAnyway,
+            modifier = Modifier.fillMaxWidth(),
+            testTag = "server_slow_link_anyway",
+        )
     }
 }
