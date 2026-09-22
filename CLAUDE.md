@@ -107,15 +107,33 @@ app dependency. Config lives in `repomix.config.json`; output is gitignored.
 ## Running & testing on a device or the emulator
 
 **Look for the real phone first.** `adb devices` before booting anything: the
-owner's Galaxy Z Fold 8 (`SM-F971U`, Android 17) is often plugged in over USB,
-and when it is, it beats every AVD here. It is the device the app is actually
-for, it is the only way to see the cover screen, `TABLE_TOP` and flex mode at
+owner's Galaxy Z Fold 8 (`SM-F971U`, Android 17) is usually reachable over
+**wireless debugging** (not USB), and when it is, it beats every AVD here. It
+is the device the app is actually for, it is the only way to see the cover screen, `TABLE_TOP` and flex mode at
 all (no emulator on this machine reaches them — see below), and it is the only
 place a real SMB share, real files and real playback exist. Prefer it for
 anything you are trying to *confirm*, and say which one you used.
 
     adb devices                 # `device` = ready; `unauthorized` = accept the
-                                # dialog on the phone; empty = fall back to an AVD
+                                # dialog on the phone
+    adb mdns services           # empty list? find the phone on the network
+    adb connect <ip>:<port>     # port from the `_adb-tls-connect` line above,
+                                # or Settings › Developer options › Wireless
+                                # debugging on the phone
+
+Wireless debugging is adb over Wi-Fi: the phone and this Mac must be on the
+same network, and it switches itself off when the phone changes networks or
+reboots. The port changes every time it is turned on, so never reuse an old
+one; read it fresh from `adb mdns services`. Pairing is separate and done
+once per Mac: if `connect` is refused, the owner taps "Pair device with
+pairing code" on the phone and you run `adb pair <ip>:<pair-port> <code>`
+(the pairing port is not the connect port).
+If the phone is listed but `connect` times out and `arp -n <ip>` reads
+`(incomplete)`, its Wi-Fi has gone quiet (seen 2026-09): toggling Wi-Fi off
+and on on the phone fixed it where re-toggling wireless debugging did not.
+If mDNS finds nothing, ask the owner to turn wireless debugging on and read
+out the IP:port rather than falling back to an AVD for something only the
+phone can confirm. The emulator is for everything else (below).
 
 Two things to know before installing to it:
 
