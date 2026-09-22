@@ -117,6 +117,38 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             setProperty("jcifs.smb.client.tcpNoDelay", "true")
             setProperty("jcifs.smb.client.rcv_buf_size", "1048576")
             setProperty("jcifs.smb.client.snd_buf_size", "1048576")
+            // How many bytes of directory entries to ask for per request.
+            //
+            // This is a workaround for a bug in jcifs-ng, and the arithmetic
+            // is the whole explanation. Its default is 65535, which is the
+            // size of the PAYLOAD it asks the server to fill — but the check
+            // on the way back in (SmbTransportImpl.doRecvSMB2) compares the
+            // size of the WHOLE MESSAGE against a hard-coded 65536, and the
+            // SMB2 header and QUERY_DIRECTORY response fields sit on top of
+            // the payload. A server that fills the buffer therefore sends
+            // 65574 bytes, jcifs rejects its own request's answer with
+            // "Message size 65574 exceeds maxiumum buffer size 65536" (the
+            // typo is theirs), and the listing fails. `maximumBufferSize` has
+            // a getter but NO property behind it, so it cannot be raised —
+            // the only lever is this one.
+            //
+            // It only bites on a folder big enough to fill 64 KiB in one
+            // reply, which takes either hundreds of entries or, as on the
+            // owner's share, dozens with very long names. jcifs pages through
+            // with repeated QUERY_DIRECTORY calls either way, so the cost of
+            // asking for less is a few more round trips on the largest
+            // folders and nothing at all on the rest.
+            //
+            // 32 KiB, measured on the owner's share rather than reasoned
+            // to. The overhead above the payload was observed at ~140 bytes
+            // (a default 65435 request came back as 65574), so arithmetic
+            // alone would say 65 KiB is plenty — but a value that only just
+            // fits is what caused this, and the price of being wrong is a
+            // whole folder vanishing from the library rather than a slow
+            // listing. 32 KiB has been confirmed on the device to clear it,
+            // and the cost is only on folders big enough to need a second
+            // round trip.
+            setProperty("jcifs.smb.client.listSize", "32768")
         }
     }
 
@@ -148,7 +180,11 @@ class JcifsGateway @Inject constructor() : SmbGateway {
                     credentials.password,
                 )
             }
-            BaseContext(PropertyConfiguration(mergedProps(maxDialect, lenientSigning))).withCredentials(auth)
+            val config = PropertyConfiguration(mergedProps(maxDialect, lenientSigning))
+            // Worth a line per connection: listSize is load-bearing (see baseProps)
+            // and this is the only way to tell from a device what is actually in force.
+            Log.i(TAG, "context for ${host.host} $maxDialect: listSize=${config.listSize} maxBuffer=${config.maximumBufferSize} rcvBuf=${config.receiveBufferSize}")
+            BaseContext(config).withCredentials(auth)
         }
     }
 
@@ -438,6 +474,14 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         generateSequence(this) { it.cause }.any { it is UnknownHostException || it is ConnectException || it is SocketTimeoutException }
 
     private fun Throwable.isUnreachable(): Boolean {
+        // jcifs wraps a reply it could not fit in its own buffer as a
+        // TransportException, which used to read here as "the server is
+        // gone" — so ONE oversized folder listing marked the whole share
+        // unreachable and ended the scan. It is a statement about that
+        // reply's size and nothing else: the socket is fine, and the very
+        // next folder lists normally. Checked before the transport test
+        // below, and by message because jcifs gives it no type of its own.
+        if (isOversizedReply()) return false
         var t: Throwable? = this
         while (t != null) {
             if (t is UnknownHostException || t is ConnectException || t is SocketTimeoutException) return true
@@ -446,6 +490,20 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         }
         return false
     }
+
+    /**
+     * jcifs refusing a reply for exceeding its own hard-coded buffer.
+     *
+     * Matched on the message, including jcifs's own spelling of
+     * "maxiumum", because the failure arrives as a plain [java.io.IOException]
+     * with nothing else to distinguish it. [baseProps] sets `listSize` so
+     * this should no longer happen; this is the seam that keeps it from
+     * costing a whole scan if it ever does.
+     */
+    private fun Throwable.isOversizedReply(): Boolean =
+        generateSequence(this) { it.cause }.any { t ->
+            t is java.io.IOException && t.message?.contains("exceeds maxiumum buffer size") == true
+        }
 }
 
 /**
