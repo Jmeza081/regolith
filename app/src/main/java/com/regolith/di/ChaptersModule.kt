@@ -3,7 +3,7 @@ package com.regolith.di
 import com.regolith.data.media.ChapterSyncScheduler
 import com.regolith.data.media.WorkManagerChapterSyncScheduler
 import com.regolith.data.repository.SourceRepository
-import com.regolith.domain.smb.CredentialSource
+import com.regolith.domain.smb.ServerAccess
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -13,6 +13,6 @@ import dagger.hilt.components.SingletonComponent
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class ChaptersModule {
-    @Binds abstract fun bindCredentialSource(impl: SourceRepository): CredentialSource
+    @Binds abstract fun bindServerAccess(impl: SourceRepository): ServerAccess
     @Binds abstract fun bindChapterSyncScheduler(impl: WorkManagerChapterSyncScheduler): ChapterSyncScheduler
 }

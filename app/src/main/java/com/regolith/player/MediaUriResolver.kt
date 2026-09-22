@@ -64,7 +64,10 @@ class MediaUriResolver @Inject constructor(
         val share = shareDao.byIdBlocking(file.shareId) ?: return null
         val server = serverDao.byIdBlocking(share.serverId) ?: return null
         return ResolvedMedia(
-            host = SmbHost(server.host, server.port),
+            // Blocking, like the credentials beside it. The resolver caches
+            // its winner for a minute, so a film that seeks a hundred times
+            // races the addresses at most once.
+            host = sources.hostForBlocking(server.id),
             credentials = sources.credentialsForBlocking(server.id),
             share = share.name,
             relPath = file.relPath,

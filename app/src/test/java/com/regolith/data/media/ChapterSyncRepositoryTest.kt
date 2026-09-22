@@ -15,7 +15,7 @@ import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.ChapterWriteOutcome
-import com.regolith.domain.smb.CredentialSource
+import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
 import com.regolith.testing.FakeSmbGateway
@@ -61,7 +61,10 @@ class ChapterSyncRepositoryTest {
         gateway.addFile("media", "Films/Heat.1995.mkv", ByteArray(1))
         repo = ChapterSyncRepository(
             syncDao = db.chapterSyncDao(), chapterDao = db.userChapterDao(), mediaFileDao = db.mediaFileDao(), shareDao = db.shareDao(), serverDao = db.serverDao(),
-            credentials = object : CredentialSource { override suspend fun credentialsFor(serverId: Long) = SmbCredentials.Guest },
+            credentials = object : ServerAccess {
+                override suspend fun credentialsFor(serverId: Long) = SmbCredentials.Guest
+                override suspend fun hostFor(serverId: Long) = SmbHost("tower", 445)
+            },
             writer = SidecarWriter(gateway),
             scheduler = object : ChapterSyncScheduler { override fun enqueue() { enqueued++ } },
             transfers = db.transferDao(),

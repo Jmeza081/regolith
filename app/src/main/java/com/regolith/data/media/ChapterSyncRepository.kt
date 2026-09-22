@@ -18,7 +18,7 @@ import com.regolith.domain.playback.ChapterSync
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.ChapterWriteOutcome
-import com.regolith.domain.smb.CredentialSource
+import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
@@ -57,7 +57,7 @@ class ChapterSyncRepository @Inject constructor(
     private val mediaFileDao: MediaFileDao,
     private val shareDao: ShareDao,
     private val serverDao: ServerDao,
-    private val credentials: CredentialSource,
+    private val credentials: ServerAccess,
     private val writer: SidecarWriter,
     private val scheduler: ChapterSyncScheduler,
     private val transfers: TransferDao,
@@ -220,7 +220,7 @@ class ChapterSyncRepository @Inject constructor(
         }
         // Writing turned off: the row stays dirty so turning it back on writes; the sheet reads it as phone-only.
         if (!share.writeChapters) return ChapterWriteOutcome.PHONE_ONLY
-        val host = SmbHost(server.host, server.port)
+        val host = credentials.hostFor(server.id)
         val creds = credentials.credentialsFor(server.id)
         val folder = file.relPath.substringBeforeLast('/', "")
         val chapters = chapterDao.forFile(row.fileId).map { Chapter(it.startMs, it.title) }
@@ -265,7 +265,7 @@ class ChapterSyncRepository @Inject constructor(
         val server = serverDao.byId(share.serverId) ?: run { syncDao.delete(fileId); return }
         if (LocalSource.isLocal(server.host) || !share.writeChapters || row.shareMtimeMs == null) { syncDao.delete(fileId); return }
         try {
-            writer.delete(SmbHost(server.host, server.port), credentials.credentialsFor(server.id), share.name, file.relPath.substringBeforeLast('/', ""), file.name)
+            writer.delete(credentials.hostFor(server.id), credentials.credentialsFor(server.id), share.name, file.relPath.substringBeforeLast('/', ""), file.name)
             syncDao.delete(fileId)
         } catch (e: SmbFailure) {
             Log.w(TAG, "sidecar delete for ${file.relPath} failed: $e")

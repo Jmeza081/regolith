@@ -10,6 +10,7 @@ import com.regolith.data.db.PlaybackProgressDao
 import com.regolith.data.db.RecentSearchDao
 import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.RegolithDatabase
+import com.regolith.data.db.ServerAddressDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareRootDao
@@ -37,6 +38,7 @@ object DatabaseModule {
             .build()
 
     @Provides fun provideServerDao(db: RegolithDatabase): ServerDao = db.serverDao()
+    @Provides fun provideServerAddressDao(db: RegolithDatabase): ServerAddressDao = db.serverAddressDao()
     @Provides fun provideShareDao(db: RegolithDatabase): ShareDao = db.shareDao()
     @Provides fun provideFolderDao(db: RegolithDatabase): FolderDao = db.folderDao()
     @Provides fun provideMediaFileDao(db: RegolithDatabase): MediaFileDao = db.mediaFileDao()

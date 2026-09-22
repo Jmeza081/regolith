@@ -714,7 +714,7 @@ class ArtworkRepository @Inject constructor(
     private suspend fun locate(shareId: Long): Location? {
         val share = shareDao.byId(shareId) ?: return null
         val server = serverDao.byId(share.serverId) ?: return null
-        return Location(SmbHost(server.host, server.port), sources.credentialsFor(server.id), share.name)
+        return Location(sources.hostFor(server.id), sources.credentialsFor(server.id), share.name)
     }
 
     private suspend fun listing(location: Location, shareId: Long, relPath: String): List<SmbEntry> {

@@ -11,8 +11,9 @@ import com.regolith.data.db.ShareEntity
 import com.regolith.data.transfer.DownloadStore
 import com.regolith.domain.fileops.FileOpError
 import com.regolith.domain.fileops.FileOpTarget
-import com.regolith.domain.smb.CredentialSource
+import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
+import com.regolith.domain.smb.SmbHost
 import com.regolith.testing.FakeSmbGateway
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -58,8 +59,9 @@ class FileOpsRepositoryTest {
         archiveId = db.folderDao().upsert(FolderEntity(shareId = shareId, parentId = root.id, relPath = "Archive", name = "Archive", fileCount = 0, byteCount = 0, lastListedAtMs = 1)).id
         repo = FileOpsRepository(
             gateway, db.serverDao(), db.shareDao(), db.folderDao(), db.mediaFileDao(),
-            object : CredentialSource {
+            object : ServerAccess {
                 override suspend fun credentialsFor(serverId: Long): SmbCredentials = SmbCredentials.Guest
+                override suspend fun hostFor(serverId: Long) = SmbHost("tower", 445)
             },
             db.transferDao(),
             DownloadStore(ApplicationProvider.getApplicationContext()),

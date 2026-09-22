@@ -205,7 +205,7 @@ class TransferQueueWorker @AssistedInject constructor(
         }
 
         return try {
-            val host = SmbHost(server.host, server.port)
+            val host = sources.hostFor(server.id)
             val credentials = sources.credentialsFor(server.id)
             var aborted = false
             gateway.open(host, credentials, share.name, file.relPath).use { src ->

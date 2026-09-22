@@ -76,7 +76,7 @@ class ChapterRepository @Inject constructor(
         val share = shareDao.byId(file.shareId) ?: return null
         val server = serverDao.byId(share.serverId) ?: return null
         return gateway.open(
-            SmbHost(server.host, server.port),
+            sources.hostFor(server.id),
             sources.credentialsFor(server.id),
             share.name,
             file.relPath,

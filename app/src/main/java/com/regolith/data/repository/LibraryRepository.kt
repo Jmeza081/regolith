@@ -129,7 +129,7 @@ class LibraryRepository @Inject constructor(
         // get rows so the tree keeps its shape and nothing more.
         val roots = shareRootDao.pathsFor(share.id)
         if (!rootsCover(roots, folder.relPath)) return refreshSkeleton(folder, share.id, roots)
-        val host = SmbHost(server.host, server.port)
+        val host = sources.hostFor(server.id)
         val credentials = sources.credentialsFor(server.id)
 
         val entries = listWithRetry(host, credentials, share.name, folder.relPath, server.id)

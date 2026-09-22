@@ -15,7 +15,7 @@ import com.regolith.domain.model.defaultServerName
 import com.regolith.domain.model.serverNameOrDefault
 import com.regolith.domain.model.Share
 import com.regolith.domain.smb.ParsedSmbAddress
-import com.regolith.domain.smb.CredentialSource
+import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbShareInfo
@@ -47,7 +47,8 @@ class SourceRepository @Inject constructor(
     private val shareRootDao: ShareRootDao,
     private val credentialStore: CredentialStore,
     private val deviceLibrary: DeviceLibrary,
-) : CredentialSource {
+    private val addresses: ServerAddressResolver,
+) : ServerAccess {
     /**
      * Passwords the user chose NOT to save live here for this process only.
      * A saved password is read back from the CredentialStore on demand.
@@ -195,7 +196,7 @@ class SourceRepository @Inject constructor(
     suspend fun listFolders(shareId: Long, relPath: String): List<String> {
         val share = checkNotNull(shareDao.byId(shareId)) { "share $shareId" }
         val server = checkNotNull(serverDao.byId(share.serverId)) { "server ${share.serverId}" }
-        val entries: List<SmbEntry> = gateway.list(SmbHost(server.host, server.port), credentialsFor(server.id), share.name, relPath)
+        val entries: List<SmbEntry> = gateway.list(hostFor(server.id), credentialsFor(server.id), share.name, relPath)
         return entries.filter { it.isDirectory }.map { it.name }.sortedBy { it.lowercase() }
     }
 
@@ -208,6 +209,9 @@ class SourceRepository @Inject constructor(
      */
     suspend fun renameServer(serverId: Long, typed: String) {
         val server = serverDao.byId(serverId) ?: return
+        // Deliberately the ROW and not the resolver: this derives the
+        // default display name, and a name that changed depending on which
+        // address answered last would be a different name at home and away.
         serverDao.rename(serverId, serverNameOrDefault(typed, SmbHost(server.host, server.port)))
     }
 
@@ -239,6 +243,23 @@ class SourceRepository @Inject constructor(
     /** Settings › Chapters: whether Done writes `<basename>.chapters.txt` to this share (P10). */
     suspend fun setShareWriteChapters(shareId: Long, enabled: Boolean) = shareDao.setWriteChapters(shareId, enabled)
 
+    /**
+     * Where to reach [serverId] right now.
+     *
+     * The companion to [credentialsFor], and used the same way: a caller
+     * that is about to open an SMB connection asks for the address and the
+     * credentials together, rather than reading `host`/`port` off a server
+     * row that may name a network this phone is not on any more.
+     *
+     * A server with one address — which is every server until somebody adds
+     * a second — answers straight from its row, so this costs nothing in
+     * the common case ([ServerAddressResolver]).
+     */
+    override suspend fun hostFor(serverId: Long): SmbHost = addresses.hostFor(serverId)
+
+    /** For ExoPlayer's loader thread, like [credentialsForBlocking]. Never call on the main thread. */
+    fun hostForBlocking(serverId: Long): SmbHost = runBlocking { hostFor(serverId) }
+
     override suspend fun credentialsFor(serverId: Long): SmbCredentials {
         sessionCredentials[serverId]?.let { return it }
         val server = serverDao.byId(serverId) ?: return SmbCredentials.Guest
@@ -268,7 +289,7 @@ class SourceRepository @Inject constructor(
         if (LocalSource.isLocal(server.host)) return true
         val share = shareDao.observeForServer(serverId).first().firstOrNull { it.enabled } ?: return false
         return try {
-            gateway.list(SmbHost(server.host, server.port), credentialsFor(serverId), share.name, "")
+            gateway.list(hostFor(serverId), credentialsFor(serverId), share.name, "")
             markReachable(serverId)
             true
         } catch (e: SmbFailure) {

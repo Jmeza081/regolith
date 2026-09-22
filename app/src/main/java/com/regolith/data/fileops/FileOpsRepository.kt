@@ -18,7 +18,7 @@ import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.ChapterSidecar
 import com.regolith.domain.media.LocalSource
-import com.regolith.domain.smb.CredentialSource
+import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
@@ -64,7 +64,7 @@ class FileOpsRepository @Inject constructor(
     private val shareDao: ShareDao,
     private val folderDao: FolderDao,
     private val mediaFileDao: MediaFileDao,
-    private val credentials: CredentialSource,
+    private val credentials: ServerAccess,
     private val transfers: TransferDao,
     private val downloads: DownloadStore,
     private val subtrees: SubtreeDao,
@@ -454,7 +454,7 @@ class FileOpsRepository @Inject constructor(
         val share = shareDao.byId(shareId) ?: return null
         val server = serverDao.byId(share.serverId) ?: return null
         if (LocalSource.isLocal(server.host)) return null
-        return ShareCtx(SmbHost(server.host, server.port), credentials.credentialsFor(server.id), share.name)
+        return ShareCtx(credentials.hostFor(server.id), credentials.credentialsFor(server.id), share.name)
     }
 
     private suspend fun namesIn(ctx: ShareCtx, relPath: String): Set<String> =
