@@ -38,6 +38,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         ServerEntity::class,
+        ServerAddressEntity::class,
         ShareEntity::class,
         FolderEntity::class,
         MediaFileEntity::class,
@@ -54,7 +55,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserChapterFtsEntity::class,
         ChapterSyncEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -71,10 +72,18 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // means, so Room adds the column and rebuilds the unique index
         // without anyone losing a cached thumbnail.
         AutoMigration(from = 10, to = 11),
+        // v12: a server stops being its address. `server_addresses` holds the
+        // ways to reach one machine, and `servers.addressMode` says whether
+        // the host/port columns are a cache of whatever answered (AUTO) or a
+        // choice the owner made (PINNED). Additive, and [SeedServerAddresses]
+        // gives every existing server its current address as its first one,
+        // so nothing changes for anyone until they add a second.
+        AutoMigration(from = 11, to = 12, spec = RegolithDatabase.SeedServerAddresses::class),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
     abstract fun serverDao(): ServerDao
+    abstract fun serverAddressDao(): ServerAddressDao
     abstract fun shareDao(): ShareDao
     abstract fun folderDao(): FolderDao
     abstract fun mediaFileDao(): MediaFileDao
@@ -88,6 +97,25 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun userChapterDao(): UserChapterDao
     abstract fun chapterSyncDao(): ChapterSyncDao
     abstract fun subtreeDao(): SubtreeDao
+
+    /**
+     * Every server that existed before v12 gets its current address as its
+     * first one.
+     *
+     * Without this the upgrade would leave every server with an EMPTY address
+     * list, which the resolver reads as "no way to reach this" — a library
+     * that worked yesterday would come back unreachable. The label is left
+     * blank on purpose: nobody has named this route, and the UI shows the
+     * address itself until somebody does.
+     */
+    class SeedServerAddresses : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "INSERT INTO server_addresses (serverId, label, host, port, createdAtMs) " +
+                    "SELECT id, '', host, port, createdAtMs FROM servers",
+            )
+        }
+    }
 
     /** An external-content FTS table starts empty; `rebuild` indexes what the content table already holds. */
     class RebuildFts : AutoMigrationSpec {

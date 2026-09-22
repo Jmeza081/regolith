@@ -57,6 +57,59 @@ interface ServerDao {
      */
     @Query("UPDATE servers SET name = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
+
+    /** AUTO or PINNED ([ServerEntity.addressMode]). */
+    @Query("UPDATE servers SET addressMode = :mode WHERE id = :id")
+    suspend fun setAddressMode(id: Long, mode: String)
+
+    /** Point the server at an address. The one write every SMB caller in the app reads. */
+    @Query("UPDATE servers SET host = :host, port = :port WHERE id = :id")
+    suspend fun setAddress(id: Long, host: String, port: Int)
+}
+
+/**
+ * The ways to reach one server ([ServerAddressEntity]).
+ *
+ * Ordered by `createdAtMs` so the address a server was added with stays
+ * first — the list is short and the order is the owner's history, not a
+ * ranking. Which one is USED is decided by the resolver, not by this order.
+ */
+@Dao
+interface ServerAddressDao {
+    @Query("SELECT * FROM server_addresses WHERE serverId = :serverId ORDER BY createdAtMs, id")
+    fun observeForServer(serverId: Long): Flow<List<ServerAddressEntity>>
+
+    @Query("SELECT * FROM server_addresses WHERE serverId = :serverId ORDER BY createdAtMs, id")
+    suspend fun forServer(serverId: Long): List<ServerAddressEntity>
+
+    @Query("SELECT * FROM server_addresses ORDER BY serverId, createdAtMs, id")
+    fun observeAll(): Flow<List<ServerAddressEntity>>
+
+    @Query("SELECT * FROM server_addresses WHERE id = :id")
+    suspend fun byId(id: Long): ServerAddressEntity?
+
+    /** Which server, if any, already answers to this address. Replaces `ServerDao.byHost` for identity. */
+    @Query("SELECT * FROM server_addresses WHERE host = :host AND port = :port LIMIT 1")
+    suspend fun byHostPort(host: String, port: Int): ServerAddressEntity?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(address: ServerAddressEntity): Long
+
+    @Update
+    suspend fun update(address: ServerAddressEntity)
+
+    @Query("DELETE FROM server_addresses WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("SELECT COUNT(*) FROM server_addresses WHERE serverId = :serverId")
+    suspend fun countFor(serverId: Long): Int
+
+    @Query("UPDATE server_addresses SET label = :label WHERE id = :id")
+    suspend fun setLabel(id: Long, label: String)
+
+    /** What answered, and how fast. Written by the resolver after every successful probe. */
+    @Query("UPDATE server_addresses SET lastOkAtMs = :now, lastRttMs = :rttMs WHERE id = :id")
+    suspend fun markAnswered(id: Long, now: Long, rttMs: Int)
 }
 
 @Dao

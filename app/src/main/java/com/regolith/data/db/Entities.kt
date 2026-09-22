@@ -33,6 +33,60 @@ data class ServerEntity(
     val createdAtMs: Long,
     /** Schema v4: set when a listing, scan or transfer could not reach the server; cleared on the next success. */
     val unreachableSinceMs: Long? = null,
+    /**
+     * Schema v12: how [host] and [port] above are chosen — "AUTO" or "PINNED".
+     *
+     * AUTO means the columns are a CACHE of whichever address answered last,
+     * kept up to date by the resolver; PINNED means the user chose one and
+     * nothing may change it. Everything in the app that opens an SMB
+     * connection reads `host`/`port`, which is exactly why they stay: the
+     * address set is new, the way the rest of the app asks for an address is
+     * not ([ServerAddressEntity]).
+     */
+    @ColumnInfo(defaultValue = "AUTO") val addressMode: String = "AUTO",
+)
+
+/**
+ * Schema v12: one way to reach a server.
+ *
+ * **Why a server stopped being its address.** Identity used to BE the
+ * address — `servers` is uniquely indexed on (host, port) — so the same Mac
+ * reached at `192.168.4.82` at home and over a VPN from a hotel was two
+ * servers, with two scans, two artwork caches and, worst of all, two sets of
+ * resume points. The only way to have both was to keep two copies of one
+ * library and watch them drift apart.
+ *
+ * A server is a MACHINE; an address is a route to it. Splitting them means
+ * the library, the artwork and the progress all hang off one `serverId`
+ * however you got there, which is the whole point of the change.
+ *
+ * Every address of a server shares its credentials: it is one machine, and
+ * one login.
+ *
+ * Web analogy: a host with several A records, chosen per request.
+ */
+@Entity(
+    tableName = "server_addresses",
+    foreignKeys = [ForeignKey(ServerEntity::class, ["id"], ["serverId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index(value = ["serverId", "host", "port"], unique = true), Index("serverId")],
+)
+data class ServerAddressEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val serverId: Long,
+    /**
+     * What the owner calls this route: "Home", "Tailscale". Blank means
+     * "no name yet", and the UI shows the address itself — the same bargain
+     * [com.regolith.domain.model.serverNameOrDefault] makes for a server's
+     * name, and the reason the backfill below can leave it empty.
+     */
+    val label: String,
+    val host: String,
+    val port: Int,
+    val createdAtMs: Long,
+    /** When this address last answered, for "answered in 2 ms" and for ordering by what works. */
+    val lastOkAtMs: Long? = null,
+    /** How long it took to answer, in milliseconds. Null until it has been tried. */
+    val lastRttMs: Int? = null,
 )
 
 @Entity(
