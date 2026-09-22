@@ -40,6 +40,14 @@ sealed interface RegolithKey : NavKey {
     /** Home's "All": every part-watched title. */
     @Serializable data object ContinueWatching : RegolithKey
     @Serializable data class TitleDetail(val fileId: Long) : RegolithKey
+
+    /**
+     * One source server's own page: its name, the ways to reach it, and
+     * what its library is doing. Settings lists servers; everything ABOUT
+     * one lives here, which is also what finally gives "choose folders" a
+     * home outside the Add Server flow.
+     */
+    @Serializable data class ServerDetail(val serverId: Long) : RegolithKey
     /**
      * [queue] is an explicit running order from Play all or Shuffle: file ids
      * in the order the wall showed them, [fileId] being the first. Empty for

@@ -67,6 +67,8 @@ import com.regolith.ui.addserver.ScanningScreen
 import com.regolith.ui.addserver.ScanningViewModel
 import com.regolith.ui.addserver.SearchServersScreen
 import com.regolith.ui.addserver.SharePickerScreen
+import com.regolith.ui.serverdetail.ServerDetailScreen
+import com.regolith.ui.serverdetail.ServerDetailViewModel
 import com.regolith.ui.addserver.SharePickerViewModel
 import com.regolith.ui.browse.BrowseScreen
 import com.regolith.ui.browse.BrowseViewModel
@@ -573,6 +575,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 SettingsScreen(
                                     viewModel = hiltViewModel(),
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                                    onOpenServer = { serverId -> backStack.add(RegolithKey.ServerDetail(serverId)) },
                                     // Inline rather than navigateToTab, which cannot carry the
                                     // onDevice argument. Downloads have no destination of their
                                     // own by design; Library › On this device is where they live.
@@ -599,6 +602,20 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 ),
                                 onBack = { backStack.removeLastOrNull() },
                                 onContinue = { backStack.add(RegolithKey.AddServer.Shares(key.serverId)) },
+                            )
+                        }
+                        entry<RegolithKey.ServerDetail> { key ->
+                            ServerDetailScreen(
+                                viewModel = hiltViewModel<ServerDetailViewModel, ServerDetailViewModel.Factory>(
+                                    creationCallback = { it.create(key.serverId) },
+                                ),
+                                onBack = { backStack.removeLastOrNull() },
+                                // The share picker IS the folder chooser: it lists a
+                                // server's shares with their on/off switches and the
+                                // "Choose folders" step behind each. Reached from the
+                                // Add Server flow until now, which is the only reason
+                                // the choice could be made once and never revised.
+                                onChooseShares = { backStack.add(RegolithKey.AddServer.Shares(key.serverId)) },
                             )
                         }
                         entry<RegolithKey.AddServer.Shares> { key ->

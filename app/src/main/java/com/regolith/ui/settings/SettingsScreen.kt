@@ -85,6 +85,7 @@ import com.regolith.ui.theme.scaledDp
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onAddServer: () -> Unit,
+    onOpenServer: (Long) -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Where the Downloads row leads. Downloads deliberately have no
@@ -120,26 +121,25 @@ fun SettingsScreen(
         Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                 Eyebrow("Shares · ${state.servers.size}", muted = true)
-                // Every share carries its own scan and disconnect. They used
-                // to be one pair of buttons under the whole card, which meant
-                // Disconnect always took the first server in the list — with
-                // two NAS boxes connected there was no way to remove the
-                // second one at all.
+                // A row is one tap into that server's own page, and nothing
+                // else. It used to carry rename, scan and disconnect as three
+                // targets crammed into one line — which worked only while a
+                // server had three things you could do to it. Addresses made
+                // that four, choosing folders made it five, and none of them
+                // fits beside a name that already truncates.
                 SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     state.servers.forEach { row ->
-                        Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12).testTag(row.testTag), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .defaultMinSize(minHeight = SettingsRowHeight)
+                                .clickable(interactionSource = null, indication = null, onClickLabel = "Open ${row.name}") { onOpenServer(row.serverId) }
+                                .padding(vertical = Spacing.s12)
+                                .testTag(row.testTag),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Box(Modifier.size(8.dp).background(if (row.reachable) colors.ink else colors.metadata, PillShape))
                             Spacer(Modifier.width(Spacing.s12))
-                            // The name is the tap target, not the whole row:
-                            // the row already ends in two buttons that do
-                            // something else, and a row that both renames and
-                            // scans depending on where you land is a trap.
-                            Column(
-                                Modifier.weight(1f)
-                                    .clickable(interactionSource = null, indication = null, onClickLabel = "Rename ${row.name}") { viewModel.askRename(row) }
-                                    .testTag("settings_rename_${row.serverId}"),
-                                verticalArrangement = Arrangement.spacedBy(Spacing.s2),
-                            ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                                     Text(row.name, style = TextStyles.settingLabel, overflow = TextOverflow.Ellipsis, color = if (row.reachable) colors.ink else colors.body, maxLines = 1)
                                     if (row.showing) Tag("Showing")
@@ -147,22 +147,11 @@ fun SettingsScreen(
                                 Text(row.meta, style = TextStyles.settingMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Spacer(Modifier.width(Spacing.s8))
-                            RowAction(
-                                icon = R.drawable.rg_ic_refresh,
-                                // The status line already says "Scanning · N files",
-                                // so a running scan greys its own button rather than
-                                // needing a spinner of its own.
-                                contentDescription = "Scan ${row.name}",
-                                enabled = !row.scanning,
-                                onClick = { viewModel.scan(row.serverId) },
-                                testTag = "settings_scan_${row.serverId}",
-                            )
-                            RowAction(
-                                icon = R.drawable.rg_ic_trash,
-                                contentDescription = "Disconnect ${row.name}",
-                                tint = colors.accent,
-                                onClick = { viewModel.askDisconnect(row) },
-                                testTag = "settings_disconnect_${row.serverId}",
+                            Icon(
+                                painterResource(R.drawable.rg_ic_chevron_right),
+                                contentDescription = null,
+                                tint = colors.metadata,
+                                modifier = Modifier.size(16.dp),
                             )
                         }
                     }

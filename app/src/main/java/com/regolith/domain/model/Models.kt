@@ -16,7 +16,44 @@ data class Server(
     val lastSeenAtMs: Long?,
     /** Non-null while the server cannot be reached (design: "TOWER is out of reach · Last seen Tuesday"). */
     val unreachableSinceMs: Long? = null,
+    /** Whether [host] is chosen by measurement (AUTO) or by the owner (PINNED). */
+    val addressMode: AddressMode = AddressMode.AUTO,
 )
+
+/** Who decides which of a server's addresses is used. */
+enum class AddressMode { AUTO, PINNED }
+
+/**
+ * One way to reach a server: "Home" at `192.168.4.82`, "Tailscale" at a
+ * MagicDNS name.
+ *
+ * The same machine, the same library, the same place you got to in every
+ * film — only the route differs, which is the whole reason these are rows
+ * against a server rather than servers of their own.
+ */
+data class ServerAddress(
+    val id: Long,
+    val serverId: Long,
+    /** What the owner calls it; blank until they name it. */
+    val label: String,
+    val host: SmbHost,
+    /** When it last answered, and how quickly. Null until it has been tried. */
+    val lastOkAtMs: Long? = null,
+    val lastRttMs: Int? = null,
+) {
+    /** The address as written: the port only when it is not the usual one. */
+    val address: String get() = if (host.port == 445) host.host else "${host.host}:${host.port}"
+
+    /** What to head the row with: the name if it has one, else the address itself. */
+    val title: String get() = label.ifBlank { address }
+
+    /** The line underneath: the address when the title is a name, plus how it answered. */
+    val detail: String
+        get() = listOfNotNull(
+            address.takeIf { label.isNotBlank() },
+            lastRttMs?.let { "answered in $it ms" },
+        ).joinToString(" · ")
+}
 
 /** A share on a server. Only enabled shares are browsed and scanned. */
 data class Share(

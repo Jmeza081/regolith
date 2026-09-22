@@ -100,6 +100,9 @@ class LibraryRepository @Inject constructor(
         }
     }
 
+    /** How many playable files a set of shares holds, live. */
+    fun observeFileCountInShares(shareIds: List<Long>): Flow<Int> = mediaFileDao.observeCountInShares(shareIds)
+
     /** The root folder row of a share, created on first use. */
     suspend fun rootFolder(shareId: Long): FolderEntity {
         val share = checkNotNull(shareDao.byId(shareId)) { "share $shareId" }

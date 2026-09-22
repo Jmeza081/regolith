@@ -9,6 +9,10 @@ import com.regolith.data.db.ShareRootDao
 import com.regolith.data.db.ShareRootEntity
 import com.regolith.domain.smb.SmbEntry
 import kotlinx.coroutines.flow.combine
+import com.regolith.data.db.ServerAddressDao
+import com.regolith.data.db.ServerAddressEntity
+import com.regolith.domain.model.AddressMode
+import com.regolith.domain.model.ServerAddress
 import com.regolith.domain.model.AuthMode
 import com.regolith.domain.model.Server
 import com.regolith.domain.model.defaultServerName
@@ -47,6 +51,7 @@ class SourceRepository @Inject constructor(
     private val shareRootDao: ShareRootDao,
     private val credentialStore: CredentialStore,
     private val deviceLibrary: DeviceLibrary,
+    private val addressDao: ServerAddressDao,
     private val addresses: ServerAddressResolver,
 ) : ServerAccess {
     /**
@@ -243,6 +248,72 @@ class SourceRepository @Inject constructor(
     /** Settings › Chapters: whether Done writes `<basename>.chapters.txt` to this share (P10). */
     suspend fun setShareWriteChapters(shareId: Long, enabled: Boolean) = shareDao.setWriteChapters(shareId, enabled)
 
+    // --- Addresses. A server is a machine; these are the ways to reach it.
+
+    fun observeAddresses(serverId: Long): Flow<List<ServerAddress>> =
+        addressDao.observeForServer(serverId).map { rows -> rows.map { it.toDomain() } }
+
+    /**
+     * Teach a server another way in.
+     *
+     * Refused when the address already belongs to a DIFFERENT server, because
+     * that would be two machines claiming one route and there is no way to
+     * tell which library a scan through it belongs to. Adding one a server
+     * already has is a no-op rather than an error: the user's intent was
+     * "be reachable this way", and it already is.
+     */
+    suspend fun addAddress(serverId: Long, label: String, address: ParsedSmbAddress): AddAddressResult {
+        val host = address.host
+        addressDao.byHostPort(host.host, host.port)?.let { existing ->
+            return if (existing.serverId == serverId) AddAddressResult.AlreadyHere else AddAddressResult.TakenBy(existing.serverId)
+        }
+        addressDao.insert(
+            ServerAddressEntity(
+                serverId = serverId, label = label.trim(), host = host.host, port = host.port,
+                createdAtMs = System.currentTimeMillis(),
+            ),
+        )
+        addresses.forget(serverId)
+        return AddAddressResult.Added
+    }
+
+    /**
+     * Take a way in away.
+     *
+     * The last one may not go: a server with no addresses cannot be reached
+     * at all, and its whole library would read as out of reach with no way
+     * back short of adding the server again.
+     */
+    suspend fun removeAddress(addressId: Long): Boolean {
+        val row = addressDao.byId(addressId) ?: return false
+        if (addressDao.countFor(row.serverId) <= 1) return false
+        addressDao.delete(addressId)
+        addresses.forget(row.serverId)
+        // Pinned to the address that just went: fall back to choosing.
+        val server = serverDao.byId(row.serverId)
+        if (server != null && server.host == row.host && server.port == row.port) {
+            addressDao.forServer(row.serverId).firstOrNull()?.let { serverDao.setAddress(row.serverId, it.host, it.port) }
+            serverDao.setAddressMode(row.serverId, AddressMode.AUTO.name)
+        }
+        return true
+    }
+
+    suspend fun setAddressLabel(addressId: Long, label: String) = addressDao.setLabel(addressId, label.trim())
+
+    /** Use this address and no other, until the owner says otherwise. */
+    suspend fun pinAddress(serverId: Long, addressId: Long) {
+        val row = addressDao.byId(addressId) ?: return
+        serverDao.setAddress(serverId, row.host, row.port)
+        serverDao.setAddressMode(serverId, AddressMode.PINNED.name)
+        addresses.forget(serverId)
+    }
+
+    /** Go back to measuring: whichever address answers fastest wins, every time. */
+    suspend fun useFastestAddress(serverId: Long) {
+        serverDao.setAddressMode(serverId, AddressMode.AUTO.name)
+        addresses.forget(serverId)
+    }
+
     /**
      * Where to reach [serverId] right now.
      *
@@ -298,6 +369,11 @@ class SourceRepository @Inject constructor(
         }
     }
 
+    private fun ServerAddressEntity.toDomain() = ServerAddress(
+        id = id, serverId = serverId, label = label, host = SmbHost(host, port),
+        lastOkAtMs = lastOkAtMs, lastRttMs = lastRttMs,
+    )
+
     private fun ServerEntity.toDomain() = Server(
         id = id,
         name = name,
@@ -306,8 +382,18 @@ class SourceRepository @Inject constructor(
         username = username,
         lastSeenAtMs = lastSeenAtMs,
         unreachableSinceMs = unreachableSinceMs,
+        addressMode = runCatching { AddressMode.valueOf(addressMode) }.getOrDefault(AddressMode.AUTO),
     )
 
     private fun ShareEntity.toDomain(roots: List<String> = emptyList()) =
         Share(id = id, serverId = serverId, name = name, enabled = enabled, freeBytes = freeBytes, lastScanAtMs = lastScanAtMs, roots = roots, writeChapters = writeChapters)
+}
+
+/** What happened when a way in was offered to a server. */
+sealed interface AddAddressResult {
+    data object Added : AddAddressResult
+    /** This server already answers to it; nothing to do. */
+    data object AlreadyHere : AddAddressResult
+    /** Another server owns it. Two machines cannot share a route. */
+    data class TakenBy(val serverId: Long) : AddAddressResult
 }
