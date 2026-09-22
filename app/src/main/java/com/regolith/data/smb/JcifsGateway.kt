@@ -101,7 +101,14 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             // large: a genuinely dead server still fails at connTimeout
             // regardless of these, so this only lengthens the wait in the
             // case where the server IS talking to us, just slowly.
-            setProperty("jcifs.smb.client.connTimeout", "10000")
+            // 20 s, not 10. The reasoning below still holds — a server that is
+            // off fails to connect and that should be found out quickly — but
+            // 10 s turned out to be inside the range a healthy tunnel takes to
+            // re-handshake: measured on the owner's phone, a walk ran for three
+            // minutes and 104 frames and then took a
+            // "failed to connect ... after 10000ms" while the Mac was idle and
+            // accepting on both addresses a moment later.
+            setProperty("jcifs.smb.client.connTimeout", "20000")
             setProperty("jcifs.smb.client.responseTimeout", "60000")
             setProperty("jcifs.smb.client.soTimeout", "75000")
             // Plain DNS: NetBIOS broadcast lookups add seconds on Wi-Fi and

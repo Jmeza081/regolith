@@ -22,6 +22,8 @@ import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.isAboutTheServer
+import com.regolith.domain.smb.listingRetryDelayMs
+import kotlinx.coroutines.delay
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import kotlin.math.abs
@@ -273,7 +275,7 @@ class ArtworkRepository @Inject constructor(
      * Only [SmbFailure.Unreachable] and [SmbFailure.AuthFailed] are about the
      * connection rather than the file, and only those stop the pass.
      */
-    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>): Boolean {
+    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>, retry: Boolean = true): Boolean {
         return try {
             when (owner) {
                 is ArtworkOwner.File -> resolveFile(owner, kinds)
@@ -283,6 +285,20 @@ class ArtworkRepository @Inject constructor(
             true
         } catch (e: SmbFailure) {
             if (e.isAboutTheServer) {
+                // One more go before giving up the pass. A walk of a real
+                // library runs for many minutes, and over a VPN that is long
+                // enough for the tunnel to re-handshake underneath it — a
+                // single connect that took too long would otherwise throw away
+                // the rest of the walk, exactly as it did after 104 frames on
+                // the owner's phone. The listings already get this
+                // (LibraryRepository.listWithRetry); this is the same rule for
+                // the side that opens files.
+                val pause = if (retry) listingRetryDelayMs(attempt = 1, failure = e) else null
+                if (pause != null) {
+                    Log.i(TAG, "artwork for $owner hit ${e.message}; one more go in ${pause}ms")
+                    delay(pause)
+                    return resolveOwner(owner, kinds, retry = false)
+                }
                 Log.w(TAG, "artwork for $owner deferred: ${e.message}")
                 return false
             }
