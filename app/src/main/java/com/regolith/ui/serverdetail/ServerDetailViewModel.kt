@@ -86,8 +86,12 @@ class ServerDetailViewModel @AssistedInject constructor(
                     name = server?.name.orEmpty(),
                     mode = server?.addressMode ?: AddressMode.AUTO,
                     rows = addresses.map { address ->
-                        val inUse = server != null && address.host == server.host
-                        AddressRow(address = address, inUse = inUse, pinned = inUse && server?.addressMode == AddressMode.PINNED)
+                        AddressRow(
+                            address = address,
+                            inUse = server != null && address.host == server.host,
+                            pinned = server?.pinnedAddressId == address.id,
+                            sole = addresses.size == 1,
+                        )
                     },
                     shareCount = shareList.size,
                     enabledShareCount = shareList.count { it.enabled },
@@ -98,6 +102,9 @@ class ServerDetailViewModel @AssistedInject constructor(
                     unreachable = server?.unreachableSinceMs != null,
                     slowdown = slowdownFactor(chosen, others),
                     slowLink = isSlowLink(chosen, others),
+                    pinnedButUnreachable = server?.pinnedAddressId
+                        ?.let { id -> addresses.firstOrNull { it.id == id } }
+                        ?.takeIf { server.addressMode == AddressMode.PINNED && it.host != server.host },
                 )
             }.collect { built ->
                 // Onto the live state, so an open dialog is not closed by a

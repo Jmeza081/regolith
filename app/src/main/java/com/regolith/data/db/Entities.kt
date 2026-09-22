@@ -44,6 +44,17 @@ data class ServerEntity(
      * not ([ServerAddressEntity]).
      */
     @ColumnInfo(defaultValue = "AUTO") val addressMode: String = "AUTO",
+    /**
+     * Schema v13: the address the owner PREFERS, when they have said.
+     *
+     * Separate from [host] on purpose, because the two answer different
+     * questions: this is the choice, `host` is what is actually being used.
+     * They were one field, inferred by matching, until a pinned address
+     * stopped answering — at which point falling back to one that works
+     * means the choice and the reality differ, and a model that cannot hold
+     * both has to either strand the user or forget what they asked for.
+     */
+    val pinnedAddressId: Long? = null,
 )
 
 /**
@@ -87,6 +98,15 @@ data class ServerAddressEntity(
     val lastOkAtMs: Long? = null,
     /** How long it took to answer, in milliseconds. Null until it has been tried. */
     val lastRttMs: Int? = null,
+    /**
+     * Schema v13: when it was last TRIED, answered or not.
+     *
+     * Without it the page could say "answered in 73 ms" about an address
+     * that has not answered since this morning — which is exactly what it
+     * did when the owner's Mac took a new DHCP lease and the old IP went
+     * quiet. Tried more recently than it was OK is the whole signal.
+     */
+    val lastTriedAtMs: Long? = null,
 )
 
 @Entity(

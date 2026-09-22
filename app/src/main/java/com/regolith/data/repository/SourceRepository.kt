@@ -298,6 +298,11 @@ class SourceRepository @Inject constructor(
             addressDao.forServer(row.serverId).firstOrNull()?.let { serverDao.setAddress(row.serverId, it.host, it.port) }
             serverDao.setAddressMode(row.serverId, AddressMode.AUTO.name)
         }
+        // A pin that pointed at the address just removed is not a pin.
+        if (serverDao.byId(row.serverId)?.pinnedAddressId == addressId) {
+            serverDao.setPinnedAddress(row.serverId, null)
+            serverDao.setAddressMode(row.serverId, AddressMode.AUTO.name)
+        }
         addresses.refresh(row.serverId)
         return true
     }
@@ -319,13 +324,15 @@ class SourceRepository @Inject constructor(
     suspend fun pinAddress(serverId: Long, addressId: Long) {
         val row = addressDao.byId(addressId) ?: return
         serverDao.setAddress(serverId, row.host, row.port)
+        serverDao.setPinnedAddress(serverId, addressId)
         serverDao.setAddressMode(serverId, AddressMode.PINNED.name)
-        addresses.forget(serverId)
+        addresses.refresh(serverId)
     }
 
     /** Go back to measuring: whichever address answers fastest wins, every time. */
     suspend fun useFastestAddress(serverId: Long) {
         serverDao.setAddressMode(serverId, AddressMode.AUTO.name)
+        serverDao.setPinnedAddress(serverId, null)
         addresses.refresh(serverId)
     }
 
@@ -386,7 +393,7 @@ class SourceRepository @Inject constructor(
 
     private fun ServerAddressEntity.toDomain() = ServerAddress(
         id = id, serverId = serverId, label = label, host = SmbHost(host, port),
-        lastOkAtMs = lastOkAtMs, lastRttMs = lastRttMs,
+        lastOkAtMs = lastOkAtMs, lastRttMs = lastRttMs, lastTriedAtMs = lastTriedAtMs,
     )
 
     private fun ServerEntity.toDomain() = Server(
@@ -398,6 +405,7 @@ class SourceRepository @Inject constructor(
         lastSeenAtMs = lastSeenAtMs,
         unreachableSinceMs = unreachableSinceMs,
         addressMode = runCatching { AddressMode.valueOf(addressMode) }.getOrDefault(AddressMode.AUTO),
+        pinnedAddressId = pinnedAddressId,
     )
 
     private fun ShareEntity.toDomain(roots: List<String> = emptyList()) =

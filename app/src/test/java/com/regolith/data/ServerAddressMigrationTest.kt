@@ -33,6 +33,7 @@ class ServerAddressMigrationTest {
 
     private companion object {
         const val DB = "migration-v11.db"
+        const val DB12 = "migration-v12.db"
     }
 
     /** A v11 database with two servers and a file under one of them. */
@@ -122,5 +123,63 @@ class ServerAddressMigrationTest {
 
         assertTrue("the cascade reaches the new table", db.serverAddressDao().forServer(1).isEmpty())
         assertEquals("and leaves the other server alone", 1, db.serverAddressDao().forServer(2).size)
+    }
+
+    /** A v12 database whose server is already pinned, the way the owner's was. */
+    private fun seedV12() {
+        helper.createDatabase(DB12, 12).use { db ->
+            db.execSQL(
+                "INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs, unreachableSinceMs, addressMode) " +
+                    "VALUES (1, 'Regolith', '192.168.4.82', 445, 'PASSWORD', 'jmeza', 100, 50, NULL, 'PINNED')",
+            )
+            db.execSQL(
+                "INSERT INTO server_addresses (id, serverId, label, host, port, createdAtMs, lastOkAtMs, lastRttMs) " +
+                    "VALUES (7, 1, 'Direct IP', '192.168.4.82', 445, 10, 900, 73)",
+            )
+            db.execSQL(
+                "INSERT INTO server_addresses (id, serverId, label, host, port, createdAtMs, lastOkAtMs, lastRttMs) " +
+                    "VALUES (8, 1, 'Tailscale', 'mini.ts.net', 445, 20, 900, 78)",
+            )
+        }
+    }
+
+    private fun migrated13(): RegolithDatabase {
+        helper.runMigrationsAndValidate(DB12, 13, true)
+        return Room.databaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java, DB12)
+            .allowMainThreadQueries()
+            .build()
+            .also { helper.closeWhenFinished(it) }
+    }
+
+    @Test
+    fun `a pin that was only implied becomes one that is written down`() = runTest {
+        seedV12()
+        val db = migrated13()
+
+        assertEquals(
+            "the address matching the server's host, not a guess made again later",
+            7L,
+            db.serverDao().byId(1)!!.pinnedAddressId,
+        )
+    }
+
+    @Test
+    fun `an address that has never been tried says so after the upgrade`() = runTest {
+        seedV12()
+        val db = migrated13()
+
+        assertNull("v12 kept no record of attempts, so there is nothing to claim", db.serverAddressDao().byId(7)!!.lastTriedAtMs)
+        assertEquals("what it last managed is still known", 73, db.serverAddressDao().byId(7)!!.lastRttMs)
+    }
+
+    @Test
+    fun `a server nobody pinned comes through with no preference`() = runTest {
+        seedV11()
+        helper.runMigrationsAndValidate(DB, 13, true)
+        val db = Room.databaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java, DB)
+            .allowMainThreadQueries().build().also { helper.closeWhenFinished(it) }
+
+        assertNull(db.serverDao().byId(1)!!.pinnedAddressId)
+        assertEquals("AUTO", db.serverDao().byId(1)!!.addressMode)
     }
 }

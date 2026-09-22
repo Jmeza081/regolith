@@ -55,7 +55,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserChapterFtsEntity::class,
         ChapterSyncEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -79,6 +79,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // gives every existing server its current address as its first one,
         // so nothing changes for anyone until they add a second.
         AutoMigration(from = 11, to = 12, spec = RegolithDatabase.SeedServerAddresses::class),
+        // v13: `servers.pinnedAddressId` separates the address the owner
+        // CHOSE from the one in use, so a pin can be honoured without
+        // stranding anyone when it stops answering; and
+        // `server_addresses.lastTriedAtMs` is what lets a row say it has not
+        // answered since this morning instead of quoting a stale timing.
+        AutoMigration(from = 12, to = 13, spec = RegolithDatabase.RememberPinnedAddress::class),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -113,6 +119,25 @@ abstract class RegolithDatabase : RoomDatabase() {
             db.execSQL(
                 "INSERT INTO server_addresses (serverId, label, host, port, createdAtMs) " +
                     "SELECT id, '', host, port, createdAtMs FROM servers",
+            )
+        }
+    }
+
+    /**
+     * A server already pinned before v13 keeps its choice.
+     *
+     * Its pin used to be implied by `servers.host` matching one of its
+     * addresses; this writes that inference down once, so nothing has to
+     * make it again.
+     */
+    class RememberPinnedAddress : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "UPDATE servers SET pinnedAddressId = (" +
+                    "SELECT id FROM server_addresses " +
+                    "WHERE server_addresses.serverId = servers.id " +
+                    "AND server_addresses.host = servers.host AND server_addresses.port = servers.port" +
+                    ") WHERE addressMode = 'PINNED'",
             )
         }
     }

@@ -145,12 +145,28 @@ fun ServerDetailScreen(
                         Text("Add another address", style = TextStyles.settingLabel, color = colors.ink)
                     }
                 }
+                state.pinnedButUnreachable?.let { pinned ->
+                    Text(
+                        fallbackNote(pinned, state.rows.firstOrNull { it.inUse }?.address),
+                        style = TextStyles.settingMeta,
+                        color = colors.accent,
+                        modifier = Modifier.testTag("server_address_fallback"),
+                    )
+                }
                 Text(
-                    addressHint(state.mode, state.rows.firstOrNull { it.inUse }?.address, state.rows.size),
+                    addressHint(state.mode, state.rows.firstOrNull { it.pinned }?.address, state.rows.size),
                     style = TextStyles.settingMeta,
                     color = colors.metadata,
                     modifier = Modifier.testTag("server_address_hint"),
                 )
+                if (state.rows.any { it.pinned && it.address.mayMove }) {
+                    Text(
+                        MAY_MOVE_NOTE,
+                        style = TextStyles.settingMeta,
+                        color = colors.metadata,
+                        modifier = Modifier.testTag("server_address_may_move"),
+                    )
+                }
                 if (!state.automatic) {
                     SecondaryButton(
                         text = "Use whichever is fastest",
@@ -376,28 +392,37 @@ private fun AddressRowView(
         // row = the address actually in use. They are different claims and
         // are drawn differently on purpose.
         Box(
-            Modifier.size(18.dp).clip(PillShape).background(if (row.pinned) colors.accent else colors.raised),
+            Modifier.size(18.dp).clip(PillShape).background(if (row.selected) colors.accent else colors.raised),
             contentAlignment = Alignment.Center,
         ) {
-            if (row.pinned) Box(Modifier.size(6.dp).clip(PillShape).background(colors.inkSoft))
+            if (row.selected) Box(Modifier.size(6.dp).clip(PillShape).background(colors.inkSoft))
         }
         Spacer(Modifier.width(Spacing.s12))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(row.address.title, style = TextStyles.settingLabel, color = colors.ink)
-                if (row.inUse) {
+                if (row.inUse && !row.sole) {
                     Spacer(Modifier.width(Spacing.s8))
                     Box(Modifier.size(6.dp).clip(PillShape).background(colors.ink))
                     Spacer(Modifier.width(Spacing.s8))
                     Text(
-                        if (row.pinned) "PINNED" else "IN USE",
+                        "IN USE",
                         style = TextStyles.eyebrow, color = colors.metadata,
                         modifier = Modifier.testTag("${row.testTag}_state"),
                     )
                 }
             }
-            val detail = row.address.detail
-            if (detail.isNotEmpty()) Text(detail, style = TextStyles.settingMeta, color = colors.metadata)
+            val detail = row.address.detail(System.currentTimeMillis())
+            if (detail.isNotEmpty()) {
+                Text(
+                    detail,
+                    style = TextStyles.settingMeta,
+                    // A row that is failing says so in the accent, because the
+                    // whole point is that it should not be possible to look at
+                    // this page and not notice.
+                    color = if (row.address.failing) colors.accent else colors.metadata,
+                )
+            }
         }
         Spacer(Modifier.width(Spacing.s8))
         Text(

@@ -14,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -66,12 +67,36 @@ class ServerAddressResolver @Inject constructor(
         val current = SmbHost(server.host, server.port)
         // The demo library and "On this device" have no host to race.
         if (LocalSource.isLocal(server.host)) return current
-        if (server.addressMode == PINNED) return current
 
         val addresses = addressDao.forServer(serverId)
-        if (addresses.size <= 1) return current
+        if (addresses.isEmpty()) return current
+        if (addresses.size == 1) {
+            val only = addresses.single()
+            return SmbHost(only.host, only.port).also { if (it != current) serverDao.setAddress(serverId, only.host, only.port) }
+        }
 
         chosen[serverId]?.let { if (System.currentTimeMillis() - it.atMs < CACHE_MS) return it.host }
+
+        // A pin is a PREFERENCE, not a vow. Try it first and use it when it
+        // answers; when it does not, fall back to whatever does rather than
+        // reporting a server that is plainly reachable as out of reach. The
+        // owner's Mac taking a new DHCP lease is what taught this: the old
+        // address went quiet, the pin held, and a working library read as
+        // offline until someone went and looked.
+        val pinned = server.pinnedAddressId?.let { id -> addresses.firstOrNull { it.id == id } }
+        if (server.addressMode == PINNED && pinned != null) {
+            val rtt = probe(pinned.host, pinned.port)
+            val now = System.currentTimeMillis()
+            if (rtt != null) {
+                addressDao.markAnswered(pinned.id, now, rtt)
+                val host = SmbHost(pinned.host, pinned.port)
+                chosen[serverId] = Chosen(host, now)
+                if (server.host != pinned.host || server.port != pinned.port) serverDao.setAddress(serverId, pinned.host, pinned.port)
+                return host
+            }
+            addressDao.markTried(pinned.id, now)
+            Log.w(TAG, "server $serverId: pinned ${pinned.host} did not answer; trying the others")
+        }
         return race(serverId, addresses) ?: current
     }
 
@@ -122,7 +147,8 @@ class ServerAddressResolver @Inject constructor(
         val probes = addresses.map { address ->
             async(Dispatchers.IO) {
                 val rtt = probe(address.host, address.port)
-                if (rtt != null) addressDao.markAnswered(address.id, System.currentTimeMillis(), rtt)
+                val now = System.currentTimeMillis()
+                if (rtt != null) addressDao.markAnswered(address.id, now, rtt) else addressDao.markTried(address.id, now)
                 AddressProbe(address.id, address.host, address.port, rtt)
             }
         }.awaitAll()
@@ -144,10 +170,27 @@ class ServerAddressResolver @Inject constructor(
     }
 
     /** Milliseconds to open a TCP connection, or null when it would not open. */
+    /**
+     * Milliseconds to open a TCP connection, or null when it would not open.
+     *
+     * **Name resolution is resolved first and NOT counted**, which is the
+     * whole subtlety. `InetSocketAddress(host, port)` resolves on the spot,
+     * so timing the connect from before that point charges the address for
+     * its DNS — and an mDNS name like `mac-mini.local` takes the better part
+     * of a second to resolve by multicast. Measured on the owner's phone:
+     * the `.local` address timed at 1160 ms against 78 ms for the Tailscale
+     * name, which would have made "use whichever is fastest" pick the VPN
+     * over the LAN — precisely backwards, and for a cost paid once per
+     * process rather than per read.
+     *
+     * What the chooser needs is the LINK's latency, so that is what this
+     * returns: resolve, then time the connect to the address that came back.
+     */
     private suspend fun probe(host: String, port: Int): Int? = withContext(Dispatchers.IO) {
-        val started = System.nanoTime()
         try {
-            Socket().use { it.connect(InetSocketAddress(host, port), PROBE_TIMEOUT_MS) }
+            val resolved = InetAddress.getByName(host)
+            val started = System.nanoTime()
+            Socket().use { it.connect(InetSocketAddress(resolved, port), PROBE_TIMEOUT_MS) }
             ((System.nanoTime() - started) / 1_000_000).toInt().coerceAtLeast(1)
         } catch (e: Exception) {
             null

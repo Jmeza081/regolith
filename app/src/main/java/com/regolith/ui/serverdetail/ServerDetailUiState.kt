@@ -8,9 +8,14 @@ data class AddressRow(
     val address: ServerAddress,
     /** True for the address the server is actually using right now. */
     val inUse: Boolean,
-    /** True when the owner has pinned this one, rather than it merely winning. */
+    /** True when the owner has chosen this one. Independent of [inUse]: a pin that stops answering falls back. */
     val pinned: Boolean,
+    /** True when this is the only way in, which makes it the choice by default. */
+    val sole: Boolean = false,
 ) {
+    /** Whether the radio reads as filled: the choice you made, or the only one there is. */
+    val selected: Boolean get() = pinned || sole
+
     val testTag get() = "server_address_${address.id}"
 }
 
@@ -47,6 +52,8 @@ data class ServerDetailUiState(
     val slowLink: Boolean = false,
     /** Set once the owner has said "do it anyway" on this visit. */
     val overrideSlowLink: Boolean = false,
+    /** The address the owner pinned, when it is not the one being used — a pin that had to fall back. */
+    val pinnedButUnreachable: ServerAddress? = null,
     // --- open dialogs
     val renaming: Boolean = false,
     val addingAddress: Boolean = false,
@@ -89,12 +96,32 @@ data class ServerDetailUiState(
  * exactly the failure this whole feature was built to stop someone walking
  * into by accident.
  */
-fun addressHint(mode: AddressMode, inUse: ServerAddress?, count: Int): String = when {
-    mode == AddressMode.AUTO && count <= 1 -> "One way in. Add another and Regolith will use whichever answers fastest."
+/**
+ * The sentence under the address card.
+ *
+ * Every branch describes the RULE in force, never a status. An earlier
+ * version ended "…this server will read as out of reach", which is a
+ * conditional sitting in the place a status line goes, using the app's own
+ * words for a real failure — and it was duly read as one. A sentence here
+ * says what Regolith will do; whether anything is currently wrong is the
+ * rows' job to say.
+ */
+fun addressHint(mode: AddressMode, pinned: ServerAddress?, count: Int): String = when {
+    count <= 1 -> "One way in. Add another and Regolith will use whichever answers fastest."
     mode == AddressMode.AUTO -> "Nothing to remember when you leave the house — whichever answers fastest is the one used."
-    inUse == null -> "Pinned to an address that is no longer here."
-    else -> "Pinned to ${inUse.title}. Anywhere that address cannot be reached, this server will read as out of reach."
+    pinned == null -> "Preferring an address that is no longer in the list."
+    else -> "Preferring ${pinned.title}, and falling back to the others only when it does not answer."
 }
+
+/** The note shown when a preferred address has had to be stepped around. */
+fun fallbackNote(pinned: ServerAddress, inUse: ServerAddress?): String =
+    "${pinned.title} is not answering, so ${inUse?.title ?: "another address"} is being used instead."
+
+/** Said when someone pins a literal address a home router is free to reassign. */
+const val MAY_MOVE_NOTE =
+    "This is a literal address, so your router is free to give it to something else. A name like " +
+        "mac-mini.local follows the machine instead."
+
 
 /**
  * Why unattended work is holding back, and what it would cost to override.

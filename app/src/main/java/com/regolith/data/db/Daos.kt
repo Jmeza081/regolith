@@ -65,6 +65,10 @@ interface ServerDao {
     /** Point the server at an address. The one write every SMB caller in the app reads. */
     @Query("UPDATE servers SET host = :host, port = :port WHERE id = :id")
     suspend fun setAddress(id: Long, host: String, port: Int)
+
+    /** The address the owner prefers, or null for none. */
+    @Query("UPDATE servers SET pinnedAddressId = :addressId WHERE id = :id")
+    suspend fun setPinnedAddress(id: Long, addressId: Long?)
 }
 
 /**
@@ -108,8 +112,12 @@ interface ServerAddressDao {
     suspend fun setLabel(id: Long, label: String)
 
     /** What answered, and how fast. Written by the resolver after every successful probe. */
-    @Query("UPDATE server_addresses SET lastOkAtMs = :now, lastRttMs = :rttMs WHERE id = :id")
+    @Query("UPDATE server_addresses SET lastOkAtMs = :now, lastRttMs = :rttMs, lastTriedAtMs = :now WHERE id = :id")
     suspend fun markAnswered(id: Long, now: Long, rttMs: Int)
+
+    /** Tried and did not answer. `lastOkAtMs` is left alone, so the gap between them IS the symptom. */
+    @Query("UPDATE server_addresses SET lastTriedAtMs = :now WHERE id = :id")
+    suspend fun markTried(id: Long, now: Long)
 }
 
 @Dao
