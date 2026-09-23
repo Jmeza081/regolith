@@ -13,6 +13,11 @@ import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.GrabbedFrame
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.trySendBlocking
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.runInterruptible
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -56,39 +61,86 @@ class Media3Frames @Inject constructor(
         val uri = resolver.playableUriFor(fileId)
         return try {
             runInterruptible(Dispatchers.IO) {
-                val mediaSources = DefaultMediaSourceFactory(context)
-                    .setDataSourceFactory(DefaultDataSource.Factory(context, smbDataSourceFactory))
-                FrameExtractor.Builder(context, MediaItem.fromUri(uri))
-                    .setMediaSourceFactory(mediaSources)
-                    // One key frame, like the retriever's OPTION_CLOSEST_SYNC:
-                    // decoding forward to an exact frame would mean pulling
-                    // seconds of video off the share for a thumbnail.
-                    .setSeekParameters(SeekParameters.CLOSEST_SYNC)
-                    // Scaled on the GPU during extraction, so a 4K film never
-                    // becomes a 33 MB bitmap on the way to a 320x180 tile.
-                    .setEffects(listOf(Presentation.createForWidthAndHeight(maxWidth, maxHeight, Presentation.LAYOUT_SCALE_TO_FIT)))
-                    .build()
-                    .use { extractor ->
-                        // Cancelled before `use` closes the extractor, not
-                        // left running. Closing one while a frame request is
-                        // still outstanding means tearing down the GL context
-                        // and the decoder under work that still believes it
-                        // owns them, which is a far better way to wedge than
-                        // to fail.
-                        val pending = extractor.getFrame(positionMs)
-                        val frame = try {
-                            pending.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                        } catch (e: Exception) {
-                            pending.cancel(/* mayInterruptIfRunning = */ true)
-                            throw e
-                        }
-                        GrabbedFrame(frame.bitmap, frame.presentationTimeMs)
-                    }
+                extractor(uri, maxWidth, maxHeight).use { extractor -> grab(extractor, positionMs) }
             }
         } catch (e: Exception) {
             Log.w(TAG, "media3 frame at ${positionMs}ms for $fileId failed (${e.javaClass.simpleName}: ${e.message})")
             null
         }
+    }
+
+    /**
+     * Every position on ONE extractor: one open of the file, one read of its
+     * index, one decoder and GL context, then a seek per position. That setup
+     * is most of what a single still costs over SMB, so a film's marks come
+     * out for little more than the price of one.
+     *
+     * Rendezvous, not buffered: the extractor waits for each frame to be
+     * taken before fetching the next, so at most one full-size bitmap is ever
+     * in flight, and a caller that stops collecting (a timeout, a screen that
+     * went away) interrupts the grab rather than leaving it to run on.
+     */
+    override fun framesAt(fileId: Long, positionsMs: List<Long>, maxWidth: Int, maxHeight: Int): Flow<GrabbedFrame?> = channelFlow {
+        if (positionsMs.isEmpty()) return@channelFlow
+        val uri = resolver.playableUriFor(fileId)
+        var sent = 0
+        try {
+            runInterruptible(Dispatchers.IO) {
+                extractor(uri, maxWidth, maxHeight).use { extractor ->
+                    for (position in positionsMs) {
+                        // One frame failing is that frame's problem; the next
+                        // seek on the same extractor may be fine.
+                        val frame = try {
+                            grab(extractor, position)
+                        } catch (e: InterruptedException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.w(TAG, "media3 frame at ${position}ms for $fileId failed (${e.javaClass.simpleName}: ${e.message})")
+                            null
+                        }
+                        trySendBlocking(frame).getOrThrow()
+                        sent++
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException || e is InterruptedException) throw e
+            // The extractor itself would not build (no GL, no decoder, the
+            // share refused the open): every position left is a miss.
+            Log.w(TAG, "media3 extractor for $fileId failed (${e.javaClass.simpleName}: ${e.message})")
+            repeat(positionsMs.size - sent) { send(null) }
+        }
+    }.buffer(Channel.RENDEZVOUS)
+
+    private fun extractor(uri: android.net.Uri, maxWidth: Int, maxHeight: Int): FrameExtractor {
+        val mediaSources = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(DefaultDataSource.Factory(context, smbDataSourceFactory))
+        return FrameExtractor.Builder(context, MediaItem.fromUri(uri))
+            .setMediaSourceFactory(mediaSources)
+            // One key frame, like the retriever's OPTION_CLOSEST_SYNC:
+            // decoding forward to an exact frame would mean pulling
+            // seconds of video off the share for a thumbnail.
+            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            // Scaled on the GPU during extraction, so a 4K film never
+            // becomes a 33 MB bitmap on the way to a 320x180 tile.
+            .setEffects(listOf(Presentation.createForWidthAndHeight(maxWidth, maxHeight, Presentation.LAYOUT_SCALE_TO_FIT)))
+            .build()
+    }
+
+    private fun grab(extractor: FrameExtractor, positionMs: Long): GrabbedFrame {
+        // Cancelled before `use` closes the extractor, not left running.
+        // Closing one while a frame request is still outstanding means
+        // tearing down the GL context and the decoder under work that still
+        // believes it owns them, which is a far better way to wedge than to
+        // fail.
+        val pending = extractor.getFrame(positionMs)
+        val frame = try {
+            pending.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            pending.cancel(/* mayInterruptIfRunning = */ true)
+            throw e
+        }
+        return GrabbedFrame(frame.bitmap, frame.presentationTimeMs)
     }
 
     private companion object {

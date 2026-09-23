@@ -10,6 +10,8 @@ import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.UserChapterDao
+import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkKind
@@ -69,6 +71,7 @@ class ArtworkRepository @Inject constructor(
     private val local: com.regolith.player.LocalMedia,
     private val durations: DurationProbe,
     private val grabber: FrameGrabber,
+    private val chapterDao: UserChapterDao,
 ) : MomentFrames {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -89,8 +92,12 @@ class ArtworkRepository @Inject constructor(
      * arriving at the same time does not wait behind it. The background walk
      * joins the stills entry, so a tile scrolling into view waits for the
      * work already running rather than starting it again.
+     *
+     * Moments are keyed per FILM ([MomentBatch]), not per mark: one run grabs
+     * every named mark in the film on one open, so a second mark's request
+     * waits for that run instead of opening the file again beside it.
      */
-    private val inFlight = mutableMapOf<Pair<ArtworkOwner, Boolean>, Deferred<Boolean>>()
+    private val inFlight = mutableMapOf<Any, Deferred<Boolean>>()
     private val inFlightLock = Mutex()
 
     @Volatile private var generationChecked = false
@@ -111,6 +118,13 @@ class ArtworkRepository @Inject constructor(
             ?: return null
         return when {
             row.source == ArtworkSource.PLACEHOLDER.name -> row.takeIf { System.currentTimeMillis() - it.updatedAtMs < PLACEHOLDER_TTL_MS }
+            // A moment BORROWING the film's thumb ([fallBackToFilm]) is a
+            // stand-in, like a placeholder, and expires like one. The grab
+            // that failed may only have met a share that was down, and now
+            // that the walk grabs every mark ahead of time, one outage would
+            // otherwise pin every mark in the library to its film's picture.
+            request.owner is ArtworkOwner.Moment && row.relPath != store.relPathFor(request.owner, request.kind) &&
+                System.currentTimeMillis() - row.updatedAtMs >= PLACEHOLDER_TTL_MS -> null
             store.fileFor(row.relPath).exists() -> row
             else -> null // directory cleared or wiped; regenerate
         }
@@ -123,21 +137,32 @@ class ArtworkRepository @Inject constructor(
     suspend fun resolve(request: ArtworkRequest): ArtworkEntity? {
         ensureGeneration()
         cached(request)?.let { return it }
+        if (request.owner is ArtworkOwner.Moment) return resolveMomentRequest(request.owner, request)
         // A backdrop is four times a thumb's bytes and only Title Detail wants
         // one, so it is never written alongside the stills — it has its own
         // key, its own in-flight entry and its own trip through the source
         // order, run for the one title you opened.
-        val kinds = when {
-            request.kind == ArtworkKind.BACKDROP -> BACKDROP_ONLY
-            // A moment is only ever drawn 16:9 — an 82dp row thumb or a tile.
-            // Nobody wants a 2:3 poster of an instant, so writing one would be
-            // half the bytes and half the crop work for nothing.
-            request.owner is ArtworkOwner.Moment -> THUMB_ONLY
-            else -> ArtworkKind.stills
-        }
+        val kinds = if (request.kind == ArtworkKind.BACKDROP) BACKDROP_ONLY else ArtworkKind.stills
         val key = request.owner to (request.kind == ArtworkKind.BACKDROP)
         joinOrStart(key) { extractionSlots.withPermit { resolveOwner(request.owner, kinds) } }
         return cached(request)
+    }
+
+    /**
+     * A moment, on demand: join the run already grabbing this film's marks,
+     * or start one that grabs all of them ([resolveMoments]).
+     *
+     * Twice at most, because joining is not the same as being included. A
+     * run started for a sibling mark read the film's marks when it began, so
+     * a mark named since then is not in it; that request gets one run of its
+     * own rather than coming back empty.
+     */
+    private suspend fun resolveMomentRequest(owner: ArtworkOwner.Moment, request: ArtworkRequest): ArtworkEntity? {
+        repeat(2) {
+            joinOrStart(MomentBatch(owner.fileId)) { resolveOwner(owner, THUMB_ONLY) }
+            cached(request)?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -155,13 +180,27 @@ class ArtworkRepository @Inject constructor(
      * rather than grind through a thousand files that will all fail.
      */
     suspend fun prefetch(owner: ArtworkOwner): Boolean {
-        // Moments are resolved on demand only. The walk exists to have a
-        // library's tiles ready before anyone scrolls to them; a moment frame
-        // is wanted by one search result, and grabbing every mark in the
-        // library up front would be a seek per mark for pictures nobody asked
-        // to see.
-        require(owner !is ArtworkOwner.Moment) { "moment frames are on-demand only" }
         ensureGeneration()
+        // A named mark's frame, so a point of interest in Search is already a
+        // picture the first time it is shown. The walk only asks for NAMED
+        // marks — the only ones Search can return — which on a real library
+        // is a hundred or so, not the several hundred unnamed ones beside
+        // them. The first mark of a film grabs the rest of that film's marks
+        // on the same open, so the walk's next items are already cached.
+        if (owner is ArtworkOwner.Moment) {
+            if (cached(ArtworkRequest(owner, ArtworkKind.THUMB)) != null) return true
+            return joinOrStart(MomentBatch(owner.fileId)) {
+                prefetchSlots.withPermit {
+                    // Frames are saved as they land, so a batch cut short
+                    // keeps what it took and the next mark picks up the rest.
+                    withTimeoutOrNull(OWNER_TIMEOUT_MS) { resolveOwner(owner, THUMB_ONLY) }
+                        ?: run {
+                            Log.w(TAG, "marks of file ${owner.fileId} gave up after ${OWNER_TIMEOUT_MS / 1000}s; moving on")
+                            true
+                        }
+                }
+            }
+        }
         if (ArtworkKind.entries.all { cached(ArtworkRequest(owner, it)) != null }) return true
         return joinOrStart(owner to false) {
             prefetchSlots.withPermit {
@@ -187,7 +226,7 @@ class ArtworkRepository @Inject constructor(
     }
 
     /** Join the resolution already running for [key], or start it. */
-    private suspend fun joinOrStart(key: Pair<ArtworkOwner, Boolean>, body: suspend () -> Boolean): Boolean {
+    private suspend fun joinOrStart(key: Any, body: suspend () -> Boolean): Boolean {
         val job = inFlightLock.withLock {
             inFlight.getOrPut(key) {
                 scope.async {
@@ -231,8 +270,35 @@ class ArtworkRepository @Inject constructor(
      * image (design section 08: a sidecar always wins).
      */
     suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
+        if (entries.any { !it.isDirectory && MediaFileTypes.isVideo(it.name) }) forgetFolderPlaceholders(folderId)
         if (ArtworkCandidates.forFolder(entries).isEmpty()) return
         artworkDao.deleteMosaic(ArtworkOwner.Folder(folderId).typeName, folderId)
+    }
+
+    /**
+     * A folder holding videos should not be sitting on a placeholder, and
+     * neither should anything above it.
+     *
+     * The case this exists for: a folder is made on the share, the scan
+     * finds it empty, the walk finds nothing to build a mosaic from and
+     * records a placeholder — then the videos are copied in. The next scan
+     * lists them, but the placeholder is good for a day and the walk skips
+     * anything already cached, so the folder stayed blank. Seen on the
+     * owner's phone: a folder of 96 films placeholdered five hours before
+     * they arrived.
+     *
+     * Every ancestor too, because a mosaic walks DOWN into subfolders
+     * ([mosaicFiles]): a show folder whose seasons were empty is waiting on
+     * exactly the same videos. Only placeholders go; a real image or mosaic
+     * above is left alone. Database only, a few rows per listing.
+     */
+    private suspend fun forgetFolderPlaceholders(folderId: Long) {
+        var id: Long? = folderId
+        var depth = 0
+        while (id != null && depth++ < MOSAIC_MAX_FOLDERS) {
+            if (artworkDao.deleteFolderPlaceholder(id) > 0) Log.i(TAG, "folder $id holds videos now; dropped its placeholder")
+            id = folderDao.byId(id)?.parentId
+        }
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */
@@ -280,7 +346,7 @@ class ArtworkRepository @Inject constructor(
             when (owner) {
                 is ArtworkOwner.File -> resolveFile(owner, kinds)
                 is ArtworkOwner.Folder -> resolveFolder(owner, kinds)
-                is ArtworkOwner.Moment -> resolveMoment(owner, kinds)
+                is ArtworkOwner.Moment -> resolveMoments(owner, kinds)
             }
             true
         } catch (e: SmbFailure) {
@@ -395,7 +461,18 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * One named chapter's frame: the picture at the mark, not the film's.
+     * The frames for a film's named marks: [owner]'s own, and every other
+     * named mark in the same film that has none yet, on ONE open of the file.
+     *
+     * Why together: nearly all of a single frame's cost is setup — opening
+     * the file over SMB, reading its index, standing up a decoder — and the
+     * seek itself is the cheap part. A film's marks are usually shown
+     * together (Search lists them side by side, the walk reaches them in a
+     * row), so paying the setup once per film rather than once per mark is
+     * the saving. Each frame is saved as it lands, and the fallbacks run only
+     * after the extraction slot is handed back: [fallBackToFilm] resolves the
+     * film, which needs a slot of its own, and holding one while waiting on
+     * another is how two slots deadlock.
      *
      * **Media3 only, no retriever fallback.** [grabFrame] tries the platform
      * `MediaMetadataRetriever` when Media3 comes up empty, and can afford to:
@@ -413,20 +490,54 @@ class ArtworkRepository @Inject constructor(
      * placeholder: a point of interest showed the film's thumb before this
      * feature existed, and it must never come out worse than that.
      */
-    private suspend fun resolveMoment(owner: ArtworkOwner.Moment, kinds: List<ArtworkKind>) {
+    private suspend fun resolveMoments(owner: ArtworkOwner.Moment, kinds: List<ArtworkKind>) {
         val file = mediaFileDao.byId(owner.fileId)
         if (file == null) {
             placeholder(owner, kinds)
             return
         }
-        val grabbed = grabber.frameAt(owner.fileId, owner.startMs, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)
+        val wanted = (chapterDao.namedStartsForFile(owner.fileId) + owner.startMs)
+            .distinct()
+            .sorted()
+            .filter { cached(ArtworkRequest(ArtworkOwner.Moment(owner.fileId, it), ArtworkKind.THUMB)) == null }
+        if (wanted.isEmpty()) return
+
+        val misses = mutableListOf<Long>()
+        val queuedAt = System.currentTimeMillis()
+        extractionSlots.withPermit {
+            // Three numbers, because they answer different questions: the wait
+            // is contention for a slot, the first frame is the open + index +
+            // decoder setup a batch exists to share, and the rest is what each
+            // further mark costs once that is paid.
+            val startedAt = System.currentTimeMillis()
+            var firstFrameMs = 0L
+            var next = 0
+            grabber.framesAt(owner.fileId, wanted, MOMENT_FRAME_MAX_WIDTH, MOMENT_FRAME_MAX_HEIGHT).collect { grabbed ->
+                if (next == 0) firstFrameMs = System.currentTimeMillis() - startedAt
+                val at = wanted.getOrNull(next++) ?: return@collect
+                if (!keepMoment(file, ArtworkOwner.Moment(owner.fileId, at), grabbed, kinds)) misses += at
+            }
+            // A grabber that stopped short owes the rest; treat them as misses.
+            misses += wanted.drop(next)
+            val rest = System.currentTimeMillis() - startedAt - firstFrameMs
+            Log.i(
+                TAG,
+                "${file.name}: ${wanted.size - misses.size} of ${wanted.size} mark frame(s) on one open; " +
+                    "waited ${startedAt - queuedAt}ms for a slot, first frame ${firstFrameMs}ms" +
+                    if (wanted.size > 1) ", then ${rest / (wanted.size - 1)}ms each" else "",
+            )
+        }
+        for (at in misses) fallBackToFilm(ArtworkOwner.Moment(owner.fileId, at), kinds)
+    }
+
+    /** Save [grabbed] as [owner]'s frame if it landed close enough to the mark. False means fall back. */
+    private suspend fun keepMoment(file: MediaFileEntity, owner: ArtworkOwner.Moment, grabbed: GrabbedFrame?, kinds: List<ArtworkKind>): Boolean {
         if (grabbed == null) {
             Log.i(TAG, "${file.name}: no frame at ${owner.startMs}ms for its mark; showing the film's thumb")
-            fallBackToFilm(owner, kinds)
-            return
+            return false
         }
-        val off = grabbed.presentationTimeMs - owner.startMs
         try {
+            val off = grabbed.presentationTimeMs - owner.startMs
             if (abs(off) > MOMENT_SEEK_TOLERANCE_MS) {
                 // Too far to sit under this mark's clock. The film's own thumb
                 // at least does not claim to be a time it is not.
@@ -435,11 +546,10 @@ class ArtworkRepository @Inject constructor(
                     "${file.name}: mark at ${owner.startMs}ms got ${grabbed.presentationTimeMs}ms (${off}ms off) " +
                         "— beyond ${MOMENT_SEEK_TOLERANCE_MS}ms, showing the film's thumb",
                 )
-                fallBackToFilm(owner, kinds)
-                return
+                return false
             }
             Log.i(TAG, "${file.name}: frame at ${grabbed.presentationTimeMs}ms for its mark at ${owner.startMs}ms")
-            if (!saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds)) fallBackToFilm(owner, kinds)
+            return saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds)
         } finally {
             grabbed.bitmap.recycle()
         }
@@ -709,6 +819,9 @@ class ArtworkRepository @Inject constructor(
 
     // --- share access
 
+    /** The in-flight key for "grabbing this film's marks" (see [inFlight]). */
+    private data class MomentBatch(val fileId: Long)
+
     private data class Location(val host: SmbHost, val credentials: SmbCredentials, val share: String)
 
     private suspend fun locate(shareId: Long): Location? {
@@ -789,6 +902,15 @@ class ArtworkRepository @Inject constructor(
          * which is honest rather than merely wrong.
          */
         const val MOMENT_SEEK_TOLERANCE_MS = com.regolith.domain.playback.FrameIndex.DEFAULT_INTERVAL_MS
+
+        /**
+         * A moment is only ever written as a 320x180 thumb, so it is grabbed at
+         * twice that rather than at poster height: the same one key-frame
+         * decode, a quarter of the pixels through the GPU scaler and into
+         * memory.
+         */
+        const val MOMENT_FRAME_MAX_WIDTH = 640
+        const val MOMENT_FRAME_MAX_HEIGHT = 360
         val BACKDROP_ONLY = listOf(ArtworkKind.BACKDROP)
         val THUMB_ONLY = listOf(ArtworkKind.THUMB)
     }

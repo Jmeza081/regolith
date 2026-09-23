@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.regolith.R
 import com.regolith.data.RegolithNotifications
+import com.regolith.data.db.UserChapterDao
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.artwork.ArtworkOwner
 import dagger.assisted.Assisted
@@ -47,6 +48,7 @@ class ArtworkWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val library: LibraryRepository,
     private val artwork: ArtworkRepository,
+    private val chapters: UserChapterDao,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -116,9 +118,14 @@ class ArtworkWorker @AssistedInject constructor(
      * Everything on [shareId] that could want a picture.
      *
      * Folders first: they are far fewer, and they are the wall the Library
-     * opens on. Then the files, newest first, because that is the order Home
-     * shows them in — so the two screens someone is likeliest to open next
-     * fill in before the deep back catalogue.
+     * opens on. Then the named marks — the points of interest Search shows,
+     * each drawn with the frame at its own time. They are a hundred or so on
+     * a real library and come out several to an open, so they cost minutes,
+     * where leaving them behind a first walk of thousands of films would
+     * leave Search grabbing them live for an hour. Then the files, newest
+     * first, because that is the order Home shows them in — so the screens
+     * someone is likeliest to open next fill in before the deep back
+     * catalogue.
      */
     private suspend fun ownersOf(shareId: Long): List<ArtworkOwner> {
         val folders = library.observeFoldersInShares(listOf(shareId)).first()
@@ -127,7 +134,8 @@ class ArtworkWorker @AssistedInject constructor(
         val files = library.observeFilesInShares(listOf(shareId)).first()
             .sortedByDescending { it.addedAtMs }
             .map { ArtworkOwner.File(it.id) }
-        return folders + files
+        val marks = chapters.namedInShare(shareId).map { ArtworkOwner.Moment(it.fileId, it.startMs) }
+        return folders + marks + files
     }
 
     private suspend fun report(done: Int, total: Int) {

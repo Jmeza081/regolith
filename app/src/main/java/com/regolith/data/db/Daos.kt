@@ -656,6 +656,14 @@ interface ArtworkDao {
     @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun deleteGenerated()
 
+    /**
+     * Drops a folder's placeholder so the next request tries again. A folder
+     * scanned before its videos were copied in has nothing to make a mosaic
+     * from; this is how the scan that finds them undoes that.
+     */
+    @Query("DELETE FROM artwork WHERE ownerType = 'folder' AND ownerId = :folderId AND source = 'PLACEHOLDER'")
+    suspend fun deleteFolderPlaceholder(folderId: Long): Int
+
     /** Drops a folder's mosaic so the next request re-runs the source order and finds the new sidecar. */
     @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND source = 'MOSAIC'")
     suspend fun deleteMosaic(ownerType: String, ownerId: Long)
@@ -780,6 +788,9 @@ data class UserChapterHitRow(
     val fileRelPath: String,
 )
 
+/** Where one named mark is: all a moment frame needs to be grabbed. */
+data class NamedMarkRow(val fileId: Long, val startMs: Long)
+
 /** `COUNT(*)` and `COUNT(DISTINCT fileId)` in one read. */
 data class UserChapterTally(val chapters: Int, val files: Int)
 
@@ -820,6 +831,28 @@ interface UserChapterDao {
 
     @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
     suspend fun forFile(fileId: Long): List<UserChapterEntity>
+
+    /**
+     * Where this film's NAMED marks are. Only a named mark is ever a Search
+     * result, so these are the frames worth grabbing together when one of
+     * them is wanted (`ArtworkRepository.resolveMoments`).
+     */
+    @Query("SELECT startMs FROM user_chapters WHERE fileId = :fileId AND title IS NOT NULL AND title != '' ORDER BY startMs")
+    suspend fun namedStartsForFile(fileId: Long): List<Long>
+
+    /**
+     * Every named mark on [shareId]'s films still on the share, for the
+     * background artwork walk. Grouped by film and in time order, so the walk
+     * reaches a film's marks together and grabs them on one open.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE media_files.shareId = :shareId AND media_files.missing = 0 " +
+            "AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +
+            "ORDER BY user_chapters.fileId, user_chapters.startMs",
+    )
+    suspend fun namedInShare(shareId: Long): List<NamedMarkRow>
 
     /** When this film's rows were last written, for the newest-wins rule. */
     @Query("SELECT MAX(updatedAtMs) FROM user_chapters WHERE fileId = :fileId")

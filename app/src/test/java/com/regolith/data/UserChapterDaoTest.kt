@@ -133,4 +133,34 @@ class UserChapterDaoTest {
         assertEquals(0, db.userChapterDao().observeTally().first().chapters)
         assertEquals(0, db.userChapterDao().observeTally().first().files)
     }
+
+    // ── What the artwork walk grabs ────────────────────────────────────
+
+    @Test
+    fun `only named marks on present files are frames worth grabbing`() = runTest {
+        // Search only ever returns a NAMED mark, so an unnamed one's frame
+        // would be a seek for a picture nothing shows.
+        val heat = file("Films/Heat.1995.mkv")
+        val gone = file("Films/Gone.mkv", missing = true)
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 3_735_000, "Shootout"), row(heat, 0, null), row(heat, 600_000, ""), row(heat, 1_880_000, "The heist")))
+        db.userChapterDao().replaceForFile(gone, listOf(row(gone, 0, "Heist rehearsal")))
+
+        assertEquals(listOf(1_880_000L, 3_735_000L), db.userChapterDao().namedStartsForFile(heat))
+        assertEquals(
+            listOf(heat to 1_880_000L, heat to 3_735_000L),
+            db.userChapterDao().namedInShare(shareId).map { it.fileId to it.startMs },
+        )
+    }
+
+    @Test
+    fun `the walk reaches a film's marks together`() = runTest {
+        // Grouped by film, so the first mark's run grabs its siblings on one
+        // open and the walk's next items are already cached.
+        val a = file("Films/A.mkv")
+        val b = file("Films/B.mkv")
+        db.userChapterDao().replaceForFile(b, listOf(row(b, 90_000, "Two"), row(b, 10_000, "One")))
+        db.userChapterDao().replaceForFile(a, listOf(row(a, 50_000, "Only")))
+        assertEquals(listOf(a, b, b), db.userChapterDao().namedInShare(shareId).map { it.fileId })
+        assertEquals(listOf(10_000L, 90_000L), db.userChapterDao().namedInShare(shareId).filter { it.fileId == b }.map { it.startMs })
+    }
 }

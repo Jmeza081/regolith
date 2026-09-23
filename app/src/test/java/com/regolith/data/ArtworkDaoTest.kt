@@ -46,6 +46,36 @@ class ArtworkDaoTest {
     }
 
     @Test
+    fun `a folder's placeholder can go without its real pictures`() = runTest {
+        // A folder placeholdered while it was still empty gets a second
+        // chance once a scan finds videos in it — but a mosaic or a poster
+        // already made, for this folder or any other, must survive that.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        fun folder(id: Long, kind: String, source: String) = ArtworkEntity(
+            ownerType = "folder", ownerId = id, kind = kind, source = source, relPath = if (source == "PLACEHOLDER") "" else "folder/$id/$kind.jpg",
+            width = 0, height = 0, updatedAtMs = 1,
+        )
+        try {
+            db.artworkDao().upsert(folder(3, "POSTER", "PLACEHOLDER"))
+            db.artworkDao().upsert(folder(3, "THUMB", "PLACEHOLDER"))
+            db.artworkDao().upsert(folder(4, "POSTER", "PLACEHOLDER"))
+            db.artworkDao().upsert(folder(5, "POSTER", "MOSAIC"))
+            db.artworkDao().upsert(row("THUMB", source = "PLACEHOLDER")) // file 7, same id space elsewhere
+
+            db.artworkDao().deleteFolderPlaceholder(3)
+            db.artworkDao().deleteFolderPlaceholder(5)
+
+            assertEquals(null, db.artworkDao().get("folder", 3, "", "POSTER"))
+            assertEquals(null, db.artworkDao().get("folder", 3, "", "THUMB"))
+            assertEquals("PLACEHOLDER", db.artworkDao().get("folder", 4, "", "POSTER")!!.source)
+            assertEquals("MOSAIC", db.artworkDao().get("folder", 5, "", "POSTER")!!.source)
+            assertEquals("PLACEHOLDER", db.artworkDao().get("file", 7, "", "THUMB")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `version 1 database migrates to 11 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->
