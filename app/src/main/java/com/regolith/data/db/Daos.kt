@@ -788,6 +788,9 @@ data class UserChapterHitRow(
     val fileRelPath: String,
 )
 
+/** Where one named mark is: all a moment frame needs to be grabbed. */
+data class NamedMarkRow(val fileId: Long, val startMs: Long)
+
 /** `COUNT(*)` and `COUNT(DISTINCT fileId)` in one read. */
 data class UserChapterTally(val chapters: Int, val files: Int)
 
@@ -828,6 +831,28 @@ interface UserChapterDao {
 
     @Query("SELECT * FROM user_chapters WHERE fileId = :fileId ORDER BY startMs")
     suspend fun forFile(fileId: Long): List<UserChapterEntity>
+
+    /**
+     * Where this film's NAMED marks are. Only a named mark is ever a Search
+     * result, so these are the frames worth grabbing together when one of
+     * them is wanted (`ArtworkRepository.resolveMoments`).
+     */
+    @Query("SELECT startMs FROM user_chapters WHERE fileId = :fileId AND title IS NOT NULL AND title != '' ORDER BY startMs")
+    suspend fun namedStartsForFile(fileId: Long): List<Long>
+
+    /**
+     * Every named mark on [shareId]'s films still on the share, for the
+     * background artwork walk. Grouped by film and in time order, so the walk
+     * reaches a film's marks together and grabs them on one open.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE media_files.shareId = :shareId AND media_files.missing = 0 " +
+            "AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +
+            "ORDER BY user_chapters.fileId, user_chapters.startMs",
+    )
+    suspend fun namedInShare(shareId: Long): List<NamedMarkRow>
 
     /** When this film's rows were last written, for the newest-wins rule. */
     @Query("SELECT MAX(updatedAtMs) FROM user_chapters WHERE fileId = :fileId")

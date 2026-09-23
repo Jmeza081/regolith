@@ -3,6 +3,8 @@ package com.regolith.data.artwork
 import android.graphics.Bitmap
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.io.Closeable
 import java.io.File
 
@@ -89,4 +91,22 @@ class GrabbedFrame(val bitmap: android.graphics.Bitmap, val presentationTimeMs: 
 fun interface FrameGrabber {
     /** Null when the platform cannot do it at all; the caller then falls back. */
     suspend fun frameAt(fileId: Long, positionMs: Long, maxWidth: Int, maxHeight: Int): GrabbedFrame?
+
+    /**
+     * Several stills from ONE film, in the order of [positionsMs]: exactly one
+     * emission per position, null where that frame could not be had.
+     *
+     * The point is the setup cost. Opening a file over SMB, reading its
+     * index and standing up a decoder is most of what one still costs, and
+     * [frameAt] pays it every time — so the marks in one film are grabbed on
+     * one open. A Flow rather than a list so each frame can be saved (and its
+     * bitmap freed) as it lands, and so frames already taken survive a
+     * timeout that cuts the rest short.
+     *
+     * The default is the slow way round, one [frameAt] each, for a grabber
+     * (or a test double) with nothing to share between frames.
+     */
+    fun framesAt(fileId: Long, positionsMs: List<Long>, maxWidth: Int, maxHeight: Int): Flow<GrabbedFrame?> = flow {
+        for (position in positionsMs) emit(frameAt(fileId, position, maxWidth, maxHeight))
+    }
 }

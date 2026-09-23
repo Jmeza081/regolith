@@ -440,7 +440,7 @@ private fun HitRow(
                 // in one film are two different pictures, which is the whole
                 // point: the clock says where, and now the picture agrees.
                 // Falls back to the film's own thumb when the seek cannot be
-                // trusted (ArtworkRepository.resolveMoment).
+                // trusted (ArtworkRepository.resolveMoments).
                 is SearchHit.Moment -> Box(Modifier.fillMaxSize()) {
                     ArtworkImage(ArtworkRequest(ArtworkOwner.Moment(hit.fileId, hit.startMs), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.meta)
                     Text(

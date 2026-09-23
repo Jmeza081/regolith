@@ -305,13 +305,17 @@ progress notification you can stop. One frame grab writes all three sizes.
 A library scanned before this existed has no walk queued for it: tap **Settings ›
 Media › Prepare artwork**, or rescan the share.
 
-The one exception is a point of interest's frame, which is grabbed when a search
-result asks for it. The walk cannot make those ahead of time — there is no wall of
-them to get ready, and a mark's frame is wanted by one row — so they are cached on
-first sight and kept, under the mark's own time. Move a mark and its old frame is
-dropped and a new one taken; rename it and nothing is re-read. If the file's key
-frames are too far apart to land within ten seconds of the mark, the row shows the
-film's own thumbnail instead, rather than a picture claiming to be a time it is not.
+Points of interest are made ahead of time too. After the folders, the walk grabs the
+frame at every *named* mark (the only kind Search shows), before it moves on to the
+films, so Search already has its pictures. All of one film's marks come from a
+single open of the file, which costs little more than one mark on its own. A mark
+named since the last walk is grabbed the first time Search shows it, along with any
+other marks in that film still missing a picture. Frames are kept under the mark's
+own time: move a mark and its old frame is dropped and a new one taken; rename it
+and nothing is re-read. If the file's key frames are too far apart to land within
+ten seconds of the mark, the row shows the film's own thumbnail instead, rather
+than a picture claiming to be a time it is not. That stand-in is tried again after
+a day, in case the grab only failed because the share was down.
 
 A folder with no poster of its own gets a 2×2 mosaic of frames from the videos
 inside it. If a folder is scanned while it is still empty, and the videos are
