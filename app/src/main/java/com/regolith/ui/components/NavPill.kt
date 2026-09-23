@@ -235,7 +235,8 @@ private fun CancelCircle(onClick: () -> Unit, hazeState: HazeState) {
  *
  * Named once and shared, because the nav chrome is now three objects — the
  * pill, the cancel circle beside it and the message tier above it — and they
- * have to be the SAME glass. A tier that was merely translucent read as a
+ * have to be the SAME glass. The poster editor's panels use it too, over a
+ * moving picture, which is the other place text must stay readable on glass. A tier that was merely translucent read as a
  * different surface docked to the pill rather than part of it.
  */
 @Composable

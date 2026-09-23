@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -111,6 +112,83 @@ class Media3Frames @Inject constructor(
             repeat(positionsMs.size - sent) { send(null) }
         }
     }.buffer(Channel.RENDEZVOUS)
+
+    /**
+     * One film held open for the poster editor: every frame at FULL size and
+     * at the EXACT time asked for, on one extractor that stays open between
+     * requests. Caller closes it.
+     *
+     * Both differ from [frameAt] on purpose. A poster is cut from this
+     * bitmap, so it is not scaled down, and "+1 frame" has to actually move
+     * one frame, so the seek decodes forward from the key frame to the time
+     * asked for rather than stopping at the key frame. That forward decode
+     * is seconds of video pulled off the share, which is why it is only
+     * done here, one frame at a time, while someone is looking.
+     *
+     * HDR is tone-mapped to ordinary (SDR) colour, FrameExtractor's default,
+     * so a poster from an HDR film does not come out grey and washed out.
+     */
+    fun openExact(fileId: Long): ExactFrames = ExactFrames(fileId)
+
+    inner class ExactFrames internal constructor(private val fileId: Long) : java.io.Closeable {
+        private val lock = Any()
+        private var extractor: FrameExtractor? = null
+        private var busy = false
+        private var closed = false
+        private val turns = kotlinx.coroutines.sync.Mutex()
+
+        /**
+         * The frame at [positionMs], or null when it could not be decoded.
+         * Callers take turns: a second call waits for the first.
+         */
+        suspend fun frameAt(positionMs: Long): GrabbedFrame? = turns.withLock {
+            val uri = resolver.playableUriFor(fileId)
+            try {
+                runInterruptible(Dispatchers.IO) {
+                    val ex = synchronized(lock) {
+                        if (closed) return@runInterruptible null
+                        busy = true
+                        extractor ?: exactExtractor(uri).also { extractor = it }
+                    }
+                    try {
+                        grab(ex, positionMs)
+                    } finally {
+                        // A close that arrived mid-grab was left to us: closing
+                        // the extractor under a live request would wedge it.
+                        synchronized(lock) {
+                            busy = false
+                            if (closed) closeExtractor()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "exact frame at ${positionMs}ms for $fileId failed (${e.javaClass.simpleName}: ${e.message})")
+                null
+            }
+        }
+
+        override fun close() {
+            synchronized(lock) {
+                closed = true
+                if (!busy) closeExtractor()
+            }
+        }
+
+        private fun closeExtractor() {
+            runCatching { extractor?.close() }
+            extractor = null
+        }
+    }
+
+    private fun exactExtractor(uri: android.net.Uri): FrameExtractor {
+        val mediaSources = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(DefaultDataSource.Factory(context, smbDataSourceFactory))
+        return FrameExtractor.Builder(context, MediaItem.fromUri(uri))
+            .setMediaSourceFactory(mediaSources)
+            .setSeekParameters(SeekParameters.EXACT)
+            .build()
+    }
 
     private fun extractor(uri: android.net.Uri, maxWidth: Int, maxHeight: Int): FrameExtractor {
         val mediaSources = DefaultMediaSourceFactory(context)

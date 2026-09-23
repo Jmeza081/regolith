@@ -8,6 +8,7 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
+import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
 import okio.FileSystem
@@ -45,7 +46,15 @@ class ArtworkFetcher(
 /** Memory-cache key. Without a keyer Coil would not cache a custom model at all. */
 class ArtworkKeyer @Inject constructor() : Keyer<ArtworkRequest> {
     override fun key(data: ArtworkRequest, options: Options): String =
-        "artwork:${data.owner.typeName}:${data.owner.id}:${data.owner.variant}:${data.kind.name.lowercase()}"
+        "${ownerPrefix(data.owner)}${data.owner.variant}:${data.kind.name.lowercase()}"
+
+    companion object {
+        /**
+         * The start every key for [owner] shares. The trailing `:` matters:
+         * without it, file 12's prefix would also match file 123.
+         */
+        fun ownerPrefix(owner: ArtworkOwner): String = "artwork:${owner.typeName}:${owner.id}:"
+    }
 }
 
 /** Coil reports this as the error state; the tile draws the wedge placeholder. */

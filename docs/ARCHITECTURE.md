@@ -439,11 +439,13 @@ Revert ── ChapterSyncRepository.revert ── rows AND the file          Set
 
 What a web developer would not guess:
 
-- **The gateway's first write, and its only one.** `SmbGateway.write`,
-  `rename` and `delete` exist for this, are called from `SidecarWriter`
-  alone, and name nothing but `<basename>.chapters.txt` and its `.part`.
-  The URL for a write drops the trailing slash `urlFor` adds, because jcifs
-  creates a new name as a directory when the URL ends in `/`.
+- **The gateway's first write.** `SmbGateway.write` was added for this.
+  The only files Regolith writes on its own account are this one and a
+  poster.jpg the user saves (see "Poster editor" below), and both go
+  through `writeReplacing` (`data/smb/ReplacingWrite.kt`): a `.part` file,
+  renamed over the real name once complete. The URL for a write drops the
+  trailing slash `urlFor` adds, because jcifs creates a new name as a
+  directory when the URL ends in `/`.
 - **A read can create the file it was looking for.** jcifs-ng opens
   read-only handles with create-if-missing, so `SmbGateway.open` on a path
   that is not there used to leave an empty file on the share — 0-byte
@@ -473,6 +475,52 @@ What a web developer would not guess:
   the next scan re-imports every film that has a file. Revert is the one
   action that deletes a file, after a confirm that names it, and on a
   read-only share it leaves a note that the file will come back.
+
+## Poster editor
+
+"Make a poster from this frame", at the foot of the player's Playback
+sheet, opens a pushed screen (`RegolithKey.PosterEditor`,
+`ui/poster/`) where you choose a frame, frame it in a fixed 2:3 box, and
+save it as `poster.jpg` in the film's folder on the share.
+
+```
+Playback sheet ── Make a poster ── pauseForPoster ── PosterEditor(fileId, positionMs)
+PosterEditorViewModel ── Media3Frames.openExact ── one FrameExtractor, EXACT seeks, full size
+PosterCropper (ui/components) ── PosterFraming (domain, pure) ── cropRect in source pixels
+Save ── PosterRepository.save ── list folder: poster.jpg there? ── EXISTS → ConfirmDialog → save(replace = true)
+                              └─ encode (≤1000×1500 JPEG) ── writeReplacing ── ArtworkRepository.adoptPoster ── Coil memory keys dropped
+```
+
+What a web developer would not guess:
+
+- **The frame is decoded again; the player's picture is never screenshotted.**
+  The player draws on a SurfaceView most of the time, which cannot be read
+  back, and what is on screen may be cropped to fill it. `openExact` keeps
+  one extractor open for the editor's lifetime and seeks EXACTLY (decoding
+  forward from the key frame), so "+1 frame" really moves one frame. HDR is
+  tone-mapped to SDR by FrameExtractor's default.
+- **The box is fixed; the picture moves.** Pan and zoom are stored relative
+  to the box (`PosterFraming`), so a framing survives a rotation or an
+  unfold, and the crop only depends on the box's shape, never its pixels.
+- **Which tile changes depends on the folder.** `poster.jpg` is the
+  folder's poster always, and the film's only when it is the one video
+  there (`ArtworkCandidates.forFile`). The editor says which before you save.
+- **The app has to be told the picture changed.** A cached picture is served
+  for as long as its file exists, the folder listing is cached for minutes,
+  and Coil's memory keys never change for an owner. `adoptPoster` writes the
+  new image straight into the artwork cache and forgets the listing, and
+  `PosterRepository` drops the owners' keys from Coil's memory cache.
+- **Nowhere to write, no row.** Phone videos, the demo library and films
+  another app handed us have no share folder, so `PosterRepository.target`
+  is null and the sheet leaves the row out.
+- **Glass over a full-bleed picture.** The picture fills the window and the
+  title bar and controls float on it with the nav pill's frost
+  (`navChromeFrost`), so a picture moving under them stays readable.
+  `PosterCropper` takes a `contentPadding` for what the glass covers and
+  fits the box into the rest.
+- **In the sheet, not on the pill row.** It started as a glyph pill beside
+  rotation; on the phone it competed with the controls used every time,
+  for something done once per film.
 
 ## App lock (P11)
 
@@ -826,6 +874,7 @@ yet.
 | 2026-09-19 | Shorts says "2x while held" in the SAME pill the full player uses, stacked above the clip's title rather than aimed at the same corner | Two things worth separating here. The first is that `OnMediaLabel` moved out of `PlayerScreen` into `ui/components/`: Shorts had the identical gesture (hold the right half for 2x) and said nothing at all, and the alternative to sharing was a second frosted pill a few dp apart in tone, which is how one surface becomes two. It deliberately does NOT use `navChromeFrost` -- that is a real 20dp blur of what is behind it, which is right over the app's own ground and wrong over moving video, where it costs a blur per frame and reads as a smear. The second is a layout lesson: the label and the clip's name both wanted the bottom edge above the nav pill, were placed independently, and drew straight on top of each other. They are now ONE column, so the clearance is a layout fact rather than a hard-coded number that would drift the moment a name wrapped -- while keeping separate visibility rules, since the name is chrome and leaves on the chrome's clock but the label answers a finger and must show whether the chrome has gone or not. `holdingFast` is a `StateFlow` of its own on the ViewModel rather than a field on `ShortsUiState`, mirroring `bindVersion`: a value that flips twice per gesture has no business rebuilding a state assembled from the library, the folder pick and the artwork walk. It is also cleared in `pauseAll()`, because `tryAwaitRelease` never arrives if the gesture layer is disposed under the finger. New drawable `rg_ic_fast_forward`, because `rg_ic_seek_forward` is a circular arrow that reads as replay. |
 | 2026-09-23 | The phone's own videos are a second share, "Phone storage", on the existing synthetic "This device" server, mirrored from MediaStore and played by path | The model already had the answer: the 2026-09-21 adoption made "This device" a source the library, Search, artwork and the player understand, and every place that must not dial SMB already skips it (`LocalSource.isLocal`). A second share there means a phone video has a `fileId` like any other — resume points, chapters, scrub thumbnails and Continue watching work unchanged — and the network wall and Settings' share list exclude it with no new branch. Rejected: a separate `phone_videos` table (every consumer of `fileId` would have needed a second kind of file) and playing `content://` URIs (the player, the probe and the frame grabber all take a `File`; with `READ_MEDIA_VIDEO` Android lets an app read media by path, verified on the emulator for both "Allow all" and "Select videos"). Rows are keyed by absolute path, not MediaStore id, because a path is what uniquely names a file across volumes and what G3 keys everything else by. Hiding a folder or a file marks rows `missing` rather than deleting them, so the choice is reversible and loses nothing; deleting from the phone goes through `MediaStore.createDeleteRequest`, the only way an app may delete a video it did not create. The one real clash with downloads was removal, so the two are separate verbs: "Remove download" (safe, the share keeps it) and "Delete from phone" (permanent, red, behind the system's own sheet), with "Hide from Regolith" as the safe default. |
 | 2026-09-23 | Notifications get their own small icon, `ic_notification`: the BANDED Strata Wedge on a 24dp canvas, 19.8 units tall (90% of the frame) | They borrowed `ic_splash_wordmark`, which is also the launcher's themed-icon (monochrome) layer and is therefore drawn on a 108dp adaptive-icon canvas with the safe-zone margin -- the wedge spans about 44 of 108. The status bar scales the whole canvas into its slot, so the mark came out at roughly 40% of the size of its neighbours; the owner noticed it on the Fold as "kinda small". Shrinking the margin in the shared drawable would have made the themed launcher icon crowd its circle, so the two uses split instead. The owner then asked for the banded mark — the state the splash and the loaders show, and the one people recognise — at 90% of an edge-to-edge wedge; the bands are `ic_splash_wedge`'s mapped onto the smaller wedge, so the gaps land near 1.4dp, and the dim bands come out dimmer because the status bar draws small icons from alpha alone. |
+| 2026-09-23 | A poster made in the player is written as `poster.jpg` in the film's folder, cropped 2:3 from a full-resolution EXACT frame, with the box fixed and the picture panned and zoomed behind it | 2:3 because that is every poster tile (`ArtworkKind.POSTER`); a 9:16 poster would have its sides trimmed on every wall. `poster.jpg` because it is the first name the source order tries, so a saved poster always wins. The frame comes from a second `FrameExtractor` rather than the screen, because the player's SurfaceView cannot be read back and may be cropped. A fixed box with the picture moving (the phone-cropper pattern the owner chose) keeps the box as large as the screen allows. Replacing an existing poster.jpg asks first and does not keep the old file. |
 
 ## Phase plan
 

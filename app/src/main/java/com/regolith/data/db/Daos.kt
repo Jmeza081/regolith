@@ -692,6 +692,10 @@ interface ArtworkDao {
     @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND source = 'MOSAIC'")
     suspend fun deleteMosaic(ownerType: String, ownerId: Long)
 
+    /** Every image one owner has, of every kind: a poster the user just set replaces all of them. */
+    @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND ownerVariant = ''")
+    suspend fun deleteOwner(ownerType: String, ownerId: Long)
+
     @Query("DELETE FROM artwork")
     suspend fun deleteAll()
 }

@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -60,6 +61,7 @@ class PlayerViewModel @AssistedInject constructor(
     private val transfers: TransferRepository,
     private val phone: com.regolith.data.repository.PhoneLibrary,
     private val userChapters: UserChapterRepository,
+    private val posters: com.regolith.data.artwork.PosterRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -345,6 +347,29 @@ class PlayerViewModel @AssistedInject constructor(
     /** True while Save is writing to the share; the button shows a ring. */
     val chapterSaving: StateFlow<Boolean> get() = _chapterSaving
     private val _chapterSaving = MutableStateFlow(false)
+
+    /**
+     * True when the film on screen can be given a poster: it is in the
+     * library and lives on a share (a video on the phone has no folder
+     * Regolith can write to). Hides the Playback sheet's
+     * "Make a poster" row otherwise.
+     */
+    val canMakePoster: StateFlow<Boolean> = state.map { it.fileId }.distinctUntilChanged()
+        .mapLatest { id -> id != null && id != RegolithKey.Player.EXTERNAL && posters.target(id) != null }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** "Poster saved to …", once the editor has closed and this screen is back. */
+    val posterMessages: Flow<String> get() = posters.saved
+
+    /**
+     * Pause and say where: the poster editor opens on the frame the film
+     * was showing. Paused, not stopped, so coming back picks up there.
+     */
+    fun pauseForPoster(): Long {
+        val s = state.value
+        if (s.isPlaying) session.togglePlayPause()
+        return s.positionMs
+    }
 
     /** One line per Save, for the snackbar: where the chapters ended up. */
     val chapterSaveMessages: SharedFlow<String> get() = _chapterSaveMessages

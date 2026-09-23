@@ -301,6 +301,39 @@ class ArtworkRepository @Inject constructor(
         }
     }
 
+    /**
+     * A poster.jpg was just written beside [fileId] (the poster editor). Use
+     * [bytes] for every owner it now belongs to, right away, instead of
+     * waiting for a scan to notice the file.
+     *
+     * Nothing else would notice: a cached picture is served for as long as
+     * its file exists ([cached]), and the folder listing it was chosen from
+     * is itself cached for a few minutes. So the old rows and files go, the
+     * new image is written in their place, and the listing is forgotten.
+     *
+     * Which owners follows the source order ([ArtworkCandidates.forFile]):
+     * the folder always, and the film too when it is the only video in it —
+     * in a folder of several, poster.jpg is the collection's, not the film's.
+     *
+     * Returns the owners whose pictures changed, so the caller can drop them
+     * from the image loader's memory as well.
+     */
+    suspend fun adoptPoster(fileId: Long, bytes: ByteArray): List<ArtworkOwner> {
+        val file = mediaFileDao.byId(fileId) ?: return emptyList()
+        listingsLock.withLock { listings.remove(file.shareId to file.relPath.substringBeforeLast('/', "")) }
+        val owners = buildList {
+            add(ArtworkOwner.Folder(file.folderId))
+            if (mediaFileDao.inFolder(file.folderId).size <= 1) add(ArtworkOwner.File(fileId))
+        }
+        for (owner in owners) {
+            artworkDao.deleteOwner(owner.typeName, owner.id)
+            store.delete(owner)
+            saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills)
+        }
+        Log.i(TAG, "poster for file $fileId adopted by $owners")
+        return owners
+    }
+
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */
     suspend fun clearAll() {
         artworkDao.deleteAll()

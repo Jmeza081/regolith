@@ -166,6 +166,8 @@ private data class DragOverlay(val kind: DragKind, val fraction: Float, val xFra
 fun PlayerScreen(
     viewModel: PlayerViewModel,
     onBack: () -> Unit,
+    /** Open the poster editor on (file, position). */
+    onMakePoster: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -190,6 +192,8 @@ fun PlayerScreen(
     // "Saved to the share", at the bottom, gone on its own.
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) { viewModel.chapterSaveMessages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(viewModel) { viewModel.posterMessages.collect { snackbar.showSnackbar(it) } }
+    val canMakePoster by viewModel.canMakePoster.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -720,6 +724,9 @@ fun PlayerScreen(
                 onAutoplayImmediately = viewModel::setAutoplayImmediately,
                 onAmbientLight = viewModel::setAmbientLight,
                 onClose = { sheet = null },
+                onMakePoster = state.fileId?.takeIf { canMakePoster }?.let { id ->
+                    { sheet = null; onMakePoster(id, viewModel.pauseForPoster()) }
+                },
             )
         }
         Sheet.Chapters -> PlayerSheetHost(onDismiss = { sheet = null }, testTag = "player_chapters_sheet") {

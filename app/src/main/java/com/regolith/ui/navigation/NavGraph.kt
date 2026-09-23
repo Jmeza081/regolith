@@ -81,6 +81,8 @@ import com.regolith.ui.components.LocalNavChromeHold
 import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
 import com.regolith.ui.components.ChromeMessageHost
 import com.regolith.ui.components.LocalAppSnackbar
+import com.regolith.ui.poster.PosterEditorScreen
+import com.regolith.ui.poster.PosterEditorViewModel
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.NavChromeHold
@@ -655,6 +657,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     creationCallback = { it.create(key) },
                                 ),
                                 onBack = { backStack.removeLastOrNull() },
+                                onMakePoster = { fileId, ms -> backStack.add(RegolithKey.PosterEditor(fileId, ms)) },
+                            )
+                        }
+                        entry<RegolithKey.PosterEditor> { key ->
+                            PosterEditorScreen(
+                                viewModel = hiltViewModel<PosterEditorViewModel, PosterEditorViewModel.Factory>(
+                                    creationCallback = { it.create(key) },
+                                ),
+                                onClose = { backStack.removeLastOrNull() },
                             )
                         }
                         // Phase 6: AddServer.Search.

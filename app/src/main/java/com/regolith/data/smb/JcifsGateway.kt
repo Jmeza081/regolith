@@ -330,8 +330,8 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             JcifsByteSource(file.openRandomAccess("r"), file.length())
         }
 
-    // --- Writing (P10): three methods, one caller (`SidecarWriter`), one
-    // file name. The URL is built WITHOUT the trailing slash `urlFor` adds:
+    // --- Writing (P10): reached through `writeReplacing` for chapter files
+    // and poster.jpg, and `rename`/`delete` also serve file operations. The URL is built WITHOUT the trailing slash `urlFor` adds:
     // jcifs reads an existing file through either form, but creates a new
     // name as a directory when the URL ends in `/`.
 

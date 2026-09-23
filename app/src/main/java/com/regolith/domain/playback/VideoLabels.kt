@@ -9,6 +9,8 @@ data class VideoInfo(
     val hdr: Boolean,
     val audioMimeType: String?,
     val audioChannels: Int?,
+    /** Frames per second, when the container says; the poster editor's "one frame" step. */
+    val frameRate: Float? = null,
 ) {
     val resolutionLabel: String get() = resolutionLabelFor(width, height)
 

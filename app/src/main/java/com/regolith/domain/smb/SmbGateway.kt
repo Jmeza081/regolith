@@ -25,9 +25,11 @@ interface SmbGateway {
     fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource
 
     // --- Writing (P10). The share was read-only to this app until chapter
-    // sidecars; these three exist for them and are called from one place,
-    // `SidecarWriter`, which only ever names `<basename>.chapters.txt` and
-    // its `.part`. Keep it that way: nothing else on a share is Regolith's.
+    // sidecars. [write] is only ever reached through
+    // `data/smb/ReplacingWrite.kt`, and only for two names: a film's
+    // `<basename>.chapters.txt` and a `poster.jpg` the user saved from the
+    // poster editor (each with its `.part`). Keep it that way: nothing else
+    // on a share is Regolith's to create.
 
     /** Create or replace one file with [bytes]. Returns the file's modified time afterwards. */
     suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long
@@ -40,8 +42,9 @@ interface SmbGateway {
      *
      * [replace] false is the safe default, and deliberately so: jcifs-ng's
      * replacing rename DESTROYS whatever already has the target name
-     * without a word (measured). Only [com.regolith.data.media.SidecarWriter]
-     * passes true, to swap a finished `.part` over the real name.
+     * without a word (measured). Only `writeReplacing`
+     * (`data/smb/ReplacingWrite.kt`) passes true, to swap a finished `.part`
+     * over the real name.
      *
      * A rename cannot cross shares — the server answers "cannot rename
      * between different trees" — so both paths are inside [share].
