@@ -6,7 +6,9 @@ import androidx.media3.common.util.UnstableApi
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.LibraryRepository
+import com.regolith.data.repository.PhoneLibrary
 import com.regolith.data.repository.PlaybackRepository
+import com.regolith.domain.media.PhonePaths
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
@@ -45,6 +47,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val probe: MediaProbe,
     private val transfers: TransferRepository,
     private val fileOps: FileOpsRepository,
+    private val phone: PhoneLibrary,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -68,6 +71,8 @@ class TitleDetailViewModel @AssistedInject constructor(
                 if (file == null) return@collect
                 val progress = playback.progress(fileId)?.takeUnless { it.completed }
                 val share = library.shareLabel(file.shareId).substringAfter(" · ")
+                val isPhone = phone.isPhoneFile(fileId)
+                val folderPath = file.relPath.substringBeforeLast('/', "")
                 _uiState.update {
                     it.copy(
                         loaded = true,
@@ -78,7 +83,15 @@ class TitleDetailViewModel @AssistedInject constructor(
                         chips = chipsFor(file),
                         progressMs = progress?.positionMs?.takeIf { p -> p > 0 },
                         durationMs = progress?.durationMs ?: file.durationMs,
-                        path = "/$share/" + file.relPath.substringBeforeLast('/', "").let { p -> if (p.isEmpty()) "" else "$p/" },
+                        // A phone video's path is where it sits on the phone —
+                        // "DCIM/Camera/" — not the absolute path it is keyed by.
+                        path = if (isPhone) {
+                            PhonePaths.display(folderPath) + "/"
+                        } else {
+                            "/$share/" + folderPath.let { p -> if (p.isEmpty()) "" else "$p/" }
+                        },
+                        phone = isPhone,
+                        phoneFolder = if (isPhone) PhonePaths.display(folderPath).substringAfterLast('/') else "",
                         videoLine = if (file.probedAtMs != null) infoOf(file).videoLine else null,
                         audioLine = if (file.probedAtMs != null) infoOf(file).audioLine else null,
                         modifiedAtMs = file.modifiedAtMs,
@@ -156,6 +169,38 @@ class TitleDetailViewModel @AssistedInject constructor(
             } else {
                 _uiState.update { it.copy(fileOpError = FileOpMessages.forFailure(result.failures.first(), "delete")) }
             }
+        }
+    }
+
+    // ── A phone video (Phone storage) ──────────────────────────────────
+
+    /** "Hide from Regolith": the file stays in its folder, and the screen leaves as if it were gone. */
+    fun hideFromRegolith() {
+        viewModelScope.launch {
+            phone.hideFile(fileId)
+            _uiState.update { it.copy(deleted = true) }
+        }
+    }
+
+    /** Ask MediaStore for the system's delete sheet; the screen launches it. */
+    fun startPhoneDelete() {
+        viewModelScope.launch {
+            val request = phone.deleteRequest(fileId)
+            _uiState.update {
+                if (request == null) it.copy(fileOpError = "This video is no longer on the phone.") else it.copy(phoneDeleteRequest = request)
+            }
+        }
+    }
+
+    /** The sheet is up; forget the request so a recomposition cannot launch it twice. */
+    fun phoneDeleteLaunched() = _uiState.update { it.copy(phoneDeleteRequest = null) }
+
+    /** The sheet came back. Approved means the file is gone; re-read the phone, then leave. */
+    fun phoneDeleteAnswered(approved: Boolean) {
+        if (!approved) return
+        viewModelScope.launch {
+            phone.sync()
+            _uiState.update { it.copy(deleted = true) }
         }
     }
 

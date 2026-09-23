@@ -182,6 +182,7 @@ fun PlayerScreen(
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
     val brightness by viewModel.brightness.collectAsStateWithLifecycle()
     val transfer by viewModel.transfer.collectAsStateWithLifecycle()
+    val onPhone by viewModel.onPhone.collectAsStateWithLifecycle()
     val draft by viewModel.chapterDraft.collectAsStateWithLifecycle()
     val chaptersOpenable by viewModel.chaptersOpenable.collectAsStateWithLifecycle()
     val chapterSaving by viewModel.chapterSaving.collectAsStateWithLifecycle()
@@ -496,6 +497,7 @@ fun PlayerScreen(
         },
         onKeep = viewModel::keepOnDevice,
         onRemove = viewModel::removeFromDevice,
+        canKeep = !onPhone,
         onShuffle = viewModel::toggleShuffle,
         onRepeat = viewModel::cycleRepeat,
         chaptersOpenable = chaptersOpenable,
@@ -806,6 +808,8 @@ private class ChromeCallbacks(
     val onKeep: () -> Unit,
     /** Cancel the download in flight, or remove the finished copy. */
     val onRemove: () -> Unit,
+    /** False for a video the phone already had: there is no share to keep a copy from. */
+    val canKeep: Boolean = true,
     /** Scramble what is left to play, or put it back in folder order. */
     val onShuffle: () -> Unit,
     /** Steps the repeat mode on one: off -> all -> one -> off. */
@@ -1167,7 +1171,7 @@ private fun PillRow(
         )
     }
     val right = @Composable {
-        if (state.fileId != null && state.fileId != com.regolith.ui.navigation.RegolithKey.Player.EXTERNAL) {
+        if (state.fileId != null && state.fileId != com.regolith.ui.navigation.RegolithKey.Player.EXTERNAL && cb.canKeep) {
             DownloadPill(transfer, onMedia, cb.onKeep, cb.onRemove)
         }
         PillButton(

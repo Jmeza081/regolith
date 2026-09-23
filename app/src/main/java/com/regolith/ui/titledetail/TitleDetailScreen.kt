@@ -101,6 +101,10 @@ fun TitleDetailScreen(
         onConfirmDelete = viewModel::confirmDelete,
         onDismissFileOp = viewModel::dismissFileOp,
         onDismissFileOpError = viewModel::dismissFileOpError,
+        onHidePhone = viewModel::hideFromRegolith,
+        onDeletePhone = viewModel::startPhoneDelete,
+        onPhoneDeleteLaunched = viewModel::phoneDeleteLaunched,
+        onPhoneDeleteAnswered = viewModel::phoneDeleteAnswered,
         modifier = modifier,
         inPane = inPane,
     )
@@ -119,10 +123,26 @@ private fun TitleDetailContent(
     onConfirmDelete: () -> Unit,
     onDismissFileOp: () -> Unit,
     onDismissFileOpError: () -> Unit,
+    onHidePhone: () -> Unit,
+    onDeletePhone: () -> Unit,
+    onPhoneDeleteLaunched: () -> Unit,
+    onPhoneDeleteAnswered: (approved: Boolean) -> Unit,
     modifier: Modifier,
     inPane: Boolean,
 ) {
     val state by stateFlow.collectAsStateWithLifecycle()
+    // Deleting a phone video is the system's decision to confirm, not ours:
+    // MediaStore gives back an IntentSender for its own sheet, launched here
+    // and answered with RESULT_OK or not. Like a browser's native confirm(),
+    // except the app never sees the file go.
+    val phoneDelete = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result -> onPhoneDeleteAnswered(result.resultCode == android.app.Activity.RESULT_OK) }
+    LaunchedEffect(state.phoneDeleteRequest) {
+        val request = state.phoneDeleteRequest ?: return@LaunchedEffect
+        onPhoneDeleteLaunched()
+        phoneDelete.launch(androidx.activity.result.IntentSenderRequest.Builder(request).build())
+    }
     val colors = RegolithTheme.colors
     // The file is gone from the share, so there is nothing for this screen
     // to be about: leave the way a back press would.
@@ -195,9 +215,18 @@ private fun TitleDetailContent(
                         modifier = Modifier.weight(1f),
                         testTag = "detail_play_button",
                     )
-                    KeepButton(state.transfer, onKeep, onRemove)
+                    // A phone video is already here; there is nothing to keep.
+                    if (!state.phone) KeepButton(state.transfer, onKeep, onRemove)
                 }
-                TransferLine(state.transfer, onKeep, onRemove)
+                if (state.phone) {
+                    Text(
+                        "On this phone · plays with no network",
+                        style = TextStyles.meta12.copy(lineHeight = 16.designSp()), color = colors.metadata,
+                        modifier = Modifier.testTag("detail_on_phone"),
+                    )
+                } else {
+                    TransferLine(state.transfer, onKeep, onRemove)
+                }
 
                 SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     FactRow("Path", state.path)
@@ -224,7 +253,31 @@ private fun TitleDetailContent(
                 }
                 // The file itself, at the foot of the screen (P12): the two
                 // things that change it ON THE SHARE, each behind a dialog.
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                // A phone video has no share: it can be hidden from Regolith
+                // (the safe verb, first) or deleted from the phone, where
+                // nothing else has a copy — so the words say "for good".
+                if (state.phone) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        Eyebrow("Manage file", muted = true)
+                        SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_manage_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                            ManageRow(
+                                icon = com.composables.icons.lucide.R.drawable.lucide_ic_eye_off,
+                                label = "Hide from Regolith",
+                                meta = "Stays in ${state.phoneFolder.ifEmpty { "its folder" }} — other apps still see it",
+                                onClick = onHidePhone,
+                                testTag = "detail_hide_row",
+                            )
+                            ManageRow(
+                                icon = R.drawable.rg_ic_trash,
+                                label = "Delete from phone",
+                                meta = "Gone for good — no share has a copy",
+                                onClick = onDeletePhone,
+                                testTag = "detail_delete_phone_row",
+                                tint = colors.accent,
+                            )
+                        }
+                    }
+                } else Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     Eyebrow("Manage file", muted = true)
                     SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_manage_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                         ManageRow(

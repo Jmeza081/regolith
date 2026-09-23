@@ -117,20 +117,35 @@ class DeviceLibrary @Inject constructor(
      */
     suspend fun removeIfEmpty() {
         val server = serverDao.byHost(DeviceSource.HOST, PORT) ?: return
-        val share = shareDao.byName(server.id, DeviceSource.SHARE)
-        if (share != null && mediaFileDao.countInShare(share.id) > 0) return
+        // Both shares, not just Downloads: phone storage lives on this server
+        // too, and taking it away would cascade every resume point on a
+        // phone video with it.
+        for (name in listOf(DeviceSource.SHARE, DeviceSource.PHONE_SHARE)) {
+            val share = shareDao.byName(server.id, name)
+            if (share != null && mediaFileDao.countInShare(share.id) > 0) return
+        }
         serverDao.delete(server.id)
     }
 
     /**
-     * The folder adopted copies land in, made on first use.
+     * The root folder of Phone storage ([DeviceSource.PHONE_SHARE]), made on
+     * first use. [PhoneLibrary] hangs one folder per phone directory off it.
+     */
+    suspend fun phoneRootFolder(): FolderEntity = rootFolder(DeviceSource.PHONE_SHARE)
+
+    /**
+     * The folder adopted copies land in, made on first use. (Its
+     * [rootFolder] is shared with Phone storage.)
      *
      * `lastListedAtMs` is set rather than left null on purpose: null means
      * "the scan has not walked this yet" and renders as "Not listed yet".
      * Nothing will ever walk this folder — there is no share to walk — so
      * leaving it null would park a permanent lie in Browse.
      */
-    private suspend fun deviceRootFolder(): FolderEntity {
+    private suspend fun deviceRootFolder(): FolderEntity = rootFolder(DeviceSource.SHARE)
+
+    /** One of the device server's shares and its root folder, server and share made on first use. */
+    private suspend fun rootFolder(shareName: String): FolderEntity {
         val now = System.currentTimeMillis()
         val server = serverDao.byHost(DeviceSource.HOST, PORT) ?: serverDao.byId(
             serverDao.insert(
@@ -145,11 +160,11 @@ class DeviceLibrary @Inject constructor(
                 ),
             ),
         )!!
-        val share = shareDao.byName(server.id, DeviceSource.SHARE) ?: shareDao.byId(
+        val share = shareDao.byName(server.id, shareName) ?: shareDao.byId(
             shareDao.insert(
                 ShareEntity(
                     serverId = server.id,
-                    name = DeviceSource.SHARE,
+                    name = shareName,
                     // Enabled, or the Library wall would not read it: the wall
                     // is built from the ENABLED shares, and a source nobody can
                     // switch on has no way to become visible.
@@ -164,7 +179,7 @@ class DeviceLibrary @Inject constructor(
         )!!
         return folderDao.upsert(
             FolderEntity(
-                shareId = share.id, parentId = null, relPath = "", name = DeviceSource.SHARE,
+                shareId = share.id, parentId = null, relPath = "", name = shareName,
                 fileCount = 0, byteCount = 0, lastListedAtMs = now,
             ),
         )

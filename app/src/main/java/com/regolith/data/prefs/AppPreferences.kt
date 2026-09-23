@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
@@ -48,6 +49,8 @@ class AppPreferences @Inject constructor(
         val appLockAfter = stringPreferencesKey("app_lock_after")
         val shortsAutoAdvance = booleanPreferencesKey("shorts_auto_advance")
         val shortsLength = stringPreferencesKey("shorts_length")
+        val hiddenPhoneFolders = stringSetPreferencesKey("hidden_phone_folders")
+        val hiddenPhoneFiles = stringSetPreferencesKey("hidden_phone_files")
     }
 
     /** Settings › Privacy: ask for a fingerprint, face or screen lock before showing the library. */
@@ -60,6 +63,31 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDeviceViewMode(mode: ViewMode) {
         store.edit { it[Keys.deviceViewMode] = mode.name }
+    }
+
+    /**
+     * Phone-storage folders switched off in Settings, by their path
+     * (`storage/emulated/0/WhatsApp/…`). A path, not a row id: the folder's
+     * row is rebuilt from MediaStore, and a choice like "never show me
+     * WhatsApp" has to outlive that.
+     */
+    val hiddenPhoneFolders: Flow<Set<String>> = store.data.map { it[Keys.hiddenPhoneFolders] ?: emptySet() }
+
+    suspend fun setPhoneFolderHidden(relPath: String, hidden: Boolean) {
+        store.edit { prefs ->
+            val now = prefs[Keys.hiddenPhoneFolders] ?: emptySet()
+            prefs[Keys.hiddenPhoneFolders] = if (hidden) now + relPath else now - relPath
+        }
+    }
+
+    /** Single phone videos hidden with Title Detail's "Hide from Regolith", by path, for the same reason. */
+    val hiddenPhoneFiles: Flow<Set<String>> = store.data.map { it[Keys.hiddenPhoneFiles] ?: emptySet() }
+
+    suspend fun setPhoneFileHidden(relPath: String, hidden: Boolean) {
+        store.edit { prefs ->
+            val now = prefs[Keys.hiddenPhoneFiles] ?: emptySet()
+            prefs[Keys.hiddenPhoneFiles] = if (hidden) now + relPath else now - relPath
+        }
     }
 
     val appLock: Flow<Boolean> = store.data.map { it[Keys.appLock] ?: false }

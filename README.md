@@ -87,6 +87,20 @@ server takes its media list away and leaves everything already downloaded
 where it is, re-homed under *On this device* with its resume point and any
 chapters you wrote — the file keeps its identity, so nothing about it resets.
 
+### Plays what the phone already has
+
+**Library › On this device** also lists the videos that were on the phone before
+Regolith was: Camera, Movies, Download, Telegram and any other folder with a
+video in it. Downloads from a share sit above them, labelled with the server
+they came from, so a copy and a video only the phone has are never confused.
+Chips across the top narrow the page to the downloads or to one folder, and
+**Settings › Phone folders** switches noisy ones (WhatsApp, screen recordings)
+off. Nothing is moved or copied: the app asks for Android's video permission
+from that tab, and "Select videos" works too. Phone videos get resume points,
+scrub thumbnails, chapters and Search like everything else. From Title Detail
+they can be hidden from Regolith, or deleted from the phone through Android's
+own confirmation.
+
 ### Opens out on a foldable
 
 The inner display gets its own layouts: a nav rail that retracts to a spine, the

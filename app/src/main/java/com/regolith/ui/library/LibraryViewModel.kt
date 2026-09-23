@@ -8,6 +8,9 @@ import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
+import com.regolith.data.repository.PhoneLibrary
+import com.regolith.domain.media.DeviceSource
+import com.regolith.domain.media.PhonePaths
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
@@ -65,6 +68,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val prefs: AppPreferences,
     private val transfers: TransferRepository,
     private val selection: SelectionPresenter,
+    private val phone: PhoneLibrary,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -125,12 +129,82 @@ class LibraryViewModel @AssistedInject constructor(
             val rows = transfers.observeAll()
             val files = rows.flatMapLatest { rs -> library.observeFilesByIds(rs.map { it.fileId }) }
             val progress = rows.flatMapLatest { rs -> library.observeProgress(rs.map { it.fileId }) }
-            combine(rows, files, progress) { rs, fs, ps -> Triple(rs, fs, ps) }.collect { (rs, fs, ps) ->
+            val servers = sources.observeServers()
+            combine(rows, files, progress, servers) { rs, fs, ps, sv -> listOf(rs, fs, ps, sv) }.collect { values ->
+                @Suppress("UNCHECKED_CAST") val rs = values[0] as List<com.regolith.data.db.TransferEntity>
+                @Suppress("UNCHECKED_CAST") val fs = values[1] as List<MediaFileEntity>
+                @Suppress("UNCHECKED_CAST") val ps = values[2] as List<PlaybackProgressEntity>
                 val storage = withContext(Dispatchers.IO) { transfers.storage() }
-                val built = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage)
+                val origins = originsFor(fs)
+                val built = buildDevice(rs, fs.associateBy { f -> f.id }, ps.associateBy { p -> p.fileId }, storage, origins)
                 _uiState.update { it.copy(device = it.device.withRows(built)) }
             }
         }
+        viewModelScope.launch {
+            // Phone storage beside the downloads. Its own collector: MediaStore
+            // and the transfer queue change on different clocks, and neither
+            // should rebuild the other's half of the page.
+            val files = phone.observeFiles()
+            val progress = files.flatMapLatest { fs -> library.observeProgress(fs.map { it.id }) }
+            combine(phone.access, phone.observeFolders(), files, progress) { access, folders, fs, ps ->
+                val progressById = ps.associateBy { it.fileId }
+                val byFolder = fs.groupBy { it.folderId }
+                // Newest video first inside a folder, and the folder with the
+                // newest video first on the page: the clip you just shot is
+                // the one you came here for.
+                val built = folders.mapNotNull { folder ->
+                    val videos = byFolder[folder.id].orEmpty().sortedByDescending { it.modifiedAtMs }
+                    if (videos.isEmpty()) return@mapNotNull null
+                    videos.first().modifiedAtMs to PhoneFolder(
+                        folderId = folder.id,
+                        relPath = folder.relPath,
+                        name = folder.name,
+                        path = PhonePaths.display(folder.relPath),
+                        videos = videos.map { phoneRow(it, progressById[it.id]) },
+                    )
+                }.sortedByDescending { it.first }.map { it.second }
+                access to built
+            }.collect { (access, folders) ->
+                _uiState.update { s ->
+                    // A folder chip whose folder has just emptied (hidden, or
+                    // its last video deleted) falls back to everything rather
+                    // than showing a blank page with no chip lit.
+                    val filter = s.device.filter.let { f -> if (f is DeviceFilter.Folder && folders.none { it.folderId == f.folderId }) DeviceFilter.All else f }
+                    s.copy(device = s.device.copy(phoneAccess = access, phoneFolders = folders, filter = filter))
+                }
+            }
+        }
+    }
+
+    /**
+     * Which server each copy came from, by file id: "TOWER". Empty for a copy
+     * already adopted into "This device" — its server is gone, and naming
+     * the synthetic one would say nothing.
+     */
+    private suspend fun originsFor(files: List<MediaFileEntity>): Map<Long, String> {
+        val byShare = files.map { it.shareId }.distinct().associateWith { id -> library.shareLabel(id) }
+        return files.associate { f ->
+            val label = byShare[f.shareId].orEmpty()
+            f.id to if (label.endsWith(" · ${DeviceSource.SHARE}") || label.isEmpty()) "" else label.substringBefore(" · ")
+        }
+    }
+
+    /** A phone video as a finished row: "0:48 · 96 MB", or "1h 30m · 2.2 GB · 15m left". */
+    private fun phoneRow(file: MediaFileEntity, progress: PlaybackProgressEntity?): DeviceRow {
+        val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
+        val meta = listOfNotNull(
+            VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null },
+            file.durationMs?.takeIf { it > 0 }?.let { formatDurationShort(it) },
+            formatBytes(file.sizeBytes),
+            if (progress != null && progress.positionMs > 0 && progress.durationMs > 0 && !progress.completed) formatRemaining(progress.positionMs, progress.durationMs) else null,
+        ).joinToString(" · ")
+        return DeviceRow(
+            fileId = file.id,
+            name = if (parsed.matched) parsed.display else file.name.substringBeforeLast('.'),
+            status = TransferStatus.DONE, cause = null, causeBytes = null,
+            bytesDone = file.sizeBytes, totalBytes = file.sizeBytes, meta = meta,
+            phone = true,
+        )
     }
 
     /** The device tab (design section 05, "On device · transfers"): files that play first, then the failures. */
@@ -139,12 +213,17 @@ class LibraryViewModel @AssistedInject constructor(
         files: Map<Long, MediaFileEntity>,
         progress: Map<Long, PlaybackProgressEntity>,
         storage: TransferRepository.Storage,
+        origins: Map<Long, String> = emptyMap(),
     ): DeviceUiState {
         fun row(t: com.regolith.data.db.TransferEntity): DeviceRow? {
             val file = files[t.fileId] ?: return null
             val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
             val p = progress[t.fileId]
             val meta = listOfNotNull(
+                // Where it came from, first: on a page that also lists the
+                // phone's own videos, "a copy of something on TOWER" is the
+                // fact that tells the two apart.
+                origins[t.fileId]?.ifEmpty { null },
                 VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null },
                 formatBytes(t.totalBytes),
                 if (p != null && p.positionMs > 0 && p.durationMs > 0 && !p.completed) formatRemaining(p.positionMs, p.durationMs) else null,
@@ -356,6 +435,24 @@ class LibraryViewModel @AssistedInject constructor(
             _uiState.update { it.copy(checkingReachability = false) }
         }
     }
+
+    // --- device tab: phone storage
+
+    /** The chips. */
+    fun setDeviceFilter(filter: DeviceFilter) = updateDevice { d -> d.copy(filter = filter, picked = null) }
+
+    /**
+     * The device tab came into view. The permission may have changed in
+     * Android's settings, and videos may have arrived while the app was
+     * away, so re-read both. Cheap: a sync writes only what changed.
+     */
+    fun onDeviceShown() {
+        phone.refreshAccess()
+        phone.requestSync()
+    }
+
+    /** The system permission dialog answered. */
+    fun onPhoneAccessAnswered() = onDeviceShown()
 
     // --- device tab
     fun retryTransfer(fileId: Long) = viewModelScope.launch { transfers.start(fileId) }.let { }

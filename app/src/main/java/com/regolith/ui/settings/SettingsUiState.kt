@@ -76,6 +76,8 @@ data class SettingsUiState(
     val confirmClearChapters: Boolean = false,
     /** One switch per enabled share: does Done write a chapter file beside each film there (P10). */
     val shareWrites: List<ShareWriteRow> = emptyList(),
+    /** Settings › Phone folders: one switch per phone directory with videos. Empty until access is granted. */
+    val phoneFolders: List<PhoneFolderRow> = emptyList(),
     // --- Privacy: the app lock (P11).
     /** Settings › Shorts: how long a clip may be and still reach the feed. */
     val shortsLength: ShortsLength = ShortsLength.DEFAULT,
@@ -95,6 +97,15 @@ data class SettingsUiState(
 /** "Write to media on TOWER": one enabled share and whether chapter files go to it. */
 data class ShareWriteRow(val shareId: Long, val label: String, val enabled: Boolean) {
     val testTag get() = "settings_share_write_$shareId"
+}
+
+/**
+ * One phone folder's switch: "Camera · 26 videos · DCIM/Camera". Counts
+ * include the videos a hidden folder is hiding, so switching it back on
+ * says what will come back.
+ */
+data class PhoneFolderRow(val relPath: String, val name: String, val path: String, val count: Int, val shown: Boolean) {
+    val testTag get() = "settings_phone_folder_${relPath.hashCode()}"
 }
 
 /**

@@ -105,6 +105,14 @@ import com.regolith.ui.theme.DialogShape
 import com.regolith.ui.components.DestructiveButton
 import com.regolith.ui.components.SecondaryButton
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as rowItems // the grid import below owns `items`
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.regolith.domain.media.PhoneAccess
+import com.regolith.ui.components.FilterChip
 
 private enum class LibraryTab { NETWORK, ON_DEVICE }
 
@@ -147,11 +155,14 @@ fun LibraryScreen(
     var playAllOpen by remember { mutableStateOf(false) }
     val unreachable = state.unreachable
     val readyCount = state.device.ready.size
+    // Downloads that play plus the phone's own videos: everything the device
+    // tab can start with no network.
+    val deviceCount = state.device.playableCount
 
-    // With no server left but copies still here, open on the tab that has
-    // something on it. Keyed on the CONDITION, not on the state, so it fires
-    // once when the last server goes and never fights a later tap on Network.
-    val onlyDeviceHasContent = state.loaded && state.noSource && readyCount > 0
+    // With no server left but something on the phone, open on the tab that
+    // has something on it. Keyed on the CONDITION, not on the state, so it
+    // fires once and never fights a later tap on Network.
+    val onlyDeviceHasContent = state.loaded && state.noSource && deviceCount > 0
     LaunchedEffect(onlyDeviceHasContent) {
         if (onlyDeviceHasContent) tab = LibraryTab.ON_DEVICE
     }
@@ -165,6 +176,37 @@ fun LibraryScreen(
     LaunchedEffect(tab) {
         if (tab == LibraryTab.ON_DEVICE) viewModel.cancelSelection() else viewModel.cancelDeviceSelection()
     }
+    // Every time the device tab is in view — including coming back from the
+    // system permission sheet or Android's settings — re-read the phone:
+    // the permission can change and videos can arrive while we are away,
+    // and nothing tells an app either. `repeatOnLifecycle` is the Compose
+    // way to say "on every resume", like a visibilitychange listener.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(tab, lifecycle) {
+        if (tab == LibraryTab.ON_DEVICE) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.onDeviceShown() }
+    }
+    // The system's own "Allow Regolith to access videos?" sheet. Both
+    // permissions in one request: that is what makes it offer "Select
+    // videos" beside "Allow all". The answer arrives here; the ViewModel
+    // re-reads what was granted rather than trusting this map.
+    var askedPhone by rememberSaveable { mutableStateOf(false) }
+    val askPhone = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        askedPhone = true
+        viewModel.onPhoneAccessAnswered()
+    }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val requestPhone = {
+        askPhone.launch(arrayOf(android.Manifest.permission.READ_MEDIA_VIDEO, android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
+    }
+    // After a refusal Android stops showing the sheet at all, so the only
+    // way back is the app's page in Android's settings.
+    val openAppSettings = {
+        context.startActivity(
+            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
+        )
+    }
     // No BackHandler: back walks out of the collection and the selection
     // comes with it, so a pick can span a wall and the folders under it.
     // Leaving selection is the X above or Cancel below.
@@ -172,6 +214,10 @@ fun LibraryScreen(
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().testTag("library_screen")) {
         val subtitle = when {
+            tab == LibraryTab.ON_DEVICE && state.device.phoneCount > 0 -> listOfNotNull(
+                when (readyCount) { 0 -> null; 1 -> "1 download"; else -> "$readyCount downloads" },
+                "${state.device.phoneCount} on this phone",
+            ).joinToString(" · ")
             tab == LibraryTab.ON_DEVICE -> "${formatBytes(state.device.usedBytes)} of ${formatBytes(state.device.totalBytes)} · plays with no network"
             unreachable.isNotEmpty() -> "${unreachable.first().name} unreachable · $readyCount file${if (readyCount == 1) "" else "s"} playable here"
             else -> state.meta
@@ -221,23 +267,17 @@ fun LibraryScreen(
             )
         }
 
-        // No server AND nothing kept here: there is genuinely nothing to show,
-        // so the whole screen is the invitation to add one.
-        //
-        // With copies on the device the tabs have to stay, even with no server
-        // at all. Disconnecting the last one is exactly when someone goes
-        // looking for what they kept, and returning here would have made those
-        // files unreachable from Library — the one screen that lists them.
-        if (state.loaded && state.noSource && readyCount == 0) {
-            NoSource(onAddServer)
-            return
-        }
+        // The tabs stay even with no server at all. There used to be a
+        // whole-screen "add a server" here for that case, but the device tab
+        // is never empty of purpose any more: it is where the phone's own
+        // videos live, and where the copies you kept wait after the last
+        // server goes. The Network tab carries the invitation instead.
 
         if (onBack == null) {
             SegmentedTabs(
                 segments = listOf(
                     Segment("Network", "library_tab_network"),
-                    Segment("On this device", "library_tab_device", count = readyCount.takeIf { it > 0 }),
+                    Segment("On this device", "library_tab_device", count = deviceCount.takeIf { it > 0 }),
                 ),
                 selected = if (tab == LibraryTab.NETWORK) 0 else 1,
                 onSelect = { tab = if (it == 0) LibraryTab.NETWORK else LibraryTab.ON_DEVICE },
@@ -272,6 +312,10 @@ fun LibraryScreen(
                     onLongPress = viewModel::beginDeviceSelection,
                     onToggle = viewModel::toggleDeviceSelection,
                     onClearAll = viewModel::askRemoveAll,
+                    onFilter = viewModel::setDeviceFilter,
+                    askedPhone = askedPhone,
+                    onAskPhone = requestPhone,
+                    onOpenAppSettings = openAppSettings,
                 )
                 val devicePicked = state.device.picked
                 if (devicePicked != null) {
@@ -865,25 +909,60 @@ private fun DeviceTab(
     onLongPress: (Long) -> Unit = {},
     onToggle: (Long) -> Unit = {},
     onClearAll: () -> Unit = {},
+    onFilter: (DeviceFilter) -> Unit = {},
+    askedPhone: Boolean = false,
+    onAskPhone: () -> Unit = {},
+    onOpenAppSettings: () -> Unit = {},
 ) {
     val colors = RegolithTheme.colors
     val picked = state.picked
     val selecting = picked != null
-    // One row renderer for all three sections, so picking behaves the same
-    // whether a copy is ready, arriving or failed.
+    // One row renderer for every section, so picking behaves the same
+    // whether a copy is ready, arriving or failed. A phone video is drawn by
+    // the same row but is never pickable: "Remove download" on the only copy
+    // of someone's video would be a delete wearing the wrong name.
     val deviceRow: @Composable (DeviceRow, androidx.compose.ui.unit.Dp, String?, () -> Unit, Boolean) -> Unit =
         { row, minHeight, action, onAction, dimThumb ->
             DeviceRowView(
                 row = row,
                 minHeight = minHeight,
-                onClick = { if (selecting) onToggle(row.fileId) else onOpenTitle(row.fileId) },
-                onLongClick = { onLongPress(row.fileId) },
-                checked = if (selecting) row.fileId in picked!! else null,
+                onClick = { if (selecting && !row.phone) onToggle(row.fileId) else onOpenTitle(row.fileId) },
+                onLongClick = if (row.phone) null else { { onLongPress(row.fileId) } },
+                checked = if (selecting && !row.phone) row.fileId in picked!! else null,
                 action = action,
                 onAction = onAction,
                 dimThumb = dimThumb,
             )
         }
+    // Tiles, three across. Chunked rows rather than a LazyVerticalGrid: this
+    // is already inside a LazyColumn, which cannot give a nested lazy grid a
+    // height to work with.
+    val deviceGrid: @Composable (List<DeviceRow>) -> Unit = { rows ->
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            rows.chunked(DEVICE_COLUMNS).forEach { rowOfTiles ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    rowOfTiles.forEach { row ->
+                        val pickable = selecting && !row.phone
+                        MediaTile(
+                            artwork = ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.POSTER),
+                            title = row.name,
+                            meta = row.meta,
+                            onClick = { if (pickable) onToggle(row.fileId) else onOpenTitle(row.fileId) },
+                            onLongClick = if (row.phone) null else { { onLongPress(row.fileId) } },
+                            checked = if (pickable) row.fileId in picked!! else null,
+                            onCheckClick = { onToggle(row.fileId) },
+                            selected = pickable && row.fileId in picked!!,
+                            testTag = row.testTag,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(DEVICE_COLUMNS - rowOfTiles.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+    val filter = state.filter
+    val openFolder = (filter as? DeviceFilter.Folder)?.let { f -> state.phoneFolders.firstOrNull { it.folderId == f.folderId } }
     LazyColumn(
         Modifier.fillMaxSize().testTag("library_device_list"),
         contentPadding = PaddingValues(
@@ -892,7 +971,37 @@ private fun DeviceTab(
         ),
         verticalArrangement = Arrangement.spacedBy(Spacing.s18),
     ) {
-        if (state.ready.isEmpty() && state.inFlight.isEmpty() && state.failed.isEmpty()) {
+        // Where things came from, as a row of chips: all of it, only what
+        // came off a share, or one phone folder. Only once the phone has
+        // folders to offer — with downloads alone there is nothing to narrow.
+        if (state.phoneFolders.isNotEmpty() && !selecting) {
+            item {
+                DeviceChips(state, onFilter)
+            }
+        }
+        if (state.phoneAccess == PhoneAccess.PARTIAL && filter == DeviceFilter.All) {
+            item { PartialAccessCard(count = state.phoneCount, onChange = onAskPhone) }
+        }
+
+        // One phone folder: a flat list, newest first. Nothing to walk into.
+        if (openFolder != null) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    Eyebrow("${openFolder.path} · ${formatFileCount(openFolder.videos.size)}", muted = true)
+                    if (state.viewMode == ViewMode.GRID) {
+                        deviceGrid(openFolder.videos)
+                    } else {
+                        SurfaceCard(modifier = Modifier.fillMaxWidth().testTag(openFolder.testTag), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                            openFolder.videos.forEach { row -> deviceRow(row, 64.dp, null, {}, false) }
+                        }
+                    }
+                }
+            }
+            return@LazyColumn
+        }
+
+        val showPhone = filter == DeviceFilter.All
+        if (state.noDownloads && (filter == DeviceFilter.Downloads || (state.phoneCount == 0 && state.phoneAccess != PhoneAccess.NONE))) {
             item {
                 // The one empty state in the app that gets a drawing. It is
                 // also the only one that is a normal resting state rather
@@ -918,13 +1027,16 @@ private fun DeviceTab(
                     )
                 }
             }
-            return@LazyColumn
+            if (!showPhone) return@LazyColumn
         }
         if (state.ready.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Eyebrow("Ready offline", Modifier.weight(1f), muted = true)
+                        // Named for where the copies came from, because the
+                        // page also lists videos that came from nowhere but
+                        // the phone — and only these can be removed safely.
+                        Eyebrow("Downloaded from shares", Modifier.weight(1f), muted = true)
                         // Beside its own eyebrow, the way "Clear failed" sits
                         // beside its own. The page's one page-level act, and
                         // it asks before it does anything.
@@ -938,30 +1050,7 @@ private fun DeviceTab(
                         }
                     }
                     if (state.viewMode == ViewMode.GRID) {
-                        // Chunked rows rather than a LazyVerticalGrid: this is
-                        // already inside a LazyColumn, which cannot give a
-                        // nested lazy grid a height to work with.
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                            state.ready.chunked(DEVICE_COLUMNS).forEach { rowOfTiles ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                    rowOfTiles.forEach { row ->
-                                        MediaTile(
-                                            artwork = ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.POSTER),
-                                            title = row.name,
-                                            meta = row.meta,
-                                            onClick = { if (selecting) onToggle(row.fileId) else onOpenTitle(row.fileId) },
-                                            onLongClick = { onLongPress(row.fileId) },
-                                            checked = if (selecting) row.fileId in picked!! else null,
-                                            onCheckClick = { onToggle(row.fileId) },
-                                            selected = selecting && row.fileId in picked!!,
-                                            testTag = row.testTag,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                                    repeat(DEVICE_COLUMNS - rowOfTiles.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                            }
-                        }
+                        deviceGrid(state.ready)
                     } else {
                         SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                             state.ready.forEach { row -> deviceRow(row, 64.dp, null, {}, false) }
@@ -1010,6 +1099,130 @@ private fun DeviceTab(
                 }
             }
         }
+
+        // Phone storage, below the downloads and always after them: a copy
+        // and a video only the phone has must never be confused, and the
+        // order of the page is the first thing that says which is which.
+        if (!showPhone) return@LazyColumn
+        if (state.phoneAccess == PhoneAccess.NONE) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    Eyebrow("Phone storage", muted = true)
+                    PhoneAccessCard(asked = askedPhone, onAsk = onAskPhone, onOpenSettings = onOpenAppSettings)
+                }
+            }
+            return@LazyColumn
+        }
+        if (state.phoneFolders.isEmpty()) return@LazyColumn
+        item { Eyebrow("Phone storage · ${state.phoneFolders.size} ${if (state.phoneFolders.size == 1) "folder" else "folders"}", muted = true) }
+        rowItems(state.phoneFolders, key = { it.testTag }) { folder ->
+            PhoneFolderStrip(folder, onOpen = { onFilter(DeviceFilter.Folder(folder.folderId)) }, onOpenTitle = onOpenTitle)
+        }
+    }
+}
+
+/**
+ * The origin chips across the top of the device tab: All, Downloads, then
+ * one per phone folder in the order the page lists them. The same
+ * [FilterChip] Search uses, so a filter looks like a filter everywhere.
+ */
+@Composable
+private fun DeviceChips(state: DeviceUiState, onFilter: (DeviceFilter) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), modifier = Modifier.testTag("device_filter_chips")) {
+        item { FilterChip("All", state.filter == DeviceFilter.All, { onFilter(DeviceFilter.All) }, "device_filter_all") }
+        if (!state.noDownloads) {
+            item { FilterChip("Downloads · ${state.ready.size}", state.filter == DeviceFilter.Downloads, { onFilter(DeviceFilter.Downloads) }, "device_filter_downloads", icon = R.drawable.rg_ic_server) }
+        }
+        rowItems(state.phoneFolders, key = { it.testTag }) { folder ->
+            FilterChip(
+                "${folder.name} · ${folder.videos.size}",
+                (state.filter as? DeviceFilter.Folder)?.folderId == folder.folderId,
+                { onFilter(DeviceFilter.Folder(folder.folderId)) },
+                "device_filter_folder_${folder.folderId}",
+                icon = R.drawable.rg_ic_folder_small,
+            )
+        }
+    }
+}
+
+/**
+ * One phone folder on the All view: its name, how many, where it is, then
+ * its newest videos in a strip. Tapping the name narrows the page to the
+ * folder (the same as its chip); tapping a video opens it.
+ */
+@Composable
+private fun PhoneFolderStrip(folder: PhoneFolder, onOpen: () -> Unit, onOpenTitle: (Long) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8), modifier = Modifier.testTag(folder.testTag)) {
+        ListRow(
+            title = folder.name,
+            meta = "${formatFileCount(folder.videos.size)} · ${folder.path}",
+            leading = RowLeading.IconBox(R.drawable.rg_ic_browse),
+            trailing = RowTrailing.Chevron,
+            onClick = onOpen,
+            testTag = "${folder.testTag}_header",
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            rowItems(folder.videos.take(PHONE_STRIP_MAX), key = { it.fileId }) { row ->
+                MediaTile(
+                    artwork = ArtworkRequest(ArtworkOwner.File(row.fileId), ArtworkKind.THUMB),
+                    kind = ArtworkKind.THUMB,
+                    title = row.name,
+                    meta = row.meta,
+                    onClick = { onOpenTitle(row.fileId) },
+                    testTag = row.testTag,
+                    modifier = Modifier.width(132.scaledDp()),
+                    shape = RoundedCornerShape(10.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Phone storage before anyone has said yes: what it is, that nothing moves,
+ * and the one red button on the page. After a refusal the system will not
+ * show its sheet again, so the button becomes the way to Android's settings.
+ */
+@Composable
+private fun PhoneAccessCard(asked: Boolean, onAsk: () -> Unit, onOpenSettings: () -> Unit) {
+    val colors = RegolithTheme.colors
+    SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("device_phone_access_card"), contentPadding = PaddingValues(Spacing.s18)) {
+        DisplayText("Play the videos already on this phone", style = TextStyles.dialogTitle)
+        Spacer(Modifier.height(Spacing.s8))
+        Text(
+            "Camera, Movies, Download and the rest, listed here beside your downloads. Nothing is moved, copied or uploaded.",
+            style = TextStyles.body, color = colors.body,
+        )
+        Spacer(Modifier.height(Spacing.s18))
+        if (asked) {
+            PrimaryButton(text = "Open Android settings", onClick = onOpenSettings, testTag = "device_phone_settings_button", modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(Spacing.s8))
+            Text("Allow Photos and videos there, then come back.", style = TextStyles.meta, color = colors.metadata)
+        } else {
+            PrimaryButton(text = "Show phone videos", onClick = onAsk, testTag = "device_phone_allow_button", modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(Spacing.s8))
+            Text("Android asks next. \"Select videos\" works too — you will see only the ones you pick.", style = TextStyles.meta, color = colors.metadata)
+        }
+    }
+}
+
+/** "Select videos" was chosen: say so, because new videos will not appear on their own. */
+@Composable
+private fun PartialAccessCard(count: Int, onChange: () -> Unit) {
+    val colors = RegolithTheme.colors
+    SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("device_phone_partial_card"), contentPadding = PaddingValues(Spacing.s12)) {
+        Text(
+            when (count) {
+                0 -> "No videos picked yet"
+                1 -> "Showing the 1 video you picked"
+                else -> "Showing the $count videos you picked"
+            },
+            style = TextStyles.settingLabel, color = colors.ink,
+        )
+        Spacer(Modifier.height(Spacing.s4))
+        Text("New videos on this phone won't appear until you pick them too.", style = TextStyles.meta, color = colors.body)
+        Spacer(Modifier.height(Spacing.s12))
+        SecondaryButton(text = "Pick more or allow all", onClick = onChange, compact = true, testTag = "device_phone_pick_more_button")
     }
 }
 
@@ -1094,3 +1307,6 @@ private fun DeviceRowView(
  * the two tabs read as the same kind of page at the same size.
  */
 private const val DEVICE_COLUMNS = 3
+
+/** Videos in one folder's strip on the All view; the folder's chip or header shows the rest. */
+private const val PHONE_STRIP_MAX = 12

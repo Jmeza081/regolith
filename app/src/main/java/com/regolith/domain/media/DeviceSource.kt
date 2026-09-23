@@ -32,10 +32,43 @@ object DeviceSource {
     /** What Settings and the Library wall call it. */
     const val NAME = "This device"
 
-    /** Its one share. Files land flat inside it, named as [com.regolith.data.transfer.DownloadStore] named them. */
+    /** Adopted downloads. Files land flat inside it, named as [com.regolith.data.transfer.DownloadStore] named them. */
     const val SHARE = "Downloads"
 
+    /**
+     * The videos the phone already had — Camera, Movies, Download — read
+     * through MediaStore ([com.regolith.data.repository.PhoneLibrary]).
+     *
+     * A second share on the SAME synthetic server rather than a server of
+     * its own, so every place that already keeps "This device" out of the
+     * network wall, Settings' share list, the scan and the reachability
+     * probe keeps this out too, with no new branch.
+     */
+    const val PHONE_SHARE = "Phone storage"
+
     fun isDevice(host: String): Boolean = host.equals(HOST, ignoreCase = true)
+}
+
+/**
+ * How a phone-storage path reads to a person.
+ *
+ * Phone rows are keyed by their absolute path minus the leading slash
+ * (`storage/emulated/0/DCIM/Camera/VID_1.mp4`), because that is what
+ * uniquely names a file across the internal storage and an SD card and
+ * what the player opens. Nobody thinks of their phone that way, so this
+ * turns it back into `DCIM/Camera`.
+ */
+object PhonePaths {
+    private const val PRIMARY = "storage/emulated/0/"
+
+    /** "DCIM/Camera" for the internal storage; "SD card · Movies" for anything else. */
+    fun display(relPath: String): String {
+        if (relPath.startsWith(PRIMARY)) return relPath.removePrefix(PRIMARY)
+        if (relPath == PRIMARY.trimEnd('/')) return "Internal storage"
+        // storage/<volume-id>/Movies → "SD card · Movies"
+        val rest = relPath.removePrefix("storage/").substringAfter('/', "")
+        return if (rest.isEmpty()) "SD card" else "SD card · $rest"
+    }
 }
 
 /**
