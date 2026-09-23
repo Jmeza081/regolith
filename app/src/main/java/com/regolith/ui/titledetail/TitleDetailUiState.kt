@@ -40,6 +40,21 @@ data class TitleDetailUiState(
     val fileOpError: String? = null,
     /** The file is gone from the share; the screen has nothing left to show. */
     val deleted: Boolean = false,
+    // --- A video the phone already had (Phone storage), not a share file.
+    /**
+     * True for a phone video. It has no share to keep a copy from, rename on
+     * or delete from, so the Keep circle and the share's Manage rows give way
+     * to "Hide from Regolith" and "Delete from phone".
+     */
+    val phone: Boolean = false,
+    /** "Movies", for the hide row's promise that the file stays there. */
+    val phoneFolder: String = "",
+    /**
+     * The system's delete sheet, waiting to be launched. An app may not
+     * delete a video it did not make, so MediaStore hands back a request
+     * the person approves. One-shot: the screen launches it and clears it.
+     */
+    val phoneDeleteRequest: android.content.IntentSender? = null,
 )
 
 /** A sibling file in a title folder: its thumb, filename, "1h 56m · 8.4 GB". */

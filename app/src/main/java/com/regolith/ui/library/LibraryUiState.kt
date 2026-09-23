@@ -3,6 +3,7 @@ package com.regolith.ui.library
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.ViewMode
+import com.regolith.domain.media.PhoneAccess
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.util.SelectionUiState
@@ -106,8 +107,14 @@ data class DeviceRow(
     val causeBytes: Long?,
     val bytesDone: Long,
     val totalBytes: Long,
-    /** "1080p · 4.0 GB · 15m left" for a finished copy. */
+    /** "TOWER · 1080p · 4.0 GB · 15m left" for a finished copy. */
     val meta: String,
+    /**
+     * A video the phone already had, not a copy. It plays like a finished
+     * download but is not one: it cannot be picked for "Remove download",
+     * because removing it would delete someone's only copy.
+     */
+    val phone: Boolean = false,
 ) {
     val testTag get() = "device_row_$fileId"
     val fraction: Float get() = if (totalBytes > 0) (bytesDone.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
@@ -142,7 +149,23 @@ data class DeviceUiState(
      * anyone who deselected their last row and tapped through.
      */
     val confirmRemove: RemoveTarget? = null,
+    // --- Phone storage: the videos the phone already had (PhoneLibrary).
+    /** What the person has allowed; NONE draws the ask card in place of the section. */
+    val phoneAccess: PhoneAccess = PhoneAccess.NONE,
+    /** One entry per phone folder with something showing in it, most recent video first. */
+    val phoneFolders: List<PhoneFolder> = emptyList(),
+    /** Which origin the chips narrow the page to. */
+    val filter: DeviceFilter = DeviceFilter.All,
 ) {
+    /** Every phone video showing, for the tab's count and the header. */
+    val phoneCount: Int get() = phoneFolders.sumOf { it.videos.size }
+
+    /** What the "On this device" tab counts: copies that play, plus the phone's own videos. */
+    val playableCount: Int get() = ready.size + phoneCount
+
+    /** No copies anywhere in any state. The downloads half of the page has nothing to say. */
+    val noDownloads: Boolean get() = ready.isEmpty() && inFlight.isEmpty() && failed.isEmpty()
+
     /** Everything the page lists, for "Select all". */
     val allFileIds: List<Long> get() = (ready + inFlight + failed).map { it.fileId }
 
@@ -160,6 +183,37 @@ data class DeviceUiState(
         return (ready + inFlight + failed).filter { it.fileId in ids }
             .sumOf { if (it.status == TransferStatus.DONE) it.totalBytes else it.bytesDone }
     }
+}
+
+/**
+ * A phone directory with videos in it: "Camera · DCIM/Camera".
+ *
+ * [videos] are [DeviceRow]s with status DONE, so the same row and tile
+ * renderers draw a phone video and a finished download — the difference
+ * the page makes is WHERE they sit and the origin their meta line names,
+ * not a second visual language.
+ */
+data class PhoneFolder(
+    val folderId: Long,
+    /** The path the folder is keyed by, which Settings' hide switch stores. */
+    val relPath: String,
+    val name: String,
+    /** "DCIM/Camera", or "SD card · Movies". */
+    val path: String,
+    val videos: List<DeviceRow>,
+) {
+    val testTag get() = "device_phone_folder_$folderId"
+}
+
+/**
+ * The chip row on the device tab: everything, only the copies that came off
+ * a share, or one phone folder. A filter rather than a pushed screen,
+ * because a phone folder is a flat list with nowhere further to walk.
+ */
+sealed interface DeviceFilter {
+    data object All : DeviceFilter
+    data object Downloads : DeviceFilter
+    data class Folder(val folderId: Long) : DeviceFilter
 }
 
 /** Which copies a confirm dialog on the device page is about. */

@@ -22,6 +22,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Library › On this device › Phone storage: the videos already on the
+         phone (Camera, Movies, Download, …), read through MediaStore and
+         played straight from their own folders. Asked from that tab, never
+         at launch. Declaring USER_SELECTED as well is what puts "Select
+         videos" in the system dialog (Android 14+), so someone can share
+         five clips without sharing the camera roll. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
     <application
         android:name=".RegolithApp"

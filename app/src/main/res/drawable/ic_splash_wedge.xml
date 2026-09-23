@@ -2,8 +2,8 @@
      mark SplashContent then draws. It used to be the solid wedge of
      @drawable/ic_splash_wordmark, so the mark CHANGED shape at the handoff
      from the system splash to the app's own. That drawable stays as it is:
-     it is also the notification small icon, where bands this fine would
-     turn to mud at 24dp.
+     it is also the launcher's themed (monochrome) icon layer. The
+     notification icon is ic_notification, these bands redrawn at 24dp.
 
      Geometry is ic_launcher_foreground's, which is the wordmark wedge's rhythm
      at the 108 viewport the splash icon wants. -->

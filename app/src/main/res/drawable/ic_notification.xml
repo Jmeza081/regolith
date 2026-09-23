@@ -1,0 +1,28 @@
+<!-- The status-bar icon for every notification the app posts (downloads,
+     the scan, the artwork walk): the Strata Wedge, banded, as the splash
+     and the loaders draw it — the state of the mark people recognise.
+
+     Its own drawable rather than ic_splash_wordmark or ic_splash_wedge:
+     those sit on a 108dp adaptive-icon canvas with the launcher's
+     safe-zone margin, so as a small icon they filled barely 40% of the
+     slot. Here the wedge is 19.8 units tall in a 24dp frame (90% of edge
+     to edge, the owner's call on the Fold), and the bands are
+     ic_splash_wedge's mapped onto it, so the gaps land at ~1.4dp and still
+     read at status-bar size.
+
+     Android draws a small icon from the alpha channel alone, as a white
+     silhouette: the 62% bands come out dimmer, the same rhythm as the mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group android:name="wedge">
+        <clip-path android:pathData="M2.92,2.1 L21.08,12 L2.92,21.9 Q7.05,12 2.92,2.1 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,1.28 H24 V4.99 H0 Z" />
+        <path android:fillColor="#9EFFFFFF" android:pathData="M0,6.43 H24 V9.32 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,10.56 H24 V14.27 H0 Z" />
+        <path android:fillColor="#9EFFFFFF" android:pathData="M0,15.71 H24 V18.39 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,19.63 H24 V22.73 H0 Z" />
+    </group>
+</vector>

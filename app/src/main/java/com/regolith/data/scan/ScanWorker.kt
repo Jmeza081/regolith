@@ -189,7 +189,7 @@ class ScanWorker @AssistedInject constructor(
             else -> listOf("%,d files".format(p.files), "/" + p.path.ifEmpty { "…" }).joinToString(" · ")
         }
         val notification = NotificationCompat.Builder(applicationContext, RegolithNotifications.CHANNEL_SCAN)
-            .setSmallIcon(R.drawable.ic_splash_wordmark)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
             .setProgress(0, 0, true)

@@ -221,6 +221,30 @@ fun SettingsScreen(
                 }
             }
 
+            // Phone storage's folders, beside Downloads because both answer
+            // "what is on this phone". Only once there is something to switch:
+            // before access is granted the device tab is where that is asked.
+            if (state.phoneFolders.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    Eyebrow("Phone folders · ${state.phoneFolders.size}", muted = true)
+                    SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("settings_phone_folders"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                        state.phoneFolders.forEach { row ->
+                            RegolithSwitch(
+                                label = row.name,
+                                note = "${if (row.count == 1) "1 video" else "${row.count} videos"} · ${row.path}",
+                                checked = row.shown,
+                                onCheckedChange = { viewModel.setPhoneFolderShown(row.relPath, it) },
+                                testTag = row.testTag,
+                            )
+                        }
+                    }
+                    Text(
+                        "Off keeps a folder's videos out of Library, Search and Continue watching. Nothing on the phone is moved or deleted.",
+                        style = TextStyles.settingMeta, color = colors.metadata,
+                    )
+                }
+            }
+
             // Wide windows only: on a phone the pill is the bottom bar and
             // there is no side space to reclaim, so the row would toggle
             // Downloads, between Playback and Display: Media below is about

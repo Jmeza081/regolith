@@ -151,7 +151,7 @@ class ArtworkWorker @AssistedInject constructor(
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(RegolithNotifications.CHANNEL_ARTWORK, "Artwork", NotificationManager.IMPORTANCE_LOW))
         val notification = NotificationCompat.Builder(applicationContext, RegolithNotifications.CHANNEL_ARTWORK)
-            .setSmallIcon(R.drawable.ic_splash_wordmark)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Preparing artwork")
             .setContentText(if (total > 0) "$done of $total" else "Working out what needs a picture")
             .setProgress(total, done, total == 0)

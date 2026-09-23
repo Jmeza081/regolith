@@ -6,6 +6,7 @@ import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
+import com.regolith.data.repository.PhoneLibrary
 import com.regolith.data.repository.StorageSweeper
 import com.regolith.data.transfer.SelectionStore
 import com.regolith.data.transfer.TransferRepository
@@ -54,6 +55,7 @@ class AppViewModel @Inject constructor(
     private val playback: PlaybackSession,
     private val biometrics: BiometricGate,
     private val sweeper: StorageSweeper,
+    private val phone: PhoneLibrary,
     scans: ScanRepository,
     prefetcher: ArtworkPrefetcher,
 ) : ViewModel() {
@@ -135,7 +137,13 @@ class AppViewModel @Inject constructor(
         // that a file on disk is unclaimed, and this is the one place that
         // knows no worker is mid-write. It walks two directories, so it goes
         // off the main thread.
-        viewModelScope.launch { withContext(Dispatchers.IO) { sweeper.sweep() } }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { sweeper.sweep() }
+            // After the sweep, never beside it: an empty "This device" is
+            // removed by the sweep, and a phone sync racing it could lose its
+            // share out from under it. Does nothing until access is granted.
+            phone.requestSync()
+        }
         viewModelScope.launch {
             // The cold-start decision, made once and before anything draws.
             lockAfter = prefs.appLockAfter.first()

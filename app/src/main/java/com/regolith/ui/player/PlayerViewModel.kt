@@ -58,6 +58,7 @@ class PlayerViewModel @AssistedInject constructor(
     private val session: PlaybackSession,
     private val prefs: AppPreferences,
     private val transfers: TransferRepository,
+    private val phone: com.regolith.data.repository.PhoneLibrary,
     private val userChapters: UserChapterRepository,
 ) : ViewModel() {
 
@@ -241,6 +242,11 @@ class PlayerViewModel @AssistedInject constructor(
         }
         .map { row -> row?.let { TransferView(it.statusEnum(), it.bytesDone, it.totalBytes, it.causeEnum(), it.causeBytes) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** True while the file on screen is a phone video, which has nothing to download. Follows autoplay like [transfer]. */
+    val onPhone: StateFlow<Boolean> = state.map { it.fileId }.distinctUntilChanged()
+        .map { id -> id != null && id != RegolithKey.Player.EXTERNAL && phone.isPhoneFile(id) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** Start (or retry) copying the current file to this device. */
     fun keepOnDevice() {

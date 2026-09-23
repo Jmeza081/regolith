@@ -14,6 +14,8 @@ import com.regolith.domain.security.AuthResult
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
 import com.regolith.data.repository.DeviceLibrary
+import com.regolith.data.repository.PhoneLibrary
+import com.regolith.domain.media.PhonePaths
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.DeviceSource
 import com.regolith.domain.media.LocalSource
@@ -57,6 +59,7 @@ class SettingsViewModel @Inject constructor(
     private val userChapters: UserChapterRepository,
     private val biometrics: BiometricGate,
     private val deviceLibrary: DeviceLibrary,
+    private val phone: PhoneLibrary,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -138,6 +141,13 @@ class SettingsViewModel @Inject constructor(
                     ShareWriteRow(share.id, "${share.name} on ${server.name}", share.writeChapters)
                 }
             }.collect { rows -> _uiState.update { it.copy(shareWrites = rows) } }
+        }
+        viewModelScope.launch {
+            combine(phone.observeFolders(), prefs.hiddenPhoneFolders) { folders, hidden ->
+                folders.filter { it.fileCount > 0 }
+                    .map { f -> PhoneFolderRow(f.relPath, f.name, PhonePaths.display(f.relPath), f.fileCount, shown = f.relPath !in hidden) }
+                    .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+            }.collect { rows -> _uiState.update { it.copy(phoneFolders = rows) } }
         }
         viewModelScope.launch {
             artwork.observeCount().collect { count ->
@@ -241,6 +251,9 @@ class SettingsViewModel @Inject constructor(
     fun setAppLockAfter(after: LockAfter) = viewModelScope.launch { prefs.setAppLockAfter(after) }.let { }
 
     /** Settings › Chapters: whether chapter files are written to one share (P10). */
+    /** Off keeps a phone folder out of Library, Search and Continue watching. Nothing on the phone is touched. */
+    fun setPhoneFolderShown(relPath: String, shown: Boolean) = viewModelScope.launch { phone.setFolderHidden(relPath, hidden = !shown) }.let { }
+
     fun setShareWriteChapters(shareId: Long, enabled: Boolean) = viewModelScope.launch { sources.setShareWriteChapters(shareId, enabled) }.let { }
 
     /** Every chapter kept on this phone. The share is never touched from here; films with a file there get theirs back at the next scan. */

@@ -140,6 +140,17 @@ interface ShareDao {
     @Query("SELECT * FROM shares WHERE serverId = :serverId AND name = :name")
     suspend fun byName(serverId: Long, name: String): ShareEntity?
 
+    /**
+     * A synthetic share's id by its server's host, for the phone-storage
+     * lookup the player makes on its loader thread (hence the blocking
+     * twin). Null until the share has been made.
+     */
+    @Query("SELECT shares.id FROM shares JOIN servers ON servers.id = shares.serverId WHERE servers.host = :host AND shares.name = :name")
+    fun idByHostBlocking(host: String, name: String): Long?
+
+    @Query("SELECT shares.id FROM shares JOIN servers ON servers.id = shares.serverId WHERE servers.host = :host AND shares.name = :name")
+    suspend fun idByHost(host: String, name: String): Long?
+
     @Insert
     suspend fun insert(share: ShareEntity): Long
 
@@ -435,6 +446,19 @@ interface MediaFileDao {
 
     @Query("UPDATE media_files SET missing = 1 WHERE folderId = :folderId AND relPath NOT IN (:seenPaths)")
     suspend fun markMissingNotIn(folderId: Long, seenPaths: List<String>)
+
+    /**
+     * Everything in a share that a sync pass did not see. For phone
+     * storage, where one MediaStore query sees the whole share at once, so
+     * the survivors are known by id rather than walked folder by folder.
+     * An empty [keepIds] marks the whole share missing (access revoked).
+     */
+    @Query("UPDATE media_files SET missing = 1 WHERE shareId = :shareId AND missing = 0 AND id NOT IN (:keepIds)")
+    suspend fun markMissingExcept(shareId: Long, keepIds: List<Long>)
+
+    /** Every row in a share, missing or not, so a sync can tell new from unchanged without a query per file. */
+    @Query("SELECT * FROM media_files WHERE shareId = :shareId")
+    suspend fun allInShare(shareId: Long): List<MediaFileEntity>
 
     /**
      * The user deleted these from the share, so the rows go — unlike a

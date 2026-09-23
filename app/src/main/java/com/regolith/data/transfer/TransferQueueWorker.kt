@@ -353,7 +353,7 @@ class TransferQueueWorker @AssistedInject constructor(
         }
         val indeterminate = p.discovering || p.bytesTotal <= 0L
         val notification = NotificationCompat.Builder(applicationContext, RegolithNotifications.CHANNEL_TRANSFERS)
-            .setSmallIcon(R.drawable.ic_splash_wordmark)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
             .setProgress(PROGRESS_MAX, QueueProgress.permille(p.bytesDone, p.bytesTotal), indeterminate)
