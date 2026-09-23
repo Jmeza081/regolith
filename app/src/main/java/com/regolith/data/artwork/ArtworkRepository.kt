@@ -10,6 +10,7 @@ import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkKind
@@ -231,8 +232,35 @@ class ArtworkRepository @Inject constructor(
      * image (design section 08: a sidecar always wins).
      */
     suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
+        if (entries.any { !it.isDirectory && MediaFileTypes.isVideo(it.name) }) forgetFolderPlaceholders(folderId)
         if (ArtworkCandidates.forFolder(entries).isEmpty()) return
         artworkDao.deleteMosaic(ArtworkOwner.Folder(folderId).typeName, folderId)
+    }
+
+    /**
+     * A folder holding videos should not be sitting on a placeholder, and
+     * neither should anything above it.
+     *
+     * The case this exists for: a folder is made on the share, the scan
+     * finds it empty, the walk finds nothing to build a mosaic from and
+     * records a placeholder — then the videos are copied in. The next scan
+     * lists them, but the placeholder is good for a day and the walk skips
+     * anything already cached, so the folder stayed blank. Seen on the
+     * owner's phone: a folder of 96 films placeholdered five hours before
+     * they arrived.
+     *
+     * Every ancestor too, because a mosaic walks DOWN into subfolders
+     * ([mosaicFiles]): a show folder whose seasons were empty is waiting on
+     * exactly the same videos. Only placeholders go; a real image or mosaic
+     * above is left alone. Database only, a few rows per listing.
+     */
+    private suspend fun forgetFolderPlaceholders(folderId: Long) {
+        var id: Long? = folderId
+        var depth = 0
+        while (id != null && depth++ < MOSAIC_MAX_FOLDERS) {
+            if (artworkDao.deleteFolderPlaceholder(id) > 0) Log.i(TAG, "folder $id holds videos now; dropped its placeholder")
+            id = folderDao.byId(id)?.parentId
+        }
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */

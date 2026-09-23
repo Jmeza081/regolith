@@ -313,6 +313,11 @@ dropped and a new one taken; rename it and nothing is re-read. If the file's key
 frames are too far apart to land within ten seconds of the mark, the row shows the
 film's own thumbnail instead, rather than a picture claiming to be a time it is not.
 
+A folder with no poster of its own gets a 2×2 mosaic of frames from the videos
+inside it. If a folder is scanned while it is still empty, and the videos are
+copied in later, the next scan that finds them clears the "no picture" record so
+the mosaic gets made.
+
 </details>
 
 ## How it's put together

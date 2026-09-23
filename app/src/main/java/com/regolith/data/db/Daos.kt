@@ -656,6 +656,14 @@ interface ArtworkDao {
     @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun deleteGenerated()
 
+    /**
+     * Drops a folder's placeholder so the next request tries again. A folder
+     * scanned before its videos were copied in has nothing to make a mosaic
+     * from; this is how the scan that finds them undoes that.
+     */
+    @Query("DELETE FROM artwork WHERE ownerType = 'folder' AND ownerId = :folderId AND source = 'PLACEHOLDER'")
+    suspend fun deleteFolderPlaceholder(folderId: Long): Int
+
     /** Drops a folder's mosaic so the next request re-runs the source order and finds the new sidecar. */
     @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND source = 'MOSAIC'")
     suspend fun deleteMosaic(ownerType: String, ownerId: Long)
