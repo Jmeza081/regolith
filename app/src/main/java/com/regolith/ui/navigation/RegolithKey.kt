@@ -75,6 +75,13 @@ sealed interface RegolithKey : NavKey {
         }
     }
 
+    /**
+     * The poster editor: pick a frame of [fileId], frame it in a 2:3 box, and
+     * save it as poster.jpg in the film's folder. Opened from the player,
+     * starting on the frame the player was paused at ([positionMs]).
+     */
+    @Serializable data class PosterEditor(val fileId: Long, val positionMs: Long) : RegolithKey
+
     /** Add Source Server flow (design section 03). Phase 1 fills these in. */
     @Serializable sealed interface AddServer : RegolithKey {
         @Serializable data object Search : AddServer

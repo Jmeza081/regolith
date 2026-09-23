@@ -29,9 +29,6 @@ object ChapterSidecar {
     /** The file that belongs to `Heat.1995.mkv` is `Heat.1995.chapters.txt`. */
     const val SUFFIX = ".chapters.txt"
 
-    /** What is written first and renamed over the real name once complete. */
-    const val PART_SUFFIX = ".chapters.txt.part"
-
     /** More than this is not a chapter file. */
     const val MAX_BYTES = 64 * 1024
 

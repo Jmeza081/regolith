@@ -1,5 +1,6 @@
 package com.regolith.data.media
 
+import com.regolith.data.smb.writeReplacing
 import com.regolith.domain.media.ChapterSidecar
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbFailure
@@ -9,15 +10,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The only thing in the app that writes to a share (P10), and it writes
- * exactly one kind of file: `<basename>.chapters.txt` beside a video.
+ * Writes exactly one kind of file on a share (P10): `<basename>.chapters.txt`
+ * beside a video. The only other file the app writes is a poster.jpg the
+ * user asked for ([com.regolith.data.artwork.PosterRepository]).
  *
  * A half-written file must never be read as the film's chapters, so the
- * text goes to `<basename>.chapters.txt.part` first and is renamed over
- * the real name once complete. Some servers refuse to rename onto a name
- * that exists; then the old file is deleted and the rename tried once
- * more. A [SmbFailure.Forbidden] means a read-only share and is the
- * caller's to show; nothing is retried on it here.
+ * write goes through [writeReplacing]: a `.part` file first, renamed over
+ * the real name once complete. A [SmbFailure.Forbidden] means a read-only
+ * share and is the caller's to show; nothing is retried on it here.
  */
 @Singleton
 class SidecarWriter @Inject constructor(
@@ -25,20 +25,7 @@ class SidecarWriter @Inject constructor(
 ) {
     /** Write the sidecar for [videoName] in [folderRelPath]. Returns the file's modified time on the share. */
     suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, folderRelPath: String, videoName: String, text: String): Long {
-        val real = pathFor(folderRelPath, videoName, ChapterSidecar.SUFFIX)
-        val part = pathFor(folderRelPath, videoName, ChapterSidecar.PART_SUFFIX)
-        val mtime = gateway.write(host, credentials, share, part, text.toByteArray(Charsets.UTF_8))
-        try {
-            gateway.rename(host, credentials, share, part, real, replace = true)
-        } catch (e: SmbFailure.Other) {
-            gateway.delete(host, credentials, share, real)
-            gateway.rename(host, credentials, share, part, real, replace = true)
-        } catch (e: SmbFailure) {
-            // Leave nothing behind under the temporary name either.
-            runCatching { gateway.delete(host, credentials, share, part) }
-            throw e
-        }
-        return mtime
+        return gateway.writeReplacing(host, credentials, share, pathFor(folderRelPath, videoName, ChapterSidecar.SUFFIX), text.toByteArray(Charsets.UTF_8))
     }
 
     /** Remove the sidecar for [videoName]; a missing file is fine. */

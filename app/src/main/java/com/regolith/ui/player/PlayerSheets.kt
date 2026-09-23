@@ -58,6 +58,7 @@ import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.theme.CardShape
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,7 +110,7 @@ fun PlayerSheetHost(
 
 val PLAYBACK_SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
 
-/** "PLAYBACK": speed, decoder, scrub thumbnails (design section 10). */
+/** "PLAYBACK": speed, decoder, scrub thumbnails (design section 10), and the way into the poster editor. */
 @Composable
 fun PlaybackSheetContent(
     speed: Float,
@@ -133,6 +134,11 @@ fun PlaybackSheetContent(
      * and there is nothing to close.
      */
     header: Boolean = true,
+    /**
+     * Pause and open the poster editor on this frame. Null hides the row:
+     * the film has no share folder to write a poster to.
+     */
+    onMakePoster: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     if (header) {
@@ -262,6 +268,22 @@ fun PlaybackSheetContent(
             checked = autoplayImmediately, onCheckedChange = onAutoplayImmediately,
             enabled = autoplayNext, testTag = "player_autoplay_immediately_switch",
         )
+    }
+
+    // Last, and in here rather than on the player's own row: setting a poster
+    // is something you do once per film, and as a pill it sat among the
+    // controls you reach for every time and competed with them.
+    onMakePoster?.let { open ->
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+            Eyebrow("Artwork", muted = true)
+            SecondaryButton(
+                text = "Make a poster from this frame",
+                onClick = open,
+                testTag = "player_make_poster",
+                modifier = Modifier.fillMaxWidth(),
+                leadingIcon = painterResource(com.composables.icons.lucide.R.drawable.lucide_ic_image),
+            )
+        }
     }
 }
 

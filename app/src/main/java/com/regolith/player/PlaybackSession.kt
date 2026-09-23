@@ -298,6 +298,7 @@ class PlaybackSession @Inject constructor(
                             hdr = transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG,
                             audioMimeType = audio?.sampleMimeType,
                             audioChannels = audio?.channelCount?.takeIf { c -> c > 0 },
+                            frameRate = video.frameRate.takeIf { r -> r > 0f },
                         ),
                     )
                 }

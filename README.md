@@ -59,6 +59,15 @@ opens the film at that moment — and each result shows the frame *at* that mome
 so two marks in the same film are two different pictures rather than the film's
 poster twice.
 
+### Posters you choose
+
+Don't like the frame a folder picked? "Make a poster from this frame", at the
+foot of the player's Playback settings, opens an editor on the frame you paused
+at: scrub, type a time or step a frame at a time, then drag and pinch the picture
+behind a 2:3 box and save. It is written as `poster.jpg` in the film's folder on
+the share, asking first if one is already there, and every tile picks it up at
+once.
+
 ### Manages the files, not just the library
 
 Hold any video — or any folder — to start picking, and the floating nav pill stops
