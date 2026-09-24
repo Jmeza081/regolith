@@ -291,10 +291,11 @@ private fun BrowseContent(
         // pill, and the pill's clearance was always already reserved.
         val bottomPadding = LocalNavPillInsets.current.calculateBottomPadding()
         // Shares are never tiles: a share has no artwork, and at the root the
-        // question is "which share", not "which film".
+        // question is "which share", not "which film". Counted as SOURCES,
+        // because phone storage sits in this list too and is not a share.
         val shareSection = @Composable {
             if (shares.isNotEmpty()) {
-                Section("${shares.size} share" + (if (shares.size == 1) "" else "s")) {
+                Section("${shares.size} source" + (if (shares.size == 1) "" else "s")) {
                     shares.forEach { row ->
                         ListRow(
                             title = row.name,

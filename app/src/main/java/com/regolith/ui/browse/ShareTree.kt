@@ -49,7 +49,7 @@ fun ShareTree(
         modifier.verticalScroll(rememberScrollState()).testTag("browse_tree"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
-        Eyebrow("Shares", Modifier.padding(start = Spacing.s12, bottom = Spacing.s8), muted = true)
+        Eyebrow("Sources", Modifier.padding(start = Spacing.s12, bottom = Spacing.s8), muted = true)
         nodes.forEach { node ->
             TreeRow(node = node, selected = node.folderId == currentFolderId, onOpen = onOpen)
         }
