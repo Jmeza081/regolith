@@ -29,7 +29,7 @@ import kotlin.random.Random
 
 /**
  * The Shorts feed: every vertical clip under a minute, from every enabled
- * share, newest first — or from one folder, in a shuffled order, if you ask.
+ * share (or one folder), in a shuffled order unless you turn that off.
  *
  * It owns a [ShortsPlayerPool] rather than driving [PlaybackSession],
  * which is the scoped exception to guardrail G4 recorded in
@@ -90,8 +90,12 @@ class ShortsViewModel @Inject constructor(
      * STABLE across every re-emission of the feed (a download finishing, the
      * walk measuring one more file), where `shuffled()` on each pass would
      * reorder the deck under a finger already swiping it.
+     *
+     * Starts ON: newest-first always opened on the same clip. This ViewModel
+     * lives as long as the Shorts tab is on the back stack, so every arrival
+     * at the tab is a fresh deck.
      */
-    private val _shuffleSeed = MutableStateFlow<Long?>(null)
+    private val _shuffleSeed = MutableStateFlow<Long?>(System.nanoTime())
 
     // The length is folded in UPSTREAM rather than into `uiState`: it changes
     // which files qualify, not how they are drawn, so it belongs in the query.
@@ -118,6 +122,7 @@ class ShortsViewModel @Inject constructor(
             folders = folders,
             folderId = folderId.takeIf { id -> folders.any { it.id == id } },
             shuffled = seed != null,
+            shuffleSeed = seed,
             // Only while something is actually walking: a finished walk that
             // found no vertical clips must read as "none", not as "wait".
             measuringLine = if (walk.running && walk.total > 0) "%,d of %,d files checked".format(walk.done, walk.total) else null,
@@ -180,6 +185,14 @@ class ShortsViewModel @Inject constructor(
     /** Off, or on with a fresh order — asking to shuffle again should reshuffle. */
     fun toggleShuffle() {
         _shuffleSeed.value = if (_shuffleSeed.value == null) System.nanoTime() else null
+    }
+
+    /**
+     * A new deck: shuffle on, fresh order. Tapping the Shorts tab while
+     * already on it asks for this, so the same clip is not always first.
+     */
+    fun reshuffle() {
+        _shuffleSeed.value = System.nanoTime()
     }
 
     fun toggleAutoAdvance() {

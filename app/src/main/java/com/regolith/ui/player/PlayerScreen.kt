@@ -111,7 +111,9 @@ import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.ConfirmDialog
+import com.regolith.ui.components.MessageKind
 import com.regolith.ui.components.RegolithSnackbarHost
+import com.regolith.ui.components.showMessage
 import androidx.compose.material3.SnackbarHostState
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.Scrubber
@@ -191,8 +193,8 @@ fun PlayerScreen(
     val nameSuggestions by viewModel.chapterNameSuggestions.collectAsStateWithLifecycle()
     // "Saved to the share", at the bottom, gone on its own.
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(viewModel) { viewModel.chapterSaveMessages.collect { snackbar.showSnackbar(it) } }
-    LaunchedEffect(viewModel) { viewModel.posterMessages.collect { snackbar.showSnackbar(it) } }
+    LaunchedEffect(viewModel) { viewModel.chapterSaveMessages.collect { snackbar.showMessage(it, MessageKind.DONE) } }
+    LaunchedEffect(viewModel) { viewModel.posterMessages.collect { snackbar.showMessage(it, MessageKind.DONE) } }
     val canMakePoster by viewModel.canMakePoster.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
     val lifecycleOwner = LocalLifecycleOwner.current

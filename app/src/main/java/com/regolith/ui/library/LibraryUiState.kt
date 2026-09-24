@@ -1,7 +1,7 @@
 package com.regolith.ui.library
 
 import com.regolith.domain.artwork.ArtworkRequest
-import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.PhoneAccess
 import com.regolith.domain.transfer.TransferCause
@@ -76,7 +76,7 @@ data class LibraryUiState(
     /** "TOWER · media · 1,284 files" */
     val meta: String? = null,
     val tiles: List<LibraryTile> = emptyList(),
-    val sort: LibrarySort = LibrarySort.NAME,
+    val order: LibraryOrder = LibraryOrder(),
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
     val viewMode: ViewMode = ViewMode.GRID,

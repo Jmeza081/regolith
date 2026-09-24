@@ -144,6 +144,9 @@ routes; they are state in the owning screen's `UiState`.
 
 A tab cell switches tabs. The *current* tab's cell brings its stack back to
 the top: `Library(folderId)` three levels deep becomes `Library`. Already at
-the top, the tap does nothing, so the screen is not rebuilt.
+the top, the tap does not navigate, so the screen is not rebuilt. It is
+reported instead, on `tabReselects` in `NavGraph.kt`, for a screen that has
+something useful to do with it. Today only Shorts listens: it reshuffles and
+goes back to the first clip.
 `navigateToTab` decides this by comparing the stack's top with the tab's
 root key, not by comparing tabs.

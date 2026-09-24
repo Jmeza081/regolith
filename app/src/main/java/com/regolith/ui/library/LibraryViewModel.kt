@@ -25,7 +25,9 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.FolderKind
+import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.SortDirection
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.playback.VideoInfo
@@ -84,7 +86,7 @@ class LibraryViewModel @AssistedInject constructor(
     private var unsorted: List<LibraryTile> = emptyList()
 
     init {
-        viewModelScope.launch { prefs.librarySort.collect { sort -> _uiState.update { it.copy(sort = sort, tiles = sorted(unsorted, sort)) } } }
+        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted, order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
@@ -122,7 +124,7 @@ class LibraryViewModel @AssistedInject constructor(
             }.collect { state ->
                 unsorted = state.tiles
                 // Onto the live state, never the other way: see withWall.
-                _uiState.update { it.withWall(state, sorted(state.tiles, it.sort)) }
+                _uiState.update { it.withWall(state, sorted(state.tiles, it.order)) }
             }
         }
         viewModelScope.launch {
@@ -397,19 +399,37 @@ class LibraryViewModel @AssistedInject constructor(
         )
     }
 
-    private fun sorted(tiles: List<LibraryTile>, sort: LibrarySort): List<LibraryTile> = when (sort) {
-        LibrarySort.NAME -> tiles.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
-        LibrarySort.DATE_ADDED -> tiles.sortedByDescending { it.addedAtMs }
-        LibrarySort.FILE_SIZE -> tiles.sortedByDescending { it.sizeBytes }
-        LibrarySort.RUNTIME -> tiles.sortedByDescending { it.durationMs ?: -1 }
-        LibrarySort.RESOLUTION -> tiles.sortedByDescending { it.height ?: -1 }
+    /**
+     * The wall in [order]. A tile with no runtime or resolution yet (not
+     * probed) goes LAST in both directions: reversing the sort should not
+     * bring every unknown to the top. Ties fall back to the name, so equal
+     * sizes do not shuffle between recompositions.
+     */
+    private fun sorted(tiles: List<LibraryTile>, order: LibraryOrder): List<LibraryTile> {
+        val byName = compareBy<LibraryTile, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
+        val key: (LibraryTile) -> Long? = when (order.sort) {
+            LibrarySort.NAME -> { _ -> 0L }
+            LibrarySort.DATE_ADDED -> { t -> t.addedAtMs }
+            LibrarySort.FILE_SIZE -> { t -> t.sizeBytes }
+            LibrarySort.RUNTIME -> { t -> t.durationMs }
+            LibrarySort.RESOLUTION -> { t -> t.height?.toLong() }
+        }
+        val primary = if (order.sort == LibrarySort.NAME) byName else compareBy<LibraryTile> { key(it) }.then(byName)
+        val directed = if (order.direction == SortDirection.ASCENDING) primary else primary.reversed()
+        return tiles.sortedWith(compareBy<LibraryTile> { key(it) == null }.then(directed))
     }
 
     fun openSortSheet(open: Boolean) = _uiState.update { it.copy(sortSheetOpen = open) }
 
-    fun setSort(sort: LibrarySort) {
-        _uiState.update { it.copy(sort = sort, sortSheetOpen = false, tiles = sorted(unsorted, sort)) }
-        viewModelScope.launch { prefs.setLibrarySort(sort) }
+    /**
+     * A row in the sort sheet was tapped: a new criterion, or the one in use
+     * reversed. Either way it applies and the sheet closes, and the screen
+     * takes the wall back to the top (it watches [LibraryUiState.order]).
+     */
+    fun pickSort(sort: LibrarySort) {
+        val next = _uiState.value.order.pick(sort)
+        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted, next)) }
+        viewModelScope.launch { prefs.setLibraryOrder(next) }
     }
 
     /** Poster wall <-> rows. Written to preferences; the collector above puts it back on the state. */

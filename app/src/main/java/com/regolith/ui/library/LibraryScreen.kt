@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +54,7 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
@@ -366,6 +369,22 @@ fun LibraryScreen(
             return
         }
 
+        // The wall's scroll positions, held here so a new sort can move them.
+        // Tiles are keyed, and a keyed list keeps the item that was at the
+        // top in view when the order changes. After a re-sort that item can
+        // be near the END, so the wall landed at the bottom. A new order is
+        // a new list to read from the start, so glide back to the top.
+        // `lastOrder` skips the first composition, which is also what keeps
+        // a restored scroll position when you come back from a title.
+        val gridState = rememberLazyGridState()
+        val listState = rememberLazyListState()
+        var lastOrder by remember { mutableStateOf(state.order) }
+        LaunchedEffect(state.order) {
+            if (state.order == lastOrder) return@LaunchedEffect
+            lastOrder = state.order
+            if (state.viewMode == ViewMode.GRID) gridState.animateScrollToItem(0) else listState.animateScrollToItem(0)
+        }
+
         // Both layouts draw the same leading blocks and the same tiles; only
         // the container differs, so the decisions are made once, here.
         val showUnreachable = unreachable.isNotEmpty() && onBack == null
@@ -393,6 +412,7 @@ fun LibraryScreen(
         if (state.viewMode == ViewMode.GRID) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
+                state = gridState,
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
@@ -428,6 +448,7 @@ fun LibraryScreen(
             // the design's cards are for short grouped lists (Browse, Settings);
             // a hairline between rows is what keeps a long list readable.
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().testTag("library_rows"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
@@ -475,7 +496,7 @@ fun LibraryScreen(
     }
 
     if (state.sortSheetOpen) {
-        SortSheet(selected = state.sort, onSelect = viewModel::setSort, onDismiss = { viewModel.openSortSheet(false) })
+        SortSheet(order = state.order, onSelect = viewModel::pickSort, onDismiss = { viewModel.openSortSheet(false) })
     }
 
         // The pill becomes this selection's toolbar (SelectionChrome). This
@@ -741,18 +762,29 @@ private fun ScanLine() {
  * The sort sheet (design: "Sheets step up to #0F0F0F with a 22px top
  * radius. The check is the only red on the screen."): a 38×4 handle,
  * "SORT BY" in Michroma 14, five 48dp rows at 500 15/20.
+ *
+ * Each row says which way it runs on the right: the one in force shows
+ * its current direction, the others the direction they would start in.
+ * Tapping the one in force reverses it, like a table header.
  */
 @Composable
-private fun SortSheet(selected: LibrarySort, onSelect: (LibrarySort) -> Unit, onDismiss: () -> Unit) {
+private fun SortSheet(order: LibraryOrder, onSelect: (LibrarySort) -> Unit, onDismiss: () -> Unit) {
     RegolithSheet(title = "Sort by", onDismiss = onDismiss, testTag = "library_sort_sheet") {
         LibrarySort.entries.forEach { sort ->
+            val inForce = sort == order.sort
             SheetOption(
                 label = sort.label,
-                selected = sort == selected,
+                selected = inForce,
                 onClick = { onSelect(sort) },
                 testTag = "library_sort_${sort.name.lowercase()}",
+                trailing = sort.directionLabel(if (inForce) order.direction else sort.natural),
             )
         }
+        Text(
+            "Tap the one in use again to reverse it.",
+            style = TextStyles.meta, color = RegolithTheme.colors.metadata,
+            modifier = Modifier.padding(top = Spacing.s8).testTag("library_sort_hint"),
+        )
     }
 }
 

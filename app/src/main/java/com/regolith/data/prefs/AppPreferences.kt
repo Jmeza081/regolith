@@ -6,7 +6,9 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.regolith.domain.display.NavHideAfter
+import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.SortDirection
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
@@ -34,6 +36,7 @@ class AppPreferences @Inject constructor(
         val hardwareDecoding = booleanPreferencesKey("hardware_decoding")
         val scrubThumbnails = booleanPreferencesKey("scrub_thumbnails")
         val librarySort = stringPreferencesKey("library_sort")
+        val librarySortDirection = stringPreferencesKey("library_sort_direction")
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
@@ -253,11 +256,23 @@ class AppPreferences @Inject constructor(
         store.edit { it[Keys.playerRepeat] = mode.name }
     }
 
-    /** Library › Sort by. Remembered, like a column sort in a web table. */
-    val librarySort: Flow<LibrarySort> = store.data.map { p -> p[Keys.librarySort]?.let { runCatching { LibrarySort.valueOf(it) }.getOrNull() } ?: LibrarySort.NAME }
+    /**
+     * Library › Sort by, and which way it runs. Remembered, like a column
+     * sort in a web table. A sort saved before direction existed has no
+     * direction stored, and reads back in its natural one, which is what
+     * it always did.
+     */
+    val libraryOrder: Flow<LibraryOrder> = store.data.map { p ->
+        val sort = p[Keys.librarySort]?.let { runCatching { LibrarySort.valueOf(it) }.getOrNull() } ?: LibrarySort.NAME
+        val direction = p[Keys.librarySortDirection]?.let { runCatching { SortDirection.valueOf(it) }.getOrNull() } ?: sort.natural
+        LibraryOrder(sort, direction)
+    }
 
-    suspend fun setLibrarySort(sort: LibrarySort) {
-        store.edit { it[Keys.librarySort] = sort.name }
+    suspend fun setLibraryOrder(order: LibraryOrder) {
+        store.edit {
+            it[Keys.librarySort] = order.sort.name
+            it[Keys.librarySortDirection] = order.direction.name
+        }
     }
 
     /**

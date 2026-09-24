@@ -74,7 +74,7 @@ import com.regolith.ui.theme.scaledDp
  *
  * Drawn exactly once, by the nav graph, over the NavDisplay. This is the
  * one blurred material in the app — see [navChromeFrost], which the pill,
- * the cancel circle and the message tier all share.
+ * the cancel circle and the tiers above it all share.
  */
 @Composable
 fun NavPill(
@@ -233,9 +233,10 @@ private fun CancelCircle(onClick: () -> Unit, hazeState: HazeState) {
  * The app's one blurred material: a 20dp haze over the ground, tinted with
  * [RegolithColors.pillBg], a hairline and a soft drop shadow.
  *
- * Named once and shared, because the nav chrome is now three objects — the
- * pill, the cancel circle beside it and the message tier above it — and they
- * have to be the SAME glass. The poster editor's panels use it too, over a
+ * Named once and shared, because the nav chrome is several objects — the
+ * pill, the cancel circle beside it and the selection and background-work
+ * tiers above it — and they have to be the SAME glass. (Messages are the
+ * exception on purpose: see `MessageCapsule`.) The poster editor's panels use it too, over a
  * moving picture, which is the other place text must stay readable on glass. A tier that was merely translucent read as a
  * different surface docked to the pill rather than part of it.
  */

@@ -23,8 +23,8 @@ import dev.chrisbanes.haze.HazeState
 
 /**
  * "Reading 2 shares · 1,204 files", docked above the nav pill, in the
- * pill's own glass — the third tier of the chrome, beside
- * [ChromeMessageHost] and the selection summary.
+ * pill's own glass — a tier of the chrome, beside the selection summary
+ * and the message capsule ([ChromeMessageHost]).
  *
  * **Why it is app-level and not a line on a screen.** A scan is the app's
  * state, not a screen's: it changes what Library shows, what Browse can

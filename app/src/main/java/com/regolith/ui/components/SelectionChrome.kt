@@ -149,5 +149,5 @@ fun SelectionSummaryTier(state: SelectionChromeState, hazeState: HazeState, modi
     }
 }
 
-/** The tier's corners: the chrome family, as the message tier uses. */
+/** The tier's corners: the chrome family, as the background-work tier uses. */
 private val SelectionTierShape = RoundedCornerShape(26.dp)
