@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import kotlinx.coroutines.delay
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -70,6 +69,8 @@ import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.MoveToSheet
 import com.regolith.ui.components.PromptDialog
 import com.regolith.ui.components.LocalAppSnackbar
+import com.regolith.ui.components.MessageKind
+import com.regolith.ui.components.showMessage
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
@@ -568,12 +569,12 @@ private fun BrowseContent(
         val snackbar = LocalAppSnackbar.current
         LaunchedEffect(state.fileOpMessage) {
             val message = state.fileOpMessage ?: return@LaunchedEffect
-            val result = snackbar.showSnackbar(
+            // A failure stays up longer (showMessage's default for FAILED),
+            // and the ring around its icon shows the longer life running down.
+            val result = snackbar.showMessage(
                 message.text,
+                kind = if (message.failed) MessageKind.FAILED else MessageKind.DONE,
                 actionLabel = if (message.undo != null) "Undo" else null,
-                // Something that went wrong is worth reading twice; the fuse
-                // under the tier shows the longer life running down.
-                duration = if (message.failed) SnackbarDuration.Long else SnackbarDuration.Short,
             )
             if (result == SnackbarResult.ActionPerformed) viewModel.undoMove() else viewModel.clearFileOpMessage()
         }

@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,7 +51,9 @@ import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
+import com.regolith.ui.components.MessageKind
 import com.regolith.ui.components.RegolithSnackbarHost
+import com.regolith.ui.components.showMessage
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TertiaryButton
 import com.regolith.ui.theme.PillShape
@@ -153,7 +154,7 @@ private fun TitleDetailContent(
     // does not replay an old failure.
     LaunchedEffect(state.fileOpError) {
         val message = state.fileOpError ?: return@LaunchedEffect
-        snackbar.showSnackbar(message, duration = SnackbarDuration.Long)
+        snackbar.showMessage(message, MessageKind.FAILED)
         onDismissFileOpError()
     }
     Box(modifier.fillMaxSize()) {

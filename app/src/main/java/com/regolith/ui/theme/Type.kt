@@ -164,6 +164,8 @@ object TextStyles {
     val settingLabel = sg(FontWeight.Medium, 15, 19f)
     /** Body copy: `400 14px/21px`, #A0A0A0. */
     val body = sg(FontWeight.Normal, 14, 21f)
+    /** A snackbar's message (`MessageCapsule`): `500 14px/18px`. */
+    val message = sg(FontWeight.Medium, 14, 18f)
     /** Notice text in a card: `500 13px/19px`, #EDEDED. */
     val notice = sg(FontWeight.Medium, 13, 19f)
     /** Metadata: `400 11px/1.4`, #6E6E6E. */

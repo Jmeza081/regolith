@@ -698,7 +698,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             selectionChrome.state?.let { chrome ->
                                 SelectionSummaryTier(chrome, hazeState)
                             }
-                            ChromeMessageHost(appSnackbar, hazeState)
+                            ChromeMessageHost(appSnackbar)
                         }
                     }
                     // On a wide window the rail and its spine occupy the same
@@ -713,7 +713,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // inner display this reports from the window's own bottom
                     // edge instead, capped at a readable width rather than
                     // stretched across 739dp. It is deliberately NOT inside the
-                    // rail's AnimatedVisibility: the rail retracts after three
+                    // rail's AnimatedVisibility: the rail retracts after a few
                     // idle seconds, and a scan that is still running is exactly
                     // what someone who has stopped touching the screen wants to
                     // be able to see.
@@ -768,8 +768,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         // detail pane closes with. They slide as one group, so
                         // the edge never shows half a nav.
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                            // The message tier rides with the pill: one object,
-                            // two tiers, one clock. Phones only — the rail has
+                            // The message capsule rides with the pill: one
+                            // group, one clock. Phones only — the rail has
                             // no "above" to dock to.
                             if (!windowShape.wide) {
                                 // What the app is doing on its own: the scan
@@ -786,7 +786,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 selectionChrome.state?.let { chrome ->
                                     SelectionSummaryTier(chrome, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                                 }
-                                ChromeMessageHost(appSnackbar, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
+                                ChromeMessageHost(appSnackbar, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                             }
                             NavPill(
                                 selected = currentTab,
