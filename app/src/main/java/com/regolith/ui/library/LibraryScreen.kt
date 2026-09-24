@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -367,6 +369,22 @@ fun LibraryScreen(
             return
         }
 
+        // The wall's scroll positions, held here so a new sort can move them.
+        // Tiles are keyed, and a keyed list keeps the item that was at the
+        // top in view when the order changes. After a re-sort that item can
+        // be near the END, so the wall landed at the bottom. A new order is
+        // a new list to read from the start, so glide back to the top.
+        // `lastOrder` skips the first composition, which is also what keeps
+        // a restored scroll position when you come back from a title.
+        val gridState = rememberLazyGridState()
+        val listState = rememberLazyListState()
+        var lastOrder by remember { mutableStateOf(state.order) }
+        LaunchedEffect(state.order) {
+            if (state.order == lastOrder) return@LaunchedEffect
+            lastOrder = state.order
+            if (state.viewMode == ViewMode.GRID) gridState.animateScrollToItem(0) else listState.animateScrollToItem(0)
+        }
+
         // Both layouts draw the same leading blocks and the same tiles; only
         // the container differs, so the decisions are made once, here.
         val showUnreachable = unreachable.isNotEmpty() && onBack == null
@@ -394,6 +412,7 @@ fun LibraryScreen(
         if (state.viewMode == ViewMode.GRID) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
+                state = gridState,
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
@@ -429,6 +448,7 @@ fun LibraryScreen(
             // the design's cards are for short grouped lists (Browse, Settings);
             // a hairline between rows is what keeps a long list readable.
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().testTag("library_rows"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
