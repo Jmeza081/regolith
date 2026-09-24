@@ -4,6 +4,7 @@ import com.regolith.data.artwork.PrefetchStatus
 import com.regolith.domain.playback.UserChapterStats
 import com.regolith.domain.security.BiometricAvailability
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.security.LockAfter
 import com.regolith.domain.transfer.QueueProgress
 import com.regolith.ui.util.formatBytes
@@ -60,6 +61,7 @@ data class SettingsUiState(
     val autoplayImmediately: Boolean = false,
     /** Wide windows only: whether the nav rail retracts after three idle seconds. */
     val autoHideRail: Boolean = true,
+    val navHideAfter: NavHideAfter = NavHideAfter.DEFAULT,
     val ambientLight: Boolean = true,
     /** Whether tiles play a few seconds of the film instead of showing a still. */
     /** Images cached on the device, excluding placeholders. */

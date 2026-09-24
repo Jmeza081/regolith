@@ -12,6 +12,7 @@ import android.app.Activity
 import com.regolith.data.security.BiometricGate
 import com.regolith.domain.security.AuthResult
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.security.LockAfter
 import com.regolith.data.repository.DeviceLibrary
 import com.regolith.data.repository.PhoneLibrary
@@ -121,6 +122,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoplayNext.collect { v -> _uiState.update { it.copy(autoplayNext = v) } } }
         viewModelScope.launch { prefs.autoplayImmediately.collect { v -> _uiState.update { it.copy(autoplayImmediately = v) } } }
         viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
+        viewModelScope.launch { prefs.navHideAfter.collect { v -> _uiState.update { it.copy(navHideAfter = v) } } }
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
         viewModelScope.launch { prefs.shortsLength.collect { v -> _uiState.update { it.copy(shortsLength = v) } } }
         viewModelScope.launch {
@@ -277,6 +279,9 @@ class SettingsViewModel @Inject constructor(
     fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
     fun setAutoplayImmediately(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayImmediately(enabled) }.let { }
     fun setAutoHideRail(enabled: Boolean) = viewModelScope.launch { prefs.setAutoHideRail(enabled) }.let { }
+
+    /** Settings › Display › Hide after: how long the navigation waits before it goes. */
+    fun setNavHideAfter(after: NavHideAfter) = viewModelScope.launch { prefs.setNavHideAfter(after) }.let { }
 
     fun setAmbientLight(enabled: Boolean) = viewModelScope.launch { prefs.setAmbientLight(enabled) }.let { }
 

@@ -34,11 +34,13 @@ screens keep the full width. Same keys, same tags, same back stack.
 
 The rail can be away in two different ways, and they are not the same thing:
 
-- **Idle** — three seconds after the last touch anywhere in the app the rail
+- **Idle** — a few seconds after the last touch anywhere in the app the rail
   slides off the start edge, leaving `NavRailSpine`: four dots, the current
   tab lit. The reserved inset does **not** change, so nothing reflows and the
   wall never jumps while you read it. Governed by
-  `Settings › Display › Auto-hide the rail` (on by default, wide windows only).
+  `Settings › Display › Auto-hide the navigation` (on by default; it hides a
+  phone's pill on the same timer), and the wait is `Settings › Display ›
+  Hide after` (`NavHideAfter`: 5 s, 10 s or 30 s, default 10 s).
 - **Pinned away** — the 44dp circle below the rail (`nav_rail_hide_button`,
   a sibling of the pill rather than a cell inside it) collapses it for good; `railHidden` is remembered
   in preferences and the inset drops from `NAV_RAIL_INSET` (102dp) to

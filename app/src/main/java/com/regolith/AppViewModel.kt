@@ -2,6 +2,7 @@ package com.regolith
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.regolith.domain.display.NavHideAfter
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.SourceRepository
@@ -256,6 +257,10 @@ class AppViewModel @Inject constructor(
     /** Settings › Display › Auto-hide the rail: whether the idle timer runs at all. */
     val autoHideRail: StateFlow<Boolean> = prefs.autoHideRail
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** Settings › Display › Hide after: how long that idle timer waits. */
+    val navHideAfter: StateFlow<NavHideAfter> = prefs.navHideAfter
+        .stateIn(viewModelScope, SharingStarted.Eagerly, NavHideAfter.DEFAULT)
 
     /**
      * A film another app asked us to play, waiting to be opened.

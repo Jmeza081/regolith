@@ -264,7 +264,7 @@ button was *inside* it — no way back but the handle. Now:
 inside the list pane the wall paid for it twice: the pane asks for 466dp, is
 capped at 55%, and handed the wall 316 of the 364 it wants.
 
-- **Idle** (`autoHideRail`, on by default): three seconds after the last touch
+- **Idle** (`autoHideRail`, on by default): `NavHideAfter` (10 s by default) after the last touch
   the rail slides out, leaving `NavRailSpine` — four dots, the current tab
   lit. The reserved inset is unchanged, so nothing reflows.
 - **Pinned** (`railHidden`, remembered): the chevron under the rail's cells
