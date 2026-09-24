@@ -422,14 +422,13 @@ class LibraryViewModel @AssistedInject constructor(
     fun openSortSheet(open: Boolean) = _uiState.update { it.copy(sortSheetOpen = open) }
 
     /**
-     * A row in the sort sheet was tapped. A new criterion closes the sheet,
-     * as it always did; the one already in use reverses and leaves the
-     * sheet open, so you can see which way it now runs.
+     * A row in the sort sheet was tapped: a new criterion, or the one in use
+     * reversed. Either way it applies and the sheet closes, and the screen
+     * takes the wall back to the top (it watches [LibraryUiState.order]).
      */
     fun pickSort(sort: LibrarySort) {
-        val current = _uiState.value.order
-        val next = current.pick(sort)
-        _uiState.update { it.copy(order = next, sortSheetOpen = sort == current.sort, tiles = sorted(unsorted, next)) }
+        val next = _uiState.value.order.pick(sort)
+        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted, next)) }
         viewModelScope.launch { prefs.setLibraryOrder(next) }
     }
 
