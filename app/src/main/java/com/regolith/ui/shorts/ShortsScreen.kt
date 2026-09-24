@@ -81,6 +81,8 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.theme.scaledDp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * The Shorts feed (design: `design/shorts-canvas/`).
@@ -107,6 +109,8 @@ fun ShortsScreen(
     /** Open Browse at this clip's folder, with the clip itself picked out. */
     onLocate: (folderId: Long, fileId: Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** Emits when the Shorts tab is tapped while already open: deal a new deck. */
+    reselects: Flow<Unit> = emptyFlow(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val bindVersion by viewModel.bindVersion.collectAsStateWithLifecycle()
@@ -163,7 +167,8 @@ fun ShortsScreen(
     }
     // A new source or a new order is a new feed, and it starts at the top.
     // Without this you would land halfway down a shuffle you just asked for.
-    LaunchedEffect(state.folderId, state.shuffled) {
+    LaunchedEffect(reselects) { reselects.collect { viewModel.reshuffle() } }
+    LaunchedEffect(state.folderId, state.shuffleSeed) {
         if (state.items.isNotEmpty()) pager.scrollToPage(0)
     }
 

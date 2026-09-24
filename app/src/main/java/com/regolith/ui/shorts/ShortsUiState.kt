@@ -48,6 +48,8 @@ data class ShortsUiState(
     /** null means everywhere. */
     val folderId: Long? = null,
     val shuffled: Boolean = false,
+    /** The current order's seed, so a reshuffle (same [shuffled], new order) is visible as a change. */
+    val shuffleSeed: Long? = null,
     /** "312 of 1,284 files checked" while the walk is still running; null otherwise. */
     val measuringLine: String? = null,
     val measuringFraction: Float = 0f,

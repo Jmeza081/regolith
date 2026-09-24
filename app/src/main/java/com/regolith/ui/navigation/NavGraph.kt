@@ -116,6 +116,8 @@ import androidx.compose.runtime.mutableStateOf
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import com.regolith.ui.settings.SettingsScreen
 import com.regolith.ui.shorts.ShortsScreen
@@ -382,6 +384,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
      * to the top — Library three folders deep becomes Library. Already at
      * the top, it does nothing, so a stray tap does not rebuild the screen.
      */
+    // A tap on the tab you are already on. Nothing navigates, so a screen
+    // that wants to react (Shorts deals a new deck) listens here. Web
+    // analogy: an event bus the router fires when you click the active link.
+    val tabReselects = remember { MutableSharedFlow<MainTab>(extraBufferCapacity = 1) }
+    val shortsReselects = remember { tabReselects.filter { it == MainTab.SHORTS }.map { } }
+
     fun navigateToTab(tab: MainTab, force: Boolean = false) {
         if (backStack.lastOrNull() == tab.key && !force) return
         backStack.clear()
@@ -571,6 +579,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onLocate = { folderId, fileId ->
                                         backStack.add(RegolithKey.Browse(folderId, highlightFileId = fileId))
                                     },
+                                    reselects = shortsReselects,
                                 )
                             }
                         }
@@ -790,7 +799,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             }
                             NavPill(
                                 selected = currentTab,
-                                onSelect = { navigateToTab(it) },
+                                onSelect = { tab ->
+                                    if (backStack.lastOrNull() == tab.key) tabReselects.tryEmit(tab) else navigateToTab(tab)
+                                },
                                 hazeState = hazeState,
                                 dimmed = dimmedTabs,
                                 dots = tabDots,
