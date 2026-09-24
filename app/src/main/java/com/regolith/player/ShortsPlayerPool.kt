@@ -50,6 +50,13 @@ class ShortsPlayerPool @Inject constructor(
     /** Which feed position each slot currently holds, or [UNBOUND]. */
     private val bound = IntArray(ring.size) { UNBOUND }
 
+    /**
+     * Which FILE each slot holds. A position alone is not enough: a reshuffle
+     * or a new folder puts a different clip at position 0, and a slot that
+     * only remembered "0" kept playing the old clip under the new title.
+     */
+    private val boundFile = LongArray(ring.size) { UNBOUND_FILE }
+
     private var current = UNBOUND
     private var hardware = true
 
@@ -80,19 +87,21 @@ class ShortsPlayerPool @Inject constructor(
             if (bound[slot] == gone) {
                 players[slot]?.let { it.pause(); it.clearMediaItems() }
                 bound[slot] = UNBOUND
+                boundFile[slot] = UNBOUND_FILE
             }
         }
 
         for (position in ring.window(index, fileIds.size)) {
             val slot = ring.slotFor(position)
             val player = players[slot] ?: createPlayer().also { players[slot] = it }
-            if (bound[slot] != position) {
+            if (bound[slot] != position || boundFile[slot] != fileIds[position]) {
                 // Resolved per clip: a downloaded copy plays from disk and
                 // the feed never knows the difference (see MediaUriResolver).
                 val uri = resolver.playableUriFor(fileIds[position])
                 player.setMediaItem(MediaItem.fromUri(uri))
                 player.prepare()
                 bound[slot] = position
+                boundFile[slot] = fileIds[position]
             }
             // Only the clip on screen makes a sound or advances. A prepared
             // neighbour that played would be audible over the one you are
@@ -139,6 +148,7 @@ class ShortsPlayerPool @Inject constructor(
             players[slot]?.release()
             players[slot] = null
             bound[slot] = UNBOUND
+            boundFile[slot] = UNBOUND_FILE
         }
         current = UNBOUND
     }
@@ -162,6 +172,7 @@ class ShortsPlayerPool @Inject constructor(
 
     private companion object {
         const val UNBOUND = -1
+        const val UNBOUND_FILE = -1L
         const val FAST_SPEED = 2f
         const val TAG = "Regolith/Shorts"
     }
