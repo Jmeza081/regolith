@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
@@ -41,6 +42,7 @@ class AppPreferences @Inject constructor(
         val autoplayNext = booleanPreferencesKey("autoplay_next")
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
+        val navHideAfter = stringPreferencesKey("nav_hide_after")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
@@ -201,6 +203,17 @@ class AppPreferences @Inject constructor(
 
     suspend fun setAutoHideRail(enabled: Boolean) {
         store.edit { it[Keys.autoHideRail] = enabled }
+    }
+
+    /**
+     * Settings › Display › Hide after: how long that idle timer waits. Its
+     * own key rather than folded into [autoHideRail] as an "Off" choice, so
+     * turning the switch off and on again brings back the time you picked.
+     */
+    val navHideAfter: Flow<NavHideAfter> = store.data.map { NavHideAfter.of(it[Keys.navHideAfter]) }
+
+    suspend fun setNavHideAfter(after: NavHideAfter) {
+        store.edit { it[Keys.navHideAfter] = after.name }
     }
 
     /**

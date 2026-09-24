@@ -507,8 +507,8 @@ val LocalNavPillInsets = staticCompositionLocalOf { PaddingValues(bottom = NAV_P
  * Whether the nav pill is showing — and therefore whether a screen's OWN
  * floating chrome should be showing with it.
  *
- * The pill leaves after three seconds of no touch and returns on the next
- * one. A screen that floats controls over its content (Shorts) has exactly
+ * The pill leaves once there has been no touch for as long as Settings ›
+ * Display › Hide after says, and returns on the next one. A screen that floats controls over its content (Shorts) has exactly
  * the same question to answer, and answering it with a second timer would
  * put two timers on one screen, drifting apart by however long each took to
  * start. This publishes the pill's own answer, so the two hide and return
@@ -519,7 +519,7 @@ val LocalNavPillInsets = staticCompositionLocalOf { PaddingValues(bottom = NAV_P
  * signal that never arrives.
  *
  * NOTE for QA: chrome behind this is REMOVED from the tree while hidden,
- * not merely faded, so its test tags are unfindable three seconds after the
+ * not merely faded, so its test tags are unfindable a few seconds after the
  * last touch. Drive it as ONE `run-sequence`: touch, await the tag, tap.
  */
 val LocalNavChromeVisible = staticCompositionLocalOf { true }
@@ -527,7 +527,7 @@ val LocalNavChromeVisible = staticCompositionLocalOf { true }
 /**
  * A reason to keep the nav chrome on screen that is NOT a touch.
  *
- * The pill leaves three seconds after the last touch, and showing a message
+ * The pill leaves a few seconds after the last touch, and showing a message
  * is not a touch — so a snackbar (4 s by default, longer when the platform
  * extends it for accessibility) outlived the pill by a second or more and
  * ended up floating over the 112 dp that [NAV_PILL_CLEARANCE] reserves for a

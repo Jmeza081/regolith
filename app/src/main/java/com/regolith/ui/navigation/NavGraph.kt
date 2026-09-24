@@ -193,13 +193,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     //    third tile at full width. Content reflows, so it only ever happens
     //    because you asked for it.
     //  - IDLE ([railIdle], this session only): the rail slides off the start
-    //    edge three seconds after the last touch. The reserved inset does not
+    //    edge a few seconds after the last touch ([navHideAfter]). The reserved inset does not
     //    change, so nothing reflows and the wall never jumps as you read it.
     // Either way the spine stays on the edge, and tapping it brings the rail
     // back. Web analogy: one is a collapsed sidebar, the other is a toolbar
     // that fades while you scroll.
     val railHidden by appViewModel.railHidden.collectAsStateWithLifecycle()
     val autoHideRail by appViewModel.autoHideRail.collectAsStateWithLifecycle()
+    // How long "a few seconds" is: Settings › Display › Hide after.
+    val navHideAfter by appViewModel.navHideAfter.collectAsStateWithLifecycle()
     var railIdle by remember { mutableStateOf(false) }
     // The selection toolbar lives in the nav chrome, so the chrome must be
     // there whenever a selection is. That outranks BOTH ways the rail goes
@@ -261,7 +263,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // recompose the tree on every frame. collectLatest restarts the delay on
     // each touch: the rail retracts only once you have actually stopped.
     val touches = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
-    LaunchedEffect(autoHideRail, windowShape.wide, railHidden) {
+    LaunchedEffect(autoHideRail, navHideAfter, windowShape.wide, railHidden) {
         railIdle = false
         // The scroll watcher is detached when the setting is off, so it
         // cannot un-hide itself; say so here or the pill stays gone.
@@ -283,7 +285,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
             // content reflowing the layout under your finger is worse than
             // reaching for the edge.
             if (!windowShape.wide) railIdle = false
-            delay(RAIL_IDLE_MS)
+            delay(navHideAfter.idleMs)
             railIdle = true
         }
     }
@@ -838,13 +840,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     }
 }
 
-
-/**
- * How long the rail waits after the last touch before it slides away. The
- * same three seconds the player's chrome uses, for the same reason: long
- * enough that it never goes while you are aiming at it.
- */
-private const val RAIL_IDLE_MS = 3_000L
 
 /**
  * The width the Library and Browse walls want beside a detail pane: three

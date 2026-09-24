@@ -58,6 +58,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.regolith.domain.security.BiometricAvailability
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.security.LockAfter
+import com.regolith.domain.display.NavHideAfter
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
 import com.regolith.ui.components.SurfaceCard
@@ -319,9 +320,29 @@ fun SettingsScreen(
                     // half by a screen size.
                     RegolithSwitch(
                         label = "Auto-hide the navigation",
-                        note = "On a phone, slides the pill away as you scroll down a page; scroll back up or touch anything to bring it back. On a wide window the rail goes three seconds after you stop touching the screen.",
+                        note = "Slides the pill or rail away once you stop touching the screen. On a phone it also goes as you scroll down a page; scroll back up or touch anything to bring it back.",
                         checked = state.autoHideRail, onCheckedChange = viewModel::setAutoHideRail, testTag = "settings_auto_hide_rail_switch",
                     )
+                    // The timer's length, nested under the switch the way App
+                    // lock's "Ask again" is: it means nothing while the switch
+                    // is off, so it stays readable but plainly out of play.
+                    NestedRow {
+                        Column(
+                            Modifier.padding(vertical = Spacing.s12).alpha(if (state.autoHideRail) 1f else DISABLED_ALPHA),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        ) {
+                            Text("Hide after", style = TextStyles.settingLabel, color = colors.ink)
+                            Text(
+                                "How long the navigation waits after your last touch.",
+                                style = TextStyles.settingMeta, color = colors.metadata,
+                            )
+                            SegmentedTabs(
+                                segments = NavHideAfter.entries.map { Segment(it.label, "settings_nav_hide_after_${it.idleMs / 1000}") },
+                                selected = NavHideAfter.entries.indexOf(state.navHideAfter),
+                                onSelect = { if (state.autoHideRail) viewModel.setNavHideAfter(NavHideAfter.entries[it]) },
+                            )
+                        }
+                    }
                     // The one switch in the app that is about battery rather
                     // than taste, so the note says what it costs instead of
                     // only what it does.
