@@ -15,8 +15,9 @@ package com.regolith.domain.smb
  * tables at the end of an MP4 and the frame bytes in the middle. With a
  * single block each of those reads evicted the other and refetched a
  * megabyte: measured at 23 reads, 62 KB, 4.5 s per frame. A handful of
- * smaller blocks keeps both regions resident. The player reads mostly
- * forward and keeps the one-block default.
+ * smaller blocks keeps both regions resident. The player doesn't use this
+ * class: it streams through [ReadAheadByteSource], which keeps several reads
+ * on the wire.
  *
  * **Thread safe, and it has to be.** Both readers above it — ExoPlayer's
  * loader and `MediaMetadataRetriever`'s native decoder — call [readAt]
