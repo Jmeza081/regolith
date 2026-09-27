@@ -18,9 +18,9 @@ domain/    Pure Kotlin: models, use cases, parse rules, the SmbGateway
 data/      Implementations: jcifs-ng SMB client, Room database, DataStore
            preferences, credential store, the artwork pipeline (data/artwork:
            resolver, on-disk store, frame source, Coil fetcher), the library
-           scan (data/scan) and the downloads (data/transfer: worker,
-           scheduler seam, repository, on-disk store). Only place
-           third-party IO lives.
+           scan (data/scan) and both transfer queues (data/transfer:
+           downloads and uploads, each a worker, a scheduler seam and a
+           repository). Only place third-party IO lives.
 player/    Media3 (ExoPlayer) session, the SMB DataSource, the container
            probe, scrub thumbnails.
 di/        Hilt modules wiring the above together.
@@ -596,10 +596,127 @@ cheap answer. Teaching the app that two hosts are one server would mean a
 server identity independent of how you dial it, and nothing has needed that
 yet.
 
+## Uploads from the phone (P16)
+
+Browse sends files the other way too: photos and videos from the phone's
+gallery, or any file from the system's file picker, into the folder on
+screen. It is the download queue turned round — rows in Room, one unique
+WorkManager job, one file at a time, a `.part` renamed only once whole —
+with its own table, worker and notification.
+
+```
+UploadRepository.prepare(folderId, uris)                  what the pickers handed back
+     ├─ PhoneFiles.keepAccess(uri)      takePersistableUriPermission, FIRST, while the picker's own grant is good
+     ├─ PhoneFiles.describe(uri)        name (FileNames.sanitize), size, date: OpenableColumns and the date columns
+     └─ SmbGateway.list(folder)         ONE listing: which names are taken (same name + size = the same file)
+UploadRepository.enqueue(policy)  ── uploads rows (schema v14): QUEUED, one batchId per pick, the clash answer on each
+     └─ UploadScheduler.enqueue()  ── UploadQueueWorker (foreground dataSync, ONE unique job "uploads", KEEP,
+                                      network constraint, expedited, exponential backoff from 30 s)
+          └─ UploadRunner.send(row), one file at a time, asking Room for the next row after each
+               ├─ list the folder: is the name free, is there a .part from an earlier attempt?
+               │    same name + size ─▶ DONE · ALREADY_THERE      a folder has the name ─▶ keep both, always
+               ├─ SmbGateway.freeBytes: no room for what is left ─▶ FAILED · SHARE_FULL, before a byte is sent
+               ├─ SmbGateway.openForAppend(<name>.part) starts at the .part's own size
+               │    PhoneFiles.open(uri, offset) ── 1 MiB writes ── the row every 500 ms, re-read: gone = cancelled
+               ├─ rename .part ─▶ name: replacing only when the user chose Replace; a late clash keeps both
+               ├─ setModifiedTime(the phone's date), best effort
+               └─ DONE; a video ─▶ LibraryRepository.refreshFolder, so it is a row in Browse, Library and Search
+          notification (id 44): "Uploading 4 to Lisbon 2026" · "2 of 4 · <name>", permille of BYTES, Stop
+          a run that ends with failures leaves "N uploads need you" (id 45); both open the folder
+```
+
+What a web developer would not guess:
+
+- **A picked file is not a path.** Both pickers return a `content://`
+  address — an opaque handle, like a blob URL — readable only while the
+  app holds a grant for it, and by default that grant dies with the app.
+  The queue may run hours later, or after a reboot, so the grant is made
+  persistent the moment the pick comes back, and handed back when the row
+  goes (grants are capped per app). Nothing is copied into the app first:
+  a 4 GB video would need 4 GB free twice.
+- **The `.part` on the share is the progress, not the row.**
+  `openForAppend` opens `<name>.part` at its END (jcifs' O_APPEND starts
+  its write pointer at the size the server reports on open — checked in
+  the bytecode, and probed against Samba in `SmbMutationProbeTest` q15),
+  so a retry sends only what had not arrived. The row's `bytesDone` is for
+  the screen. A `.part` larger than the file, or a phone file shorter than
+  the `.part`, means the two are no longer the same file: it starts over,
+  once, taking the size again.
+- **Two kinds of trouble, handled differently.** The SERVER going quiet
+  (`Unreachable`) pauses the whole queue and WorkManager retries it with
+  backoff ("resumes on its own"). Trouble with ONE file — the share full,
+  the file gone from the phone — fails that file with its cause and the
+  rest carry on, because a smaller file may still fit. A refusal is said
+  once for everything it is about: read-only fails every file waiting for
+  that folder, a rejected password every file waiting on that server.
+- **Replace is never silent.** jcifs' replacing rename destroys whatever
+  holds the name without a word (P14's measurement), so it is only ever
+  passed when the user chose Replace in the sheet. The default is keep
+  both — "name (1).ext" — and a name another client takes while a file is
+  on its way is kept both too, whatever the policy said.
+- **Same name and size is the same file.** Re-uploading a photo that is
+  already there is the common clash, and asking about it would be noise:
+  it is skipped as ALREADY_THERE. Only a different file with the name is
+  a question, and it is asked once for the whole pick.
+- **Wording lives in `domain/`.** `UploadWording` writes every sentence —
+  the rows, the section, the tier, the notification, the end-of-batch
+  message — so the shade and the screen cannot describe one file two
+  ways, and `formatByteSize` moved to `domain/model` for the same reason.
+- **Photos lose their location on the way in.** Android's photo picker
+  strips GPS from photos by design; keeping it would need
+  `ACCESS_MEDIA_LOCATION` and a read through MediaStore's original. Not in
+  v1: a backup with location is the case that would earn the extra prompt.
+
+The screens (the flow was drawn first, as a design canvas; the frames are in
+`design/upload-to-share/`):
+
+```
+Browse (a folder on a share) ── top bar: rg_ic_upload, beside rows/tiles; the empty card offers it too
+     └─ UploadSourceSheet ── SheetChoice: Photos & videos (PickMultipleVisualMedia) · Files (OpenMultipleDocuments)
+          └─ rememberLauncherForActivityResult ── BrowseViewModel.onPicked ── UploadRepository.prepare
+               └─ a clash with a different file? ── UploadQuestionSheet: Keep both · Skip · Replace (accent glyph)
+     └─ UploadSectionView, first item of the list in rows AND tiles ── uploadSection(items) (pure, UploadSectionState.kt)
+          ├─ EyebrowAction: "Uploading · 2 of 4"   Cancel all | Try now | Try again | Clear
+          ├─ ListRow per file: RowLeading.Picture(UploadThumb) · status (2 lines) · 3dp bar (grey when held) · ↻ / ✕
+          └─ everything went: ONE summary row, and "The photos are on TOWER in this folder. Browse lists videos only."
+AppViewModel ── backgroundWork(upload = UploadTier) ── BackgroundWorkTier, tappable: opens the folder (TierTarget)
+             ── tabDots: BROWSE while an upload has failed for a reason of its own
+             ── uploadNotices: a batch going from owed to finished ── MessageCapsule, "Show" unless already there
+             ── sendingAway(): the picker is another app's screen ── AppLock.shouldAsk(sentAway = true)
+MainActivity ── EXTRA_OPEN_UPLOAD_FOLDER (either notification) ── requestUploads ── NavGraph.openUploadFolder
+```
+
+- **The status lives where the files are going.** A section at the top of
+  the destination folder, not an uploads screen: that is where the user is
+  when they pick, and where the files will be once they land. The line
+  above the pill says the same thing from anywhere else, and taps back to
+  it; the notification says it with the app closed.
+- **A finished batch folds into one row.** Four "Uploaded" rows at the top
+  of a folder would push its own films off the screen. A batch with a
+  failure keeps every row, because a failure needs its row — its cause, its
+  Try again. A new pick into the folder replaces the last "Just uploaded".
+- **The picker is a trip the app sent you on.** It is another app's
+  screen, so Regolith goes to the background, and a lock set to "At once"
+  used to ask for a fingerprint on the way back. `AppLock.shouldAsk` gives
+  such a trip up to five minutes — not forever, or an abandoned picker
+  would leave the library open.
+- **Shared pieces, not new ones.** Play all's private sheet row became
+  `SheetChoice`; Library's two eyebrow-plus-action rows became
+  `EyebrowAction`; `ListRow` gained a `Picture` leading slot, a wrapping
+  meta line, a progress bar and an action slot; `ProgressBar` a colour.
+
 ## Decision log
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-09-27 | Upload status lives in the destination folder (a section at the top of Browse), in the tier above the pill from anywhere else, and in the notification with the app closed — there is no uploads screen | The user is IN the folder when they pick, and the files are going INTO it, so that is where their progress belongs; a separate screen would be a second place to check. The tier already existed to report the one background job worth knowing about, and an upload outranks a scan there because the user started it and is watching. A finished batch folds into one summary row so it does not push the folder's own films off the screen; a batch with a failure keeps its rows, because each failure needs its cause and its Try again. |
+| 2026-09-27 | A trip to a picker the app opened gets up to five minutes of app-lock grace (`AppLock.shouldAsk(sentAway = true)`) | The system photo picker is another app's full screen, so Regolith is stopped while you choose — and a lock set to "At once" asked for a fingerprint on the way back from choosing four photos, which punishes using the feature. The grace is bounded rather than a pass, so a picker left open for the afternoon still locks the library. |
+| 2026-09-27 | Play all's sheet row became the shared `SheetChoice`, Library's eyebrow-with-action rows became `EyebrowAction`, and `ListRow` gained a picture slot, a wrapping meta line, a progress bar and an action slot | Uploads needed each of these a second (or third) time: the source sheet and the clash question are both "a glyph, what it does, what will happen", and the upload section's eyebrow carries its action the way "Clear failed" does. Two copies is the point where a shared component stops being premature (CLAUDE.md: reuse before you build). |
+| 2026-09-27 | **Uploads (P16) get their own queue**: an `uploads` table (schema v14), `UploadQueueWorker` as unique job "uploads", notification ids 44 and 45 — the download queue's shape, not its job | A download is keyed by a library file and an upload by a phone address and a destination folder, so one table would leave half of every row null. One worker for both directions was considered and rejected: the download queue's single job exists to keep a dozen copies from starving the player, and one upload beside one download is two streams a home NAS takes in its stride — what sharing would cost is the notification, which would have to describe two unrelated queues in one line. The shape is copied deliberately: rows in Room as the truth (G3), the worker asking for the next row after every file, KEEP plus a re-check before success, a scheduler seam for a later move to user-initiated data transfer jobs. |
+| 2026-09-27 | An upload streams into `<name>.part` through `SmbGateway.openForAppend` and resumes from the `.part`'s OWN size; `write(ByteArray)` stays for the two small files it was made for | `write` holds the whole file in memory, which is right for a poster and fatal for a 4 GB video. Append mode starts jcifs' write pointer at the size the server reports on open (checked in the bytecode: `fp = getInitialSize()`), so the size read just before opening IS the resume point — no bytes counted on the phone to go stale. The rename to the real name happens only once the file is whole, the rule `writeReplacing` already follows, so a dropped connection leaves at worst a `.part` and never half a photo under a real name. |
+| 2026-09-27 | Picked files are read through persisted URI grants, never copied into the app first | A copy doubles the space a video needs and the time before the upload starts. `takePersistableUriPermission` is what the platform's own photo picker documentation names for "uploading a large file in the background"; it is taken the moment the pick returns, because the picker's own grant ends with the app, and released when the row goes. Startup hands back any grant no row needs, since a row deleted with its folder never got to release its own. |
+| 2026-09-27 | A full share and a spent quota are one failure, `SmbFailure.ShareFull` (`NT_STATUS_DISK_FULL`, `0xC0000044` QUOTA_EXCEEDED), and the free space is asked before a file starts | Both need the same fix — make room — so the UI has one sentence. The question up front (`SmbFile.getDiskFreeSpace`) turns "fails after 600 MB" into "fails in a second"; a server that answers 0 is treated as not saying, because refusing every upload to it would be worse than letting the write find out. A full share fails that file only: the next may be small enough. |
+| 2026-09-27 | Clashes: the same name and size is the same file and is skipped without asking; a different file is asked about ONCE per pick — Keep both (default), Skip or Replace | Re-sending a photo that is already there is the common clash, and a question about it is noise. A per-file question would make a 30-photo pick a 30-question form. Replace is only ever the user's explicit choice because jcifs' replacing rename is silent destruction. A folder holding the name is never replaced, whatever was chosen. |
 | 2026-09-24 | **Changes the look in the 2026-09-17 row below.** A message is a solid `MessageCapsule`, only as wide as its text and centred, and says its `MessageKind` (info, done, failed) with an icon. The time left runs as a ring around that icon instead of a fuse line. | The owner disliked the frosted full-width tier, and picked this look from five mockups (Capsule, Ledger card, inside the pill, from the top, and the current one). The placement stays: it still rides above the pill on one clock. It uses the lifted solid surface rather than the pill's glass, because the message is the newest thing on screen and should sit in front of the picture. Only a failure is red (ring, icon, hairline). The kind rides on a `SnackbarVisuals` subclass (`RegolithMessage`, shown with `showMessage`) so it is never guessed from the wording, and a plain `showSnackbar` still works and draws as info. The player and Title Detail use the same capsule through `RegolithSnackbarHost`, so they gain the ring too. Rejected: putting the message inside the pill, which hides the tabs for up to 10 s. |
 | 2026-09-24 | How long the navigation waits before it hides is a setting (`NavHideAfter`: 5 s, 10 s, 30 s; default 10 s), stored separately from the on/off switch | The fixed `RAIL_IDLE_MS` of 3 s came from the player's controls, which you watch past. The pill and rail sit over screens you read and reach for, and three seconds was quick enough that the owner found it annoying on both of the Fold's displays. The choices start at five and the default is ten. There is still one clock for the pill and the rail, and Shorts' chrome follows `LocalNavChromeVisible`, so it picks up the new wait without changes. Rejected: folding "Off" into the same choice, which would have replaced the switch. That breaks the existing `auto_hide_rail` key, and turning the switch back on would forget the time you had picked. |
 | 2026-09-23 | The artwork walk grabs every NAMED mark's frame, after the folders and before the films; a film's marks come off ONE `FrameExtractor` | Moment frames were on demand only, on the theory that grabbing every mark ahead of time was "a seek per mark for pictures nobody asked to see". The owner's library had 761 marks, but only 112 are named, and only a named mark can be a Search result, so the whole set is a few minutes of work. Leaving it on demand meant a cold Search opened and set up the decoder for each mark separately: about 3 s a frame, two at a time. Most of that is setup (SMB open, container index, decoder, GL context), so `FrameGrabber.framesAt` pays it once per film and seeks per mark. On-demand requests share the batch as well: the in-flight key is the FILM (`MomentBatch`), so a second mark in the same film waits for the run already open. The fallback to the film's thumb now runs after the extraction slot is released, since it needs a slot of its own. A moment borrowing the film's thumb expires after a day, like a placeholder, so one outage during the walk cannot pin every mark to its film's picture for good. Rejected: capturing the frame from the player when a mark is made. It costs nothing, but every mark on the owner's phone came from a chapter file on the share, so it would have sped up none of them. |
@@ -912,6 +1029,7 @@ yet.
 | P13 | Server nicknames: name a source server in Add Server or by tapping it in Settings, with the address moved to the row's second line | `ServerName` (`defaultServerName`/`serverNameOrDefault`), `ServerDao.rename`, `SourceRepository.renameServer`, `RegolithKey.AddServer.Name`, `NameServerScreen`, `PromptDialog`, `ServerRow.host`/`meta` |
 | P14 | Managing what is on the share: rename, move and delete from Browse and the video page, with the nav chrome as the selection toolbar | `FileOpsRepository`, `FileOpError`/`FileOpResult`, `SmbGateway.rename(replace)`, `SelectionChrome`/`SelectionVerb`, `MoveToSheet`, `FileOpMessages`, `ChromeMessageHost` |
 | P15 | Folders are targets too: move and rename a whole folder, delete one with everything in it, and make a new one from the move sheet | `FileOpTarget`, `SubtreeDao` (relocate / dropRootsUnder), `FolderDao.deleteByIds`, `SmbGateway.mkdir`/`deleteFolder`, `FileOpsRepository.createFolder`, `MoveChild.enabled`, `MoveSheetState.error` |
+| P16 | Uploads from the phone into the folder Browse is showing: photos and videos or any file, one queue with per-file status, pauses that resume themselves and failures that say why | `uploads` (schema v14), `UploadRepository`, `UploadRunner`, `UploadQueueWorker`, `UploadScheduler`, `PhoneFiles`, `SmbGateway.openForAppend`/`freeBytes`/`setModifiedTime`, `SmbWriteSink`, `SmbFailure.ShareFull`, `UploadWording`, `UploadTally`, `formatByteSize`, `UploadSectionView`/`uploadSection`, `UploadSourceSheet`, `UploadQuestionSheet`, `SheetChoice`, `EyebrowAction`, `RowLeading.Picture`, `TierTarget`, `AppLock.shouldAsk(sentAway)` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

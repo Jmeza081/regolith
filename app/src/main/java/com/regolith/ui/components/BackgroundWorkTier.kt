@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.regolith.domain.library.BackgroundWork
+import com.regolith.domain.library.TierTarget
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -40,9 +42,17 @@ import dev.chrisbanes.haze.HazeState
  * @param work what is running, or null for nothing — the tier animates
  *   itself away rather than the caller removing it, so the chrome does not
  *   jump.
+ * @param onOpen where a tap goes, for work that has a [BackgroundWork.target]
+ *   (uploads: the folder they are going to). Work without one — a scan —
+ *   is not a way anywhere and does not take the tap.
  */
 @Composable
-fun BackgroundWorkTier(work: BackgroundWork?, hazeState: HazeState, modifier: Modifier = Modifier) {
+fun BackgroundWorkTier(
+    work: BackgroundWork?,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+    onOpen: ((TierTarget) -> Unit)? = null,
+) {
     val colors = RegolithTheme.colors
     AnimatedVisibility(
         visible = work != null,
@@ -52,9 +62,17 @@ fun BackgroundWorkTier(work: BackgroundWork?, hazeState: HazeState, modifier: Mo
     ) {
         // Held so the last line does not vanish mid-fade as the work ends.
         val shown = rememberLast(work)
+        val target = shown?.target
         Box(
             Modifier.fillMaxWidth()
                 .navChromeFrost(hazeState, ChromeTierShape)
+                .then(
+                    if (target != null && onOpen != null) {
+                        Modifier.clickable(interactionSource = null, indication = null, onClickLabel = "Show") { onOpen(target) }
+                    } else {
+                        Modifier
+                    },
+                )
                 .testTag("chrome_background_work"),
         ) {
             Column(
@@ -72,7 +90,13 @@ fun BackgroundWorkTier(work: BackgroundWork?, hazeState: HazeState, modifier: Mo
                     // Thinner than the Scanning screen's hero bar: this sits
                     // under a line of text rather than under a 40pt number.
                     val fraction = shown?.fraction
-                    if (fraction == null) SweepBar(height = 3.dp) else ProgressBar(fraction = fraction, height = 3.dp)
+                    // Paused holds the bar where it stopped, greyed: nothing
+                    // is moving, and a red bar would say something is.
+                    if (fraction == null) {
+                        SweepBar(height = 3.dp)
+                    } else {
+                        ProgressBar(fraction = fraction, height = 3.dp, color = if (shown.paused) colors.metadata else null)
+                    }
                 }
             }
         }

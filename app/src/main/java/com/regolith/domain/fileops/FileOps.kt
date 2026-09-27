@@ -114,6 +114,31 @@ object FileNames {
     /** "Heat.1995" + "mkv" -> "Heat.1995.mkv"; a file with no extension keeps none. */
     fun withExtension(base: String, ext: String): String = if (ext.isEmpty()) base else "$base.$ext"
 
+    /**
+     * A name that came from somewhere else — the phone's gallery, another
+     * app's documents — made fit for a share. The opposite stance to
+     * [cleanBase]: nobody typed this name, so there is nobody to refuse,
+     * and the file should arrive under something as close to it as the
+     * share allows.
+     *
+     * Reserved and control characters become `_`, surrounding whitespace
+     * goes, trailing dots and spaces are dropped (Windows would drop them
+     * silently and the name would not be the one we checked), and a long
+     * base is cut to [MAX_BASE] with its extension kept. Never empty:
+     * "upload" stands in when nothing usable is left.
+     */
+    fun sanitize(input: String): String {
+        val replaced = buildString {
+            for (c in input.trim()) append(if (c in reserved || c.code < 0x20) '_' else c)
+        }.trimEnd('.', ' ')
+        if (replaced.isEmpty() || replaced == "." || replaced == "..") return "upload"
+        val dot = replaced.lastIndexOf('.')
+        val base = if (dot > 0) replaced.substring(0, dot) else replaced
+        val ext = if (dot > 0) replaced.substring(dot + 1) else ""
+        val cut = base.take(MAX_BASE).trimEnd('.', ' ').ifEmpty { "upload" }
+        return withExtension(cut, ext)
+    }
+
     /** The part the user edits: everything before the last dot. */
     fun baseOf(fileName: String): String = fileName.substringBeforeLast('.', fileName)
 }

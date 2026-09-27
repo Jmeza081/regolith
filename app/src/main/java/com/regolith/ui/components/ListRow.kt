@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -19,10 +21,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import com.regolith.R
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.theme.BoxShape
@@ -51,6 +56,14 @@ sealed interface RowLeading {
 
     /** A 34dp-wide 2:3 poster with 7dp corners (Library in rows mode). */
     data class Poster(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
+
+    /**
+     * A [Thumb]-sized 16:9 picture of something that is not in the library
+     * yet — an upload's own thumbnail from the phone. [model] is anything the
+     * app's image loader knows (a `UploadThumb`); [fallbackIcon] shows until
+     * it arrives, and stays when there is none (a PDF has no picture).
+     */
+    data class Picture(val model: Any?, val fallbackIcon: Int) : RowLeading
 
     /**
      * Selection mode on a row you can still walk into: a 38dp box holding
@@ -116,6 +129,16 @@ fun ListRow(
     onLeadingClick: (() -> Unit)? = null,
     /** Spoken for the pick box, e.g. "Choose Films" / "Films, picked". */
     leadingDescription: String? = null,
+    /** Lines the meta may take. One by default; a status that explains a failure gets two rather than an ellipsis. */
+    metaMaxLines: Int = 1,
+    /** The meta's colour when it says something that needs reading (a failure); the metadata grey otherwise. */
+    metaColor: Color? = null,
+    /** A thin bar under the meta, 0..1: something on its way (an upload). Null for none. */
+    progress: Float? = null,
+    /** The bar holds greyed: nothing is moving (paused, or stopped short). */
+    progressMuted: Boolean = false,
+    /** One control at the far end of the row — Cancel, Try again — usually a [RowAction]. */
+    action: (@Composable () -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     Row(
@@ -144,6 +167,15 @@ fun ListRow(
             }
             is RowLeading.Poster -> Box(Modifier.width(34.scaledDp()).aspectRatio(2f / 3f).clip(ThumbShape)) {
                 ArtworkImage(leading.artwork, fallbackLabel = leading.fallbackLabel, modifier = Modifier.size(34.scaledDp(), 51.scaledDp()))
+            }
+            // The glyph sits UNDER the picture: a thumbnail that arrives covers
+            // it, and one that never does leaves it showing, with no state kept.
+            is RowLeading.Picture -> Box(
+                Modifier.width(52.scaledDp()).aspectRatio(16f / 9f).clip(ThumbShape).background(colors.badgeBg),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(leading.fallbackIcon), contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.scaledDp()))
+                AsyncImage(model = leading.model, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             is RowLeading.PickBox -> Box(
                 Modifier
@@ -186,8 +218,20 @@ fun ListRow(
         ) {
             Text(title, style = if (compact) TextStyles.rowLabelSmall else TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (meta != null) {
-                Text(meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(meta, style = TextStyles.meta, color = metaColor ?: colors.metadata, maxLines = metaMaxLines, overflow = TextOverflow.Ellipsis)
             }
+            if (progress != null) {
+                ProgressBar(
+                    fraction = progress,
+                    height = 3.dp,
+                    color = if (progressMuted) colors.metadata else null,
+                    modifier = Modifier.padding(top = Spacing.s4),
+                )
+            }
+        }
+        if (action != null) {
+            Spacer(Modifier.width(Spacing.s4))
+            action()
         }
         if (trailingText != null) {
             Spacer(Modifier.width(Spacing.s12))

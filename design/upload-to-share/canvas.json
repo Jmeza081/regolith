@@ -1,0 +1,178 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-09-27T13:36:07Z"
+  },
+  "title": "Regolith — Upload to a share",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "title": "Try it · pick, upload, recover",
+      "is_interactive": true,
+      "w": 320,
+      "h": 692
+    },
+    "Folder.dc.html": {
+      "x": 0,
+      "y": 1112,
+      "title": "1 · A folder on the share",
+      "is_interactive": true,
+      "w": 320,
+      "h": 692
+    },
+    "Source.dc.html": {
+      "x": 400,
+      "y": 1112,
+      "title": "2 · Upload to this folder",
+      "is_interactive": true,
+      "w": 320,
+      "h": 692
+    },
+    "Picker.dc.html": {
+      "x": 800,
+      "y": 1112,
+      "title": "3 · Android's photo picker (system, drawn loosely)",
+      "is_interactive": true,
+      "w": 320,
+      "h": 692
+    },
+    "Uploading.dc.html": {
+      "x": 1200,
+      "y": 1112,
+      "title": "4 · Watching them go",
+      "w": 320,
+      "h": 692
+    },
+    "Landed.dc.html": {
+      "x": 1600,
+      "y": 1112,
+      "title": "5 · Landed",
+      "w": 320,
+      "h": 692
+    },
+    "Conflict.dc.html": {
+      "x": 0,
+      "y": 2224,
+      "title": "6 · A name is already taken",
+      "w": 320,
+      "h": 692
+    },
+    "Dropped.dc.html": {
+      "x": 400,
+      "y": 2224,
+      "title": "7 · The share drops out",
+      "w": 320,
+      "h": 692
+    },
+    "NeedsYou.dc.html": {
+      "x": 800,
+      "y": 2224,
+      "title": "8 · When it needs you",
+      "w": 320,
+      "h": 692
+    },
+    "Elsewhere.dc.html": {
+      "x": 1200,
+      "y": 2224,
+      "title": "9 · From another tab",
+      "is_interactive": true,
+      "w": 320,
+      "h": 692
+    },
+    "Background.dc.html": {
+      "x": 1600,
+      "y": 2224,
+      "title": "10 · Regolith in the background (system, drawn loosely)",
+      "w": 320,
+      "h": 692
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Folder.dc.html",
+    "Source.dc.html",
+    "Picker.dc.html",
+    "Uploading.dc.html",
+    "Landed.dc.html",
+    "Conflict.dc.html",
+    "Dropped.dc.html",
+    "NeedsYou.dc.html",
+    "Elsewhere.dc.html",
+    "Background.dc.html"
+  ],
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "text": "Upload to a share — try it",
+      "x": 0,
+      "y": -300,
+      "maxW": 1920,
+      "w": 240
+    },
+    "play": {
+      "fill": "gray",
+      "w": 320,
+      "x": 400,
+      "y": 0,
+      "text": "Press Play, then: Upload (top bar) › Photos & videos › pick a few, including the 612 MB video › Add.\n\nOne run rehearses both kinds of trouble. The share drops on the 2nd file and comes back by itself. The video then hits a full share and waits for you: ↻ resumes it from 80%, not from zero.\n\nTweaks › rehearseFailures off for the clean path."
+    },
+    "engine": {
+      "fill": "gray",
+      "w": 320,
+      "x": 780,
+      "y": 0,
+      "text": "Under it: one queue, one file at a time, rows in the database, so it survives the app closing or the phone rebooting. Bytes go to a .part file on the share, renamed to the real name only when complete, so nobody ever sees half a photo. A retry picks up from the .part's size."
+    },
+    "t2": {
+      "kind": "title1",
+      "text": "The flow, frame by frame",
+      "x": 0,
+      "y": 812,
+      "maxW": 1920,
+      "w": 240
+    },
+    "entry": {
+      "fill": "gray",
+      "w": 300,
+      "x": 2000,
+      "y": 1112,
+      "text": "Upload sits in the top bar of any folder on a share, beside rows/tiles. It isn't at the Browse root or in Phone storage: neither is a folder you can upload into.\n\nPicking is the confirm: no review step. You land back in the folder and watch the files arrive where they're going. From any other tab, one line above the pill says how it's going."
+    },
+    "photos": {
+      "fill": "red",
+      "w": 300,
+      "x": 2000,
+      "y": 1552,
+      "text": "DECISION: Browse lists videos only. An uploaded video lands as a normal row. An uploaded photo is on the share but has nowhere to show, so v1 says so under the summary (frame 5).\n\nThe alternative is a Photos section in Browse: a new table, thumbnails over SMB, and a viewer."
+    },
+    "t3": {
+      "kind": "title1",
+      "text": "When it goes wrong",
+      "x": 0,
+      "y": 1924,
+      "maxW": 1920,
+      "w": 240
+    },
+    "causes": {
+      "fill": "gray",
+      "w": 300,
+      "x": 2000,
+      "y": 2224,
+      "text": "Two kinds of trouble, handled differently.\n\nThe server (share dropped, Wi-Fi gone): the batch waits and resumes by itself from the bytes already sent.\n\nOne file (share full, file gone from the phone): that row fails and says why. The rest carry on.\n\nRead-only or a changed password stops the batch and says where to fix it.\n\nSame name, same size: skipped as a copy. Same name, different file: asked once for the whole batch."
+    },
+    "location": {
+      "fill": "orange",
+      "w": 300,
+      "x": 2000,
+      "y": 2684,
+      "text": "Photo location: Android's photo picker strips GPS from photos, by design. If these uploads are backups, keeping location needs the media-location permission (one more prompt). Worth deciding before the build."
+    }
+  },
+  "designSystems": []
+}

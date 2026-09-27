@@ -92,6 +92,7 @@ class AddServerViewModel @AssistedInject constructor(
             "Signed in, but the server would not list its shares. Add the share name to the address, like smb://$host/media."
         is SmbFailure.Unreachable -> "${e.message}. Check the server is awake and on the same Wi-Fi as this phone."
         is SmbFailure.NotFound -> "Nothing answered at that address. Check it and try again."
-        is SmbFailure.Other -> e.message ?: "Couldn't connect."
+        // Connecting writes nothing, so a full share cannot be why it failed.
+        is SmbFailure.ShareFull, is SmbFailure.Other -> e.message ?: "Couldn't connect."
     }
 }

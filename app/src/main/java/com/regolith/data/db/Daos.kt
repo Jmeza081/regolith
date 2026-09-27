@@ -782,6 +782,99 @@ interface TransferDao {
 /** Two sums from one query. Room maps the column names onto the constructor. */
 data class ByteTally(val total: Long, val done: Long)
 
+/**
+ * The upload queue (P16). Like [TransferDao], the worker asks for the next
+ * row after every file instead of taking a snapshot at launch, so files
+ * picked while a batch is going join it rather than waiting for another run.
+ */
+@Dao
+interface UploadDao {
+    @Insert
+    suspend fun insertAll(rows: List<UploadEntity>): List<Long>
+
+    @Update
+    suspend fun update(row: UploadEntity)
+
+    @Query("SELECT * FROM uploads WHERE id = :id")
+    suspend fun byId(id: Long): UploadEntity?
+
+    @Query("SELECT * FROM uploads ORDER BY createdAtMs, id")
+    fun observeAll(): Flow<List<UploadEntity>>
+
+    @Query("SELECT * FROM uploads ORDER BY createdAtMs, id")
+    suspend fun all(): List<UploadEntity>
+
+    /** One folder's rows, in the order they were picked: the section at the top of that folder in Browse. */
+    @Query("SELECT * FROM uploads WHERE folderId = :folderId ORDER BY createdAtMs, id")
+    fun observeForFolder(folderId: Long): Flow<List<UploadEntity>>
+
+    @Query("SELECT * FROM uploads WHERE folderId = :folderId ORDER BY createdAtMs, id")
+    suspend fun forFolder(folderId: Long): List<UploadEntity>
+
+    /**
+     * The next file to send, oldest first. PAUSED counts as pending: the
+     * share dropped mid-file and the file resumes from its `.part`, so it
+     * waits for a turn like anything else.
+     */
+    @Query("SELECT * FROM uploads WHERE status IN ('QUEUED', 'PAUSED') ORDER BY createdAtMs, id LIMIT 1")
+    suspend fun nextQueued(): UploadEntity?
+
+    @Query("SELECT COUNT(*) FROM uploads WHERE status IN ('QUEUED', 'PAUSED', 'RUNNING')")
+    suspend fun activeCount(): Int
+
+    /** Rows a dead process left RUNNING; the queue re-runs them from their `.part`. */
+    @Query("UPDATE uploads SET status = 'QUEUED' WHERE status = 'RUNNING'")
+    suspend fun requeueRunning()
+
+    @Query("DELETE FROM uploads WHERE id IN (:ids)")
+    suspend fun deleteIds(ids: List<Long>)
+
+    /** "Try again", one row or a folder's worth: back in the queue with its cause cleared. */
+    @Query(
+        "UPDATE uploads SET status = 'QUEUED', cause = NULL, causeBytes = NULL, updatedAtMs = :now " +
+            "WHERE id IN (:ids) AND status = 'FAILED'",
+    )
+    suspend fun requeue(ids: List<Long>, now: Long)
+
+    /** "Try now": a paused row is already pending; this only clears the wait from its line. */
+    @Query("UPDATE uploads SET status = 'QUEUED', cause = NULL, updatedAtMs = :now WHERE status = 'PAUSED'")
+    suspend fun wakePaused(now: Long)
+
+    /**
+     * The same refusal is coming for every file still waiting for that
+     * FOLDER — a folder that will not take one file will not take the next —
+     * so they fail with it rather than each asking the server again.
+     */
+    @Query(
+        "UPDATE uploads SET status = 'FAILED', cause = :cause, updatedAtMs = :now " +
+            "WHERE folderId = :folderId AND status IN ('QUEUED', 'PAUSED')",
+    )
+    suspend fun failWaitingInFolder(folderId: Long, cause: String, now: Long)
+
+    /** As [failWaitingInFolder], for a refusal that is about the whole SERVER (the password). */
+    @Query(
+        "UPDATE uploads SET status = 'FAILED', cause = :cause, updatedAtMs = :now " +
+            "WHERE status IN ('QUEUED', 'PAUSED') AND folderId IN " +
+            "(SELECT f.id FROM folders f JOIN shares s ON f.shareId = s.id WHERE s.serverId = :serverId)",
+    )
+    suspend fun failWaitingOnServer(serverId: Long, cause: String, now: Long)
+
+    /**
+     * Stop from the notification: everything still owed becomes FAILED ·
+     * CANCELLED rather than disappearing, so the rows stay in their folder
+     * with "Try again" — and the `.part` files stay for the resume.
+     */
+    @Query(
+        "UPDATE uploads SET status = 'FAILED', cause = 'CANCELLED', updatedAtMs = :now " +
+            "WHERE status IN ('QUEUED', 'PAUSED', 'RUNNING')",
+    )
+    suspend fun cancelActive(now: Long)
+
+    /** Every phone address a row still needs, so read grants nothing needs can be handed back. */
+    @Query("SELECT DISTINCT sourceUri FROM uploads")
+    suspend fun sourceUris(): List<String>
+}
+
 @Dao
 interface DownloadPickDao {
     /** The next picked folder still needing a walk, oldest first. */

@@ -12,6 +12,8 @@ import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.artwork.RetrieverFrameSource
 import com.regolith.data.transfer.TransferScheduler
+import com.regolith.data.transfer.UploadThumbFetcher
+import com.regolith.data.transfer.UploadThumbKeyer
 import com.regolith.data.transfer.WorkManagerTransferScheduler
 import com.regolith.domain.artwork.MomentFrames
 import dagger.Binds
@@ -48,6 +50,8 @@ abstract class ArtworkModule {
          * Coil configured as a view layer only (guardrail G5): memory cache
          * on, its disk cache off because the artwork directory is the disk
          * cache, and our fetcher registered for [com.regolith.domain.artwork.ArtworkRequest].
+         * Uploads add one more model, [com.regolith.domain.transfer.UploadThumb]:
+         * the phone's own thumbnail of a file on its way to a share.
          */
         @Provides
         @Singleton
@@ -55,10 +59,14 @@ abstract class ArtworkModule {
             @ApplicationContext context: Context,
             fetcherFactory: ArtworkFetcher.Factory,
             keyer: ArtworkKeyer,
+            uploadThumbs: UploadThumbFetcher.Factory,
+            uploadThumbKeyer: UploadThumbKeyer,
         ): ImageLoader = ImageLoader.Builder(context)
             .components {
                 add(keyer)
                 add(fetcherFactory)
+                add(uploadThumbKeyer)
+                add(uploadThumbs)
             }
             .diskCache(null)
             .diskCachePolicy(CachePolicy.DISABLED)

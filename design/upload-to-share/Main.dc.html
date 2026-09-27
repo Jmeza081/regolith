@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Upload prototype</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Space Grotesk',sans-serif;background:#0A0A0A;color:#FFFFFF}
+a{color:#FFFFFF}a:hover{color:#EDEDED}
+button{font-family:inherit}
+sc-for,sc-if{display:contents}
+</style>
+</helmet>
+<div style="width:320px;height:692px;box-sizing:border-box;border-radius:34px;border:1px solid #2E2E2E;background:#0A0A0A;overflow:hidden;display:flex;flex-direction:column;position:relative;font-family:'Space Grotesk',sans-serif;color:#FFFFFF"><div style="flex:none;display:flex;align-items:flex-start;padding:24px 6px 12px 18px;gap:0"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;padding-top:8px"><span style="font:400 15px/1.3 'Michroma',sans-serif;text-transform:uppercase;color:#FFFFFF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Lisbon 2026</span><span style="font:400 12px/1.3 'Space Grotesk',sans-serif;color:#6E6E6E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">media / Home videos / Lisbon 2026</span></div><button type="button" aria-label="Upload to this folder" onClick="{{ openSheet }}" style="width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;color:#EDEDED;border-radius:999px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 20h16"></path></svg></button><button type="button" aria-label="Show as tiles" style="width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;color:#EDEDED;border-radius:999px;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2"></rect><rect x="3" y="14" width="18" height="6" rx="2"></rect></svg></button></div><div style="flex:none;padding:0 18px 14px"><button type="button" style="width:100%;height:40px;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;border-radius:999px;background:#E11B17;color:#FFFFFF;display:flex;align-items:center;justify-content:center;gap:8px;font:600 13px/1 'Space Grotesk',sans-serif"><svg width="13" height="13" viewBox="0 0 24 24" fill="#FFFFFF" stroke="none" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"></path></svg>Play all</button></div><div style="flex:1;min-height:0;overflow-y:auto;padding:0 18px 210px;display:flex;flex-direction:column;gap:20px"><sc-if value="{{ hasUploads }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:24px"><span style="font:600 11px/1 'Space Grotesk',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6E6E6E;white-space:nowrap">{{ eyebrow }}</span><button type="button" onClick="{{ sectionAct }}" style="border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;min-height:44px;margin:-10px 0;padding:0 2px;font:600 12px/1 'Space Grotesk',sans-serif;color:{{ sectionActColor }};white-space:nowrap">{{ sectionActLabel }}</button></div><div style="border:1px solid #1F1F1F;border-radius:14px;background:#0F0F0F;padding:0 12px;margin-bottom:-1px;overflow:hidden"><sc-if value="{{ showRows }}" hint-placeholder-val="{{ true }}"><div style="margin-bottom:-1px"><sc-for list="{{ rows }}" as="row" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:12px;min-height:64px;box-sizing:border-box;padding:6px 0;border-bottom:1px solid #1F1F1F"><span style="position:relative;width:60px;flex:none;aspect-ratio:16 / 9;border-radius:9px;background:{{ row.grad }};opacity:{{ row.thumbOpacity }}"><sc-if value="{{ row.hasChip }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:4px;bottom:4px;padding:1px 4px;border-radius:999px;background:rgba(0,0,0,.72);color:#FFFFFF;font:600 9px/1.3 'Space Grotesk',sans-serif">{{ row.chip }}</span></sc-if></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font:500 13px/17px 'Space Grotesk',sans-serif;color:#FFFFFF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.name }}</span><span style="font:400 11px/1.4 'Space Grotesk',sans-serif;color:{{ row.metaColor }};display:flex;gap:5px;align-items:flex-start"><sc-if value="{{ row.isDone }}" hint-placeholder-val="{{ false }}"><span style="flex:none;display:flex;margin-top:1px;color:#A0A0A0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"></path></svg></span></sc-if><span>{{ row.meta }}</span></span><sc-if value="{{ row.showBar }}" hint-placeholder-val="{{ false }}"><span style="display:block;height:3px;border-radius:999px;background:#1F1F1F;margin-top:6px;overflow:hidden"><span style="display:block;height:3px;width:{{ row.pct }}%;border-radius:999px;background:{{ row.barColor }}"></span></span></sc-if></span><sc-if value="{{ row.canCancel }}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="Cancel {{ row.name }}" onClick="{{ row.cancel }}" style="width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;color:#6E6E6E;border-radius:999px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></sc-if><sc-if value="{{ row.canRetry }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="Try {{ row.name }} again" onClick="{{ row.retry }}" style="width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;color:#FFFFFF;border-radius:999px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></button></sc-if></div></sc-for></div></sc-if><sc-if value="{{ showSummary }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:12px;min-height:64px;box-sizing:border-box;padding:6px 0"><span style="width:38px;height:38px;flex:none;border-radius:10px;overflow:hidden;display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:1px;background:#0F0F0F"><span style="background:{{ mosaic0 }}"></span><span style="background:{{ mosaic1 }}"></span><span style="background:{{ mosaic2 }}"></span><span style="background:{{ mosaic3 }}"></span></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font:500 13px/17px 'Space Grotesk',sans-serif;color:#FFFFFF">{{ summaryTitle }}</span><span style="font:400 11px/1.4 'Space Grotesk',sans-serif;color:#6E6E6E">{{ summaryMeta }}</span></span></div></sc-if></div><sc-if value="{{ showFoot }}" hint-placeholder-val="{{ false }}"><span style="font:400 11px/1.5 'Space Grotesk',sans-serif;color:#6E6E6E">The photos are on TOWER in this folder. Browse lists videos only.</span></sc-if></div></sc-if><div style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:24px"><span style="font:600 11px/1 'Space Grotesk',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6E6E6E;white-space:nowrap">1 folder</span></div><div style="border:1px solid #1F1F1F;border-radius:14px;background:#0F0F0F;padding:0 12px"><div style="display:flex;align-items:center;gap:12px;min-height:64px;box-sizing:border-box;padding:6px 0;"><span style="width:38px;height:38px;flex:none;border-radius:10px;background:#1A1A1A;display:flex;align-items:center;justify-content:center;color:#FFFFFF"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font:500 14px/17px 'Space Grotesk',sans-serif;color:#FFFFFF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Drone</span><span style="font:400 11px/1.4 'Space Grotesk',sans-serif;color:#6E6E6E;display:flex;gap:5px;align-items:flex-start">6 files · 2.1 GB</span></span><span style="flex:none;display:flex;color:#6E6E6E"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></span></div></div></div><div style="display:flex;flex-direction:column;gap:8px"><span style="font:600 11px/1 'Space Grotesk',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6E6E6E;min-height:24px;display:flex;align-items:center">{{ filesLabel }}</span><div style="border:1px solid #1F1F1F;border-radius:14px;background:#0F0F0F;padding:0 12px;overflow:hidden"><div style="margin-bottom:-1px"><sc-for list="{{ files }}" as="f" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:12px;min-height:64px;box-sizing:border-box;margin:0 -12px;padding:6px 12px;background:{{ f.bg }};border-bottom:1px solid #1F1F1F"><span style="position:relative;width:60px;flex:none;aspect-ratio:16 / 9;border-radius:9px;background:{{ f.grad }}"><span style="position:absolute;right:4px;bottom:4px;padding:1px 4px;border-radius:999px;background:rgba(0,0,0,.72);color:#FFFFFF;font:600 9px/1.3 'Space Grotesk',sans-serif">{{ f.chip }}</span></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font:500 13px/17px 'Space Grotesk',sans-serif;color:#FFFFFF;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span><span style="font:400 11px/1.4 'Space Grotesk',sans-serif;color:#6E6E6E">{{ f.meta }}</span></span></div></sc-for></div></div></div></div><div style="position:absolute;left:18px;right:18px;bottom:88px;display:flex;flex-direction:column;gap:8px"><sc-if value="{{ showTier }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px;border-radius:20px;background:rgba(0,0,0,.52);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.16);padding:11px 14px 12px"><span style="font:500 12px/1.3 'Space Grotesk',sans-serif;color:#FFFFFF">{{ tierLine }}</span><span style="display:block;height:3px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden"><span style="display:block;height:3px;width:{{ tierPct }}%;border-radius:999px;background:{{ tierColor }}"></span></span></div></sc-if><sc-if value="{{ showMsg }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:center"><div style="display:flex;align-items:center;gap:8px;min-height:38px;box-sizing:border-box;padding:5px 16px 5px 5px;border-radius:999px;background:#1C1C1C;border:1px solid {{ msgBorder }};box-shadow:0 8px 20px rgba(0,0,0,.6)"><span style="position:relative;width:27px;height:27px;flex:none;display:flex;align-items:center;justify-content:center;color:{{ msgIcon }}"><svg width="27" height="27" viewBox="0 0 27 27" aria-hidden="true" style="position:absolute;inset:0"><circle cx="13.5" cy="13.5" r="12.5" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="1.6"></circle><circle cx="13.5" cy="13.5" r="12.5" fill="none" stroke="{{ msgRing }}" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="{{ msgDash }} 79" transform="rotate(-90 13.5 13.5)"></circle></svg><sc-if value="{{ msgFailed }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v6"></path><path d="M12 17h.01"></path></svg></sc-if><sc-if value="{{ msgDone }}" hint-placeholder-val="{{ true }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"></path></svg></sc-if></span><span style="font:500 12.5px/1.35 'Space Grotesk',sans-serif;color:#FFFFFF;white-space:nowrap">{{ msgText }}</span></div></div></sc-if></div><div style="position:absolute;left:18px;right:18px;bottom:22px;height:58px;box-sizing:border-box;border-radius:999px;background:rgba(0,0,0,.52);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 30px rgba(0,0,0,.5);display:flex;align-items:center;padding:0 4px"><button type="button" aria-label="Home" style="flex:1;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;color:#8A8A8A;font:600 8.5px/1 'Space Grotesk',sans-serif;letter-spacing:.06em;text-transform:uppercase"><span style="position:relative;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20H4z"></path></svg></span><span>Home</span></button><button type="button" aria-label="Library" style="flex:1;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;color:#8A8A8A;font:600 8.5px/1 'Space Grotesk',sans-serif;letter-spacing:.06em;text-transform:uppercase"><span style="position:relative;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></svg></span><span>Library</span></button><button type="button" aria-label="Browse" style="flex:1;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;color:#FFFFFF;font:600 8.5px/1 'Space Grotesk',sans-serif;letter-spacing:.06em;text-transform:uppercase"><span style="position:relative;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><sc-if value="{{ browseDot }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-2px;right:-5px;width:6px;height:6px;border-radius:999px;background:#E11B17;border:1.5px solid #0A0A0A"></span></sc-if></span><span>Browse</span></button><button type="button" aria-label="Shorts" style="flex:1;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;color:#8A8A8A;font:600 8.5px/1 'Space Grotesk',sans-serif;letter-spacing:.06em;text-transform:uppercase"><span style="position:relative;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.2"></rect><path d="M10.6 8.9 15 12l-4.4 3.1z"></path></svg></span><span>Shorts</span></button><button type="button" aria-label="Settings" style="flex:1;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;color:#8A8A8A;font:600 8.5px/1 'Space Grotesk',sans-serif;letter-spacing:.06em;text-transform:uppercase"><span style="position:relative;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8 20 7.4v9.2l-8 4.6-8-4.6V7.4z"></path><circle cx="12" cy="12" r="3.2"></circle></svg></span><span>Settings</span></button></div><sc-if value="{{ isSheet }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="Close" onClick="{{ closeSheet }}" style="position:absolute;inset:0;border:0;padding:0;margin:0;background:rgba(0,0,0,.62);cursor:pointer"></button><div style="position:absolute;left:0;right:0;bottom:0;box-sizing:border-box;background:#0F0F0F;border-top:1px solid #1F1F1F;border-top-left-radius:22px;border-top-right-radius:22px;padding:12px 18px 28px;display:flex;flex-direction:column"><span style="width:38px;height:4px;border-radius:2px;background:#2E2E2E;align-self:center"></span><span style="margin-top:14px;font:400 14px/19.6px 'Michroma',sans-serif;text-transform:uppercase;color:#FFFFFF">Upload to Lisbon 2026</span><span style="margin-top:3px;font:400 12px/1.4 'Space Grotesk',sans-serif;color:#6E6E6E">media / Home videos / Lisbon 2026 · on TOWER</span><div style="margin-top:8px;display:flex;flex-direction:column"><button type="button" onClick="{{ openPhotos }}" style="display:flex;align-items:center;gap:12px;min-height:62px;box-sizing:border-box;padding:8px 0;border-bottom:1px solid #1F1F1F;text-decoration:none;color:#EDEDED;width:100%;text-align:left;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit"><span style="width:38px;height:38px;flex:none;border-radius:10px;background:#1A1A1A;display:flex;align-items:center;justify-content:center;color:#EDEDED"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font:500 14px/20px 'Space Grotesk',sans-serif;color:#EDEDED">Photos &amp; videos</span><span style="font:400 11.5px/1.4 'Space Grotesk',sans-serif;color:#6E6E6E">From your gallery</span></span></button><button type="button" onClick="{{ openFiles }}" style="display:flex;align-items:center;gap:12px;min-height:62px;box-sizing:border-box;padding:8px 0;text-decoration:none;color:#EDEDED;width:100%;text-align:left;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit"><span style="width:38px;height:38px;flex:none;border-radius:10px;background:#1A1A1A;display:flex;align-items:center;justify-content:center;color:#EDEDED"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font:500 14px/20px 'Space Grotesk',sans-serif;color:#EDEDED">Files</span><span style="font:400 11.5px/1.4 'Space Grotesk',sans-serif;color:#6E6E6E">Downloads, documents, anything else</span></span></button></div></div></sc-if><sc-if value="{{ isPicker }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#111317;font-family:'Space Grotesk',sans-serif"><div style="display:flex;align-items:center;gap:6px;padding:22px 12px 8px"><button type="button" aria-label="Close the picker" onClick="{{ closePicker }}" style="width:44px;height:44px;flex:none;display:flex;align-items:center;justify-content:center;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;color:#E3E3E8;border-radius:999px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button><span style="font:500 17px/1.3 'Space Grotesk',sans-serif;color:#E3E3E8">{{ pickerTitle }}</span></div><sc-if value="{{ showTabs }}" hint-placeholder-val="{{ true }}"><div style="display:flex;justify-content:center;padding:4px 0 14px"><div style="display:flex;border:1px solid #3A3D45;border-radius:999px;overflow:hidden"><span style="padding:7px 22px;background:#2B3444;color:#D6E3FF;font:500 12.5px/1 'Space Grotesk',sans-serif">Photos</span><span style="padding:7px 22px;color:#C4C6CF;font:500 12.5px/1 'Space Grotesk',sans-serif">Albums</span></div></div></sc-if><span style="padding:0 14px 8px;font:500 12px/1.3 'Space Grotesk',sans-serif;color:#C4C6CF">{{ pickerHeading }}</span><div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:3px;padding:0 3px"><sc-for list="{{ pickerItems }}" as="p" hint-placeholder-count="6"><button type="button" aria-label="{{ p.label }}" aria-pressed="{{ p.pressed }}" onClick="{{ p.toggle }}" style="position:relative;display:block;aspect-ratio:1 / 1;width:100%;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;background:{{ p.grad }};border-radius:{{ p.radius }};box-shadow:{{ p.ring }}"><sc-if value="{{ p.selected }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:999px;background:#C3D0E6;display:flex;align-items:center;justify-content:center;color:#10131A"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7"></path></svg></span></sc-if><sc-if value="{{ p.unselected }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:999px;border:1.5px solid rgba(255,255,255,.85);box-sizing:border-box"></span></sc-if><sc-if value="{{ p.isVideo }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:6px;bottom:6px;padding:1px 5px;border-radius:999px;background:rgba(0,0,0,.6);color:#FFFFFF;font:500 10px/1.4 'Space Grotesk',sans-serif">{{ p.dur }}</span></sc-if></button></sc-for></div><div style="flex:1"></div><div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 26px;border-top:1px solid #23262D"><span style="font:500 13px/1 'Space Grotesk',sans-serif;color:#C3D0E6">{{ pickerHint }}</span><button type="button" onClick="{{ addPicked }}" style="height:40px;padding:0 22px;border:0;background:transparent;padding:0;margin:0;cursor:pointer;font-family:inherit;border-radius:999px;background:{{ addBg }};color:{{ addInk }};font:600 13px/1 'Space Grotesk',sans-serif">Add</button></div></div></sc-if></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"rehearseFailures":{"editor":"boolean","default":true},"$preview":{"width":320,"height":692}}'>
+class Component extends DCLogic {
+  base() {
+    return { screen: 'folder', filesPicker: false, picks: [], queue: [], landed: [], active: false,
+      dropped: false, filled: false, msg: null, msgAt: 0, msgUntil: 0 };
+  }
+  cur() { return Object.assign(this.base(), this.state || {}); }
+  componentDidMount() { this.timer = setInterval(() => this.step(), 100); }
+  componentWillUnmount() { clearInterval(this.timer); }
+  phone() {
+    return [
+      { id: 'v1', name: '20260914_190455.mp4', kind: 'video', size: 612, dur: '2:10', res: '4K', grad: 'linear-gradient(160deg,#6B8FA8 0%,#2B4A63 45%,#0D1822 100%)' },
+      { id: 'p1', name: '20260914_184110.jpg', kind: 'photo', size: 5.1, grad: 'linear-gradient(150deg,#F2D16B 0%,#C8962E 50%,#3B2A10 100%)' },
+      { id: 'p2', name: '20260914_183507.jpg', kind: 'photo', size: 3.8, grad: 'linear-gradient(145deg,#8FB8DE 0%,#2F5D8A 55%,#0F2340 100%)' },
+      { id: 'p3', name: '20260914_183022.jpg', kind: 'photo', size: 4.2, grad: 'linear-gradient(170deg,#F6B26B 0%,#D0684A 50%,#3A1F2B 100%)' },
+      { id: 'p4', name: '20260913_121904.jpg', kind: 'photo', size: 2.9, grad: 'linear-gradient(150deg,#F4B6C2 0%,#C98B9A 50%,#4A2F38 100%)' },
+      { id: 'v2', name: '20260913_120211.mp4', kind: 'video', size: 88, dur: '0:18', res: '1080p', grad: 'linear-gradient(150deg,#9CC5A1 0%,#4E7D5B 55%,#16261B 100%)' }
+    ];
+  }
+  fmt(mb) {
+    if (mb >= 1000) return (mb / 1000).toFixed(1) + ' GB';
+    if (mb >= 100) return Math.round(mb) + ' MB';
+    return mb.toFixed(1) + ' MB';
+  }
+  live(x) { return x.status === 'waiting' || x.status === 'running' || x.status === 'paused'; }
+  step() {
+    const s = this.cur();
+    const now = Date.now();
+    const patch = {};
+    if (s.msg && now > s.msgUntil) patch.msg = null;
+    else if (s.msg) patch.tick = now;
+    const rehearse = this.props.rehearseFailures !== false;
+    const q = s.queue.map((x) => Object.assign({}, x));
+    let run = q.find((x) => x.status === 'running' || x.status === 'paused');
+    if (!run) {
+      run = q.find((x) => x.status === 'waiting');
+      if (run) run.status = 'running';
+    }
+    if (run) {
+      let dropped = s.dropped, filled = s.filled, landed = s.landed;
+      if (run.status === 'paused') {
+        run.countdown = Math.max(0, run.countdown - 0.1);
+        if (run.countdown <= 0) run.status = 'running';
+      } else {
+        const secs = run.kind === 'video' ? Math.min(7, 2 + run.size / 120) : 1.6;
+        run.frac = Math.min(1, run.frac + 0.1 / secs);
+        const dropTarget = q.length > 1 ? q[1] : q[0];
+        const firstVideo = q.find((x) => x.kind === 'video');
+        if (rehearse && !dropped && run === dropTarget && run.frac >= 0.45) {
+          run.status = 'paused'; run.countdown = 4; dropped = true;
+        } else if (rehearse && !filled && run === firstVideo && run.frac >= 0.8) {
+          run.status = 'failed'; filled = true;
+        } else if (run.frac >= 1) {
+          run.status = 'done';
+          if (run.kind === 'video') landed = [run.id].concat(landed.filter((id) => id !== run.id));
+        }
+      }
+      Object.assign(patch, { queue: q, dropped, filled, landed });
+    }
+    const active = q.some((x) => this.live(x));
+    if (active && !s.active) patch.active = true;
+    if (!active && s.active) {
+      patch.active = false;
+      if (q.length) {
+        const failed = q.filter((x) => x.status === 'failed').length;
+        patch.msg = failed
+          ? { failed: true, text: failed + ' of ' + q.length + " didn't upload" }
+          : { failed: false, text: 'Uploaded ' + q.length + ' to Lisbon 2026' };
+        patch.msgAt = now;
+        patch.msgUntil = now + (failed ? 8000 : 5000);
+      }
+    }
+    if (Object.keys(patch).length) this.setState(patch);
+  }
+  renderVals() {
+    const s = this.cur();
+    const set = (p) => this.setState(p);
+    const lib = this.phone();
+    const q = s.queue;
+    const live = q.filter((x) => this.live(x));
+    const running = q.find((x) => x.status === 'running');
+    const paused = q.find((x) => x.status === 'paused');
+    const failedN = q.filter((x) => x.status === 'failed').length;
+    const doneN = q.filter((x) => x.status === 'done').length;
+    const current = q.find((x) => x.status === 'running' || x.status === 'paused') || live[0];
+    const pos = current ? q.indexOf(current) + 1 : doneN;
+    const total = q.reduce((a, x) => a + x.size, 0);
+    const sent = q.reduce((a, x) => a + x.size * x.frac, 0);
+
+    const rows = q.map((x) => {
+      let meta;
+      if (x.status === 'waiting') meta = x.frac > 0 ? 'Waiting · ' + this.fmt(x.size * x.frac) + ' of ' + this.fmt(x.size) + ' sent' : 'Waiting · ' + this.fmt(x.size);
+      else if (x.status === 'running') meta = this.fmt(x.size * x.frac) + ' of ' + this.fmt(x.size) + ' · ' + Math.floor(x.frac * 100) + '%';
+      else if (x.status === 'paused') meta = 'TOWER dropped · trying again in ' + Math.ceil(x.countdown) + ' s';
+      else if (x.status === 'failed') meta = 'TOWER is full · needs 140 MB more';
+      else meta = 'Uploaded · ' + this.fmt(x.size);
+      return {
+        name: x.name, grad: x.grad, chip: x.res || '', hasChip: x.kind === 'video', meta,
+        metaColor: x.status === 'failed' || x.status === 'paused' ? '#A0A0A0' : '#6E6E6E',
+        isDone: x.status === 'done', thumbOpacity: 1,
+        showBar: x.status === 'running' || x.status === 'paused' || x.status === 'failed' || (x.status === 'waiting' && x.frac > 0),
+        pct: Math.round(x.frac * 100), barColor: x.status === 'running' ? '#E11B17' : '#6E6E6E',
+        canCancel: this.live(x), canRetry: x.status === 'failed',
+        cancel: () => set({ queue: this.cur().queue.filter((y) => y.id !== x.id) }),
+        retry: () => set({ msg: null, queue: this.cur().queue.map((y) => (y.id === x.id ? Object.assign({}, y, { status: 'waiting' }) : y)) })
+      };
+    });
+
+    let eyebrow = '', actLabel = '', actColor = '#A0A0A0', act = () => {};
+    if (live.length) {
+      if (paused) {
+        eyebrow = 'Waiting for TOWER'; actLabel = 'Try now'; actColor = '#FFFFFF';
+        act = () => set({ queue: this.cur().queue.map((y) => (y.status === 'paused' ? Object.assign({}, y, { status: 'running', countdown: 0 }) : y)) });
+      } else {
+        eyebrow = 'Uploading · ' + pos + ' of ' + q.length; actLabel = 'Cancel all';
+        act = () => set({ queue: this.cur().queue.filter((y) => !this.live(y)) });
+      }
+    } else if (failedN) {
+      eyebrow = 'Uploaded ' + doneN + ' of ' + q.length; actLabel = 'Try again'; actColor = '#FFFFFF';
+      act = () => set({ msg: null, queue: this.cur().queue.map((y) => (y.status === 'failed' ? Object.assign({}, y, { status: 'waiting' }) : y)) });
+    } else if (q.length) {
+      eyebrow = 'Just uploaded'; actLabel = 'Clear';
+      act = () => set({ queue: [], msg: null });
+    }
+
+    const collapsed = q.length > 0 && !live.length && !failedN;
+    const photos = q.filter((x) => x.kind === 'photo').length;
+    const videos = q.length - photos;
+    const grads = q.slice(0, 4).map((x) => x.grad);
+    while (grads.length < 4) grads.push('#1A1A1A');
+
+    const landedRows = s.landed.map((id) => {
+      const it = lib.find((y) => y.id === id);
+      return { name: it.name, grad: it.grad, chip: it.res, meta: it.res + ' · ' + this.fmt(it.size) + ' · just now', bg: '#171717' };
+    });
+    const files = landedRows.concat([
+      { name: 'Ferry at dusk.mp4', grad: 'linear-gradient(150deg,#2B4448 0%,#0C1416 100%)', chip: '4K', meta: '4K · 380 MB', bg: 'transparent' },
+      { name: 'Tram 28.mp4', grad: 'linear-gradient(150deg,#3E2E4A 0%,#120D17 100%)', chip: '1080p', meta: '1080p · 212 MB', bg: 'transparent' }
+    ]);
+
+    const picks = s.picks;
+    const pickerItems = lib.map((it) => {
+      const on = picks.indexOf(it.id) >= 0;
+      return {
+        grad: it.grad, isVideo: it.kind === 'video', dur: it.dur || '', selected: on, unselected: !on,
+        pressed: on ? 'true' : 'false', label: (on ? 'Deselect ' : 'Select ') + it.name,
+        radius: on ? '10px' : '2px', ring: on ? 'inset 0 0 0 3px #C3D0E6' : 'none',
+        toggle: () => {
+          const p = this.cur().picks;
+          set({ picks: p.indexOf(it.id) >= 0 ? p.filter((y) => y !== it.id) : p.concat([it.id]) });
+        }
+      };
+    });
+    const addPicked = () => {
+      const p = this.cur().picks;
+      if (!p.length) return;
+      const queue = p.map((id) => Object.assign({}, lib.find((y) => y.id === id), { frac: 0, status: 'waiting', countdown: 0 }));
+      set({ screen: 'folder', picks: [], queue, dropped: false, filled: false, msg: null, active: false });
+    };
+
+    const msg = s.msg;
+    const msgLeft = msg ? Math.max(0, (s.msgUntil - Date.now()) / Math.max(1, s.msgUntil - s.msgAt)) : 0;
+    return {
+      isSheet: s.screen === 'sheet', isPicker: s.screen === 'picker',
+      openSheet: () => set({ screen: 'sheet' }),
+      closeSheet: () => set({ screen: 'folder' }),
+      openPhotos: () => set({ screen: 'picker', filesPicker: false, picks: [] }),
+      openFiles: () => set({ screen: 'picker', filesPicker: true, picks: [] }),
+      closePicker: () => set({ screen: 'folder', picks: [] }),
+      showTabs: !s.filesPicker,
+      pickerHeading: s.filesPicker ? 'Recent files' : 'Mon, 14 Sep',
+      pickerTitle: picks.length ? picks.length + ' selected' : 'Select items',
+      pickerHint: picks.length ? 'View selected (' + picks.length + ')' : 'Tap to pick',
+      pickerItems, addPicked,
+      addBg: picks.length ? '#C3D0E6' : '#2A2D34', addInk: picks.length ? '#10131A' : '#6E7280',
+      hasUploads: q.length > 0, rows, showRows: !collapsed, showSummary: collapsed,
+      showFoot: collapsed && photos > 0,
+      summaryTitle: q.length + ' uploaded',
+      summaryMeta: [photos ? photos + (photos === 1 ? ' photo' : ' photos') : '', videos ? videos + (videos === 1 ? ' video' : ' videos') : '', this.fmt(total)].filter(Boolean).join(' · '),
+      mosaic0: grads[0], mosaic1: grads[1], mosaic2: grads[2], mosaic3: grads[3],
+      eyebrow, sectionActLabel: actLabel, sectionActColor: actColor, sectionAct: act,
+      files, filesLabel: files.length + ' files',
+      showTier: live.length > 0,
+      tierLine: paused ? 'Waiting for TOWER · picks up where it stopped' : 'Uploading ' + q.length + ' to Lisbon 2026 · ' + pos + ' of ' + q.length,
+      tierPct: total ? Math.round((sent / total) * 100) : 0,
+      tierColor: paused ? '#6E6E6E' : '#E11B17',
+      showMsg: !!msg, msgText: msg ? msg.text : '', msgFailed: !!(msg && msg.failed), msgDone: !(msg && msg.failed),
+      msgBorder: msg && msg.failed ? 'rgba(225,27,23,.55)' : '#3A3A3A',
+      msgRing: msg && msg.failed ? '#E11B17' : 'rgba(255,255,255,.75)',
+      msgIcon: msg && msg.failed ? '#E11B17' : '#FFFFFF',
+      msgDash: (78.5 * msgLeft).toFixed(1),
+      browseDot: failedN > 0
+    };
+  }
+}
+</script>
+</body>
+</html>

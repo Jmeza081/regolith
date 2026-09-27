@@ -66,6 +66,7 @@ import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.EyebrowAction
 import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.PlayAllButton
@@ -1064,22 +1065,16 @@ private fun DeviceTab(
         if (state.ready.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Named for where the copies came from, because the
-                        // page also lists videos that came from nowhere but
-                        // the phone — and only these can be removed safely.
-                        Eyebrow("Downloaded from shares", Modifier.weight(1f), muted = true)
-                        // Beside its own eyebrow, the way "Clear failed" sits
-                        // beside its own. The page's one page-level act, and
-                        // it asks before it does anything.
-                        if (!selecting) {
-                            Text(
-                                "Clear all", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
-                                modifier = Modifier
-                                    .clickable(interactionSource = null, indication = null, onClick = onClearAll)
-                                    .testTag("device_clear_all_button"),
-                            )
-                        }
+                    // Named for where the copies came from, because the page
+                    // also lists videos that came from nowhere but the phone —
+                    // and only these can be removed safely. "Clear all" sits
+                    // beside its own eyebrow, the way "Clear failed" sits beside
+                    // its own: the page's one page-level act, and it asks before
+                    // it does anything.
+                    if (selecting) {
+                        Eyebrow("Downloaded from shares", muted = true)
+                    } else {
+                        EyebrowAction("Downloaded from shares", "Clear all", onClearAll, "device_clear_all_button")
                     }
                     if (state.viewMode == ViewMode.GRID) {
                         deviceGrid(state.ready)
@@ -1104,16 +1099,10 @@ private fun DeviceTab(
         if (state.failed.isNotEmpty()) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Eyebrow("Failed · ${state.failed.size}", Modifier.weight(1f), muted = true)
-                        Text(
-                            // "Clear failed", not "Clear all": the page now has a
-                            // Clear all of its own, and two of them meaning
-                            // different amounts would be a trap.
-                            "Clear failed", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
-                            modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = onClearFailed).testTag("device_clear_failed_button"),
-                        )
-                    }
+                    // "Clear failed", not "Clear all": the page now has a Clear
+                    // all of its own, and two of them meaning different amounts
+                    // would be a trap.
+                    EyebrowAction("Failed · ${state.failed.size}", "Clear failed", onClearFailed, "device_clear_failed_button")
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                         val shown = if (state.showAllFailed) state.failed else state.failed.take(3)
                         shown.forEach { row -> deviceRow(row, 72.dp, "Try again", { onRetry(row.fileId) }, true) }

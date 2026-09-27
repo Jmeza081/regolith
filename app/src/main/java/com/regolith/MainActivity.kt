@@ -16,6 +16,7 @@ import com.regolith.ui.navigation.RegolithNavGraph
 import com.regolith.ui.theme.RegolithTheme
 import dagger.hilt.android.AndroidEntryPoint
 import com.regolith.data.transfer.TransferQueueWorker
+import com.regolith.data.transfer.UploadQueueWorker
 
 /**
  * The single Activity. Android needs at least one "window" to draw into; in
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleViewIntent(intent)
         handleDownloadsIntent(intent)
+        handleUploadsIntent(intent)
         // Draw under the status and navigation bars; the design runs content
         // beneath the floating nav pill with no hard edges.
         enableEdgeToEdge()
@@ -90,6 +92,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleViewIntent(intent)
         handleDownloadsIntent(intent)
+        handleUploadsIntent(intent)
     }
 
     /**
@@ -104,6 +107,17 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(TransferQueueWorker.EXTRA_OPEN_DOWNLOADS, false) != true) return
         intent.removeExtra(TransferQueueWorker.EXTRA_OPEN_DOWNLOADS)
         appViewModel.requestDownloads()
+    }
+
+    /**
+     * An upload notification was tapped (P16): go to the folder the files are
+     * going to. Handed over for the same rotation reason as the two above.
+     */
+    private fun handleUploadsIntent(intent: Intent?) {
+        if (intent?.hasExtra(UploadQueueWorker.EXTRA_OPEN_UPLOAD_FOLDER) != true) return
+        val folderId = intent.getLongExtra(UploadQueueWorker.EXTRA_OPEN_UPLOAD_FOLDER, UploadQueueWorker.NO_FOLDER)
+        intent.removeExtra(UploadQueueWorker.EXTRA_OPEN_UPLOAD_FOLDER)
+        appViewModel.requestUploads(folderId)
     }
 
     /**

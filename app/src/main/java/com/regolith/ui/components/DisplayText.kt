@@ -1,17 +1,22 @@
 package com.regolith.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.TYPE_SCALE
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.theme.designSp
 
 /**
  * Michroma display text: screen titles, the wordmark, dialog titles.
@@ -66,3 +71,34 @@ fun Eyebrow(text: String, modifier: Modifier = Modifier, muted: Boolean = false,
     )
 }
 
+/**
+ * An [Eyebrow] with its section's one action at the right: "Clear failed",
+ * "Try again", "Cancel all". Text rather than a button because it belongs
+ * to the label — it acts on everything the eyebrow names, and a button there
+ * would read as a second, competing section control.
+ *
+ * @param actionColor the accent for an act that removes things (Library's
+ *   clears), ink for one that carries on (an upload's Try again), the body
+ *   grey for one that merely tidies.
+ */
+@Composable
+fun EyebrowAction(
+    text: String,
+    action: String,
+    onAction: () -> Unit,
+    actionTestTag: String,
+    modifier: Modifier = Modifier,
+    actionColor: Color = RegolithTheme.colors.accent,
+    muted: Boolean = true,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Eyebrow(text, Modifier.weight(1f), muted = muted)
+        Text(
+            action,
+            style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()),
+            color = actionColor,
+            maxLines = 1,
+            modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = onAction).testTag(actionTestTag),
+        )
+    }
+}

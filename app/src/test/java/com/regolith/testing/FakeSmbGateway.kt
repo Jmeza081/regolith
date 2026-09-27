@@ -7,6 +7,7 @@ import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import com.regolith.domain.smb.SmbShareInfo
+import com.regolith.domain.smb.SmbWriteSink
 
 /**
  * In-memory SMB server for JVM tests: a map of share -> path -> bytes.
@@ -44,6 +45,28 @@ class FakeSmbGateway : SmbGateway {
     /** Each write's clock: the next write gets this time, then it advances by a second. */
     var clockMs = DEFAULT_MTIME + 1_000
     val writes = mutableListOf<String>()
+
+    // --- Uploads (P16): appending, and the two ways a real share stops one.
+
+    /** What [freeBytes] answers; null is a server that will not say. */
+    var freeSpace: Long? = 1L shl 40
+
+    /** Appends fail with [SmbFailure.ShareFull] once the share would hold more than this many bytes. */
+    var capacityBytes: Long? = null
+
+    /**
+     * The share drops ONCE, mid-append, after this many bytes have been
+     * appended in all — the Wi-Fi blip an upload has to survive. What fitted
+     * before the drop stays in the file, as it would on a real server.
+     */
+    var dropAfterAppendedBytes: Long? = null
+    var appendedBytes = 0L
+
+    /** How many append handles were opened: a resume that re-sent the file would open once but append twice as much. */
+    var appendOpens = 0
+
+    /** Listing a folder that does not exist fails with [SmbFailure.NotFound], as on a real server. */
+    var missingFoldersAreNotFound = false
 
     fun addFile(share: String, relPath: String, bytes: ByteArray, modifiedAtMs: Long = DEFAULT_MTIME) {
         addShare(share)
@@ -124,6 +147,59 @@ class FakeSmbGateway : SmbGateway {
         dirs[share]?.removeAll { it == relPath || it.startsWith(prefix) }
     }
 
+    override fun openForAppend(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SmbWriteSink {
+        checkWritable(host, credentials, share)
+        // A real server refuses to create under a folder that is not there.
+        val parent = relPath.substringBeforeLast('/', "")
+        if (!isDir(share, parent)) throw SmbFailure.NotFound("$share/$parent")
+        val all = files.getValue(share)
+        val start = all[relPath]?.size?.toLong() ?: 0L
+        if (!all.containsKey(relPath)) all[relPath] = ByteArray(0)
+        appendOpens++
+        return FakeSink(host, share, relPath, start)
+    }
+
+    inner class FakeSink(private val host: SmbHost, private val share: String, private val relPath: String, override val startOffset: Long) : SmbWriteSink {
+        var closed = false
+
+        override fun write(src: ByteArray, offset: Int, length: Int) {
+            if (!reachable) throw SmbFailure.Unreachable(host.host)
+            dropAfterAppendedBytes?.let { limit ->
+                if (appendedBytes + length > limit) {
+                    append(src, offset, (limit - appendedBytes).toInt().coerceAtLeast(0))
+                    dropAfterAppendedBytes = null
+                    throw SmbFailure.Unreachable(host.host)
+                }
+            }
+            capacityBytes?.let { cap ->
+                val held = files.getValue(share).values.sumOf { it.size.toLong() }
+                if (held + length > cap) throw SmbFailure.ShareFull("$share/$relPath")
+            }
+            append(src, offset, length)
+        }
+
+        private fun append(src: ByteArray, offset: Int, length: Int) {
+            val all = files.getValue(share)
+            all[relPath] = (all[relPath] ?: ByteArray(0)) + src.copyOfRange(offset, offset + length)
+            appendedBytes += length
+        }
+
+        override fun close() {
+            closed = true
+        }
+    }
+
+    override suspend fun freeBytes(host: SmbHost, credentials: SmbCredentials, share: String): Long? {
+        check(host, credentials)
+        return freeSpace
+    }
+
+    override suspend fun setModifiedTime(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, modifiedAtMs: Long) {
+        checkWritable(host, credentials, share)
+        if (!files.getValue(share).containsKey(relPath)) throw SmbFailure.NotFound("$share/$relPath")
+        mtimes.getOrPut(share) { mutableMapOf() }[relPath] = modifiedAtMs
+    }
+
     /** Is there a folder at this path — explicitly made, or implied by a file under it? */
     fun isDir(share: String, relPath: String): Boolean {
         if (relPath.isEmpty()) return true
@@ -161,6 +237,11 @@ class FakeSmbGateway : SmbGateway {
     override suspend fun list(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): List<SmbEntry> {
         check(host, credentials)
         val all = files[share] ?: throw SmbFailure.NotFound(share)
+        // A real server says a folder that is not there is not there; it does
+        // not list it as empty. Uploads tell "the folder went" from "a file in
+        // it went" by exactly this. Opt-in, because older tests list folders
+        // that exist only in Room.
+        if (missingFoldersAreNotFound && !isDir(share, relPath)) throw SmbFailure.NotFound("$share/$relPath")
         val prefix = if (relPath.isEmpty()) "" else "$relPath/"
         val childDirs = mutableSetOf<String>()
         val entries = mutableListOf<SmbEntry>()

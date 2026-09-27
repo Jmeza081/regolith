@@ -45,6 +45,16 @@ class AppLockTest {
         assertEquals(LockAfter.DEFAULT, LockAfter.of(null))
         assertEquals(LockAfter.DEFAULT, LockAfter.of("AFTER_A_FORTNIGHT"))
     }
+
+    @Test
+    fun `a trip the app sent you on does not lock you out on the way back`() {
+        // Two minutes in the photo picker, on a lock set to "At once".
+        assertFalse(AppLock.shouldAsk(true, LockAfter.IMMEDIATELY, leftAtMs = 0, nowMs = 2 * minute, sentAway = true))
+        // But a picker left open for the afternoon still locks.
+        assertTrue(AppLock.shouldAsk(true, LockAfter.IMMEDIATELY, leftAtMs = 0, nowMs = 6 * minute, sentAway = true))
+        // And it never shortens a longer grace the user chose.
+        assertFalse(AppLock.shouldAsk(true, LockAfter.FIVE_MINUTES, leftAtMs = 0, nowMs = 4 * minute, sentAway = true))
+    }
 }
 
 class BiometricAvailabilityTest {

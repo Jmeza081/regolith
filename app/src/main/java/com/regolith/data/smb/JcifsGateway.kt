@@ -8,6 +8,7 @@ import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import com.regolith.domain.smb.shareRootRefusal
 import com.regolith.domain.smb.SmbShareInfo
+import com.regolith.domain.smb.SmbWriteSink
 import jcifs.CIFSContext
 import jcifs.CIFSException
 import jcifs.SmbConstants
@@ -49,6 +50,13 @@ class JcifsGateway @Inject constructor() : SmbGateway {
 
     private companion object {
         const val TAG = "Regolith/SMB"
+
+        /**
+         * Over this login's quota: the same "no room" as a full disk, from
+         * the user's side of the share. jcifs-ng names DISK_FULL but not
+         * this one, so it is spelled out here.
+         */
+        const val NT_STATUS_QUOTA_EXCEEDED = 0xC0000044.toInt()
     }
 
     /**
@@ -366,6 +374,44 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         }
 
     /**
+     * The upload write (P16). The size is read through a FRESH handle before
+     * the stream opens: `SmbFile` caches attributes for a few seconds, and a
+     * stale length would resume from the wrong byte. jcifs' append mode
+     * (O_CREAT | O_WRONLY | O_APPEND) then starts its own write pointer at
+     * the size the server reports on open, which is the same number — the
+     * two agree by construction, and [SmbWriteSink.startOffset] is it.
+     */
+    override fun openForAppend(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SmbWriteSink {
+        val path = "$share/$relPath"
+        val (stream, start) = withDialect(host, credentials, path) { ctx ->
+            val url = fileUrl(host, share, relPath)
+            val probe = SmbFile(url, ctx)
+            val start = if (probe.exists()) probe.length() else 0L
+            SmbFile(url, ctx).openOutputStream(true) to start
+        }
+        return JcifsWriteSink(stream, start, host, path, pinnedDialect[host] ?: "SMB?")
+    }
+
+    override suspend fun freeBytes(host: SmbHost, credentials: SmbCredentials, share: String): Long? =
+        withContext(Dispatchers.IO) {
+            try {
+                withDialect(host, credentials, "$share/") { ctx -> SmbFile(urlFor(host, share, ""), ctx).diskFreeSpace }
+                    // Zero is what a server that will not say tends to answer.
+                    // Treating it as "full" would refuse every upload to it;
+                    // treating it as unknown lets the write find out for real.
+                    .takeIf { it > 0 }
+            } catch (e: SmbFailure) {
+                Log.i(TAG, "no free-space answer for $share: ${e.message}")
+                null
+            }
+        }
+
+    override suspend fun setModifiedTime(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, modifiedAtMs: Long) =
+        withContext(Dispatchers.IO) {
+            withDialect(host, credentials, "$share/$relPath") { ctx -> SmbFile(fileUrl(host, share, relPath), ctx).setLastModified(modifiedAtMs) }
+        }
+
+    /**
      * Both folder calls address the path WITH the trailing slash `urlFor`
      * appends, which is how jcifs is told the name is a directory. Through
      * a slashless URL a folder does not even report `exists()`, which is
@@ -457,6 +503,11 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             NtStatus.NT_STATUS_BAD_NETWORK_NAME,
             NtStatus.NT_STATUS_NO_SUCH_FILE,
             -> SmbFailure.NotFound(path, e, detail(e, dialect), explanation = shareRootRefusal(path))
+            // A full share and a spent quota need the same fix, so the UI
+            // has one sentence for both.
+            NtStatus.NT_STATUS_DISK_FULL,
+            NT_STATUS_QUOTA_EXCEEDED,
+            -> SmbFailure.ShareFull(path, e, detail(e, dialect))
             else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
         }
     } catch (e: CIFSException) {
@@ -507,6 +558,40 @@ class JcifsGateway @Inject constructor() : SmbGateway {
      * this should no longer happen; this is the seam that keeps it from
      * costing a whole scan if it ever does.
      */
+    /**
+     * [SmbWriteSink] over a jcifs output stream opened in append mode.
+     * Inner, so a failed write is mapped by the same [wrap] as every other
+     * call — the upload queue tells "the share dropped" from "the share is
+     * full" by the [SmbFailure] type alone. An I/O failure jcifs does not
+     * wrap in its own exception is still the connection, and says so.
+     */
+    private inner class JcifsWriteSink(
+        private val out: java.io.OutputStream,
+        override val startOffset: Long,
+        private val host: SmbHost,
+        private val path: String,
+        private val dialect: String,
+    ) : SmbWriteSink {
+        override fun write(src: ByteArray, offset: Int, length: Int) = guarded { out.write(src, offset, length) }
+
+        override fun close() = guarded { out.close() }
+
+        private inline fun guarded(block: () -> Unit) {
+            try {
+                wrap(host, path, dialect, block)
+            } catch (e: SmbFailure) {
+                throw e
+            } catch (e: java.io.IOException) {
+                Log.w(TAG, "write to ${host.host}/$path failed", e)
+                throw if (e.isTcpLevel() || e is java.net.SocketException) {
+                    SmbFailure.Unreachable(host.host, e, "${e::class.java.simpleName} · $dialect")
+                } else {
+                    SmbFailure.Other(e.message ?: "SMB write failed", e, dialect)
+                }
+            }
+        }
+    }
+
     private fun Throwable.isOversizedReply(): Boolean =
         generateSequence(this) { it.cause }.any { t ->
             t is java.io.IOException && t.message?.contains("exceeds maxiumum buffer size") == true

@@ -99,24 +99,3 @@ fun PlayAllSheet(
         )
     }
 }
-
-/** One row of the drawer: a 18dp glyph, the choice, and a line saying what it will do. */
-@Composable
-private fun SheetChoice(icon: Int, label: String, note: String?, testTag: String, onClick: () -> Unit) {
-    val colors = RegolithTheme.colors
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
-            .clickable(interactionSource = null, indication = null, onClick = onClick)
-            .testTag(testTag),
-    ) {
-        Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.scaledDp()))
-        Spacer(Modifier.width(Spacing.s12))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text(label, style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.ink)
-            if (note != null) {
-                Text(note, style = TextStyles.settingMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
