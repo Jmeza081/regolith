@@ -3,11 +3,11 @@ package com.regolith.data.transfer
 import android.content.Context
 import android.content.Intent
 import android.database.Cursor
-import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.core.net.toUri
 import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.transfer.PickedFile
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -67,7 +67,7 @@ class ContentPhoneFiles @Inject constructor(
     private val resolver get() = context.contentResolver
 
     override fun describe(uri: String): PickedFile? = try {
-        val address = Uri.parse(uri)
+        val address = uri.toUri()
         var name: String? = null
         var size = -1L
         var modified: Long? = null
@@ -96,7 +96,7 @@ class ContentPhoneFiles @Inject constructor(
 
     override fun open(uri: String, offset: Long): InputStream {
         val stream = try {
-            resolver.openInputStream(Uri.parse(uri)) ?: throw SourceGone(uri)
+            resolver.openInputStream(uri.toUri()) ?: throw SourceGone(uri)
         } catch (e: FileNotFoundException) {
             throw SourceGone(uri, e)
         } catch (e: SecurityException) {
@@ -138,7 +138,7 @@ class ContentPhoneFiles @Inject constructor(
     }
 
     override fun keepAccess(uri: String): Boolean = try {
-        resolver.takePersistableUriPermission(Uri.parse(uri), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        resolver.takePersistableUriPermission(uri.toUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION)
         true
     } catch (e: SecurityException) {
         Log.i(TAG, "access to $uri cannot outlive the app: ${e.message}")
@@ -146,7 +146,7 @@ class ContentPhoneFiles @Inject constructor(
     }
 
     override fun releaseAccess(uri: String) {
-        runCatching { resolver.releasePersistableUriPermission(Uri.parse(uri), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        runCatching { resolver.releasePersistableUriPermission(uri.toUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
     }
 
     override fun heldAccess(): List<String> =

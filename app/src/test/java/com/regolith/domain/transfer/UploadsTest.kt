@@ -221,4 +221,12 @@ class UploadsTest {
         assertEquals(BatchMessage("Uploaded 1 to Lisbon 2026 · 1 already there", false), UploadWording.batchMessage(listOf(done, there), "Lisbon 2026"))
         assertEquals(BatchMessage("Already in Lisbon 2026", false), UploadWording.batchMessage(listOf(there), "Lisbon 2026"))
     }
+
+    @Test
+    fun `a stop is the user's own doing, and is not reported as a failure`() {
+        val done = item(status = UploadStatus.DONE)
+        val stopped = item(status = UploadStatus.FAILED, cause = UploadCause.CANCELLED)
+        assertEquals(BatchMessage("Stopped · 1 of 2 uploaded", false), UploadWording.batchMessage(listOf(done, stopped), "Lisbon 2026"))
+        assertEquals(BatchMessage("Uploads stopped", false), UploadWording.batchMessage(listOf(stopped), "Lisbon 2026"))
+    }
 }

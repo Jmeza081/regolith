@@ -325,7 +325,13 @@ object UploadWording {
 
     /** What the message capsule says when a batch has nothing left to send. */
     fun batchMessage(items: List<UploadItem>, folder: String): BatchMessage {
-        val failed = items.count { it.status == UploadStatus.FAILED }
+        // A Stop from the notification is the user's own doing: said plainly, never in red.
+        val stopped = items.count { it.status == UploadStatus.FAILED && it.cause == UploadCause.CANCELLED }
+        val failed = items.count { it.status == UploadStatus.FAILED } - stopped
+        if (stopped > 0 && failed == 0) {
+            val sent = items.count { it.uploaded }
+            return BatchMessage(if (sent == 0) "Uploads stopped" else "Stopped · $sent of ${items.size} uploaded", failed = false)
+        }
         if (failed > 0) {
             return BatchMessage(
                 text = if (items.size == 1) "${items.first().name} didn't upload" else "$failed of ${items.size} didn't upload",

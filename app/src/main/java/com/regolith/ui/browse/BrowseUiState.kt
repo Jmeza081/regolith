@@ -108,6 +108,17 @@ data class BrowseUiState(
     val gone: Boolean = false,
     /** One-shot line for the snackbar, with an Undo when the move can be walked back. */
     val fileOpMessage: FileOpMessage? = null,
+    // --- Uploads (P16): files from the phone into the folder on screen.
+    /** A folder on a share, so Upload is offered. Never the Browse root, phone storage or the demo library. */
+    val canUpload: Boolean = false,
+    /** The server the files would go to, for the sheet's "· on TOWER". */
+    val uploadServer: String? = null,
+    /** The "Upload to…" sheet is up. */
+    val uploadSheet: Boolean = false,
+    /** Names in a pick are taken: the one question, asked before anything is sent. */
+    val uploadQuestion: UploadQuestion? = null,
+    /** The uploads into this folder, at the top of its list. Null when there are none. */
+    val uploads: UploadSection? = null,
 )
 
 /** The one thing a rename is about — a file, or a folder. */

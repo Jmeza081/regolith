@@ -1,8 +1,8 @@
 package com.regolith.data.transfer
 
 import android.content.Context
-import android.net.Uri
 import android.util.Size
+import androidx.core.net.toUri
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DataSource
@@ -37,7 +37,7 @@ class UploadThumbFetcher(
     override suspend fun fetch(): FetchResult = withContext(Dispatchers.IO) {
         val width = options.size.width.pxOrElse { DEFAULT_WIDTH }
         val height = options.size.height.pxOrElse { DEFAULT_WIDTH * 9 / 16 }
-        val bitmap = context.contentResolver.loadThumbnail(Uri.parse(thumb.uri), Size(width, height), null)
+        val bitmap = context.contentResolver.loadThumbnail(thumb.uri.toUri(), Size(width, height), null)
         ImageFetchResult(image = bitmap.asImage(), isSampled = true, dataSource = DataSource.DISK)
     }
 

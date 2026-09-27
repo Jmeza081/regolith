@@ -65,6 +65,10 @@ import com.regolith.domain.library.ViewMode
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.MoveToSheet
 import com.regolith.ui.components.PromptDialog
@@ -119,6 +123,12 @@ fun BrowseScreen(
     selectedFileId: Long? = null,
     /** Scroll to this file on arrival and ring it briefly (Shorts' Locate). */
     highlightFileId: Long? = null,
+    /**
+     * Called just before a picker opens (P16). The picker is another app's
+     * screen, so Regolith goes to the background; this tells the app lock the
+     * trip back is one it sent the user on.
+     */
+    onSendingAway: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val offline = state.offlineMessage
@@ -144,7 +154,7 @@ fun BrowseScreen(
                     modifier = Modifier.width(SHARE_TREE_WIDTH).fillMaxHeight().padding(top = TREE_TOP_PADDING, bottom = Spacing.s18),
                 )
             }
-            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, Modifier.weight(1f))
+            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, onSendingAway, Modifier.weight(1f))
         }
     }
 }
@@ -161,6 +171,7 @@ private fun BrowseContent(
     onPlayAll: ((fileIds: List<Long>, shuffle: Boolean) -> Unit)?,
     selectedFileId: Long?,
     highlightFileId: Long?,
+    onSendingAway: () -> Unit,
     modifier: Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -198,7 +209,13 @@ private fun BrowseContent(
                 title = state.title,
                 subtitle = state.breadcrumb,
                 subtitleMuted = true,
-                actions = listOf(viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode)),
+                actions = listOfNotNull(
+                    // Upload into this folder (P16), only where a share is behind it:
+                    // not at the Browse root, not in Phone storage, not in the demo.
+                    TopBarAction(R.drawable.rg_ic_upload, "Upload to this folder", "browse_upload_button", viewModel::openUploadSheet)
+                        .takeIf { state.canUpload },
+                    viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode),
+                ),
             )
         }
 
@@ -249,9 +266,19 @@ private fun BrowseContent(
         val emptyCard = @Composable {
             SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth()) {
                 Text("Nothing playable in this folder.", style = TextStyles.body, color = colors.body)
+                // An empty folder on a share is where uploading is most
+                // likely wanted, and the top-bar glyph is easy to miss.
+                if (state.canUpload) {
+                    Spacer(Modifier.height(Spacing.s12))
+                    SecondaryButton(text = "Upload from this phone", onClick = viewModel::openUploadSheet, testTag = "browse_empty_upload_button", compact = true)
+                }
             }
         }
-        val showEmpty = state.loaded && state.rows.isEmpty() && offline == null
+        // Files on their way are what this folder is about to hold: no "nothing here" above them.
+        val showEmpty = state.loaded && state.rows.isEmpty() && offline == null && state.uploads == null
+        val uploadSection = @Composable { section: UploadSection ->
+            UploadSectionView(section, viewModel::onUploadAction, viewModel::retryUpload, viewModel::removeUpload)
+        }
 
         /*
          * Arriving from Shorts' Locate: put the clip on screen and ring it.
@@ -270,7 +297,7 @@ private fun BrowseContent(
             val id = highlightFileId ?: return@LaunchedEffect
             val index = files.indexOfFirst { it.fileId == id }
             if (index < 0) return@LaunchedEffect
-            val lead = (if (offline != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
+            val lead = (if (offline != null) 1 else 0) + (if (state.uploads != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
             runCatching {
                 if (state.viewMode == ViewMode.GRID) {
                     // + the folders eyebrow and every folder tile, + the files eyebrow.
@@ -317,6 +344,8 @@ private fun BrowseContent(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s12),
             ) {
                 if (offline != null) item { offlineCard() }
+                // At the top: the files on their way are what the user just did.
+                state.uploads?.let { section -> item(key = "browse_uploads") { uploadSection(section) } }
                 item { shareSection() }
                 if (folders.isNotEmpty()) {
                     item {
@@ -409,6 +438,11 @@ private fun BrowseContent(
                 verticalArrangement = Arrangement.spacedBy(Spacing.s12),
             ) {
                 if (offline != null) item(span = { GridItemSpan(maxLineSpan) }) { offlineCard() }
+                // Rows even among tiles: a file on its way has a status line to
+                // read, and no poster yet to show.
+                state.uploads?.let { section ->
+                    item(key = "browse_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) }
+                }
                 if (shares.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { shareSection() }
                 if (folders.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) { Eyebrow(formatFolderCount(folders.size), muted = true) }
@@ -564,6 +598,39 @@ private fun BrowseContent(
                 note = "Made on the share, inside ${state.moveSheet?.breadcrumb?.substringAfterLast(" / ") ?: "this folder"}.",
                 maxLength = FileNames.MAX_BASE,
             )
+        }
+
+        // ── Uploads (P16) ──────────────────────────────────────────────
+        // The two system pickers. `rememberLauncherForActivityResult` is the
+        // Compose spelling of registerForActivityResult: the result comes
+        // back to this spot in the composition, even if the Activity was
+        // recreated while the picker was open. Neither needs a permission —
+        // the pickers are the system's, and they hand back only what was chosen.
+        val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+            viewModel.onPicked(uris.map { it.toString() })
+        }
+        val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            viewModel.onPicked(uris.map { it.toString() })
+        }
+        if (state.uploadSheet) {
+            UploadSourceSheet(
+                folderName = state.title,
+                detail = listOfNotNull(state.breadcrumb, state.uploadServer?.let { "on $it" }).joinToString(" · ").ifEmpty { null },
+                onPhotos = {
+                    viewModel.dismissUploadSheet()
+                    onSendingAway()
+                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                },
+                onFiles = {
+                    viewModel.dismissUploadSheet()
+                    onSendingAway()
+                    filePicker.launch(arrayOf("*/*"))
+                },
+                onDismiss = viewModel::dismissUploadSheet,
+            )
+        }
+        state.uploadQuestion?.let { question ->
+            UploadQuestionSheet(question, onAnswer = viewModel::answerUploadQuestion, onDismiss = viewModel::dismissUploadQuestion)
         }
 
         // One host for the whole app, drawn by the chrome above the pill.

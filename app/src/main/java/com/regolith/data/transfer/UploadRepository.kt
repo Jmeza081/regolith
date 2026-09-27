@@ -128,6 +128,11 @@ class UploadRepository @Inject constructor(
     suspend fun enqueue(folderId: Long, files: List<PickedFile>, policy: ConflictPolicy): Int {
         if (files.isEmpty()) return 0
         val now = System.currentTimeMillis()
+        // A new pick replaces the folder's "Just uploaded": the section is
+        // about the batch now going, not a mix of it and the last one.
+        // Failures stay — they still need an answer.
+        val finished = uploads.forFolder(folderId).filter { it.status == UploadStatus.DONE.name }
+        if (finished.isNotEmpty()) uploads.deleteIds(finished.map { it.id })
         uploads.insertAll(
             files.map { file ->
                 UploadEntity(
@@ -138,6 +143,7 @@ class UploadRepository @Inject constructor(
                 )
             },
         )
+        if (finished.isNotEmpty()) releaseUnneeded()
         scheduler.enqueue()
         return files.size
     }

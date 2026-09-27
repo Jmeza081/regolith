@@ -12,6 +12,12 @@ import com.regolith.data.repository.StorageSweeper
 import com.regolith.data.transfer.SelectionStore
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
+import com.regolith.data.transfer.UploadRepository
+import com.regolith.domain.transfer.UploadCause
+import com.regolith.domain.transfer.UploadStatus
+import com.regolith.domain.transfer.UploadTally
+import com.regolith.domain.transfer.UploadWording
+import com.regolith.domain.library.UploadTier
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.domain.library.ArtworkTally
 import com.regolith.domain.library.BackgroundWork
@@ -20,7 +26,13 @@ import com.regolith.domain.library.backgroundWork
 import com.regolith.ui.navigation.MainTab
 import com.regolith.ui.navigation.RegolithKey
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +59,7 @@ import javax.inject.Inject
  * Activity, so it is created once per app session.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class AppViewModel @Inject constructor(
     private val prefs: AppPreferences,
@@ -59,6 +72,7 @@ class AppViewModel @Inject constructor(
     private val phone: PhoneLibrary,
     scans: ScanRepository,
     prefetcher: ArtworkPrefetcher,
+    private val uploads: UploadRepository,
 ) : ViewModel() {
 
     // --- The app lock (fingerprint, face, or the screen lock).
@@ -77,6 +91,14 @@ class AppViewModel @Inject constructor(
 
     /** When the app last went to the background; null on a cold start, which always asks. */
     private var leftAtMs: Long? = null
+
+    /** The app is sending the user to a system screen it asked for (a picker): see [AppLock.shouldAsk]. */
+    private var sentAway = false
+
+    /** Called just before the app opens the photo or file picker, so the trip back is not a lock. */
+    fun sendingAway() {
+        sentAway = true
+    }
     private var lockAfter = LockAfter.DEFAULT
 
     /** The prompt itself. The Activity is passed in and never kept: the system needs a window to draw over. */
@@ -95,7 +117,9 @@ class AppViewModel @Inject constructor(
     /** The app came back. [AppLock.shouldAsk] decides, and locking pauses whatever was playing. */
     fun cameToForeground() {
         if (_locked.value == null) return // still starting; the cold-start decision owns it
-        if (AppLock.shouldAsk(appLockEnabled.value, lockAfter, leftAtMs, System.currentTimeMillis())) lockNow()
+        val trip = sentAway
+        sentAway = false
+        if (AppLock.shouldAsk(appLockEnabled.value, lockAfter, leftAtMs, System.currentTimeMillis(), sentAway = trip)) lockNow()
     }
 
     /** Past the prompt. The grace clock starts again from here. */
@@ -133,6 +157,10 @@ class AppViewModel @Inject constructor(
         // would read as "arriving" forever. Put them back in the queue once,
         // at startup, which is the only place that can know a restart happened.
         viewModelScope.launch { transfers.resumeInterrupted() }
+        // The same for uploads, which also hands back read access to phone
+        // files no row needs any more (P16).
+        viewModelScope.launch { uploads.resumeInterrupted() }
+        viewModelScope.launch { watchUploadBatches() }
         // Downloads and artwork whose rows have gone. Startup for the same
         // reason: nothing else in the app's life is a safe moment to decide
         // that a file on disk is unclaimed, and this is the one place that
@@ -168,12 +196,15 @@ class AppViewModel @Inject constructor(
      * "since you last looked" dot would need a preference and could get
      * stuck on; this one cannot.
      */
-    val tabDots: StateFlow<Set<MainTab>> = transfers.observeAll()
-        .map { rows ->
-            val notable = rows.any { it.statusEnum() != TransferStatus.DONE }
-            if (notable) setOf(MainTab.SETTINGS) else emptySet()
+    val tabDots: StateFlow<Set<MainTab>> = combine(transfers.observeAll(), uploads.observeAll()) { rows, sent ->
+        buildSet {
+            if (rows.any { it.statusEnum() != TransferStatus.DONE }) add(MainTab.SETTINGS)
+            // An upload that failed for a reason of its own needs an answer,
+            // and the answer is in its folder in Browse (P16). A Stop the
+            // user pressed is not news, so it lights nothing.
+            if (sent.any { it.status == UploadStatus.FAILED && it.cause != UploadCause.CANCELLED }) add(MainTab.BROWSE)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     /**
      * The scan or the artwork walk, for the tier the nav chrome draws above
@@ -192,12 +223,79 @@ class AppViewModel @Inject constructor(
     val backgroundWork: StateFlow<BackgroundWork?> = combine(
         scans.observeRunning(),
         prefetcher.observe(),
-    ) { runs, prefetch ->
+        uploadTier(),
+    ) { runs, prefetch, upload ->
         backgroundWork(
             scan = runs.takeIf { it.isNotEmpty() }?.let { ScanTally(shares = it.size, files = it.sumOf { r -> r.filesFound }) },
             artwork = prefetch.takeIf { it.running }?.let { ArtworkTally(done = it.done, total = it.total) },
+            upload = upload,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * The upload queue as the tier says it: the live batches' numbers, and
+     * the names — the folder they are going to, the server they are waiting
+     * for. Names are looked up per change; a changing row is every 500 ms at
+     * most, and a lookup is a primary-key read.
+     */
+    private fun uploadTier(): Flow<UploadTier?> = uploads.observeAll()
+        .mapLatest { items ->
+            val tally = UploadTally.of(items) ?: return@mapLatest null
+            val folder = tally.folderId?.let { uploads.destinationOf(it) }
+            val current = items.firstOrNull { it.status == UploadStatus.RUNNING || it.status == UploadStatus.PAUSED }
+                ?: items.firstOrNull { it.live }
+            val server = folder ?: current?.let { uploads.destinationOf(it.folderId) }
+            UploadTier(tally, folder?.folderName, server?.serverName)
+        }
+        .distinctUntilChanged()
+
+    /** A batch of uploads that just finished: what the capsule says, and where "Show" goes. */
+    data class UploadNotice(val text: String, val failed: Boolean, val folderId: Long)
+
+    private val _uploadNotices = MutableSharedFlow<UploadNotice>(extraBufferCapacity = 4)
+
+    /** One message per finished batch (P16). The nav graph shows it in the capsule above the pill. */
+    val uploadNotices: SharedFlow<UploadNotice> = _uploadNotices
+
+    /**
+     * Watches for batches going from "something still owed" to "nothing
+     * left", and says how each went — once. A batch cancelled outright has
+     * no rows left and says nothing: the user just asked for exactly that.
+     * Batches that ended while the app was closed are not replayed; the
+     * worker's "needs you" notification speaks for those.
+     */
+    private suspend fun watchUploadBatches() {
+        var live: Set<Long> = emptySet()
+        uploads.observeAll().collect { items ->
+            val nowLive = items.filter { it.live }.mapTo(HashSet()) { it.batchId }
+            for (batch in live - nowLive) {
+                val rows = items.filter { it.batchId == batch }
+                if (rows.isEmpty()) continue
+                val folderId = rows.first().folderId
+                val folderName = uploads.destinationOf(folderId)?.folderName ?: "the folder"
+                val message = UploadWording.batchMessage(rows, folderName)
+                _uploadNotices.tryEmit(UploadNotice(message.text, message.failed, folderId))
+            }
+            live = nowLive
+        }
+    }
+
+    /**
+     * An upload notification was tapped: the folder to open, or
+     * [com.regolith.data.transfer.UploadQueueWorker.NO_FOLDER] for Browse
+     * itself. Held here and consumed once, for the rotation reason
+     * [openDownloads] gives.
+     */
+    private val _openUploads = MutableStateFlow<Long?>(null)
+    val openUploads: StateFlow<Long?> = _openUploads.asStateFlow()
+
+    fun requestUploads(folderId: Long) {
+        _openUploads.value = folderId
+    }
+
+    fun openedUploads() {
+        _openUploads.value = null
+    }
 
     /** Leaving the tab that was selecting ends the selection. */
     fun clearSelection() = selection.clear()

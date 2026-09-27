@@ -96,6 +96,26 @@ server takes its media list away and leaves everything already downloaded
 where it is, re-homed under *On this device* with its resume point and any
 chapters you wrote — the file keeps its identity, so nothing about it resets.
 
+### Sends files the other way
+
+Inside any folder on a share, **Upload** (beside rows/tiles) sends things from the
+phone into it: photos and videos from the gallery, through Android's own photo
+picker, or any other file through the system's file picker — no permission
+asked either way. Picking is the whole confirmation. The files appear at the
+top of the folder with their own thumbnails, each saying where it stands, and a
+line above the nav pill follows the batch from anywhere else in the app. A
+video that lands is a video in the library at once; a photo is on the share
+beside it, and the folder says so, since Browse lists videos.
+
+It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
+sleeps, the batch waits and carries on by itself from the bytes already sent —
+a 600 MB video is never sent twice. A full share, a read-only folder, a
+password that changed or a photo deleted from the gallery each fail with their
+own sentence and their own fix, and the rest of the batch carries on. A name
+that is already taken is asked about once for the whole pick — keep both, skip,
+or replace — except the same file sent twice, which is simply skipped.
+Nothing half-written ever sits on the share under a real name.
+
 ### Plays what the phone already has
 
 **Library › On this device** also lists the videos that were on the phone before

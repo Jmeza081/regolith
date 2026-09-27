@@ -16,13 +16,23 @@ object AppLock {
      * cold start — which always asks, because nothing has been unlocked yet
      * in this run. A clock that has gone backwards (the user changed the
      * time, or the device rebooted) counts as "long enough ago".
+     *
+     * [sentAway] means the APP sent the user out — to the system's photo
+     * picker, say (P16) — and this is the trip back. Asking for a fingerprint
+     * after choosing a few photos, on a lock set to "At once", would punish
+     * using the app; so such a trip gets at least [SENT_AWAY_GRACE_MS]. Not
+     * forever: a picker abandoned for the afternoon still locks.
      */
-    fun shouldAsk(enabled: Boolean, after: LockAfter, leftAtMs: Long?, nowMs: Long): Boolean {
+    fun shouldAsk(enabled: Boolean, after: LockAfter, leftAtMs: Long?, nowMs: Long, sentAway: Boolean = false): Boolean {
         if (!enabled) return false
         if (leftAtMs == null) return true
         val away = nowMs - leftAtMs
-        return away < 0 || away >= after.graceMs
+        val grace = if (sentAway) maxOf(after.graceMs, SENT_AWAY_GRACE_MS) else after.graceMs
+        return away < 0 || away >= grace
     }
+
+    /** How long a trip the app itself asked for may take before the lock asks anyway. */
+    const val SENT_AWAY_GRACE_MS = 5 * 60_000L
 }
 
 /**

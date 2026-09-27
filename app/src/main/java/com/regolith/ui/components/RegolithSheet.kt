@@ -2,6 +2,7 @@ package com.regolith.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,6 +25,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -135,6 +138,45 @@ fun SheetOption(
         }
         if (selected) {
             Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Selected", tint = colors.accent, modifier = Modifier.size(18.scaledDp()))
+        }
+    }
+}
+
+/**
+ * One ACTION in a [RegolithSheet]: an 18dp glyph, what it does, and a line
+ * saying what will happen. For a sheet whose rows go somewhere or do
+ * something — Play all's "In order" and "Shuffle", an upload's "Photos &
+ * videos" and "Files", "Keep both" when a name is taken — where
+ * [SheetOption] is for picking one answer from a list.
+ *
+ * It was Play all's own private row until uploads needed the same one twice.
+ *
+ * @param tint the glyph's colour: the accent for the one choice that
+ *   destroys something ("Replace"), ink otherwise.
+ */
+@Composable
+fun SheetChoice(
+    icon: Int,
+    label: String,
+    note: String?,
+    testTag: String,
+    tint: Color? = null,
+    onClick: () -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .testTag(testTag),
+    ) {
+        Icon(painterResource(icon), contentDescription = null, tint = tint ?: colors.ink, modifier = Modifier.size(18.scaledDp()))
+        Spacer(Modifier.width(Spacing.s12))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+            Text(label, style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.ink)
+            if (note != null) {
+                Text(note, style = TextStyles.settingMeta, color = colors.metadata, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

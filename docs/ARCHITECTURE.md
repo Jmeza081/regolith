@@ -667,10 +667,51 @@ What a web developer would not guess:
   `ACCESS_MEDIA_LOCATION` and a read through MediaStore's original. Not in
   v1: a backup with location is the case that would earn the extra prompt.
 
+The screens (the flow was drawn first, as a design canvas; the frames are in
+`design/upload-to-share/`):
+
+```
+Browse (a folder on a share) ── top bar: rg_ic_upload, beside rows/tiles; the empty card offers it too
+     └─ UploadSourceSheet ── SheetChoice: Photos & videos (PickMultipleVisualMedia) · Files (OpenMultipleDocuments)
+          └─ rememberLauncherForActivityResult ── BrowseViewModel.onPicked ── UploadRepository.prepare
+               └─ a clash with a different file? ── UploadQuestionSheet: Keep both · Skip · Replace (accent glyph)
+     └─ UploadSectionView, first item of the list in rows AND tiles ── uploadSection(items) (pure, UploadSectionState.kt)
+          ├─ EyebrowAction: "Uploading · 2 of 4"   Cancel all | Try now | Try again | Clear
+          ├─ ListRow per file: RowLeading.Picture(UploadThumb) · status (2 lines) · 3dp bar (grey when held) · ↻ / ✕
+          └─ everything went: ONE summary row, and "The photos are on TOWER in this folder. Browse lists videos only."
+AppViewModel ── backgroundWork(upload = UploadTier) ── BackgroundWorkTier, tappable: opens the folder (TierTarget)
+             ── tabDots: BROWSE while an upload has failed for a reason of its own
+             ── uploadNotices: a batch going from owed to finished ── MessageCapsule, "Show" unless already there
+             ── sendingAway(): the picker is another app's screen ── AppLock.shouldAsk(sentAway = true)
+MainActivity ── EXTRA_OPEN_UPLOAD_FOLDER (either notification) ── requestUploads ── NavGraph.openUploadFolder
+```
+
+- **The status lives where the files are going.** A section at the top of
+  the destination folder, not an uploads screen: that is where the user is
+  when they pick, and where the files will be once they land. The line
+  above the pill says the same thing from anywhere else, and taps back to
+  it; the notification says it with the app closed.
+- **A finished batch folds into one row.** Four "Uploaded" rows at the top
+  of a folder would push its own films off the screen. A batch with a
+  failure keeps every row, because a failure needs its row — its cause, its
+  Try again. A new pick into the folder replaces the last "Just uploaded".
+- **The picker is a trip the app sent you on.** It is another app's
+  screen, so Regolith goes to the background, and a lock set to "At once"
+  used to ask for a fingerprint on the way back. `AppLock.shouldAsk` gives
+  such a trip up to five minutes — not forever, or an abandoned picker
+  would leave the library open.
+- **Shared pieces, not new ones.** Play all's private sheet row became
+  `SheetChoice`; Library's two eyebrow-plus-action rows became
+  `EyebrowAction`; `ListRow` gained a `Picture` leading slot, a wrapping
+  meta line, a progress bar and an action slot; `ProgressBar` a colour.
+
 ## Decision log
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-09-27 | Upload status lives in the destination folder (a section at the top of Browse), in the tier above the pill from anywhere else, and in the notification with the app closed — there is no uploads screen | The user is IN the folder when they pick, and the files are going INTO it, so that is where their progress belongs; a separate screen would be a second place to check. The tier already existed to report the one background job worth knowing about, and an upload outranks a scan there because the user started it and is watching. A finished batch folds into one summary row so it does not push the folder's own films off the screen; a batch with a failure keeps its rows, because each failure needs its cause and its Try again. |
+| 2026-09-27 | A trip to a picker the app opened gets up to five minutes of app-lock grace (`AppLock.shouldAsk(sentAway = true)`) | The system photo picker is another app's full screen, so Regolith is stopped while you choose — and a lock set to "At once" asked for a fingerprint on the way back from choosing four photos, which punishes using the feature. The grace is bounded rather than a pass, so a picker left open for the afternoon still locks the library. |
+| 2026-09-27 | Play all's sheet row became the shared `SheetChoice`, Library's eyebrow-with-action rows became `EyebrowAction`, and `ListRow` gained a picture slot, a wrapping meta line, a progress bar and an action slot | Uploads needed each of these a second (or third) time: the source sheet and the clash question are both "a glyph, what it does, what will happen", and the upload section's eyebrow carries its action the way "Clear failed" does. Two copies is the point where a shared component stops being premature (CLAUDE.md: reuse before you build). |
 | 2026-09-27 | **Uploads (P16) get their own queue**: an `uploads` table (schema v14), `UploadQueueWorker` as unique job "uploads", notification ids 44 and 45 — the download queue's shape, not its job | A download is keyed by a library file and an upload by a phone address and a destination folder, so one table would leave half of every row null. One worker for both directions was considered and rejected: the download queue's single job exists to keep a dozen copies from starving the player, and one upload beside one download is two streams a home NAS takes in its stride — what sharing would cost is the notification, which would have to describe two unrelated queues in one line. The shape is copied deliberately: rows in Room as the truth (G3), the worker asking for the next row after every file, KEEP plus a re-check before success, a scheduler seam for a later move to user-initiated data transfer jobs. |
 | 2026-09-27 | An upload streams into `<name>.part` through `SmbGateway.openForAppend` and resumes from the `.part`'s OWN size; `write(ByteArray)` stays for the two small files it was made for | `write` holds the whole file in memory, which is right for a poster and fatal for a 4 GB video. Append mode starts jcifs' write pointer at the size the server reports on open (checked in the bytecode: `fp = getInitialSize()`), so the size read just before opening IS the resume point — no bytes counted on the phone to go stale. The rename to the real name happens only once the file is whole, the rule `writeReplacing` already follows, so a dropped connection leaves at worst a `.part` and never half a photo under a real name. |
 | 2026-09-27 | Picked files are read through persisted URI grants, never copied into the app first | A copy doubles the space a video needs and the time before the upload starts. `takePersistableUriPermission` is what the platform's own photo picker documentation names for "uploading a large file in the background"; it is taken the moment the pick returns, because the picker's own grant ends with the app, and released when the row goes. Startup hands back any grant no row needs, since a row deleted with its folder never got to release its own. |
@@ -987,7 +1028,7 @@ What a web developer would not guess:
 | P13 | Server nicknames: name a source server in Add Server or by tapping it in Settings, with the address moved to the row's second line | `ServerName` (`defaultServerName`/`serverNameOrDefault`), `ServerDao.rename`, `SourceRepository.renameServer`, `RegolithKey.AddServer.Name`, `NameServerScreen`, `PromptDialog`, `ServerRow.host`/`meta` |
 | P14 | Managing what is on the share: rename, move and delete from Browse and the video page, with the nav chrome as the selection toolbar | `FileOpsRepository`, `FileOpError`/`FileOpResult`, `SmbGateway.rename(replace)`, `SelectionChrome`/`SelectionVerb`, `MoveToSheet`, `FileOpMessages`, `ChromeMessageHost` |
 | P15 | Folders are targets too: move and rename a whole folder, delete one with everything in it, and make a new one from the move sheet | `FileOpTarget`, `SubtreeDao` (relocate / dropRootsUnder), `FolderDao.deleteByIds`, `SmbGateway.mkdir`/`deleteFolder`, `FileOpsRepository.createFolder`, `MoveChild.enabled`, `MoveSheetState.error` |
-| P16 | Uploads from the phone into the folder Browse is showing: photos and videos or any file, one queue with per-file status, pauses that resume themselves and failures that say why | `uploads` (schema v14), `UploadRepository`, `UploadRunner`, `UploadQueueWorker`, `UploadScheduler`, `PhoneFiles`, `SmbGateway.openForAppend`/`freeBytes`/`setModifiedTime`, `SmbWriteSink`, `SmbFailure.ShareFull`, `UploadWording`, `UploadTally`, `formatByteSize` |
+| P16 | Uploads from the phone into the folder Browse is showing: photos and videos or any file, one queue with per-file status, pauses that resume themselves and failures that say why | `uploads` (schema v14), `UploadRepository`, `UploadRunner`, `UploadQueueWorker`, `UploadScheduler`, `PhoneFiles`, `SmbGateway.openForAppend`/`freeBytes`/`setModifiedTime`, `SmbWriteSink`, `SmbFailure.ShareFull`, `UploadWording`, `UploadTally`, `formatByteSize`, `UploadSectionView`/`uploadSection`, `UploadSourceSheet`, `UploadQuestionSheet`, `SheetChoice`, `EyebrowAction`, `RowLeading.Picture`, `TierTarget`, `AppLock.shouldAsk(sentAway)` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

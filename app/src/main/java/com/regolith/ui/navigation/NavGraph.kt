@@ -1,5 +1,9 @@
 package com.regolith.ui.navigation
 
+import androidx.compose.material3.SnackbarResult
+import com.regolith.ui.components.MessageKind
+import com.regolith.ui.components.showMessage
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -347,6 +351,41 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         appViewModel.openedDownloads()
     }
 
+    // Uploads (P16) are always going SOMEWHERE, so everything that speaks
+    // about them — the tier, the capsule's "Show", the notifications — leads
+    // to that folder. The stack is rebuilt the way the share tree's jump
+    // rebuilds it, so back leaves Browse instead of walking up through
+    // folders the jump skipped. Null is Browse itself (more than one folder).
+    fun openUploadFolder(folderId: Long?) {
+        val target = RegolithKey.Browse(folderId)
+        if (backStack.lastOrNull() == target) return
+        backStack.clear()
+        backStack.add(RegolithKey.Home)
+        backStack.add(target)
+    }
+    val openUploads by appViewModel.openUploads.collectAsStateWithLifecycle()
+    LaunchedEffect(openUploads) {
+        val folderId = openUploads ?: return@LaunchedEffect
+        openUploadFolder(folderId.takeIf { it >= 0 })
+        appViewModel.openedUploads()
+    }
+    // One message per finished batch, wherever the user is by then. "Show"
+    // only when they are somewhere else: in the folder, the rows say it all.
+    LaunchedEffect(Unit) {
+        appViewModel.uploadNotices.collect { notice ->
+            val here = (backStack.lastOrNull() as? RegolithKey.Browse)?.folderId == notice.folderId
+            // Its own coroutine, so a message on screen does not hold up the next batch's.
+            launch {
+                val result = appSnackbar.showMessage(
+                    notice.text,
+                    kind = if (notice.failed) MessageKind.FAILED else MessageKind.DONE,
+                    actionLabel = if (here) null else "Show",
+                )
+                if (result == SnackbarResult.ActionPerformed) openUploadFolder(notice.folderId)
+            }
+        }
+    }
+
     val listPaneMeta = ListDetailSceneStrategy.listPane(detailPlaceholder = { NoTitleChosen() })
     // The four tab screens sit beside the rail on a wide window. Pushed
     // screens (Player, Title Detail, Add Server) have no rail and take the
@@ -542,6 +581,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onOpenFile = { openTitle(it) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     onPlayAll = ::playAll,
+                                    onSendingAway = appViewModel::sendingAway,
                                     // The tree restarts the Browse chain instead of pushing onto
                                     // it, so back from a jump leaves Browse rather than walking
                                     // through every folder the tree was used to skip.
@@ -734,6 +774,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 .widthIn(max = BACKGROUND_WORK_MAX_WIDTH)
                                 .navigationBarsPadding()
                                 .padding(horizontal = Spacing.s18, vertical = Spacing.s18),
+                            onOpen = { openUploadFolder(it.folderId) },
                         )
                     }
                     AnimatedVisibility(
@@ -788,7 +829,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 // lived of the three and should not shuffle
                                 // when one of them appears. A wide window has
                                 // no "above" — see the bottom-docked copy below.
-                                BackgroundWorkTier(backgroundWork, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
+                                BackgroundWorkTier(
+                                    backgroundWork, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18),
+                                    onOpen = { openUploadFolder(it.folderId) },
+                                )
                                 // What is picked, and why a verb might be grey.
                                 // The pill has no room for a sentence, so it
                                 // rides directly above it in the same glass.

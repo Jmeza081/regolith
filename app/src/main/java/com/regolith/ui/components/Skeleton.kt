@@ -41,13 +41,15 @@ fun Skeleton(modifier: Modifier = Modifier, shape: Shape = TileShape) {
  * The 6dp progress bar (design: forms): #1F1F1F track, red fill, pill ends.
  *
  * @param height the chrome tier uses a thinner one; everywhere else takes the default.
+ * @param color the fill; the accent when null. Grey says the bar is holding
+ *   rather than moving — an upload waiting for its share.
  */
 @Composable
-fun ProgressBar(fraction: Float?, modifier: Modifier = Modifier, height: Dp = 6.dp) {
+fun ProgressBar(fraction: Float?, modifier: Modifier = Modifier, height: Dp = 6.dp, color: Color? = null) {
     val colors = RegolithTheme.colors
     Box(modifier.fillMaxWidth().height(height).clip(PillShape).background(colors.hairline)) {
         if (fraction != null) {
-            Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).fillMaxSize().clip(PillShape).background(colors.accent))
+            Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).fillMaxSize().clip(PillShape).background(color ?: colors.accent))
         }
     }
 }
