@@ -79,4 +79,35 @@ class FileNamesTest {
         // No extension: the whole name is editable, rather than an empty field.
         assertEquals("README", FileNames.baseOf("README"))
     }
+
+    // ── sanitize: a name nobody typed (P16 uploads) ────────────────────
+
+    @Test
+    fun `a phone's own name goes through untouched`() {
+        assertEquals("20260914_183022.jpg", FileNames.sanitize("20260914_183022.jpg"))
+    }
+
+    @Test
+    fun `characters a share refuses become underscores instead of refusing the file`() {
+        assertEquals("Trip_ day 1_2.jpg", FileNames.sanitize("Trip: day 1/2.jpg"))
+        assertEquals("a_b_c.png", FileNames.sanitize("a?b*c.png"))
+    }
+
+    @Test
+    fun `trailing dots and spaces go, since Windows would drop them silently`() {
+        assertEquals("notes", FileNames.sanitize("notes. . "))
+    }
+
+    @Test
+    fun `a long name is cut before its extension, never through it`() {
+        val cut = FileNames.sanitize("x".repeat(300) + ".mp4")
+        assertEquals(FileNames.MAX_BASE + ".mp4".length, cut.length)
+        assertEquals(".mp4", cut.takeLast(4))
+    }
+
+    @Test
+    fun `nothing usable left still names the file`() {
+        assertEquals("upload", FileNames.sanitize("  "))
+        assertEquals("upload", FileNames.sanitize(".."))
+    }
 }

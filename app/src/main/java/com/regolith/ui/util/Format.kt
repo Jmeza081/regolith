@@ -4,17 +4,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** "8.4 GB", "890 GB", "24.8 GB": the design's chip style, one decimal under 10. */
-fun formatBytes(bytes: Long): String {
-    val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    var value = bytes.toDouble()
-    var i = 0
-    while (value >= 1000 && i < units.lastIndex) {
-        value /= 1000
-        i++
-    }
-    return if (i == 0) "$bytes B" else String.format(Locale.US, if (value < 10) "%.1f %s" else "%.0f %s", value, units[i])
-}
+/**
+ * "8.4 GB", "890 GB", "24.8 GB": the design's chip style, one decimal under 10.
+ * The rule lives in [com.regolith.domain.model.formatByteSize] so a
+ * notification and a row can never disagree about a size.
+ */
+fun formatBytes(bytes: Long): String = com.regolith.domain.model.formatByteSize(bytes)
 
 /**
  * Milliseconds from [nowMs] until the next whole minute.

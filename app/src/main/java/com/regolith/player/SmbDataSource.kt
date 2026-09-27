@@ -122,6 +122,8 @@ class SmbDataSource(
         is SmbFailure.Forbidden -> PlaybackException.ERROR_CODE_IO_NO_PERMISSION
         is SmbFailure.Unreachable -> PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
         is SmbFailure.NotFound -> PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
+        // Reading never fills a share; only an upload's write can meet this.
+        is SmbFailure.ShareFull -> PlaybackException.ERROR_CODE_IO_UNSPECIFIED
         is SmbFailure.Other -> PlaybackException.ERROR_CODE_IO_UNSPECIFIED
     }
 

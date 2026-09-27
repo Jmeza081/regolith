@@ -12,4 +12,9 @@ object MediaFileTypes {
     fun extensionOf(name: String): String = name.substringAfterLast('.', "").lowercase()
 
     fun isVideo(name: String): Boolean = extensionOf(name) in videoExtensions
+
+    /** What a phone camera saves stills as, HEIF and raw included. Only used to word an upload ("3 photos"). */
+    private val photoExtensions = setOf("jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "dng", "avif")
+
+    fun isPhoto(name: String): Boolean = extensionOf(name) in photoExtensions
 }

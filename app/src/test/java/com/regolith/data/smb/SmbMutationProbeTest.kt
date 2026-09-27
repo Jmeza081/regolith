@@ -270,4 +270,38 @@ class SmbMutationProbeTest {
         assertEquals("the file already there was destroyed", 999L, File(probeDir, "to/src.mp4").length())
         assertTrue("the source was consumed by a rename that should have failed", File(probeDir, "src.mp4").exists())
     }
+
+    // ── Q15 (P16 uploads): does an append carry on from the file's end? ──
+
+    @Test
+    fun `q15 an append resumes exactly where the part ends`() = runBlocking {
+        val first = ByteArray(300_000) { (it % 251).toByte() }
+        val rest = ByteArray(200_000) { ((it + 300_000) % 251).toByte() }
+        gateway.openForAppend(host, guest, "media", rel("up.mp4.part")).use { sink ->
+            assertEquals("a new .part starts at zero", 0L, sink.startOffset)
+            sink.write(first, 0, first.size)
+        }
+        gateway.openForAppend(host, guest, "media", rel("up.mp4.part")).use { sink ->
+            println("PROBE q15: reopened at ${sink.startOffset}")
+            assertEquals("the second open must start where the first stopped", first.size.toLong(), sink.startOffset)
+            sink.write(rest, 0, rest.size)
+        }
+        assertTrue("the .part holds both halves, in order", File(probeDir, "up.mp4.part").readBytes().contentEquals(first + rest))
+    }
+
+    @Test
+    fun `q16 the share says how much room it has`() = runBlocking {
+        val free = gateway.freeBytes(host, guest, "media")
+        println("PROBE q16: free=$free")
+        assertTrue("a local Samba share reports its disk", free != null && free > 0)
+    }
+
+    @Test
+    fun `q17 an uploaded file can keep the phone's date`() = runBlocking {
+        stage("dated.jpg")
+        val taken = 1_600_000_000_000L
+        gateway.setModifiedTime(host, guest, "media", rel("dated.jpg"), taken)
+        println("PROBE q17: mtime on disk ${File(probeDir, "dated.jpg").lastModified()}")
+        assertEquals(taken, File(probeDir, "dated.jpg").lastModified())
+    }
 }

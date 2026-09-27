@@ -54,8 +54,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserChapterEntity::class,
         UserChapterFtsEntity::class,
         ChapterSyncEntity::class,
+        UploadEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -85,6 +86,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // `server_addresses.lastTriedAtMs` is what lets a row say it has not
         // answered since this morning instead of quoting a stale timing.
         AutoMigration(from = 12, to = 13, spec = RegolithDatabase.RememberPinnedAddress::class),
+        // v14: `uploads`, the queue of files going from the phone to a share
+        // (P16). A new table and nothing else, so Room writes it alone.
+        AutoMigration(from = 13, to = 14),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -103,6 +107,7 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun userChapterDao(): UserChapterDao
     abstract fun chapterSyncDao(): ChapterSyncDao
     abstract fun subtreeDao(): SubtreeDao
+    abstract fun uploadDao(): UploadDao
 
     /**
      * Every server that existed before v12 gets its current address as its

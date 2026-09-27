@@ -25,14 +25,43 @@ interface SmbGateway {
     fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource
 
     // --- Writing (P10). The share was read-only to this app until chapter
-    // sidecars. [write] is only ever reached through
-    // `data/smb/ReplacingWrite.kt`, and only for two names: a film's
-    // `<basename>.chapters.txt` and a `poster.jpg` the user saved from the
-    // poster editor (each with its `.part`). Keep it that way: nothing else
-    // on a share is Regolith's to create.
+    // sidecars. Files are created on a share for two reasons only:
+    //  - Regolith's own small files, whole, through [write] — and [write] is
+    //    only ever reached through `data/smb/ReplacingWrite.kt`, for a film's
+    //    `<basename>.chapters.txt` and a `poster.jpg` from the poster editor.
+    //  - Files the user chose on the phone and asked to upload (P16),
+    //    streamed through [openForAppend] into a `.part` and renamed once
+    //    complete, by the upload queue and nothing else.
+    // Keep it to those two: nothing else on a share is Regolith's to create.
 
     /** Create or replace one file with [bytes]. Returns the file's modified time afterwards. */
     suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long
+
+    /**
+     * Open [relPath] for writing at its END, creating it if it is not there
+     * (P16 uploads). Unlike [write] nothing is held in memory: a 4 GB video
+     * goes up through a 1 MiB buffer, and a file the network cut short
+     * carries on from [SmbWriteSink.startOffset] instead of starting again.
+     *
+     * Only ever aim it at a `.part` name. What it writes is a file in
+     * progress, and a file in progress must never sit under a name somebody
+     * could open. Blocking, like [open]; the caller closes it.
+     */
+    fun openForAppend(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SmbWriteSink
+
+    /**
+     * Free space on [share] for this login, or null when the server will not
+     * say (some refuse guests). Asked before an upload starts, so a share
+     * with no room fails in a second rather than after 600 MB.
+     */
+    suspend fun freeBytes(host: SmbHost, credentials: SmbCredentials, share: String): Long?
+
+    /**
+     * Give an uploaded file the modified time it had on the phone. Best
+     * effort by contract: a server that refuses leaves the upload time,
+     * which is not worth failing an upload over.
+     */
+    suspend fun setModifiedTime(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, modifiedAtMs: Long)
 
     /**
      * Rename within the share. This is also the MOVE primitive: a move is a

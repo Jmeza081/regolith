@@ -362,6 +362,58 @@ data class TransferEntity(
 )
 
 /**
+ * Schema v14: one file on its way from the phone to a share (P16) — the
+ * upload queue, and the mirror image of [TransferEntity].
+ *
+ * A row is keyed by nothing on the share: the file is not there yet. What
+ * it holds instead is the phone's address for it ([sourceUri], readable
+ * because the picker's grant was made to outlive the app) and where it is
+ * going ([folderId]). The folder's share and path are read when the upload
+ * runs, so a folder renamed or moved meanwhile takes its uploads with it.
+ *
+ * [bytesDone] is display only. The truth about how far a file got is the
+ * size of its `.part` on the share, which is where a retry resumes from —
+ * the same rule downloads follow with their local `.part` (guardrail G3:
+ * progress is a row, the bytes are the proof).
+ */
+@Entity(
+    tableName = "uploads",
+    foreignKeys = [ForeignKey(FolderEntity::class, ["id"], ["folderId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("folderId"), Index("status"), Index("batchId")],
+)
+data class UploadEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** The rows one pick added share this (the pick's time), and are counted and messaged together. */
+    val batchId: Long,
+    /** Where it is going. Deleting the folder takes the row with it. */
+    val folderId: Long,
+    /** `content://` address of the file on the phone, with a persisted read grant while this row lives. */
+    val sourceUri: String,
+    /**
+     * The name it will have on the share: the phone's name made safe, and
+     * given " (1)" once, for good, if keeping both was needed — so its `.part`
+     * keeps one name across every retry.
+     */
+    val targetName: String,
+    /** -1 when the phone would not say. */
+    val sizeBytes: Long,
+    /** The phone file's own modified time, given to the uploaded copy. */
+    val sourceModifiedAtMs: Long?,
+    /** [com.regolith.domain.transfer.ConflictPolicy] name, for a clash found when the upload starts. */
+    val conflictPolicy: String,
+    /** [com.regolith.domain.transfer.UploadStatus] name. */
+    val status: String,
+    /** [com.regolith.domain.transfer.UploadCause] name, for PAUSED, FAILED and a skipped DONE. */
+    val cause: String?,
+    /** The cause's number: how much more room a full share needs. */
+    val causeBytes: Long?,
+    val bytesDone: Long,
+    val createdAtMs: Long,
+    val updatedAtMs: Long,
+    val finishedAtMs: Long?,
+)
+
+/**
  * Schema v6: a folder the user picked for download, waiting to be walked.
  *
  * A selection is transient and lives in memory, but a PICKED FOLDER is not

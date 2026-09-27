@@ -19,7 +19,14 @@ object RegolithNotifications {
     const val ARTWORK_ID = 42
     const val TRANSFERS_ID = 43
 
+    /** The upload queue's own progress (P16), beside the downloads', never on top of them. */
+    const val UPLOADS_ID = 44
+
+    /** What a run of uploads left behind when some of it did not go: stays after the progress one has gone. */
+    const val UPLOADS_ATTENTION_ID = 45
+
     const val CHANNEL_SCAN = "scan"
     const val CHANNEL_ARTWORK = "artwork"
     const val CHANNEL_TRANSFERS = "transfers"
+    const val CHANNEL_UPLOADS = "uploads"
 }

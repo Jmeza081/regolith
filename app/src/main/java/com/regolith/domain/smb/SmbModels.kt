@@ -62,6 +62,15 @@ sealed class SmbFailure(
         detail: String? = null,
         explanation: String? = null,
     ) : SmbFailure(explanation ?: "$path was not found", cause, detail)
+    /**
+     * No room for what was being written: the share is full, or this login
+     * is over its quota. A statement about the SHARE, not about the file —
+     * but not about the server either: a smaller file may still fit, which
+     * is why an upload batch carries on past it.
+     */
+    class ShareFull(path: String, cause: Throwable? = null, detail: String? = null) :
+        SmbFailure("No room on the share for $path", cause, detail)
+
     class Other(message: String, cause: Throwable? = null, detail: String? = null) : SmbFailure(message, cause, detail)
 }
 
