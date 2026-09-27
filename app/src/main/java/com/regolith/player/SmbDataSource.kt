@@ -8,7 +8,7 @@ import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
-import com.regolith.domain.smb.BufferedByteSource
+import com.regolith.domain.smb.ReadAheadByteSource
 import com.regolith.domain.smb.SeekableByteSource
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
@@ -50,9 +50,11 @@ class SmbDataSource(
             ?: throw DataSourceException("Unknown media ${dataSpec.uri}", PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)
 
         val src = try {
-            // Read-ahead: extractors read headers a few bytes at a time and
-            // each read would otherwise be an SMB round trip.
-            BufferedByteSource(gateway.open(media.host, media.credentials, media.share, media.relPath))
+            // Read-ahead in 1 MiB blocks, several on the wire at once. Extractors read
+            // headers a few bytes at a time, and one handle is capped near 40 Mbps on
+            // Wi-Fi (see ReadAheadByteSource). Extra handles open only as needed.
+            val open = { gateway.open(media.host, media.credentials, media.share, media.relPath) }
+            ReadAheadByteSource(open(), openAnother = open)
         } catch (e: SmbFailure) {
             throw DataSourceException(e.message ?: "SMB open failed", e, e.toErrorCode())
         }
