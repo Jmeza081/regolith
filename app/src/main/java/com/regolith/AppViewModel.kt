@@ -160,7 +160,6 @@ class AppViewModel @Inject constructor(
         // The same for uploads, which also hands back read access to phone
         // files no row needs any more (P16).
         viewModelScope.launch { uploads.resumeInterrupted() }
-        viewModelScope.launch { watchUploadBatches() }
         // Downloads and artwork whose rows have gone. Startup for the same
         // reason: nothing else in the app's life is a safe moment to decide
         // that a file on disk is unclaimed, and this is the one place that
@@ -256,6 +255,14 @@ class AppViewModel @Inject constructor(
 
     /** One message per finished batch (P16). The nav graph shows it in the capsule above the pill. */
     val uploadNotices: SharedFlow<UploadNotice> = _uploadNotices
+
+    // Started here, below the flow it emits into, rather than in the init
+    // block above: properties and init blocks run in the order they are
+    // written, and a watcher started before `_uploadNotices` exists would
+    // only work because Room happens to answer later.
+    init {
+        viewModelScope.launch { watchUploadBatches() }
+    }
 
     /**
      * Watches for batches going from "something still owed" to "nothing

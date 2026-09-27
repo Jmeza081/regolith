@@ -21,8 +21,10 @@ import com.regolith.domain.transfer.UploadItem
 import com.regolith.domain.transfer.UploadNames
 import com.regolith.domain.transfer.UploadStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -95,14 +97,18 @@ class UploadRepository @Inject constructor(
         val destination = destinationOf(folderId) ?: return null
         val files = mutableListOf<PickedFile>()
         var unreadable = 0
-        for (uri in uris.distinct()) {
-            phone.keepAccess(uri)
-            val file = phone.describe(uri)
-            if (file == null) {
-                unreadable++
-                phone.releaseAccess(uri)
-            } else {
-                files += file
+        // The phone's files are behind a ContentResolver, which blocks: off
+        // the main thread, where the ViewModel calling this lives.
+        withContext(Dispatchers.IO) {
+            for (uri in uris.distinct()) {
+                phone.keepAccess(uri)
+                val file = phone.describe(uri)
+                if (file == null) {
+                    unreadable++
+                    phone.releaseAccess(uri)
+                } else {
+                    files += file
+                }
             }
         }
         val clashes = try {
@@ -225,7 +231,9 @@ class UploadRepository @Inject constructor(
 
     private suspend fun releaseUnneeded() {
         val needed = uploads.sourceUris().toSet()
-        phone.heldAccess().filterNot { it in needed }.forEach { phone.releaseAccess(it) }
+        withContext(Dispatchers.IO) {
+            phone.heldAccess().filterNot { it in needed }.forEach { phone.releaseAccess(it) }
+        }
     }
 
     private suspend fun deletePartQuietly(row: UploadEntity) {
