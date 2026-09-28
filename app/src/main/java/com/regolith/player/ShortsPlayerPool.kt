@@ -2,7 +2,6 @@ package com.regolith.player
 
 import android.content.Context
 import android.util.Log
-import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
@@ -30,9 +29,12 @@ import javax.inject.Inject
  * Deliberately NOT `@Singleton`: the pool belongs to the Shorts screen and
  * dies with it, so three decoders are never held by a screen nobody is on.
  *
- * Every player is built exactly the way [PlaybackSession] builds its one,
- * so the feed inherits SMB streaming, decoder fallback and the hardware
- * decoding preference rather than quietly diverging from the player.
+ * Every player is built the way [PlaybackSession] builds its one, so the
+ * feed inherits SMB streaming, decoder fallback and the hardware decoding
+ * preference rather than quietly diverging from the player. The one
+ * addition is in front of the share: the openings fetched ahead of time
+ * ([ShortsOpenings]), read first, so the clips a visit opens on start
+ * from disk.
  *
  * ExoPlayer is main-thread only, as it is in [PlaybackSession]: call all of
  * this from the UI.
@@ -42,6 +44,7 @@ class ShortsPlayerPool @Inject constructor(
     @ApplicationContext private val context: Context,
     private val smbDataSourceFactory: SmbDataSource.Factory,
     private val resolver: MediaUriResolver,
+    private val openings: ShortsOpenings,
 ) {
     val ring = ShortsRing()
 
@@ -51,11 +54,14 @@ class ShortsPlayerPool @Inject constructor(
     private val bound = IntArray(ring.size) { UNBOUND }
 
     /**
-     * Which FILE each slot holds. A position alone is not enough: a reshuffle
+     * Which clip each slot holds. A position alone is not enough: a reshuffle
      * or a new folder puts a different clip at position 0, and a slot that
      * only remembered "0" kept playing the old clip under the new title.
      */
-    private val boundFile = LongArray(ring.size) { UNBOUND_FILE }
+    private val boundClip = arrayOfNulls<ShortsClip>(ring.size)
+
+    /** When each slot was handed its clip, for the first-frame log; 0 once logged. */
+    private val boundAtNs = LongArray(ring.size)
 
     private var current = UNBOUND
     private var hardware = true
@@ -68,11 +74,11 @@ class ShortsPlayerPool @Inject constructor(
      * Make [index] the playing clip, with its neighbours prepared but
      * silent and paused.
      *
-     * [fileIds] is the whole feed in order; only the window is ever opened.
+     * [clips] is the whole feed in order; only the window is ever opened.
      * Positions leaving the window are stopped and their player reused, so
      * the decoder count never grows past the ring.
      */
-    suspend fun bind(index: Int, fileIds: List<Long>, hardwareDecoding: Boolean) {
+    suspend fun bind(index: Int, clips: List<ShortsClip>, hardwareDecoding: Boolean) {
         if (hardwareDecoding != hardware) {
             // A different renderers factory means new players; there is no
             // way to switch a live one. Same reasoning as the session's.
@@ -82,26 +88,28 @@ class ShortsPlayerPool @Inject constructor(
         val previous = current
         current = index
 
-        for (gone in ring.released(previous, index, fileIds.size)) {
+        for (gone in ring.released(previous, index, clips.size)) {
             val slot = ring.slotFor(gone)
             if (bound[slot] == gone) {
                 players[slot]?.let { it.pause(); it.clearMediaItems() }
                 bound[slot] = UNBOUND
-                boundFile[slot] = UNBOUND_FILE
+                boundClip[slot] = null
             }
         }
 
-        for (position in ring.window(index, fileIds.size)) {
+        for (position in ring.window(index, clips.size)) {
             val slot = ring.slotFor(position)
-            val player = players[slot] ?: createPlayer().also { players[slot] = it }
-            if (bound[slot] != position || boundFile[slot] != fileIds[position]) {
+            val player = players[slot] ?: createPlayer(slot).also { players[slot] = it }
+            val clip = clips[position]
+            if (bound[slot] != position || boundClip[slot]?.fileId != clip.fileId) {
                 // Resolved per clip: a downloaded copy plays from disk and
                 // the feed never knows the difference (see MediaUriResolver).
-                val uri = resolver.playableUriFor(fileIds[position])
-                player.setMediaItem(MediaItem.fromUri(uri))
+                val uri = resolver.playableUriFor(clip.fileId)
+                player.setMediaItem(openings.mediaItem(clip, uri))
                 player.prepare()
                 bound[slot] = position
-                boundFile[slot] = fileIds[position]
+                boundClip[slot] = clip
+                boundAtNs[slot] = System.nanoTime()
             }
             // Only the clip on screen makes a sound or advances. A prepared
             // neighbour that played would be audible over the one you are
@@ -111,7 +119,7 @@ class ShortsPlayerPool @Inject constructor(
             player.playWhenReady = onScreen
             if (!onScreen) player.seekTo(0)
         }
-        Log.d(TAG, "bound $index of ${fileIds.size}; window=${ring.window(index, fileIds.size)}")
+        Log.d(TAG, "bound $index of ${clips.size}; window=${ring.window(index, clips.size)}")
     }
 
     /** Play or pause the clip on screen. The neighbours are never touched. */
@@ -157,15 +165,17 @@ class ShortsPlayerPool @Inject constructor(
             players[slot]?.release()
             players[slot] = null
             bound[slot] = UNBOUND
-            boundFile[slot] = UNBOUND_FILE
+            boundClip[slot] = null
+            boundAtNs[slot] = 0L
         }
         current = UNBOUND
     }
 
-    private fun createPlayer(): ExoPlayer {
-        // Identical to PlaybackSession.createPlayer: DefaultDataSource takes
-        // file:// itself and hands regolith:// to the SMB factory.
-        val dataSourceFactory = DefaultDataSource.Factory(context, smbDataSourceFactory)
+    private fun createPlayer(slot: Int): ExoPlayer {
+        // As PlaybackSession.createPlayer — DefaultDataSource takes file://
+        // itself and hands regolith:// to the SMB factory — with the openings
+        // on disk read before either.
+        val dataSourceFactory = openings.readThrough(DefaultDataSource.Factory(context, smbDataSourceFactory))
         val renderers = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(if (hardware) MediaCodecSelector.DEFAULT else MediaCodecSelector.PREFER_SOFTWARE)
@@ -176,12 +186,28 @@ class ShortsPlayerPool @Inject constructor(
                 // A short is watched more than once; a feed that stopped on a
                 // ten-second clip would ask for a swipe you did not want yet.
                 it.repeatMode = Player.REPEAT_MODE_ONE
+                it.addListener(object : Player.Listener {
+                    override fun onRenderedFirstFrame() = logFirstFrame(slot)
+                })
             }
+    }
+
+    /**
+     * How long the clip in [slot] took to show a picture, and how much of it
+     * was on disk: the number [ShortsOpenings] exists to shrink. Read it on
+     * the phone with `adb logcat -s Regolith/Shorts`.
+     */
+    private fun logFirstFrame(slot: Int) {
+        val clip = boundClip[slot] ?: return
+        val since = boundAtNs[slot].takeIf { it != 0L } ?: return
+        // Once per binding: a seek or a loop renders a "first" frame too.
+        boundAtNs[slot] = 0L
+        val ms = (System.nanoTime() - since) / 1_000_000
+        Log.d(TAG, "file ${clip.fileId}: first frame ${ms}ms after binding, ${openings.bytesOnDisk(clip) / 1024} KB of it on disk")
     }
 
     private companion object {
         const val UNBOUND = -1
-        const val UNBOUND_FILE = -1L
         const val FAST_SPEED = 2f
         const val TAG = "Regolith/Shorts"
     }

@@ -30,16 +30,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * One short, as far as its strip is concerned: which file, which VERSION of
- * it — a clip replaced on the share under the same name gets new frames —
- * and how long it runs, which decides where the frames are taken.
- */
-data class ShortsClip(val fileId: Long, val sizeBytes: Long, val modifiedAtMs: Long, val durationMs: Long) {
-    /** The clip's folder name on disk: everything a frame depends on. */
-    internal val key: String get() = "$fileId-$sizeBytes-$modifiedAtMs-$durationMs"
-}
-
-/**
  * The Shorts panel's filmstrips, made BEFORE they are looked at and kept on
  * disk.
  *

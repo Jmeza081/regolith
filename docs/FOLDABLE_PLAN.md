@@ -747,9 +747,11 @@ the tab opens. Only on a device that can show the panel: a tablet, or a
 foldable. Measured on the emulator: the panel draws with all eight frames in
 place, in step with the clip's first frame.
 
-The videos themselves are not warmed: doing it the obvious way means
-players — hardware decoders and their buffers — held while you are
-somewhere else in the app.
+The videos are warmed too, though not the obvious way, with players, which
+would hold hardware decoders and their buffers while you are somewhere else
+in the app. `ShortsOpenings` keeps the first five seconds of the same five
+clips on disk instead, on every device rather than only foldables (see the
+decision log in `ARCHITECTURE.md`).
 
 ### Up next is the deck
 

@@ -118,7 +118,8 @@ class ShortsViewModel @Inject constructor(
      * Starts ON: newest-first always opened on the same clip. This ViewModel
      * lives as long as the Shorts tab is on the back stack, so every arrival
      * at the tab is a fresh deck — dealt from a seed [ShortsWarmup] chose
-     * during the last visit, so its first clips' strips are already made.
+     * during the last visit, so its first clips' openings are already on
+     * disk, and on a big screen their strips are already made.
      */
     private val _shuffleSeed = MutableStateFlow<Long?>(warmup.take())
 
@@ -244,7 +245,7 @@ class ShortsViewModel @Inject constructor(
         val items = uiState.value.items
         if (index !in items.indices) return
         viewModelScope.launch {
-            pool.bind(index, items.map { it.fileId }, prefs.hardwareDecoding.first())
+            pool.bind(index, items.map { it.toClip() }, prefs.hardwareDecoding.first())
             _bindVersion.value += 1
         }
     }

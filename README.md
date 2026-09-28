@@ -40,6 +40,8 @@ Point it at a share, pick the folders you actually want (`Films/` and `Series/`,
 not `Backups/`), and it reads the shape of what's there. Playback is a custom
 Media3 data source reading SMB directly, so a file starts without being copied
 first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
+Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
+of the next clips are fetched in the background while you are elsewhere in the app.
 
 ### Scrub by thumbnail
 
