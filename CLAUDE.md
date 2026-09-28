@@ -141,8 +141,13 @@ Two things to know before installing to it:
   release will refuse it (`INSTALL_FAILED_VERSION_DOWNGRADE`). Pass a higher
   one, the way the release workflow does:
   `./gradlew installDebug -Pregolith.versionCode=<higher> -Pregolith.versionName="<something-obvious>"`.
+  A release's code is `major·100000 + minor·1000 + patch·10` (0.13.0 →
+  13000), so number a test build from the nine just above the release the
+  phone has (13001–13009). The next release is always higher, so it
+  installs over the test build without any cleanup. A test build numbered
+  past that range would block the release it was testing.
   Use a name the owner can recognise, since it replaces the build they were
-  using; offer to put the release back afterwards.
+  using.
 - `adb logcat -s Regolith/SMB` (or `Regolith/Artwork`) on the real phone is the
   best diagnostic the project has, and several failures are only visible there
   — `errorDetail` is rendered on the Add-server screen and nowhere else, so a

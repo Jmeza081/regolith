@@ -123,14 +123,24 @@ def next_version(previous: str | None, bump: str) -> str:
 def version_code(version: str) -> int:
     """A single increasing integer Android will accept, readable as the version.
 
-    0.2.0 -> 200, 1.4.12 -> 10412. Android refuses to install an APK whose
+    0.13.0 -> 13000, 1.4.12 -> 104120. Android refuses to install an APK whose
     versionCode is not greater than the installed one, so this has to rise
     every release — deriving it from the semver means there is no second
     number anyone has to remember to bump, and reading it backwards tells you
-    which release a phone is on. Holds while minor and patch stay under 100.
+    which release a phone is on.
+
+    The last digit is always 0 for a release, which leaves nine codes free
+    between one release and the next: a test build of the coming 0.13.1 is
+    13001..13009, installs over 0.13.0, and is replaced by the 13010 release
+    itself. Holds while minor stays under 100 and patch under 100.
+
+    Until 0.13.0 this was major*10_000 + minor*100 + patch (0.12.1 -> 1201),
+    which left no room for test builds: one installed as 1301 sat ABOVE the
+    1300 of the release it was testing. Every new code is larger than every
+    old one, which is what lets the formula change at all.
     """
     major, minor, patch = (int(p) for p in version.split("."))
-    return major * 10_000 + minor * 100 + patch
+    return major * 100_000 + minor * 1_000 + patch * 10
 
 
 def render(version: str, previous: str | None, entries: list[tuple[str, str, str]], repo: str) -> str:

@@ -25,9 +25,11 @@ android {
         // fallbacks, which are deliberately below anything ever released so a
         // hand-built APK can never masquerade as a newer one.
         //
-        // versionCode is DERIVED from the name (0.2.0 -> 200) rather than
+        // versionCode is DERIVED from the name (0.13.0 -> 13000) rather than
         // being a second number to remember: Android refuses to install over a
-        // build whose code is not lower, so it has to rise every release.
+        // build whose code is not lower, so it has to rise every release. A
+        // release's code always ends in 0; the nine after it (13001..13009)
+        // are for test builds of the next one, passed in by hand.
         versionCode = (providers.gradleProperty("regolith.versionCode").orNull ?: "1").toInt()
         versionName = providers.gradleProperty("regolith.versionName").orNull ?: "0.1.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
