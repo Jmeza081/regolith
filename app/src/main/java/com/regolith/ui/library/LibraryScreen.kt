@@ -557,7 +557,7 @@ private fun TileView(
                 title = tile.name,
                 meta = if (out > 0) "All but $out" else formatFileCount(tile.fileCount),
                 count = tile.fileCount,
-                resolution = tile.resolutionLabel.ifEmpty { null },
+                chip = tile.resolutionLabel.ifEmpty { null },
                 dimmed = dimmed,
                 onClick = { onOpenCollection(tile.folderId) },
                 onLongClick = { onLongPress(tile) },
@@ -578,7 +578,7 @@ private fun TileView(
                 kind = ArtworkKind.POSTER,
                 title = tile.name,
                 meta = tile.meta,
-                resolution = tile.resolutionLabel.ifEmpty { null },
+                chip = tile.resolutionLabel.ifEmpty { null },
                 // The unwatched dot shares the pick marker's corner, so it
                 // stands down while selecting rather than sitting under it.
                 unwatched = tile.unwatched && !selecting,

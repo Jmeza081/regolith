@@ -181,12 +181,18 @@ fun IconCircleButton(
     onMedia: Boolean = false,
     size: Dp = 48.scaledDp(),
     iconSize: Dp = 18.scaledDp(),
+    /**
+     * Wider than [size] draws the same frost as a pill rather than a circle:
+     * for a glyph that sits among text pills, where a circle reads as a
+     * smaller, different kind of control. The Shorts panel's sound button.
+     */
+    width: Dp = size,
 ) {
     val colors = RegolithTheme.colors
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(size)
+            .size(width = width, height = size)
             .clip(PillShape)
             .background(if (onMedia) colors.onMediaCircleBg else colors.frostBg)
             .border(1.dp, if (onMedia) colors.onMediaCircleBorder else colors.frostBorder, PillShape)

@@ -619,6 +619,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onLocate = { folderId, fileId ->
                                         backStack.add(RegolithKey.Browse(folderId, highlightFileId = fileId))
                                     },
+                                    // The same editor the player's Playback sheet opens; it
+                                    // comes back here, and Shorts shows its "Poster saved".
+                                    onMakePoster = { fileId, ms -> backStack.add(RegolithKey.PosterEditor(fileId, ms)) },
                                     reselects = shortsReselects,
                                 )
                             }

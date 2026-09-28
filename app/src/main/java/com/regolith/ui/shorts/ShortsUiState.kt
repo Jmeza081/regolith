@@ -9,6 +9,11 @@ data class ShortItem(
     val folderLabel: String,
     /** "0:18 · 1080×1920". */
     val meta: String,
+    /** How long the clip runs, for the sideways panel's filmstrip. 0 when not measured yet. */
+    val durationMs: Long = 0,
+    /** Which version of the file this is — a clip replaced on the share gets a new strip. */
+    val sizeBytes: Long = 0,
+    val modifiedAtMs: Long = 0,
     /** What Locate opens, and what the folder picker filters on. */
     val folderId: Long,
     val onDevice: Boolean = false,
@@ -24,6 +29,20 @@ data class ShortItem(
  */
 data class ShortsFolder(val id: Long, val label: String, val count: Int) {
     val testTag get() = "shorts_folder_$id"
+}
+
+/**
+ * The folders the sideways panel names as chips: the [max] holding the most
+ * clips — plus the one being played from, when the "View all" sheet picked
+ * one outside them, in the last place. The rest are a tap away in that sheet.
+ *
+ * Stable on purpose: picking a chip never moves the others, so the finger
+ * that just picked one is not chasing the row.
+ */
+fun chipFolders(folders: List<ShortsFolder>, selected: Long?, max: Int = 4): List<ShortsFolder> {
+    val top = folders.sortedWith(compareByDescending<ShortsFolder> { it.count }.thenBy { it.label.lowercase() }).take(max)
+    val picked = folders.firstOrNull { it.id == selected } ?: return top
+    return if (picked in top) top else top.take(max - 1) + picked
 }
 
 /**

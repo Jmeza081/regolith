@@ -1,0 +1,82 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Main.dc.html": {
+      "h": 740,
+      "is_interactive": true,
+      "title": "Playing",
+      "w": 980,
+      "x": 0,
+      "y": 0
+    },
+    "Paused.dc.html": {
+      "h": 740,
+      "is_interactive": true,
+      "title": "Paused — make a poster",
+      "w": 980,
+      "x": 1060,
+      "y": 0
+    },
+    "Scene.dc.html": {
+      "h": 740,
+      "title": "Stand-in clip art (not real footage)",
+      "w": 416,
+      "x": 0,
+      "y": 860
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-28T13:21:50Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "decided": {
+      "maxH": 420,
+      "text": "Decided 28 Sep: the six glyphs live only in the panel. Up next labels each clip by its folder. No half-folded layout — the phone is used fully open or fully closed, so this split is only for the inner display held sideways. Round two: the actions are one row — Show in folder with its words, Keep on device and Sound and brightness as glyph pills (three pills with words got squeezed on narrow panels) — and each clip's frames are made ahead of time, so the strip is there when the clip is.",
+      "w": 460,
+      "x": 1560,
+      "y": -520
+    },
+    "split": {
+      "maxH": 420,
+      "text": "The split costs the clip nothing. Sideways on the inner display, a 9:16 clip at full height is about 416 dp of its half's 490. What the clip gives up is chrome: its name and the six-glyph rail move into the panel, so nothing sits on the picture. Tap the clip to pause; swiping up and down still changes clips.",
+      "w": 460,
+      "x": 0,
+      "y": -520
+    },
+    "strip": {
+      "maxH": 420,
+      "text": "The strip is the clip's timeline. Sideways it replaces the 3 dp progress edge, so there is one timeline, not two. Tapping a frame jumps there without pausing. Pausing — a tap on the clip — brings up Make a poster, which opens the existing poster editor on that moment. Frame-by-frame stepping already lives there, so the panel doesn't repeat it.",
+      "w": 460,
+      "x": 1060,
+      "y": -520
+    },
+    "title": {
+      "kind": "title1",
+      "maxW": 2040,
+      "text": "Shorts on the inner display, held sideways",
+      "w": 240,
+      "x": 0,
+      "y": -760
+    },
+    "upnext": {
+      "maxH": 420,
+      "text": "Up next is the pager's own order, four across. Tap a clip to jump to it; ✕ skips it until the next reshuffle, with Undo. The chips name the four folders holding the most clips; View all opens the Play from sheet with every one. Shuffle and Auto-advance move off the rail into this header.",
+      "w": 460,
+      "x": 500,
+      "y": -520
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Paused.dc.html",
+    "Scene.dc.html"
+  ],
+  "pages": [],
+  "title": "Shorts landscape panel"
+}

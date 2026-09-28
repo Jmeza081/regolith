@@ -480,7 +480,7 @@ private fun BrowseContent(
                             kind = ArtworkKind.THUMB,
                             title = row.name,
                             meta = fileMeta(row),
-                            resolution = row.resolutionLabel.ifEmpty { null },
+                            chip = row.resolutionLabel.ifEmpty { null },
                             progress = row.fraction,
                             dimmed = offline != null,
                             fallbackLabel = row.name,

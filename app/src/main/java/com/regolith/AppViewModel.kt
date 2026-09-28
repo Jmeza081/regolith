@@ -44,6 +44,7 @@ import com.regolith.domain.security.AuthResult
 import com.regolith.domain.security.AppLock
 import com.regolith.domain.security.LockAfter
 import com.regolith.player.PlaybackSession
+import com.regolith.player.ShortsWarmup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -69,6 +70,7 @@ class AppViewModel @Inject constructor(
     private val playback: PlaybackSession,
     private val biometrics: BiometricGate,
     private val sweeper: StorageSweeper,
+    private val shortsWarmup: ShortsWarmup,
     private val phone: PhoneLibrary,
     scans: ScanRepository,
     prefetcher: ArtworkPrefetcher,
@@ -165,6 +167,9 @@ class AppViewModel @Inject constructor(
         // that a file on disk is unclaimed, and this is the one place that
         // knows no worker is mid-write. It walks two directories, so it goes
         // off the main thread.
+        // Deal the first Shorts deck now, so its opening clips' strips are
+        // made while the library is still being looked at (see ShortsWarmup).
+        shortsWarmup.start()
         viewModelScope.launch {
             withContext(Dispatchers.IO) { sweeper.sweep() }
             // After the sweep, never beside it: an empty "This device" is

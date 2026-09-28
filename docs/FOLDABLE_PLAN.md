@@ -694,3 +694,78 @@ the device was sideways. The test is the window plus "this came from the
 library"; when the folder is merely finished, the column stays and says
 "Nothing after this one", because a column that goes blank reads as a
 screen that failed to draw.
+
+## F14 — round ten: Shorts held sideways
+
+The feed on the inner display turned on its side was a vertical clip in the
+middle of a black screen: a 9:16 picture at full height is about 415dp of
+~980. **So the screen splits in two**: the clip in one half, and a panel in
+the other (`ShortsPanel`, design in `design/shorts-landscape/`). Upright, and
+on the cover screen, Shorts is exactly what it was.
+
+### The split is free
+
+Half of the window is ~490dp, and the clip only ever needed ~415 of it, so
+it keeps its full height. What it gives up is chrome: the name, the six-glyph
+rail and the progress edge all move into the panel, so nothing is drawn over
+the picture at all. The panel never hides — like the flex deck, it is not on
+top of anything. Its actions are one row: Show in folder keeps its words,
+and Keep on device and Sound and brightness are glyph pills. Three pills
+with words were wider than the panel, and the third was squeezed into a
+sliver whenever it narrowed (the rail sliding out, a larger font).
+
+`wide` could not make this call. A phone turned sideways is wide too (900dp
+across clears the 600dp line) but only ~400dp tall, with no room beside a
+vertical clip. `WindowShape` gained the window's height and one derived
+answer, `largeLandscape`: wider than tall AND at least 600dp tall.
+Half-folded is deliberately not a case here; the owner uses the phone fully
+open or fully closed.
+
+### The strip is the timeline
+
+Eight frames from the middle of eight equal slices (`Filmstrip.positions`,
+now shared with the flex deck, whose strip became `ui/components/Filmstrip`).
+A tap seeks and leaves the clip playing or paused as it was: the strip is a
+way to get somewhere, not a pause button. Pausing (a tap on the clip) is what
+offers **Make a poster**, which opens the existing poster editor on that
+moment; frame-by-frame stepping already lives there, so the panel does not
+repeat it. The owner cut a Save still button and frame-step controls from the
+mockup.
+
+### The frames are made before they are looked at
+
+Read off the share while you watched, a strip took seconds to fill: open the
+file, seek eight times, decode eight key frames. So `ShortsFrames` makes
+strips ahead of time — one clip at a time, one open of the file for all
+eight (`FrameGrabber.framesAt`) — and keeps them as small JPEGs in the cache
+directory, ~100 KB a clip and 200 clips at most. Two queues: the clip the
+panel shows and the next two come first; then the first five clips of the
+NEXT deck, which `ShortsWarmup` deals before the tab is opened. Every arrival
+at Shorts (and every reshuffle) takes the seed that was warmed and starts
+warming the one after, so even the first clip's strip is there the moment
+the tab opens. Only on a device that can show the panel: a tablet, or a
+foldable. Measured on the emulator: the panel draws with all eight frames in
+place, in step with the clip's first frame.
+
+The videos themselves are not warmed: doing it the obvious way means
+players — hardware decoders and their buffers — held while you are
+somewhere else in the app.
+
+### Up next is the deck
+
+The clips after this one, in the pager's own order, four across; a tile jumps
+the feed there. ✕ takes a clip out until the next deal (a folder chip, a
+reshuffle), with Undo — and it is taken out AFTER the shuffle, never before
+it (`ShortsDeck`), or every clip after the one on screen would change places.
+The chips name the four folders holding the most clips (`chipFolders`), and
+View all opens the "Play from" sheet with every one — the owner's share has
+fifty, and a row of fifty chips is a row nobody reads. Shuffle and
+Auto-advance sit in the section's header.
+
+### Found on the way
+
+The buffering spinner was read once, when a page was drawn. Upright, the nav
+chrome's timer redrew the page within seconds and hid it; beside the panel
+nothing redraws the page, and the spinner sat on a playing clip for good. A
+page now listens to its player for buffering, which also stops it lingering
+upright.

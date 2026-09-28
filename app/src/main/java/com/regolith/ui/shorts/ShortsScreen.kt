@@ -17,15 +17,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
@@ -64,7 +67,10 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.adaptive.LocalWindowShape
+import com.regolith.ui.components.LocalAppSnackbar
 import com.regolith.ui.components.LocalNavChromeVisible
+import com.regolith.ui.components.MessageKind
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.LocalNavPillInsets
@@ -73,6 +79,7 @@ import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.ProgressEdge
 import com.regolith.ui.components.RegolithSheet
 import com.regolith.ui.components.StrataLoader
+import com.regolith.ui.components.showMessage
 import com.regolith.ui.player.PlayerSystemControls
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -83,9 +90,12 @@ import com.regolith.ui.theme.scaledDp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 
 /**
- * The Shorts feed (design: `design/shorts-canvas/`).
+ * The Shorts feed (design: `design/shorts-canvas/`). On a big screen held
+ * sideways the feed takes one half and [ShortsPanel] the other
+ * (`design/shorts-landscape/`).
  *
  * Full bleed, one clip per page, swipe up or down to move. Three things to
  * know about how it is put together:
@@ -108,6 +118,8 @@ fun ShortsScreen(
     viewModel: ShortsViewModel,
     /** Open Browse at this clip's folder, with the clip itself picked out. */
     onLocate: (folderId: Long, fileId: Long) -> Unit,
+    /** The sideways panel's Make a poster: the poster editor, on this clip at this moment. */
+    onMakePoster: (fileId: Long, positionMs: Long) -> Unit,
     modifier: Modifier = Modifier,
     /** Emits when the Shorts tab is tapped while already open: deal a new deck. */
     reselects: Flow<Unit> = emptyFlow(),
@@ -122,6 +134,15 @@ fun ShortsScreen(
     // Published by the nav graph: the pill's own three-second idle answer, so
     // the title and the rail leave and return exactly when the pill does.
     val chromeVisible = LocalNavChromeVisible.current
+    // The inner display held sideways: the clip takes one half and the panel
+    // the other. A phone turned sideways is wide too, but has no height to
+    // spare beside a vertical clip, so it keeps the feed as it is.
+    val sideways = LocalWindowShape.current.largeLandscape
+    val snackbar = LocalAppSnackbar.current
+    val scope = rememberCoroutineScope()
+    // The poster editor, opened from the panel, comes back here rather than
+    // to the player, so its "Poster saved to …" has to be shown here too.
+    LaunchedEffect(viewModel) { viewModel.posterMessages.collect { snackbar.showMessage(it, MessageKind.DONE) } }
 
     // The player's own brightness/volume helper, not a second one: brightness
     // is a window override here too, so it must be handed back on the way out
@@ -175,7 +196,10 @@ fun ShortsScreen(
     Box(modifier.fillMaxSize().background(colors.ground).testTag("shorts_screen")) {
         if (state.items.isEmpty()) {
             EmptyFeed(state)
-        } else {
+        } else Row(Modifier.fillMaxSize()) {
+            // The feed keeps this slot whichever way the screen is held, so
+            // turning the phone does not rebuild the pager and its players.
+            Box(Modifier.weight(1f).fillMaxHeight()) {
             VerticalPager(
                 state = pager,
                 modifier = Modifier.fillMaxSize().testTag("shorts_pager"),
@@ -190,6 +214,7 @@ fun ShortsScreen(
                     filtered = state.folderId != null,
                     autoAdvance = autoAdvance,
                     chromeVisible = chromeVisible,
+                    panel = sideways,
                     holdingFast = holdingFast,
                     // Only the clip you are looking at may move the feed. A
                     // prewarmed neighbour wrapping would otherwise scroll the
@@ -208,6 +233,33 @@ fun ShortsScreen(
                     onLocate = { onLocate(item.folderId, item.fileId) },
                     onKeep = { viewModel.keepOnDevice(item.fileId) },
                 )
+            }
+            }
+            if (sideways) {
+                state.items.getOrNull(pager.settledPage)?.let { item ->
+                    Box(Modifier.fillMaxHeight().width(1.dp).background(colors.hairline))
+                    SidewaysPanel(
+                        item = item,
+                        index = pager.settledPage,
+                        state = state,
+                        viewModel = viewModel,
+                        bindVersion = bindVersion,
+                        autoAdvance = autoAdvance,
+                        onLocate = { onLocate(item.folderId, item.fileId) },
+                        onSound = { settingsOpen = true },
+                        onViewAll = { sheetOpen = true },
+                        onMakePoster = { positionMs -> onMakePoster(item.fileId, positionMs) },
+                        onJumpTo = { index -> scope.launch { pager.scrollToPage(index) } },
+                        onSkip = { clip ->
+                            viewModel.skip(clip.fileId)
+                            scope.launch {
+                                val result = snackbar.showMessage("Skipped for now", MessageKind.INFO, actionLabel = "Undo")
+                                if (result == SnackbarResult.ActionPerformed) viewModel.unskip(clip.fileId)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
 
@@ -228,6 +280,61 @@ fun ShortsScreen(
     }
 }
 
+/**
+ * [ShortsPanel], wired to the feed: the clip's player for the clock, its
+ * filmstrip — asked for while the panel is up and let go when it leaves —
+ * and whether it can take a poster at all.
+ */
+@UnstableApi
+@Composable
+private fun SidewaysPanel(
+    item: ShortItem,
+    index: Int,
+    state: ShortsUiState,
+    viewModel: ShortsViewModel,
+    bindVersion: Int,
+    autoAdvance: Boolean,
+    onLocate: () -> Unit,
+    onSound: () -> Unit,
+    onViewAll: () -> Unit,
+    onMakePoster: (positionMs: Long) -> Unit,
+    onJumpTo: (index: Int) -> Unit,
+    onSkip: (ShortItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // The pool hands out a different player per page and says so by bumping
+    // bindVersion, the same signal the pager recomposes on.
+    val player = remember(index, bindVersion) { viewModel.pool.playerFor(index) }
+    val clock = rememberClipClock(player)
+    val strip by viewModel.strip.collectAsStateWithLifecycle()
+    // Keyed on the clip as well as the place: a skip can put a different
+    // clip at the same index.
+    LaunchedEffect(item.fileId, index) { viewModel.showStrip(index) }
+    DisposableEffect(viewModel) { onDispose { viewModel.hideStrip() } }
+    val canMakePoster by produceState(false, item.fileId) { value = viewModel.canMakePoster(item.fileId) }
+    ShortsPanel(
+        item = item,
+        state = state,
+        index = index,
+        strip = strip,
+        clock = clock,
+        autoAdvance = autoAdvance,
+        canMakePoster = canMakePoster,
+        onLocate = onLocate,
+        onKeep = { viewModel.keepOnDevice(item.fileId) },
+        onSound = onSound,
+        onSeek = viewModel::seekTo,
+        onMakePoster = { onMakePoster(clock.positionMs) },
+        onPickFolder = viewModel::pickFolder,
+        onViewAll = onViewAll,
+        onShuffle = viewModel::toggleShuffle,
+        onAutoAdvance = viewModel::toggleAutoAdvance,
+        onJumpTo = onJumpTo,
+        onSkip = onSkip,
+        modifier = modifier,
+    )
+}
+
 @UnstableApi
 @Composable
 private fun ShortPage(
@@ -237,6 +344,12 @@ private fun ShortPage(
     filtered: Boolean,
     autoAdvance: Boolean,
     chromeVisible: Boolean,
+    /**
+     * The sideways panel is beside this page: the rail, the name and the
+     * progress edge all live in the panel then, so none of them is drawn
+     * over the picture.
+     */
+    panel: Boolean,
     holdingFast: Boolean,
     onWrapped: suspend () -> Unit,
     onTap: () -> Unit,
@@ -271,12 +384,12 @@ private fun ShortPage(
                 .testTag("shorts_gesture_layer"),
         )
 
-        if (player == null || player.playbackState == Player.STATE_BUFFERING) {
+        if (rememberBuffering(player)) {
             StrataLoader(modifier = Modifier.align(Alignment.Center), height = 48.dp, testTag = "shorts_buffering")
         }
 
         AnimatedVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && !panel,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.CenterEnd),
@@ -349,7 +462,7 @@ private fun ShortPage(
                     modifier = Modifier.padding(bottom = Spacing.s8).testTag("shorts_speed_pill"),
                 )
             }
-            AnimatedVisibility(visible = chromeVisible, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(visible = chromeVisible && !panel, enter = fadeIn(), exit = fadeOut()) {
                 Column(Modifier.padding(start = Spacing.s18, end = 96.dp)) {
                     Text(item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
@@ -360,8 +473,9 @@ private fun ShortPage(
             }
         }
 
-        // Where it has got to, and nothing more: scrubbing is deliberately
-        // not a thing you can do to a clip this short.
+        // Where it has got to, and nothing more: upright, scrubbing is
+        // deliberately not a thing you can do to a clip this short. Sideways
+        // the panel's filmstrip is the timeline, and a way to jump.
         /*
          * One poll, two jobs. The bar needs the position anyway, and with
          * REPEAT_MODE_ONE the clip NEVER reaches STATE_ENDED — ExoPlayer
@@ -382,8 +496,36 @@ private fun ShortPage(
                 delay(250)
             }
         }
-        ProgressEdge(fraction, Modifier.align(Alignment.BottomCenter).fillMaxWidth().testTag("shorts_progress"))
+        // Beside the panel the strip is the timeline; a second one under the
+        // picture would be two bars saying the same thing.
+        if (!panel) ProgressEdge(fraction, Modifier.align(Alignment.BottomCenter).fillMaxWidth().testTag("shorts_progress"))
     }
+}
+
+/**
+ * Whether [player] is waiting for data — or there is no player yet — kept
+ * current by listening, not read once while drawing.
+ *
+ * Read once, the answer went stale: a page drawn while its clip was still
+ * loading kept its spinner until something ELSE redrew the page. Upright,
+ * the nav chrome's timer happened to do that within a few seconds; beside
+ * the sideways panel nothing did, and the spinner sat on a playing clip
+ * for good.
+ */
+@Composable
+private fun rememberBuffering(player: Player?): Boolean {
+    val buffering by produceState(player == null || player.playbackState == Player.STATE_BUFFERING, player) {
+        val p = player ?: return@produceState
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                value = playbackState == Player.STATE_BUFFERING
+            }
+        }
+        p.addListener(listener)
+        value = p.playbackState == Player.STATE_BUFFERING
+        awaitDispose { p.removeListener(listener) }
+    }
+    return buffering
 }
 
 /**
@@ -453,7 +595,8 @@ private const val HUD_MS = 140
 private const val SOURCE_COLUMNS = 3
 
 /**
- * One bare glyph on the feed's rail — a deliberate deviation from
+ * One bare glyph on the feed's rail — and, sideways, in the panel's Up next
+ * header, where Shuffle and Auto-advance go when the rail does. A deliberate deviation from
  * [IconCircleButton] and from the design system, for this screen only.
  *
  * A feed is a different animal. The frosted circle this app puts over media
@@ -474,7 +617,7 @@ private const val SOURCE_COLUMNS = 3
  * not in the design.
  */
 @Composable
-private fun RailAction(
+internal fun RailAction(
     icon: Painter,
     contentDescription: String,
     onClick: () -> Unit,

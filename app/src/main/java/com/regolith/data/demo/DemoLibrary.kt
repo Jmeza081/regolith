@@ -230,6 +230,14 @@ class DemoLibrary @Inject constructor(
         FHD(R.raw.demo_fhd, 1920, 1080, 30_000, 2_400_000),
         WIDE(R.raw.demo_wide, 1280, 536, 60_000, 900_000),
         UHD(R.raw.demo_uhd, 3840, 2160, 20_000, 9_000_000),
+
+        /**
+         * A phone held upright, so Shorts has a feed in the demo. Its hue
+         * turns once and a square crosses it over the 20 s, so any two
+         * frames of it look different: a strip of eight that shows eight
+         * pictures is a strip that seeked.
+         */
+        VERTICAL(R.raw.demo_vertical, 1080, 1920, 20_000, 1_500_000),
         ;
 
         /** What a real file of this shape would weigh, give or take. */
@@ -319,6 +327,16 @@ class DemoLibrary @Inject constructor(
                         null, FolderKind.COLLECTION,
                         listOf("GH010423.MP4", "IMG_4821.mov", "DSC_0099.mp4", "VID_20260714_183355.mp4"),
                         Clip.HD,
+                    ),
+                    // Named the way a Galaxy camera names them: a timestamp,
+                    // which parses into no title at all.
+                    Group(
+                        "Phone", FolderKind.COLLECTION,
+                        listOf(
+                            "20260914_183022.mp4", "20260914_190455.mp4", "20260801_094512.mp4",
+                            "20260712_210044.mp4", "20260503_163012.mp4", "20260201_101530.mp4",
+                        ),
+                        Clip.VERTICAL,
                     ),
                 ),
             ),

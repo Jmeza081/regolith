@@ -128,6 +128,15 @@ class ShortsPlayerPool @Inject constructor(
     }
 
     /**
+     * Jump the clip on screen to [positionMs], leaving it playing or paused
+     * as it was: the Shorts panel's filmstrip is a way to get somewhere, not
+     * a pause button.
+     */
+    fun seekTo(positionMs: Long) {
+        playerFor(current)?.seekTo(positionMs)
+    }
+
+    /**
      * Stop making sound without giving up the buffers.
      *
      * For LEAVING the screen rather than pausing a clip: the window stays

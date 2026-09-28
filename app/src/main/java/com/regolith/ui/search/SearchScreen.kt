@@ -622,7 +622,7 @@ private fun HitTile(
             kind = ArtworkKind.THUMB,
             title = hit.primary,
             meta = hit.meta,
-            resolution = formatClock(hit.startMs),
+            chip = formatClock(hit.startMs),
             fallbackLabel = hit.meta,
             onClick = open,
             testTag = hit.testTag,

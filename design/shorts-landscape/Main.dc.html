@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shorts landscape — playing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div style="position: relative; width: 980px; height: 740px; overflow: hidden; background: #0A0A0A; color: #FFFFFF; font-family: 'Space Grotesk', system-ui, sans-serif; -webkit-font-smoothing: antialiased">
+
+<div aria-hidden="true" style="position: absolute; left: 8px; top: 329px; width: 14px; box-sizing: border-box; padding: 10px 0; border-radius: 7px; background: rgba(0,0,0,.52); border: 1px solid rgba(255,255,255,.16); display: flex; flex-direction: column; align-items: center; gap: 8px">
+<div style="width: 6px; height: 6px; border-radius: 3px; background: #8A8A8A"></div>
+<div style="width: 6px; height: 6px; border-radius: 3px; background: #8A8A8A"></div>
+<div style="width: 6px; height: 6px; border-radius: 3px; background: #8A8A8A"></div>
+<div style="width: 6px; height: 6px; border-radius: 3px; background: #FFFFFF"></div>
+<div style="width: 6px; height: 6px; border-radius: 3px; background: #8A8A8A"></div>
+</div>
+
+<button aria-label="{{clipLabel}}" onClick="{{togglePlay}}" style="position: absolute; left: 37px; top: 0; width: 416px; height: 740px; padding: 0; margin: 0; border: none; background: #000000; cursor: pointer; overflow: hidden; display: block">
+<dc-import name="Scene" kind="{{clip.kind}}" p="{{progress}}" w="416" h="740" uid="main" hint-size="416px,740px"></dc-import>
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}">
+<span style="position: absolute; left: 176px; top: 338px; width: 64px; height: 64px; box-sizing: border-box; border-radius: 32px; background: rgba(0,0,0,.42); border: 1px solid rgba(255,255,255,.34); display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5v15l12-7.5z" fill="currentColor"></path></svg>
+</span>
+</sc-if>
+</button>
+
+<div style="position: absolute; left: 490px; top: 0; width: 490px; height: 740px; box-sizing: border-box; padding: 26px 30px 0 26px; border-left: 1px solid #1F1F1F; overflow: hidden">
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 19.2px; line-height: 24.3px; font-weight: 500; color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{clip.name}}</div>
+<div style="font-size: 14.1px; line-height: 19.7px; font-weight: 400; color: #A0A0A0">{{meta}}</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px">
+<button onClick="{{locate}}" style="height: 44px; box-sizing: border-box; padding: 0 16px 0 13px; margin: 0; border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #EDEDED; display: flex; align-items: center; gap: 8px; font-family: inherit; font-size: 14.1px; font-weight: 600; letter-spacing: .04em; cursor: pointer; white-space: nowrap">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"></path><path d="M9.5 13.5h5.2m0 0-1.9-1.9m1.9 1.9-1.9 1.9"></path></svg>
+<span>Show in folder</span>
+</button>
+<button onClick="{{keep}}" aria-pressed="{{kept}}" aria-label="{{keepLabel}}" style="width: 66px; height: 44px; box-sizing: border-box; padding: 0; margin: 0; border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #EDEDED; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<sc-if value="{{kept}}" hint-placeholder-val="{{false}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>
+</sc-if>
+<sc-if value="{{notKept}}" hint-placeholder-val="{{true}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M12 4v10"></path><path d="M8 11l4 4 4-4"></path><path d="M5 19h14"></path></svg>
+</sc-if>
+</button>
+<button onClick="{{sound}}" aria-label="Sound and brightness" style="width: 66px; height: 44px; box-sizing: border-box; padding: 0; margin: 0; border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #EDEDED; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3"></path><path d="M14 2v4M8 10v4M16 18v4"></path></svg>
+</button>
+</div>
+
+<div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 28px">
+<div style="font-size: 14.1px; line-height: 14.1px; font-weight: 600; letter-spacing: .14em; color: #A0A0A0">FRAMES</div>
+<div style="font-size: 14.1px; line-height: 14.1px; font-weight: 500; color: #A0A0A0; font-variant-numeric: tabular-nums">{{timecode}}</div>
+</div>
+
+<div style="position: relative; margin-top: 14px; width: 428px; height: 89px">
+<div style="display: flex; gap: 4px">
+<sc-for list="{{frames}}" as="f" hint-placeholder-count="8">
+<button aria-label="{{f.label}}" onClick="{{f.pick}}" style="flex-shrink: 0; width: 50px; height: 89px; padding: 0; margin: 0; border: none; border-radius: 7px; overflow: hidden; background: #141414; cursor: pointer; box-shadow: {{f.ring}}; display: block">
+<dc-import name="Scene" kind="{{f.kind}}" p="{{f.p}}" w="50" h="89" uid="{{f.uid}}" hint-size="50px,89px"></dc-import>
+</button>
+</sc-for>
+</div>
+<div aria-hidden="true" style="position: absolute; top: -7px; left: {{playheadLeft}}px; width: 2px; height: 103px; border-radius: 1px; background: #E11B17; pointer-events: none"></div>
+<div aria-hidden="true" style="position: absolute; top: -12px; left: {{knobLeft}}px; width: 12px; height: 12px; border-radius: 6px; background: #E11B17; pointer-events: none"></div>
+</div>
+
+<sc-if value="{{playingNow}}" hint-placeholder-val="{{true}}">
+<div style="margin-top: 12px; font-size: 14.1px; line-height: 19.7px; color: #A0A0A0">Tap a frame to jump there. Pause to make a poster.</div>
+</sc-if>
+
+<sc-if value="{{paused}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; align-items: center; gap: 12px; margin-top: 12px">
+<button onClick="{{poster}}" style="height: 44px; box-sizing: border-box; padding: 0 18px 0 14px; margin: 0; border-radius: 22px; background: #E11B17; border: none; color: #FFFFFF; display: flex; align-items: center; gap: 8px; font-family: inherit; font-size: 14.1px; font-weight: 700; letter-spacing: .04em; cursor: pointer; white-space: nowrap">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path></svg>
+<span>Make a poster</span>
+</button>
+<div style="font-size: 14.1px; line-height: 19.7px; color: #A0A0A0; font-variant-numeric: tabular-nums">{{posterFrom}}</div>
+</div>
+</sc-if>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 18px">
+<div style="font-size: 14.1px; line-height: 14.1px; font-weight: 600; letter-spacing: .14em; color: #A0A0A0">{{upNextTitle}}</div>
+<div style="display: flex; margin-right: -10px">
+<button onClick="{{toggleShuffle}}" aria-label="{{shuffleLabel}}" aria-pressed="{{shuffleOn}}" style="width: 44px; height: 44px; padding: 0; margin: 0; border: none; background: none; color: {{shuffleInk}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="m18 14 4 4-4 4"></path><path d="m18 2 4 4-4 4"></path><path d="M2 18h1.97a4 4 0 0 0 3.3-1.7l5.45-8.6a4 4 0 0 1 3.3-1.7H22"></path><path d="M2 6h1.97a4 4 0 0 1 3.6 2.2"></path><path d="M22 18h-6.04a4 4 0 0 1-3.3-1.8l-.36-.45"></path></svg>
+</button>
+<button onClick="{{toggleAuto}}" aria-label="{{autoLabel}}" aria-pressed="{{autoOn}}" style="width: 44px; height: 44px; padding: 0; margin: 0; border: none; background: none; color: {{autoInk}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M5 4l10 8-10 8z"></path><path d="M19 5v14"></path></svg>
+</button>
+</div>
+</div>
+
+<div style="display: flex; gap: 8px; margin-top: 2px; width: 464px; overflow: hidden">
+<sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+<button onClick="{{c.pick}}" aria-pressed="{{c.on}}" style="flex-shrink: 0; height: 44px; padding: 0; margin: 0; border: none; background: none; cursor: pointer; display: flex; align-items: center; font-family: inherit">
+<span style="height: 36px; box-sizing: border-box; padding: 0 14px; border-radius: 18px; background: {{c.bg}}; border: 1px solid {{c.border}}; color: {{c.fg}}; display: flex; align-items: center; font-size: 14.1px; font-weight: 600; letter-spacing: .04em; white-space: nowrap">{{c.label}}</span>
+</button>
+</sc-for>
+<button onClick="{{viewAll}}" style="flex-shrink: 0; height: 44px; padding: 0; margin: 0; border: none; background: none; cursor: pointer; display: flex; align-items: center; font-family: inherit">
+<span style="height: 36px; box-sizing: border-box; padding: 0 14px 0 12px; border-radius: 18px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #EDEDED; display: flex; align-items: center; gap: 6px; font-size: 14.1px; font-weight: 600; letter-spacing: .04em; white-space: nowrap">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"></path><path d="M10.5 11.2v4.6l3.8-2.3z" fill="currentColor" stroke="none"></path></svg>
+<span>View all</span>
+</span>
+</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 10px; margin-top: 8px">
+<sc-for list="{{next}}" as="n" hint-placeholder-count="8">
+<div style="position: relative; display: flex; flex-direction: column; gap: 6px">
+<button onClick="{{n.pick}}" aria-label="{{n.playLabel}}" style="position: relative; width: 101px; height: 179px; padding: 0; margin: 0; border: none; border-radius: 12px; overflow: hidden; background: #141414; cursor: pointer; display: block">
+<dc-import name="Scene" kind="{{n.kind}}" p="0.5" w="101" h="179" uid="{{n.uid}}" hint-size="101px,179px"></dc-import>
+<sc-if value="{{n.isNext}}" hint-placeholder-val="{{false}}">
+<span style="position: absolute; left: 6px; top: 6px; padding: 3px 6px; border-radius: 6px; background: #FFFFFF; color: #0A0A0A; font-size: 12.8px; line-height: 14px; font-weight: 700; letter-spacing: .06em">NEXT</span>
+</sc-if>
+<span style="position: absolute; left: 6px; bottom: 6px; padding: 3px 6px; border-radius: 6px; background: rgba(0,0,0,.72); color: #FFFFFF; font-size: 12.8px; line-height: 16.6px; font-weight: 600; letter-spacing: .04em">{{n.dur}}</span>
+</button>
+<button onClick="{{n.skip}}" aria-label="{{n.skipLabel}}" style="position: absolute; right: 0; top: 0; width: 44px; height: 44px; padding: 0; margin: 0; border: none; background: none; cursor: pointer; display: flex; align-items: flex-start; justify-content: flex-end">
+<span style="margin: 6px 6px 0 0; width: 24px; height: 24px; border-radius: 12px; background: rgba(0,0,0,.6); color: #FFFFFF; display: flex; align-items: center; justify-content: center">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="stroke-width: 2.4; stroke-linecap: round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</span>
+</button>
+<div style="font-size: 12.8px; line-height: 16px; font-weight: 400; color: #A0A0A0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{n.folder}}</div>
+</div>
+</sc-for>
+</div>
+
+</div>
+
+<sc-if value="{{toastOn}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: 490px; bottom: 22px; width: 490px; display: flex; justify-content: center; pointer-events: none; z-index: 10">
+<div role="status" style="pointer-events: auto; display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 0 8px 0 14px; border-radius: 22px; background: #1C1C1C; border: 1px solid #3A3A3A; box-shadow: 0 12px 28px rgba(0,0,0,.55)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" style="stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12 2.5 2.5 4.5-5"></path></svg>
+<span style="padding-right: 8px; font-size: 15.4px; line-height: 20px; font-weight: 500; color: #FFFFFF; white-space: nowrap">{{toastText}}</span>
+<sc-if value="{{toastUndo}}" hint-placeholder-val="{{false}}">
+<button onClick="{{undo}}" style="height: 44px; padding: 0 12px; margin: 0; border: none; background: none; color: #FF5A55; font-family: inherit; font-size: 14.1px; font-weight: 700; letter-spacing: .06em; cursor: pointer">UNDO</button>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"start":{"editor":"enum","options":["playing","paused"],"default":"playing"},"$preview":{"width":980,"height":740}}'>
+class Component extends DCLogic {
+  state = this.initial((this.props && this.props.start) || 'playing');
+
+  clips() {
+    return [
+      { id: 1, name: '20260914_183022', folder: 'Home videos', dur: 18, kind: 'dusk' },
+      { id: 2, name: '20260914_190455', folder: 'Home videos', dur: 24, kind: 'city' },
+      { id: 3, name: '20260201_101530', folder: 'Snow day', dur: 12, kind: 'snow' },
+      { id: 4, name: '20260712_210044', folder: 'Home videos', dur: 31, kind: 'party' },
+      { id: 5, name: '20260503_163012', folder: 'Camera', dur: 9, kind: 'forest' },
+      { id: 6, name: '20260809_141208', folder: 'Summer 2026', dur: 15, kind: 'pool' },
+      { id: 7, name: '20260914_183511', folder: 'Home videos', dur: 22, kind: 'dusk' },
+      { id: 8, name: '20260502_092233', folder: 'Camera', dur: 40, kind: 'forest' },
+      { id: 9, name: '20260810_120301', folder: 'Summer 2026', dur: 27, kind: 'pool' },
+      { id: 10, name: '20251231_235901', folder: 'Home videos', dur: 19, kind: 'party' },
+      { id: 11, name: '20260202_083012', folder: 'Snow day', dur: 33, kind: 'snow' },
+      { id: 12, name: '20260915_221847', folder: 'Home videos', dur: 14, kind: 'city' },
+    ];
+  }
+
+  byId(id) {
+    return this.clips().find((c) => c.id === id);
+  }
+
+  // A deck of ids: shuffled from a seed (stable, like the app's), or newest
+  // first. When shuffling, the clip on screen goes on top of the new deck.
+  deal(folder, shuffle, seed, firstId) {
+    let pool = this.clips().filter((c) => folder === 'all' || c.folder === folder);
+    if (shuffle) {
+      let s = seed >>> 0;
+      const next = () => {
+        s = (s + 0x6D2B79F5) >>> 0;
+        let x = s;
+        x = Math.imul(x ^ (x >>> 15), x | 1);
+        x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+        return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+      };
+      pool = pool.slice();
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(next() * (i + 1));
+        const tmp = pool[i];
+        pool[i] = pool[j];
+        pool[j] = tmp;
+      }
+    } else {
+      pool = pool.slice().sort((a, b) => (a.name < b.name ? 1 : -1));
+    }
+    const ids = pool.map((c) => c.id);
+    if (firstId != null && ids.indexOf(firstId) > 0) {
+      ids.splice(ids.indexOf(firstId), 1);
+      ids.unshift(firstId);
+    }
+    return ids;
+  }
+
+  initial(start) {
+    const paused = start === 'paused';
+    return {
+      start: start,
+      order: this.deal('all', true, 7, 1),
+      idx: 0,
+      t: paused ? 7.2 : 5.4,
+      playing: !paused,
+      folder: 'all',
+      shuffle: true,
+      seed: 7,
+      auto: false,
+      kept: [],
+      toast: null,
+    };
+  }
+
+  componentDidMount() {
+    const start = this.props.start ?? 'playing';
+    if (this.state.start !== start) this.setState(this.initial(start));
+    this.timer = setInterval(() => this.tick(), 100);
+  }
+
+  componentDidUpdate(prev) {
+    const start = this.props.start ?? 'playing';
+    if ((prev.start ?? 'playing') !== start) this.setState(this.initial(start));
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.timer);
+    clearTimeout(this.toastTimer);
+  }
+
+  current() {
+    return this.byId(this.state.order[this.state.idx]) || this.clips()[0];
+  }
+
+  tick() {
+    const s = this.state;
+    if (!s.playing) return;
+    const clip = this.current();
+    let t = s.t + 0.1;
+    if (t >= clip.dur) {
+      if (s.auto && s.idx + 1 < s.order.length) {
+        this.setState({ idx: s.idx + 1, t: 0 });
+        return;
+      }
+      t = 0;
+    }
+    this.setState({ t: t });
+  }
+
+  say(text, undo) {
+    clearTimeout(this.toastTimer);
+    this.setState({ toast: { text: text, undo: undo || null } });
+    this.toastTimer = setTimeout(() => this.setState({ toast: null }), 3400);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const clip = this.current();
+    const dur = clip.dur;
+    const t = Math.min(s.t, dur);
+    const fmt = (x) => {
+      const whole = Math.floor(x + 1e-6);
+      return Math.floor(whole / 60) + ':' + String(whole % 60).padStart(2, '0');
+    };
+    const strip = 428;
+
+    // A frame is a place to jump to, not a pause: the clip keeps playing
+    // (or stays paused) from wherever the tap lands.
+    const frames = [];
+    for (let i = 0; i < 8; i++) {
+      const from = (i * dur) / 8;
+      const at = from + dur / 16;
+      const here = t >= from && t < from + dur / 8;
+      frames.push({
+        uid: 'f' + i + '-' + clip.id,
+        kind: clip.kind,
+        p: String(at / dur),
+        label: 'Jump to ' + fmt(at),
+        ring: here ? '0 0 0 2px #FFFFFF' : 'none',
+        pick: () => this.setState({ t: at }),
+      });
+    }
+
+    const next = s.order.slice(s.idx + 1, s.idx + 9).map((id, k) => {
+      const c = this.byId(id);
+      return {
+        uid: 'n' + id,
+        kind: c.kind,
+        folder: c.folder,
+        dur: fmt(c.dur),
+        isNext: k === 0,
+        playLabel: 'Play ' + c.name,
+        skipLabel: 'Skip ' + c.name + ' for now',
+        pick: () => this.setState({ idx: this.state.order.indexOf(id), t: 0, playing: true }),
+        skip: () => {
+          const at = this.state.order.indexOf(id);
+          this.setState({ order: this.state.order.filter((x) => x !== id) });
+          this.say('Skipped for now', { id: id, at: at });
+        },
+      };
+    });
+
+    // The app names only the four folders holding the most clips; a share
+    // has many more (three stand in for them here), behind "View all".
+    const chips = [{ id: 'all', label: 'All' }]
+      .concat(['Home videos', 'Camera', 'Snow day', 'Summer 2026'].map((f) => ({ id: f, label: f })))
+      .map((c) => {
+        const on = s.folder === c.id;
+        return {
+          label: c.label,
+          on: on,
+          bg: on ? '#E11B17' : 'rgba(255,255,255,.06)',
+          border: on ? '#E11B17' : 'rgba(255,255,255,.18)',
+          fg: on ? '#FFFFFF' : '#EDEDED',
+          pick: () => {
+            const seed = this.state.seed + 1;
+            this.setState({
+              folder: c.id,
+              seed: seed,
+              order: this.deal(c.id, this.state.shuffle, seed, null),
+              idx: 0,
+              t: 0,
+              playing: true,
+            });
+          },
+        };
+      });
+
+    const keptNow = s.kept.indexOf(clip.id) >= 0;
+
+    return {
+      clip: clip,
+      meta: clip.folder + ' · ' + fmt(dur) + ' · 1080×1920',
+      clipLabel: s.playing ? 'Pause' : 'Play',
+      paused: !s.playing,
+      playingNow: s.playing,
+      progress: String(t / dur),
+      timecode: fmt(t) + ' / ' + fmt(dur),
+      posterFrom: 'from ' + fmt(t),
+      frames: frames,
+      playheadLeft: ((t / dur) * strip - 1).toFixed(1),
+      knobLeft: ((t / dur) * strip - 6).toFixed(1),
+      upNextTitle: 'UP NEXT · ' + (s.idx + 1) + ' OF ' + s.order.length,
+      chips: chips,
+      next: next,
+      shuffleOn: s.shuffle,
+      shuffleInk: s.shuffle ? '#E11B17' : '#FFFFFF',
+      shuffleLabel: s.shuffle ? 'Shuffling. Tap to play newest first' : 'Shuffle these clips',
+      autoOn: s.auto,
+      autoInk: s.auto ? '#E11B17' : '#FFFFFF',
+      autoLabel: s.auto ? 'Auto-advance is on. Tap to loop each clip' : 'Play the next clip automatically',
+      kept: keptNow,
+      notKept: !keptNow,
+      keepLabel: keptNow ? 'On this device' : 'Keep on device',
+      toastOn: !!s.toast,
+      toastText: s.toast ? s.toast.text : '',
+      toastUndo: !!(s.toast && s.toast.undo),
+      togglePlay: () => this.setState({ playing: !this.state.playing }),
+      poster: () => this.say('Opens the poster editor at ' + fmt(this.state.t)),
+      locate: () => this.say('Opens Browse at ' + this.current().folder),
+      sound: () => this.say('Opens Sound and brightness'),
+      viewAll: () => this.say('Opens Play from, with every folder'),
+      keep: () => {
+        const id = this.current().id;
+        if (this.state.kept.indexOf(id) >= 0) return;
+        this.setState({ kept: this.state.kept.concat([id]) });
+        this.say('Keeping it on this device');
+      },
+      toggleShuffle: () => {
+        const st = this.state;
+        const cur = st.order[st.idx];
+        if (st.shuffle) {
+          const order = this.deal(st.folder, false, st.seed, null);
+          this.setState({ shuffle: false, order: order, idx: Math.max(0, order.indexOf(cur)) });
+        } else {
+          const seed = st.seed + 1;
+          this.setState({ shuffle: true, seed: seed, order: this.deal(st.folder, true, seed, cur), idx: 0 });
+        }
+      },
+      toggleAuto: () => this.setState({ auto: !this.state.auto }),
+      undo: () => {
+        const u = this.state.toast && this.state.toast.undo;
+        if (!u) return;
+        const order = this.state.order.slice();
+        order.splice(Math.min(u.at, order.length), 0, u.id);
+        clearTimeout(this.toastTimer);
+        this.setState({ order: order, toast: null });
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>
