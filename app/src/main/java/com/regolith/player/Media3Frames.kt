@@ -1,6 +1,7 @@
 package com.regolith.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
@@ -76,6 +77,15 @@ class Media3Frames @Inject constructor(
      * is most of what a single still costs over SMB, so a film's marks come
      * out for little more than the price of one.
      *
+     * Each frame goes out as a COPY the caller owns and may recycle. The
+     * extractor does not promise a new bitmap per request: when a seek lands
+     * on the same key frame as the one before, it hands back that same frame
+     * object again (Media3's `lastSeekDedupeFrame`). A caller recycling what
+     * it was given was then recycling the extractor's own copy, and the next
+     * request that landed there got a recycled bitmap — which is how the
+     * Shorts strips, eight frames a few seconds apart in phone clips whose key
+     * frames are further apart than that, crashed the app on open.
+     *
      * Rendezvous, not buffered: the extractor waits for each frame to be
      * taken before fetching the next, so at most one full-size bitmap is ever
      * in flight, and a caller that stops collecting (a timeout, a screen that
@@ -92,7 +102,11 @@ class Media3Frames @Inject constructor(
                         // One frame failing is that frame's problem; the next
                         // seek on the same extractor may be fine.
                         val frame = try {
-                            grab(extractor, position)
+                            // The caller's own copy; the extractor may hand
+                            // its original over again (see above).
+                            val grabbed = grab(extractor, position)
+                            grabbed.bitmap.copy(grabbed.bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+                                ?.let { GrabbedFrame(it, grabbed.presentationTimeMs) }
                         } catch (e: InterruptedException) {
                             throw e
                         } catch (e: Exception) {

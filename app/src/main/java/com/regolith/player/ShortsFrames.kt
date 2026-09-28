@@ -7,6 +7,8 @@ import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.domain.playback.Filmstrip
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.util.Collections
+import java.util.IdentityHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -68,7 +72,16 @@ class ShortsFrames @Inject constructor(
     private val prefs: AppPreferences,
 ) {
     private val root = File(context.cacheDir, DIR)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Anything that escapes a clip is logged, not rethrown. This is work
+     * nobody asked for at the moment it runs — the next deck, made at startup
+     * — and a coroutine failing with no handler takes the whole app down,
+     * which is exactly what an unexpected bitmap did to the first build of it.
+     */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> Log.w(TAG, "frames: ${e.javaClass.simpleName}: ${e.message}", e) },
+    )
 
     /**
      * Guards the two queues and what the worker is on. A plain lock, held
@@ -184,17 +197,29 @@ class ShortsFrames @Inject constructor(
         if (missing.isEmpty()) return
         val started = System.nanoTime()
         var made = 0
-        withTimeoutOrNull(CLIP_TIMEOUT_MS) {
-            grabber.framesAt(clip.fileId, missing, FRAME_WIDTH, FRAME_HEIGHT).collectIndexed { i, grabbed ->
-                val frame = grabbed ?: return@collectIndexed
-                try {
+        // Recycled when the clip is done, not as each frame is written: a
+        // grabber may hand the same bitmap over for two positions (two seeks
+        // landing on one key frame), and recycling it after the first write
+        // would leave the second writing a recycled bitmap.
+        val taken = Collections.newSetFromMap(IdentityHashMap<Bitmap, Boolean>())
+        try {
+            withTimeoutOrNull(CLIP_TIMEOUT_MS) {
+                grabber.framesAt(clip.fileId, missing, FRAME_WIDTH, FRAME_HEIGHT).collectIndexed { i, grabbed ->
+                    val frame = grabbed ?: return@collectIndexed
+                    taken += frame.bitmap
+                    if (frame.bitmap.isRecycled) return@collectIndexed
                     write(frame.bitmap, fileFor(dir, missing[i]))
                     made++
                     _updates.update { it + 1 }
-                } finally {
-                    frame.bitmap.recycle()
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // One clip's trouble; the queue moves on to the next.
+            Log.w(TAG, "file ${clip.fileId}: frames failed after $made (${e.javaClass.simpleName}: ${e.message})")
+        } finally {
+            taken.forEach { it.recycle() }
         }
         dir.setLastModified(System.currentTimeMillis())
         Log.d(TAG, "file ${clip.fileId}: $made of ${missing.size} frames in ${(System.nanoTime() - started) / 1_000_000}ms")

@@ -2,12 +2,14 @@ package com.regolith.player
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.ShortsDeck
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,7 +47,10 @@ class ShortsWarmup @Inject constructor(
     private val prefs: AppPreferences,
     private val frames: ShortsFrames,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Background work nobody is waiting on: a failure is logged, never allowed to take the app down. */
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.w(TAG, "warmup: ${e.javaClass.simpleName}: ${e.message}", e) },
+    )
 
     @Volatile private var upcoming = newSeed()
     private var warming: Job? = null
@@ -97,6 +102,7 @@ class ShortsWarmup @Inject constructor(
         /** The first five: the clip it opens on and the four you are most likely to swipe to. */
         const val WARM_CLIPS = 5
         const val LARGE_SCREEN_DP = 600
+        const val TAG = "Regolith/ShortsFrames"
     }
 }
 

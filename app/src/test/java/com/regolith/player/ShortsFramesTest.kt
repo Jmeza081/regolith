@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,12 +33,34 @@ class ShortsFramesTest {
     /** Every clip this grabber was asked for, in order. */
     private val asked = Collections.synchronizedList(mutableListOf<Long>())
 
+    /** Clips whose every position comes back as ONE bitmap, the way Media3 dedupes seeks to one key frame. */
+    private val oneBitmapFor = mutableSetOf<Long>()
+
+    /** Clips whose grab fails outright. */
+    private val failFor = mutableSetOf<Long>()
+
+    /** The shared bitmap handed out for [oneBitmapFor], to check what became of it. */
+    private var shared: Bitmap? = null
+
+    /**
+     * Set when the shared bitmap was already recycled by the time it was
+     * handed over again. On a phone that is the "Can't compress a recycled
+     * bitmap" crash; Robolectric's bitmaps do not enforce it, so it is
+     * checked here instead.
+     */
+    @Volatile private var recycledTooSoon = false
+
     private val grabber = object : FrameGrabber {
         override suspend fun frameAt(fileId: Long, positionMs: Long, maxWidth: Int, maxHeight: Int): GrabbedFrame? = null
 
         override fun framesAt(fileId: Long, positionsMs: List<Long>, maxWidth: Int, maxHeight: Int): Flow<GrabbedFrame?> = flow {
             asked += fileId
-            for (at in positionsMs) emit(GrabbedFrame(Bitmap.createBitmap(18, 32, Bitmap.Config.ARGB_8888), at))
+            if (fileId in failFor) throw IllegalStateException("the share went away mid-clip")
+            val one = Bitmap.createBitmap(18, 32, Bitmap.Config.ARGB_8888).also { shared = it }
+            for (at in positionsMs) {
+                if (fileId in oneBitmapFor && one.isRecycled) recycledTooSoon = true
+                emit(GrabbedFrame(if (fileId in oneBitmapFor) one else Bitmap.createBitmap(18, 32, Bitmap.Config.ARGB_8888), at))
+            }
         }
     }
 
@@ -80,6 +103,29 @@ class ShortsFramesTest {
         frames.warmAhead(listOf(clip(10), clip(11)))
         frames.awaitComplete(clip(1), clip(2), clip(10), clip(11))
         assertEquals(listOf(1L, 2L), asked.take(2))
+    }
+
+    @Test
+    fun `one bitmap handed over for every position is written for each of them, then let go`() {
+        // What crashed the app on open: the frame was recycled after the
+        // first position, and the second tried to write a recycled bitmap.
+        val frames = frames()
+        oneBitmapFor += 8L
+        frames.warmAhead(listOf(clip(8)))
+        frames.awaitComplete(clip(8))
+        assertEquals(ShortsFrames.STRIP_FRAMES, frames.files(clip(8)).count { it != null })
+        assertFalse("recycled while the grabber could still hand it over", recycledTooSoon)
+        runBlocking { withTimeout(5_000) { while (shared?.isRecycled != true) kotlinx.coroutines.delay(20) } }
+    }
+
+    @Test
+    fun `a clip that fails does not stop the next one, or the app`() {
+        val frames = frames()
+        failFor += 99L
+        frames.warmAhead(listOf(clip(99), clip(100)))
+        frames.awaitComplete(clip(100))
+        assertEquals(listOf(99L, 100L), asked.toList())
+        assertTrue(frames.files(clip(99)).all { it == null })
     }
 
     @Test
