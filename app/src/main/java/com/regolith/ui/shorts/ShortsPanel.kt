@@ -163,31 +163,21 @@ internal fun ShortsPanel(
             .padding(start = Spacing.s18, end = Spacing.s30, top = Spacing.s18, bottom = Spacing.s30)
             .testTag("shorts_panel"),
     ) {
-        // The sound pill sits with the title rather than at the end of the
-        // row below: that row is as wide as the panel allows and no wider, so
-        // a third button there got squeezed into a sliver whenever the panel
-        // narrowed — the rail sliding out, a larger font. Here the title gives
-        // way to it instead.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("shorts_panel_title"),
-                )
-                Text(
-                    listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
-                    style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.size(Spacing.s12))
-            IconCircleButton(
-                icon = painterResource(R.drawable.rg_ic_sliders), contentDescription = "Sound and brightness", onClick = onSound,
-                testTag = "shorts_panel_sound", size = 42.scaledDp(), width = 62.scaledDp(),
-            )
-        }
+        Text(
+            item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("shorts_panel_title"),
+        )
+        Text(
+            listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
+            style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.size(Spacing.s18))
-        // Wraps rather than squeezes: at a large font the second pill moves
-        // down a line instead of being cut to fit.
+        // One row: the action that needs its words keeps them, and the two a
+        // glyph says well enough are pills of their own — wide enough not to
+        // read as a squashed circle beside a text pill. Three buttons with
+        // words were wider than the panel, and the third got squeezed into a
+        // sliver whenever it narrowed (the rail sliding out, a larger font).
+        // Wraps rather than squeezes if even this does not fit.
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
             verticalArrangement = Arrangement.spacedBy(Spacing.s8),
@@ -196,9 +186,14 @@ internal fun ShortsPanel(
                 text = "Show in folder", onClick = onLocate, testTag = "shorts_panel_locate",
                 leadingIcon = painterResource(R.drawable.rg_ic_folder_go), compact = true,
             )
-            SecondaryButton(
-                text = if (item.onDevice) "On this device" else "Keep on device", onClick = onKeep, testTag = "shorts_panel_keep",
-                leadingIcon = painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download), compact = true,
+            IconCircleButton(
+                icon = painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download),
+                contentDescription = if (item.onDevice) "Already on this device" else "Keep on this device",
+                onClick = onKeep, testTag = "shorts_panel_keep", size = 42.scaledDp(), width = ICON_PILL_WIDTH,
+            )
+            IconCircleButton(
+                icon = painterResource(R.drawable.rg_ic_sliders), contentDescription = "Sound and brightness", onClick = onSound,
+                testTag = "shorts_panel_sound", size = 42.scaledDp(), width = ICON_PILL_WIDTH,
             )
         }
 
@@ -345,6 +340,9 @@ private fun SkipMark(contentDescription: String, onClick: () -> Unit, testTag: S
         }
     }
 }
+
+/** A glyph's pill in the action row: the compact pill's height, and half as wide again, so it reads as a pill. */
+private val ICON_PILL_WIDTH = 62.scaledDp()
 
 /** Three rows of four: what fits beside the strip before the column has to scroll, and a little more. */
 private const val UP_NEXT_COUNT = 12

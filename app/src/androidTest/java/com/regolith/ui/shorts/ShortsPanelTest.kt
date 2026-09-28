@@ -3,7 +3,9 @@ package com.regolith.ui.shorts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -156,10 +158,16 @@ class ShortsPanelTest {
     }
 
     @Test
-    fun theSoundButtonSitsWithTheTitle() {
+    fun theThreeActionsShareOneRow() {
+        // Show in folder keeps its words; Keep and Sound are glyph pills, so
+        // all three fit on one row instead of the third being squeezed.
         show(playing = true)
-        compose.onNodeWithTag("shorts_panel_sound").assertIsDisplayed()
-        compose.onNodeWithTag("shorts_panel_title").assertIsDisplayed()
+        val tops = listOf("shorts_panel_locate", "shorts_panel_keep", "shorts_panel_sound").map { tag ->
+            compose.onNodeWithTag(tag).assertIsDisplayed().getUnclippedBoundsInRoot().top
+        }
+        assertEquals("one row", 1, tops.distinct().size)
+        compose.onNodeWithContentDescription("Keep on this device").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Sound and brightness").assertIsDisplayed()
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTagCount(tag: String): Int =

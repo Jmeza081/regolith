@@ -709,9 +709,10 @@ Half of the window is ~490dp, and the clip only ever needed ~415 of it, so
 it keeps its full height. What it gives up is chrome: the name, the six-glyph
 rail and the progress edge all move into the panel, so nothing is drawn over
 the picture at all. The panel never hides — like the flex deck, it is not on
-top of anything. Sound and brightness is a pill beside the title: as the
-third button in the row of pills below it, it was squeezed into a sliver
-whenever the panel narrowed (the rail sliding out, a larger font).
+top of anything. Its actions are one row: Show in folder keeps its words,
+and Keep on device and Sound and brightness are glyph pills. Three pills
+with words were wider than the panel, and the third was squeezed into a
+sliver whenever it narrowed (the rail sliding out, a larger font).
 
 `wide` could not make this call. A phone turned sideways is wide too (900dp
 across clears the 600dp line) but only ~400dp tall, with no room beside a
