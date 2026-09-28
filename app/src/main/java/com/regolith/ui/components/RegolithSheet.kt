@@ -88,7 +88,7 @@ fun RegolithSheet(
         dragHandle = null,
     ) {
         Column(
-            modifier.padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12)
+            modifier.padding(start = SheetGutter, end = SheetGutter, top = Spacing.s12)
                 .navigationBarsPadding()
                 // A sheet is a window of its own, like a Dialog, so the root
                 // Scaffold's setting does not reach it; without this no tag
@@ -122,6 +122,13 @@ fun RegolithSheet(
         }
     }
 }
+
+/**
+ * The sheet's side padding. Public for the one thing that has to reach past
+ * it to the sheet's edge: the move sheet's [AlphabetRail], which belongs
+ * where a thumb goes looking for it.
+ */
+val SheetGutter = Spacing.s18
 
 /** The grab handle. Drawn rather than Material's, which is taller than the design's. */
 @Composable

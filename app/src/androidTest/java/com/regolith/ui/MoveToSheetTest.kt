@@ -8,17 +8,20 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
 import com.regolith.ui.components.MoveChild
 import com.regolith.ui.components.MoveSheetState
 import com.regolith.ui.components.MoveToSheet
+import com.regolith.ui.components.RAIL_AFTER
 import com.regolith.ui.theme.RegolithTheme
 import org.junit.Rule
 import org.junit.Test
 
 /**
  * The move sheet with a folder too long to see at once: the button stays on
- * screen, and walking into another folder starts at its top.
+ * screen, the letter rail appears, and a letter brings its first folder up.
  *
  * Driven through Compose's test API with a made-up folder, so it needs no
  * share — the sheet only ever draws what its [MoveSheetState] says.
@@ -28,7 +31,7 @@ class MoveToSheetTest {
     @get:Rule
     val compose = createComposeRule()
 
-    /** A folder of films, in the order the ViewModel sorts them: by name, ignoring case. */
+    /** A folder of films, in the order the ViewModel sorts them: by name, ignoring case. No Q, no X. */
     private val films = listOf(
         "2001 A Space Odyssey", "Airplane", "Alien", "Aliens", "Amadeus", "Apocalypse Now", "Arrival",
         "Back to the Future", "Barbie", "Blade Runner", "Brazil", "Casablanca", "Chinatown", "Coco",
@@ -73,6 +76,50 @@ class MoveToSheetTest {
         assertOffScreen(folderTag("Zodiac"))
         // ...and the button is on screen anyway, without a scroll.
         compose.onNodeWithTag("move_sheet_confirm").assertIsDisplayed()
+    }
+
+    @Test
+    fun aLongListGetsTheRail() {
+        show(sheet(films))
+        compose.onNodeWithTag("move_sheet_rail").assertIsDisplayed()
+    }
+
+    @Test
+    fun aListAtTheThresholdGetsNoRail() {
+        show(sheet(films.take(RAIL_AFTER)))
+        compose.onNodeWithTag("move_sheet_rail").assertDoesNotExist()
+    }
+
+    @Test
+    fun aLetterBringsItsFirstFolderToTheTop() {
+        show(sheet(films))
+        compose.onNodeWithTag("move_sheet_rail_M").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(folderTag("Memento")).assertIsDisplayed()
+        // The rows above M have gone off the top.
+        assertOffScreen(folderTag("Airplane"))
+        assertOffScreen("move_sheet_here")
+    }
+
+    @Test
+    fun aDimmedLetterLeavesTheListWhereItIs() {
+        show(sheet(films))
+        compose.onNodeWithTag("move_sheet_rail_Q").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("move_sheet_here").assertIsDisplayed()
+    }
+
+    @Test
+    fun theBubbleShowsWhileTheRailIsHeld() {
+        show(sheet(films))
+        compose.onNodeWithTag("move_sheet_rail_bubble").assertDoesNotExist()
+        compose.onNodeWithTag("move_sheet_rail_T").performTouchInput { down(center) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("move_sheet_rail_bubble").assertIsDisplayed()
+        compose.onNodeWithTag(folderTag("Tenet")).assertIsDisplayed()
+        compose.onNodeWithTag("move_sheet_rail_T").performTouchInput { up() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("move_sheet_rail_bubble").assertDoesNotExist()
     }
 
     @Test
