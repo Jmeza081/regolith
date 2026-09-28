@@ -12,9 +12,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -92,6 +96,11 @@ data class MoveSheetState(
  * in the list rather than last because it is the answer to the question the
  * sheet just asked — "where?" — for anyone who is here to tidy up. The new
  * folder is created immediately and chosen, so the move lands in it.
+ *
+ * Only the folders scroll. Where the walk is (and the way back up) stays at
+ * the top, and the "Move to …" button stays at the bottom: a folder with a
+ * hundred subfolders used to mean picking one near the top, then scrolling
+ * the whole list to reach the button under it.
  */
 @Composable
 fun MoveToSheet(
@@ -104,11 +113,46 @@ fun MoveToSheet(
     onDismiss: () -> Unit,
 ) {
     val colors = RegolithTheme.colors
+    // One scroll position per folder walked into, so a folder opens at its
+    // top rather than wherever the last one was left. Saveable, so a
+    // rotation keeps the place (Android rebuilds the screen on rotation;
+    // plain `remember` would forget it).
+    val listState = rememberSaveable(state.currentFolderId, saver = LazyListState.Saver) { LazyListState() }
+
     RegolithSheet(
         title = "Move ${state.itemsLabel}",
         subtitle = "Pick a folder on ${state.shareName}. A move can't leave the share it started on.",
         onDismiss = onDismiss,
         testTag = "move_sheet",
+        contentScrolls = false,
+        footer = {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+            if (state.error != null) {
+                Spacer(Modifier.height(Spacing.s12))
+                Text(
+                    state.error,
+                    style = TextStyles.meta,
+                    color = colors.accent,
+                    modifier = Modifier.fillMaxWidth().testTag("move_sheet_error"),
+                )
+            }
+            Spacer(Modifier.height(Spacing.s18))
+            PrimaryButton(
+                text = "Move to ${state.chosenName}",
+                onClick = onConfirm,
+                enabled = state.confirmEnabled,
+                testTag = "move_sheet_confirm",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Spacing.s12))
+            Text(
+                "Each one moves in a single step on the server — nothing is copied, so nothing can be left " +
+                    "half-moved. A folder takes everything inside it.",
+                style = TextStyles.meta,
+                color = colors.metadata,
+                modifier = Modifier.fillMaxWidth().testTag("move_sheet_note"),
+            )
+        },
     ) {
         Spacer(Modifier.height(Spacing.s8))
 
@@ -133,87 +177,74 @@ fun MoveToSheet(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
 
-        // The folder being looked at is itself a destination — that is what
-        // "move it here" means once you have walked somewhere.
-        DestinationRow(
-            name = state.breadcrumb.substringAfterLast(" / "),
-            meta = if (state.currentChoosable) null else state.note,
-            chosen = state.chosenFolderId == state.currentFolderId,
-            enabled = state.currentChoosable,
-            onChoose = { onChoose(state.currentFolderId) },
-            onOpen = null,
-            testTag = "move_sheet_here",
-        )
-
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 64.dp)
-                .clickable(interactionSource = null, indication = null, onClick = onNewFolder)
-                .testTag("move_sheet_new_folder"),
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f, fill = false).fillMaxWidth().testTag("move_sheet_list"),
         ) {
-            Box(Modifier.size(34.scaledDp()).background(colors.badgeBg, BoxShape), contentAlignment = Alignment.Center) {
-                Icon(
-                    painterResource(R.drawable.rg_ic_folder_plus),
-                    contentDescription = null,
-                    tint = colors.accent,
-                    modifier = Modifier.size(17.scaledDp()),
+            // The folder being looked at is itself a destination — that
+            // is what "move it here" means once you have walked somewhere.
+            item(key = "here") {
+                DestinationRow(
+                    name = state.breadcrumb.substringAfterLast(" / "),
+                    meta = if (state.currentChoosable) null else state.note,
+                    chosen = state.chosenFolderId == state.currentFolderId,
+                    enabled = state.currentChoosable,
+                    onChoose = { onChoose(state.currentFolderId) },
+                    onOpen = null,
+                    testTag = "move_sheet_here",
                 )
             }
-            Spacer(Modifier.width(Spacing.s12))
-            Column(Modifier.weight(1f)) {
-                Text("New folder", style = TextStyles.settingLabel, color = colors.ink, maxLines = 1)
-                Text(
-                    "Made here, and chosen",
-                    style = TextStyles.meta,
-                    color = colors.metadata,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            item(key = "new_folder") {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                NewFolderRow(onNewFolder)
+            }
+            items(state.children, key = { it.folderId }) { child ->
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                DestinationRow(
+                    name = child.name,
+                    meta = child.meta,
+                    chosen = state.chosenFolderId == child.folderId,
+                    enabled = child.enabled,
+                    onChoose = { onChoose(child.folderId) },
+                    // Still walkable when it cannot be chosen: a folder being
+                    // moved may hold the folder you actually want.
+                    onOpen = { onOpen(child.folderId) },
+                    testTag = "move_sheet_folder_${child.folderId}",
                 )
             }
         }
+    }
+}
 
-        state.children.forEach { child ->
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-            DestinationRow(
-                name = child.name,
-                meta = child.meta,
-                chosen = state.chosenFolderId == child.folderId,
-                enabled = child.enabled,
-                onChoose = { onChoose(child.folderId) },
-                // Still walkable when it cannot be chosen: a folder being
-                // moved may hold the folder you actually want.
-                onOpen = { onOpen(child.folderId) },
-                testTag = "move_sheet_folder_${child.folderId}",
+/** "New folder": made in the folder being looked at, and chosen. */
+@Composable
+private fun NewFolderRow(onNewFolder: () -> Unit) {
+    val colors = RegolithTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 64.dp)
+            .clickable(interactionSource = null, indication = null, onClick = onNewFolder)
+            .testTag("move_sheet_new_folder"),
+    ) {
+        Box(Modifier.size(34.scaledDp()).background(colors.badgeBg, BoxShape), contentAlignment = Alignment.Center) {
+            Icon(
+                painterResource(R.drawable.rg_ic_folder_plus),
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(17.scaledDp()),
             )
         }
-
-        if (state.error != null) {
-            Spacer(Modifier.height(Spacing.s12))
+        Spacer(Modifier.width(Spacing.s12))
+        Column(Modifier.weight(1f)) {
+            Text("New folder", style = TextStyles.settingLabel, color = colors.ink, maxLines = 1)
             Text(
-                state.error,
+                "Made here, and chosen",
                 style = TextStyles.meta,
-                color = colors.accent,
-                modifier = Modifier.fillMaxWidth().testTag("move_sheet_error"),
+                color = colors.metadata,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-
-        Spacer(Modifier.height(Spacing.s18))
-        PrimaryButton(
-            text = "Move to ${state.chosenName}",
-            onClick = onConfirm,
-            enabled = state.confirmEnabled,
-            testTag = "move_sheet_confirm",
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(Spacing.s12))
-        Text(
-            "Each one moves in a single step on the server — nothing is copied, so nothing can be left " +
-                "half-moved. A folder takes everything inside it.",
-            style = TextStyles.meta,
-            color = colors.metadata,
-            modifier = Modifier.fillMaxWidth().testTag("move_sheet_note"),
-        )
     }
 }
 
@@ -277,3 +308,4 @@ private fun DestinationRow(
         }
     }
 }
+

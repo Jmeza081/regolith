@@ -90,7 +90,8 @@ everything under it in that same single operation. Deleting is permanent and ask
 first, naming the size and saying that the chapters you wrote go with it — and for
 a folder, that everything inside goes too, including files Regolith never listed.
 When the folder you want to move something into doesn't exist yet, the move sheet
-makes it for you and drops the files straight in.
+makes it for you and drops the files straight in. However long the folder list,
+the Move button stays at the foot of the sheet.
 
 ### Takes a batch offline
 
