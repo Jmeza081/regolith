@@ -104,5 +104,11 @@ sealed interface ArtworkOwner {
  * One image the UI wants. This is what a tile hands to Coil as its model;
  * the app's fetcher turns it into bytes from the artwork directory,
  * resolving on a miss (guardrail G5).
+ *
+ * [revision] is how a screen redraws a picture that was replaced under it
+ * (the share's image changed, a poster was chosen). An image view only asks
+ * again when its model changes — like an `<img>` whose `src` is the same
+ * string — so the screen bumps the number, the way a web page adds `?v=2`.
+ * It is not part of the cache key: every screen gets the new picture.
  */
-data class ArtworkRequest(val owner: ArtworkOwner, val kind: ArtworkKind)
+data class ArtworkRequest(val owner: ArtworkOwner, val kind: ArtworkKind, val revision: Int = 0)

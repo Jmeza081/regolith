@@ -150,6 +150,48 @@ videos does NOT take that folder's `poster.jpg` (the design shows
 `Films/Hard.Boiled.1992.mp4` getting a frame grab beside `Films/poster.jpg`;
 the sidecar belongs to the collection tile).
 
+**A cached picture is checked against the share on every listing** (P17).
+The copy in the app's own directory (G5) is what makes artwork work
+offline, and it used to make it blind: a `folder.jpg` replaced on the share
+with a different picture of the same name was served from the old copy for
+ever. Each `artwork` row now records a `sourceStamp` (schema v15) — the
+name, size and modified time of every image the resolver would try for
+that owner, in its order. It is the picture's ETag, and a folder listing is
+the conditional request: one the app takes anyway whenever a folder is
+opened, pulled to refresh, scanned or uploaded into, so checking costs no
+network at all.
+
+```
+LibraryRepository.refreshFolder (open · pull to refresh · scan · upload landed)
+     └─ ArtworkRepository.onFolderListed(folder, listing)
+          ├─ ArtworkFreshness.staleOwners (pure): the folder, and each film directly in it,
+          │     stamp from this listing ≠ stamp on its rows?
+          ├─ stale ─▶ drop rows + files + Coil memory keys ── the next tile to ask makes them again
+          └─ ArtworkRepository.replaced ── BrowseViewModel: that owner's ArtworkRequest.revision + 1
+```
+
+- **Every candidate, not only the one used.** A `poster.jpg` added beside a
+  `folder.jpg` wins, so it has to count as a change; and a broken image
+  that was tried and skipped must not, or the frame grab standing in for
+  it would be thrown away and grabbed again on every listing.
+- **A folder's picture is checked by listing THAT folder**, not its parent.
+  The tile is drawn on the parent's screen, but the images are inside, so a
+  replaced `folder.jpg` is noticed when the folder is opened or scanned.
+- **Rows from before v15 have no stamp** (null, unlike `""`, which means
+  "the share had no image"). An image read off the share is read once
+  more — which is what fixes a picture that went stale before this
+  version; a generated one (frame, mosaic, cover art) goes only if the
+  share now has an image for it; a placeholder is left to expire.
+- **A film with a copy on the phone is skipped**: its picture comes from
+  the copy, so a share image beside it is no reason to make it again.
+- **A tile already drawn has to be told.** Coil restarts a request only
+  when its model changes, and the memory key per owner never does, so
+  evicting it is not enough: the tile keeps its bitmap.
+  `ArtworkRequest.revision` is the `?v=2` — left out of the cache key, so
+  every screen shares the new decode. Browse bumps it, because its listing
+  is the one that finds the change; any other screen gets the new picture
+  the next time the tile is drawn.
+
 ## Library scan, parsing, search (Phase 4)
 
 ```
@@ -488,7 +530,7 @@ Playback sheet ── Make a poster ── pauseForPoster ── PosterEditor(fi
 PosterEditorViewModel ── Media3Frames.openExact ── one FrameExtractor, EXACT seeks, full size
 PosterCropper (ui/components) ── PosterFraming (domain, pure) ── cropRect in source pixels
 Save ── PosterRepository.save ── list folder: poster.jpg there? ── EXISTS → ConfirmDialog → save(replace = true)
-                              └─ encode (≤1000×1500 JPEG) ── writeReplacing ── ArtworkRepository.adoptPoster ── Coil memory keys dropped
+                              └─ encode (≤1000×1500 JPEG) ── writeReplacing ── ArtworkRepository.adoptPoster ── Coil memory keys dropped, `replaced`
 ```
 
 What a web developer would not guess:
@@ -505,11 +547,12 @@ What a web developer would not guess:
 - **Which tile changes depends on the folder.** `poster.jpg` is the
   folder's poster always, and the film's only when it is the one video
   there (`ArtworkCandidates.forFile`). The editor says which before you save.
-- **The app has to be told the picture changed.** A cached picture is served
-  for as long as its file exists, the folder listing is cached for minutes,
-  and Coil's memory keys never change for an owner. `adoptPoster` writes the
-  new image straight into the artwork cache and forgets the listing, and
-  `PosterRepository` drops the owners' keys from Coil's memory cache.
+- **The new picture is adopted, not rediscovered.** The next listing of the
+  folder would notice the new `poster.jpg` (see "A cached picture is checked
+  against the share on every listing"), but the user is looking at the
+  tile now. `adoptPoster` writes the image straight into the artwork cache,
+  stamped from a fresh listing so that next listing sees nothing to redo,
+  then drops the owners' Coil memory keys and announces them on `replaced`.
 - **Nowhere to write, no row.** Phone videos, the demo library and films
   another app handed us have no share folder, so `PosterRepository.target`
   is null and the sheet leaves the row out.
@@ -621,6 +664,7 @@ UploadRepository.enqueue(policy)  ── uploads rows (schema v14): QUEUED, one 
                ├─ rename .part ─▶ name: replacing only when the user chose Replace; a late clash keeps both
                ├─ setModifiedTime(the phone's date), best effort
                └─ DONE; a video ─▶ LibraryRepository.refreshFolder, so it is a row in Browse, Library and Search
+                        an image ─▶ the same, once per folder after the run: it may be a new folder.jpg (P17)
           notification (id 44): "Uploading 4 to Lisbon 2026" · "2 of 4 · <name>", permille of BYTES, Stop
           a run that ends with failures leaves "N uploads need you" (id 45); both open the folder
 ```
@@ -709,6 +753,8 @@ MainActivity ── EXTRA_OPEN_UPLOAD_FOLDER (either notification) ── reques
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-09-27 | **Cached artwork is revalidated on every folder listing** (P17): each `artwork` row records a `sourceStamp` (schema v15) of its owner's candidate images — name, size and modified time, in the resolver's order — and a listing whose stamp differs drops the owner's pictures to be made again. Generalises the mosaic-only check in the 2026-09-10 row below. | A `folder.jpg` replaced with a different picture of the same name was served from the app's copy for ever; only Settings › Media › Clear artwork, which throws away everything, fixed it. The listing is free — the app already takes one whenever a folder is opened, refreshed, scanned or uploaded into. Size and time rather than a hash of the bytes, because a hash is a read of every image on every listing. Rejected: a TTL, which is stale for its length and refetches pictures that never changed. |
+| 2026-09-27 | A screen redraws a replaced picture by bumping `ArtworkRequest.revision`, fed by `ArtworkRepository.replaced`; only Browse listens | Coil restarts a request only when its model changes, and the memory key per owner never changes by design (every screen shares one decode), so a tile already drawn kept the old bitmap after its key was evicted. The revision is left out of the key, so the new decode is shared too. Browse is the screen whose listing finds the change; elsewhere the tile is drawn again when the screen is next shown, and by then the old picture is gone from memory. |
 | 2026-09-27 | Upload status lives in the destination folder (a section at the top of Browse), in the tier above the pill from anywhere else, and in the notification with the app closed — there is no uploads screen | The user is IN the folder when they pick, and the files are going INTO it, so that is where their progress belongs; a separate screen would be a second place to check. The tier already existed to report the one background job worth knowing about, and an upload outranks a scan there because the user started it and is watching. A finished batch folds into one summary row so it does not push the folder's own films off the screen; a batch with a failure keeps its rows, because each failure needs its cause and its Try again. |
 | 2026-09-27 | A trip to a picker the app opened gets up to five minutes of app-lock grace (`AppLock.shouldAsk(sentAway = true)`) | The system photo picker is another app's full screen, so Regolith is stopped while you choose — and a lock set to "At once" asked for a fingerprint on the way back from choosing four photos, which punishes using the feature. The grace is bounded rather than a pass, so a picker left open for the afternoon still locks the library. |
 | 2026-09-27 | Play all's sheet row became the shared `SheetChoice`, Library's eyebrow-with-action rows became `EyebrowAction`, and `ListRow` gained a picture slot, a wrapping meta line, a progress bar and an action slot | Uploads needed each of these a second (or third) time: the source sheet and the clash question are both "a glyph, what it does, what will happen", and the upload section's eyebrow carries its action the way "Clear failed" does. Two copies is the point where a shared component stops being premature (CLAUDE.md: reuse before you build). |
@@ -1030,6 +1076,7 @@ MainActivity ── EXTRA_OPEN_UPLOAD_FOLDER (either notification) ── reques
 | P14 | Managing what is on the share: rename, move and delete from Browse and the video page, with the nav chrome as the selection toolbar | `FileOpsRepository`, `FileOpError`/`FileOpResult`, `SmbGateway.rename(replace)`, `SelectionChrome`/`SelectionVerb`, `MoveToSheet`, `FileOpMessages`, `ChromeMessageHost` |
 | P15 | Folders are targets too: move and rename a whole folder, delete one with everything in it, and make a new one from the move sheet | `FileOpTarget`, `SubtreeDao` (relocate / dropRootsUnder), `FolderDao.deleteByIds`, `SmbGateway.mkdir`/`deleteFolder`, `FileOpsRepository.createFolder`, `MoveChild.enabled`, `MoveSheetState.error` |
 | P16 | Uploads from the phone into the folder Browse is showing: photos and videos or any file, one queue with per-file status, pauses that resume themselves and failures that say why | `uploads` (schema v14), `UploadRepository`, `UploadRunner`, `UploadQueueWorker`, `UploadScheduler`, `PhoneFiles`, `SmbGateway.openForAppend`/`freeBytes`/`setModifiedTime`, `SmbWriteSink`, `SmbFailure.ShareFull`, `UploadWording`, `UploadTally`, `formatByteSize`, `UploadSectionView`/`uploadSection`, `UploadSourceSheet`, `UploadQuestionSheet`, `SheetChoice`, `EyebrowAction`, `RowLeading.Picture`, `TierTarget`, `AppLock.shouldAsk(sentAway)` |
+| P17 | A picture replaced on the share is noticed: every folder listing checks the cached artwork against the share's images, and Browse redraws what changed | `artwork.sourceStamp` (schema v15), `ArtworkFreshness`/`CachedPicture`, `ArtworkDao.forFolderAndItsFiles`, `ArtworkRepository.replaced`, `ArtworkRequest.revision`, `forgetArtwork`, `UploadRunner.Outcome.Done.name` |
 
 The design (`design/docs/SMB Video Player Design/`) is the source of truth
 for every screen and state. Section 12 of it lists features deliberately not

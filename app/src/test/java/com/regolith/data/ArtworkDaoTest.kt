@@ -76,6 +76,47 @@ class ArtworkDaoTest {
     }
 
     @Test
+    fun `a folder listing finds the pictures of the folder and of the films directly in it`() = runTest {
+        // What ArtworkRepository.onFolderListed checks against the listing:
+        // nothing further down (a subfolder is checked by its own listing),
+        // and no chapter frames, which no image on the share can make stale.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            db.openHelper.writableDatabase.apply {
+                execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
+                execSQL("INSERT INTO shares (id, serverId, name, enabled, freeBytes, totalBytes, lastScanAtMs) VALUES (1, 1, 'media', 1, NULL, NULL, NULL)")
+                execSQL("INSERT INTO folders (id, shareId, parentId, relPath, name, fileCount, byteCount, lastListedAtMs) VALUES (3, 1, NULL, 'Films', 'Films', 2, 20, NULL)")
+                execSQL("INSERT INTO folders (id, shareId, parentId, relPath, name, fileCount, byteCount, lastListedAtMs) VALUES (4, 1, 3, 'Films/Heat', 'Heat', 1, 10, NULL)")
+                for ((id, folder, name) in listOf(Triple(10, 3, "Arrival.mkv"), Triple(11, 3, "Sicario.mkv"), Triple(12, 4, "Heat.mkv"))) {
+                    execSQL(
+                        "INSERT INTO media_files (id, shareId, folderId, relPath, name, ext, sizeBytes, modifiedAtMs, durationMs, missing, addedAtMs, lastSeenAtMs) " +
+                            "VALUES ($id, 1, $folder, '$name', '$name', 'mkv', 10, 0, NULL, 0, 0, 0)",
+                    )
+                }
+            }
+            fun picture(type: String, id: Long, variant: String = "", stamp: String? = null) = ArtworkEntity(
+                ownerType = type, ownerId = id, ownerVariant = variant, kind = "THUMB", source = "SIDECAR",
+                relPath = "$type/$id/thumb.jpg", width = 320, height = 180, updatedAtMs = 1, sourceStamp = stamp,
+            )
+            val dao = db.artworkDao()
+            dao.upsert(picture("folder", 3, stamp = "folder.jpg\t90210\t1000"))
+            dao.upsert(picture("file", 10, stamp = ""))
+            dao.upsert(picture("file", 11))
+            dao.upsert(picture("moment", 10, variant = "60000"))
+            dao.upsert(picture("folder", 4))
+            dao.upsert(picture("file", 12))
+
+            val found = dao.forFolderAndItsFiles(3)
+            assertEquals(setOf("folder" to 3L, "file" to 10L, "file" to 11L), found.map { it.ownerType to it.ownerId }.toSet())
+            assertEquals("the stamp is kept as written", "folder.jpg\t90210\t1000", found.single { it.ownerType == "folder" }.sourceStamp)
+            assertEquals("", found.single { it.ownerId == 10L }.sourceStamp)
+            assertEquals("unknown stays unknown, not empty", null, found.single { it.ownerId == 11L }.sourceStamp)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `version 1 database migrates to 11 with its files intact and indexed`() {
         val name = "migrate-test.db"
         migrations.createDatabase(name, 1).use { v1 ->

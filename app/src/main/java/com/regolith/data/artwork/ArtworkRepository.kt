@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.core.graphics.createBitmap
 import android.util.Log
+import coil3.ImageLoader
 import com.regolith.data.db.ArtworkDao
 import com.regolith.data.db.ArtworkEntity
 import com.regolith.data.db.FolderDao
@@ -14,6 +15,8 @@ import com.regolith.data.db.UserChapterDao
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.ArtworkCandidates
+import com.regolith.domain.artwork.ArtworkFreshness
+import com.regolith.domain.artwork.CachedPicture
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -35,6 +38,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -72,6 +78,12 @@ class ArtworkRepository @Inject constructor(
     private val durations: DurationProbe,
     private val grabber: FrameGrabber,
     private val chapterDao: UserChapterDao,
+    /**
+     * Lazy, because the loader is built FROM this repository ([ArtworkFetcher]);
+     * asking for it directly would be a loop the container cannot resolve.
+     * Only needed when a picture is replaced under a tile already drawn.
+     */
+    private val imageLoader: dagger.Lazy<ImageLoader>,
 ) : MomentFrames {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -106,6 +118,17 @@ class ArtworkRepository @Inject constructor(
     /** Folder listings cached briefly so twenty tiles in one folder cost one SMB list. */
     private val listings = mutableMapOf<Pair<Long, String>, Pair<Long, List<SmbEntry>>>()
     private val listingsLock = Mutex()
+
+    private val _replaced = MutableSharedFlow<Set<ArtworkOwner>>(extraBufferCapacity = 16)
+
+    /**
+     * Owners whose pictures were just thrown away and will be made again: the
+     * share's images changed ([onFolderListed]) or a poster was chosen
+     * ([adoptPoster]). A screen showing one of them bumps its
+     * [ArtworkRequest.revision], so a tile already drawn asks again instead
+     * of keeping the old picture. Web analogy: a cache-bust event.
+     */
+    val replaced: SharedFlow<Set<ArtworkOwner>> = _replaced.asSharedFlow()
 
     fun observe(request: ArtworkRequest): Flow<ArtworkEntity?> =
         artworkDao.observe(request.owner.typeName, request.owner.id, request.owner.variant, request.kind.name)
@@ -264,15 +287,62 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * A folder's stitched tile is a stand-in for a picture it did not have.
-     * When a scan finds that one has since been added, the mosaic row goes
-     * so the next request runs the source order again and lands on the real
-     * image (design section 08: a sidecar always wins).
+     * A listing of a folder was just taken (opening it, pulling to refresh, a
+     * scan, an upload landing): check the pictures it can speak for.
+     *
+     * Each cached picture carries the [ArtworkFreshness.stamp] of its owner's
+     * share images from when it was made; the listing gives the stamp now.
+     * Where they differ — folder.jpg replaced with a different picture of the
+     * same name, a poster.jpg added beside it, a film's basename image put
+     * there after its frame was grabbed, the image removed — the owner's
+     * pictures go, from the table, the directory and the image loader's
+     * memory, and the next tile to ask makes them again. Database and memory
+     * only: the listing was taken anyway.
+     *
+     * A film with a copy on this phone is left alone. Its pictures come from
+     * that copy ([resolveFile]) and never read the share's images, so a share
+     * image beside it is not a reason to make them again — it would be the
+     * same frame, every listing.
      */
     suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
         if (entries.any { !it.isDirectory && MediaFileTypes.isVideo(it.name) }) forgetFolderPlaceholders(folderId)
-        if (ArtworkCandidates.forFolder(entries).isEmpty()) return
-        artworkDao.deleteMosaic(ArtworkOwner.Folder(folderId).typeName, folderId)
+        val folder = folderDao.byId(folderId) ?: return
+        // The freshest listing there is. The resolver's own copy would
+        // otherwise be up to five minutes older than the one this check used,
+        // and a picture made from it would carry a stamp that is already out
+        // of date — to be thrown away again at the next listing.
+        listingsLock.withLock { listings[folder.shareId to folder.relPath] = System.currentTimeMillis() to entries }
+        val files = mediaFileDao.inFolder(folderId)
+        val cached = artworkDao.forFolderAndItsFiles(folderId).mapNotNull { row -> row.asCachedPicture() }
+        val stale = ArtworkFreshness.staleOwners(folderId, files.map { it.id to it.name }, entries, cached)
+            .filterNot { it is ArtworkOwner.File && local.file(it.id) != null }
+        if (stale.isEmpty()) return
+        for (owner in stale) {
+            artworkDao.deleteOwner(owner.typeName, owner.id)
+            store.delete(owner)
+        }
+        announceReplaced(stale)
+        Log.i(TAG, "the share's pictures changed for $stale in ${folder.relPath.ifEmpty { "/" }}; they will be made again")
+    }
+
+    /**
+     * [owners]' pictures were replaced on disk: drop them from the image
+     * loader's memory, THEN tell the screens. In that order, or a screen
+     * redrawing on the news would be handed the old picture from memory.
+     */
+    private suspend fun announceReplaced(owners: List<ArtworkOwner>) {
+        imageLoader.get().forgetArtwork(owners)
+        _replaced.emit(owners.toSet())
+    }
+
+    private fun ArtworkEntity.asCachedPicture(): CachedPicture? {
+        val owner = when (ownerType) {
+            "folder" -> ArtworkOwner.Folder(ownerId)
+            "file" -> ArtworkOwner.File(ownerId)
+            else -> return null
+        }
+        val from = runCatching { ArtworkSource.valueOf(source) }.getOrNull() ?: return null
+        return CachedPicture(owner, from, sourceStamp)
     }
 
     /**
@@ -315,12 +385,21 @@ class ArtworkRepository @Inject constructor(
      * the folder always, and the film too when it is the only video in it —
      * in a folder of several, poster.jpg is the collection's, not the film's.
      *
-     * Returns the owners whose pictures changed, so the caller can drop them
-     * from the image loader's memory as well.
+     * The owners' pictures are dropped from the image loader's memory and
+     * announced on [replaced], so every screen showing them redraws.
      */
-    suspend fun adoptPoster(fileId: Long, bytes: ByteArray): List<ArtworkOwner> {
-        val file = mediaFileDao.byId(fileId) ?: return emptyList()
-        listingsLock.withLock { listings.remove(file.shareId to file.relPath.substringBeforeLast('/', "")) }
+    suspend fun adoptPoster(fileId: Long, bytes: ByteArray) {
+        val file = mediaFileDao.byId(fileId) ?: return
+        val folderRelPath = file.relPath.substringBeforeLast('/', "")
+        listingsLock.withLock { listings.remove(file.shareId to folderRelPath) }
+        // One fresh listing, so the adopted picture carries the stamp of the
+        // poster.jpg just written: the next listing then sees nothing changed,
+        // instead of reading the poster straight back off the share.
+        val entries = try {
+            locate(file.shareId)?.let { listing(it, file.shareId, folderRelPath) }
+        } catch (e: SmbFailure) {
+            null
+        }
         val owners = buildList {
             add(ArtworkOwner.Folder(file.folderId))
             if (mediaFileDao.inFolder(file.folderId).size <= 1) add(ArtworkOwner.File(fileId))
@@ -328,10 +407,14 @@ class ArtworkRepository @Inject constructor(
         for (owner in owners) {
             artworkDao.deleteOwner(owner.typeName, owner.id)
             store.delete(owner)
-            saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills)
+            val stamp = entries?.let {
+                val candidates = if (owner is ArtworkOwner.File) ArtworkCandidates.forFile(file.name, it) else ArtworkCandidates.forFolder(it)
+                ArtworkFreshness.stamp(candidates, it)
+            }
+            saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills, stamp)
         }
+        announceReplaced(owners)
         Log.i(TAG, "poster for file $fileId adopted by $owners")
-        return owners
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */
@@ -427,20 +510,24 @@ class ArtworkRepository @Inject constructor(
         val location = locate(file.shareId) ?: return
         val folderRelPath = file.relPath.substringBeforeLast('/', "")
         val siblings = listing(location, file.shareId, folderRelPath)
+        val candidates = ArtworkCandidates.forFile(file.name, siblings)
+        // Recorded on whatever this ends up writing — a frame too — so a
+        // listing can tell later whether the share's images have changed since.
+        val stamp = ArtworkFreshness.stamp(candidates, siblings)
 
         // 1 + 2: sidecar beside a title, image with the video's basename.
-        for (candidate in ArtworkCandidates.forFile(file.name, siblings)) {
+        for (candidate in candidates) {
             val path = if (folderRelPath.isEmpty()) candidate.name else "$folderRelPath/${candidate.name}"
             val bytes = readImage(location, path) ?: continue
-            if (saveEncoded(bytes, owner, candidate.source, kinds)) return
+            if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) return
         }
 
         // 3 + 4: open the file once for cover art, then a frame at the midpoint.
         frames.open(location.host, location.credentials, location.share, file.relPath).use { source ->
-            if (grabFrame(file, owner, source, kinds)) return
+            if (grabFrame(file, owner, source, kinds, stamp)) return
         }
         // 5
-        placeholder(owner, kinds)
+        placeholder(owner, kinds, stamp)
     }
 
     /**
@@ -451,10 +538,16 @@ class ArtworkRepository @Inject constructor(
      * says where the frame was taken from and how the runtime behind that
      * decision was arrived at (`adb logcat -s Regolith/Artwork`).
      */
-    private suspend fun grabFrame(file: MediaFileEntity, owner: ArtworkOwner.File, source: FrameSource, kinds: List<ArtworkKind>): Boolean {
+    private suspend fun grabFrame(
+        file: MediaFileEntity,
+        owner: ArtworkOwner.File,
+        source: FrameSource,
+        kinds: List<ArtworkKind>,
+        stamp: String? = null,
+    ): Boolean {
         mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height, source.rotationDegrees)
         source.embeddedPicture()?.let {
-            if (saveEncoded(it, owner, ArtworkSource.EMBEDDED, kinds)) {
+            if (saveEncoded(it, owner, ArtworkSource.EMBEDDED, kinds, stamp)) {
                 Log.i(TAG, "${file.name}: cover art embedded in the container (no frame grabbed)")
                 return true
             }
@@ -477,7 +570,7 @@ class ArtworkRepository @Inject constructor(
                 Log.i(TAG, "${file.name}: frame at ${grabbed.presentationTimeMs}ms of ${duration}ms (media3)")
             }
             try {
-                if (saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds)) return true
+                if (saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds, stamp)) return true
             } finally {
                 grabbed.bitmap.recycle()
             }
@@ -487,7 +580,7 @@ class ArtworkRepository @Inject constructor(
         val frame = source.frameAt(at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
         Log.i(TAG, "${file.name}: frame at ${at}ms of ${duration}ms (retriever)")
         return try {
-            saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB, kinds)
+            saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB, kinds, stamp)
         } finally {
             frame.recycle()
         }
@@ -689,20 +782,26 @@ class ArtworkRepository @Inject constructor(
         // rather than thrown here, and only re-thrown if the mosaic also
         // could not be made: "try again later" must not become a placeholder.
         var unreachable: SmbFailure? = null
+        // Null while the share cannot be listed: a mosaic made from local
+        // copies then carries no stamp, and the next real listing judges it.
+        var stamp: String? = null
         try {
             locate(folder.shareId)?.let { location ->
-                for (candidate in ArtworkCandidates.forFolder(listing(location, folder.shareId, folder.relPath))) {
+                val entries = listing(location, folder.shareId, folder.relPath)
+                val candidates = ArtworkCandidates.forFolder(entries)
+                stamp = ArtworkFreshness.stamp(candidates, entries)
+                for (candidate in candidates) {
                     val path = if (folder.relPath.isEmpty()) candidate.name else "${folder.relPath}/${candidate.name}"
                     val bytes = readImage(location, path) ?: continue
-                    if (saveEncoded(bytes, owner, candidate.source, kinds)) return
+                    if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) return
                 }
             }
         } catch (e: SmbFailure) {
             unreachable = e
         }
-        if (mosaic(owner, kinds)) return
+        if (mosaic(owner, kinds, stamp)) return
         unreachable?.let { throw it }
-        placeholder(owner, kinds)
+        placeholder(owner, kinds, stamp)
     }
 
     /**
@@ -717,7 +816,7 @@ class ArtworkRepository @Inject constructor(
      * All-or-nothing: a grid with a black hole in it looks broken in a way a
      * plain placeholder does not.
      */
-    private suspend fun mosaic(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>): Boolean {
+    private suspend fun mosaic(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
         val files = mosaicFiles(owner.id)
         if (files.isEmpty()) return false
         // Fewer videos than cells: the ones there are each give several
@@ -754,7 +853,7 @@ class ArtworkRepository @Inject constructor(
                         if (cell !== frame) cell.recycle()
                     }
                     if (store.saveExact(grid, owner, kind)) {
-                        record(owner, kind, ArtworkSource.MOSAIC)
+                        record(owner, kind, ArtworkSource.MOSAIC, stamp)
                         wrote = true
                     }
                 } finally {
@@ -794,29 +893,42 @@ class ArtworkRepository @Inject constructor(
         return frames.open(location.host, location.credentials, location.share, file.relPath)
     }
 
-    private suspend fun saveEncoded(bytes: ByteArray, owner: ArtworkOwner, source: ArtworkSource, kinds: List<ArtworkKind>): Boolean {
+    private suspend fun saveEncoded(
+        bytes: ByteArray,
+        owner: ArtworkOwner,
+        source: ArtworkSource,
+        kinds: List<ArtworkKind>,
+        stamp: String? = null,
+    ): Boolean {
         var any = false
         for (kind in kinds) {
             if (store.saveEncoded(bytes, owner, kind)) {
-                record(owner, kind, source)
+                record(owner, kind, source, stamp)
                 any = true
             }
         }
         return any
     }
 
-    private suspend fun saveBitmap(bitmap: Bitmap, owner: ArtworkOwner, source: ArtworkSource, kinds: List<ArtworkKind>): Boolean {
+    private suspend fun saveBitmap(
+        bitmap: Bitmap,
+        owner: ArtworkOwner,
+        source: ArtworkSource,
+        kinds: List<ArtworkKind>,
+        stamp: String? = null,
+    ): Boolean {
         var any = false
         for (kind in kinds) {
             if (store.save(bitmap, owner, kind)) {
-                record(owner, kind, source)
+                record(owner, kind, source, stamp)
                 any = true
             }
         }
         return any
     }
 
-    private suspend fun record(owner: ArtworkOwner, kind: ArtworkKind, source: ArtworkSource) {
+    /** [stamp] is [ArtworkFreshness.stamp] of the owner's share images as this picture was made, or null when unknown. */
+    private suspend fun record(owner: ArtworkOwner, kind: ArtworkKind, source: ArtworkSource, stamp: String? = null) {
         artworkDao.upsert(
             ArtworkEntity(
                 ownerType = owner.typeName,
@@ -828,11 +940,12 @@ class ArtworkRepository @Inject constructor(
                 width = kind.width,
                 height = kind.height,
                 updatedAtMs = System.currentTimeMillis(),
+                sourceStamp = stamp,
             ),
         )
     }
 
-    private suspend fun placeholder(owner: ArtworkOwner, kinds: List<ArtworkKind>) {
+    private suspend fun placeholder(owner: ArtworkOwner, kinds: List<ArtworkKind>, stamp: String? = null) {
         for (kind in kinds) {
             artworkDao.upsert(
                 ArtworkEntity(
@@ -845,6 +958,7 @@ class ArtworkRepository @Inject constructor(
                     width = 0,
                     height = 0,
                     updatedAtMs = System.currentTimeMillis(),
+                    sourceStamp = stamp,
                 ),
             )
         }

@@ -2,7 +2,6 @@ package com.regolith.data.artwork
 
 import android.graphics.Bitmap
 import android.util.Log
-import coil3.ImageLoader
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
@@ -46,7 +45,6 @@ class PosterRepository @Inject constructor(
     private val access: ServerAccess,
     private val gateway: SmbGateway,
     private val artwork: ArtworkRepository,
-    private val imageLoader: ImageLoader,
 ) {
     /**
      * "Poster saved to …" lines for the player, which is where the editor
@@ -83,14 +81,8 @@ class PosterRepository @Inject constructor(
             val bytes = withContext(Dispatchers.Default) { encode(frame, crop) }
             val path = if (loc.folderRelPath.isEmpty()) POSTER_NAME else "${loc.folderRelPath}/$POSTER_NAME"
             gateway.writeReplacing(loc.host, loc.creds, loc.share, path, bytes)
-            val owners = artwork.adoptPoster(fileId, bytes)
-            // Coil keeps decoded pictures in memory under keys that never
-            // change for an owner, so without this a tile already seen this
-            // session would keep drawing the old poster from memory.
-            imageLoader.memoryCache?.let { cache ->
-                val prefixes = owners.map(ArtworkKeyer::ownerPrefix)
-                cache.keys.filter { key -> prefixes.any { key.key.startsWith(it) } }.forEach(cache::remove)
-            }
+            // Also redraws every tile already showing the old picture.
+            artwork.adoptPoster(fileId, bytes)
             _saved.trySend("Poster saved to ${loc.folderName}")
             PosterSaveOutcome.SAVED
         } catch (e: SmbFailure.Forbidden) {

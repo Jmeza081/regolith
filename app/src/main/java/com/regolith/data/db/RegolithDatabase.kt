@@ -56,7 +56,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ChapterSyncEntity::class,
         UploadEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -89,6 +89,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // v14: `uploads`, the queue of files going from the phone to a share
         // (P16). A new table and nothing else, so Room writes it alone.
         AutoMigration(from = 13, to = 14),
+        // v15: `artwork.sourceStamp`, the fingerprint of the share images a
+        // picture was chosen from, so a folder.jpg replaced on the share is
+        // noticed. Nullable and additive: every existing row reads as
+        // "unknown", which the check treats as worth one fresh look.
+        AutoMigration(from = 14, to = 15),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

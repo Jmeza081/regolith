@@ -57,6 +57,22 @@ class ArtworkKeyer @Inject constructor() : Keyer<ArtworkRequest> {
     }
 }
 
+/**
+ * Drop [owners]' decoded pictures from the image loader's memory.
+ *
+ * Coil keeps decoded pictures in memory under [ArtworkKeyer] keys, which
+ * never change for an owner — so when a picture is replaced on disk, a tile
+ * already drawn this session would keep drawing the old one from memory
+ * until the app restarted. Whoever changes a picture calls this: the poster
+ * editor, and the check that notices a picture changed on the share.
+ */
+fun ImageLoader.forgetArtwork(owners: Collection<ArtworkOwner>) {
+    if (owners.isEmpty()) return
+    val cache = memoryCache ?: return
+    val prefixes = owners.map(ArtworkKeyer::ownerPrefix)
+    cache.keys.filter { key -> prefixes.any { key.key.startsWith(it) } }.forEach(cache::remove)
+}
+
 /** Coil reports this as the error state; the tile draws the wedge placeholder. */
 class ArtworkUnavailable(request: ArtworkRequest, val transient: Boolean) :
     Exception("No artwork for ${request.owner} (${if (transient) "share unreachable" else "placeholder"})")

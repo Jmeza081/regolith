@@ -688,9 +688,17 @@ interface ArtworkDao {
     @Query("DELETE FROM artwork WHERE ownerType = 'folder' AND ownerId = :folderId AND source = 'PLACEHOLDER'")
     suspend fun deleteFolderPlaceholder(folderId: Long): Int
 
-    /** Drops a folder's mosaic so the next request re-runs the source order and finds the new sidecar. */
-    @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND source = 'MOSAIC'")
-    suspend fun deleteMosaic(ownerType: String, ownerId: Long)
+    /**
+     * Every picture a folder listing can speak for: the folder's own and its
+     * films' (every kind, no moments). One query, so checking a folder of a
+     * thousand films after a listing costs one read, not a thousand.
+     */
+    @Query(
+        "SELECT * FROM artwork WHERE ownerVariant = '' AND (" +
+            "(ownerType = 'folder' AND ownerId = :folderId) OR " +
+            "(ownerType = 'file' AND ownerId IN (SELECT id FROM media_files WHERE folderId = :folderId)))",
+    )
+    suspend fun forFolderAndItsFiles(folderId: Long): List<ArtworkEntity>
 
     /** Every image one owner has, of every kind: a poster the user just set replaces all of them. */
     @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND ownerVariant = ''")

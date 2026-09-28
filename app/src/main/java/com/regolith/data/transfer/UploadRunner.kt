@@ -8,7 +8,6 @@ import com.regolith.data.db.UploadDao
 import com.regolith.data.db.UploadEntity
 import com.regolith.data.smb.PART_SUFFIX
 import com.regolith.domain.media.LocalSource
-import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
@@ -57,8 +56,13 @@ class UploadRunner @Inject constructor(
 ) {
     /** How one file ended, as far as the queue needs to know. */
     sealed interface Outcome {
-        /** On the share. [video] asks for the folder to be listed again, so the film appears in Browse. */
-        data class Done(val folderId: Long, val video: Boolean) : Outcome
+        /**
+         * On the share, as [name] (which "keep both" may have numbered). The
+         * worker decides from the name whether its folder needs listing again:
+         * a video, to join the library; an image, in case it is a picture the
+         * folder or a film is drawn from.
+         */
+        data class Done(val folderId: Long, val name: String) : Outcome
 
         /** Deliberately not sent: already there, or the user chose to skip the clash. */
         data object Skipped : Outcome
@@ -206,7 +210,7 @@ class UploadRunner @Inject constructor(
                     ),
                 )
             }
-            return Outcome.Done(row.folderId, video = MediaFileTypes.isVideo(landed))
+            return Outcome.Done(row.folderId, landed)
         } catch (e: Interrupted) {
             // Cancelled from the app: nobody will resume it, so the half-file goes too.
             if (e.deleted) deleteQuietly(at, partPath)
