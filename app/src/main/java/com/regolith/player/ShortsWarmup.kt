@@ -3,7 +3,7 @@ package com.regolith.player
 import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
-import com.regolith.data.db.MediaFileEntity
+import androidx.media3.common.util.UnstableApi
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
@@ -27,18 +27,20 @@ import javax.inject.Singleton
  * Every arrival at Shorts deals a fresh shuffle, and so does tapping the tab
  * while on it. If the seed for that shuffle is chosen NOW rather than then,
  * the clips the next visit will open on are known now — and what they need
- * can be made while you are elsewhere in the app. Today that is their
- * strips ([ShortsFrames]): held sideways, the first clip's frames are there
- * the moment the tab opens instead of filling in over several seconds.
+ * can be made while you are elsewhere in the app:
+ *
+ * - their opening seconds ([ShortsOpenings]), so the first clip plays the
+ *   moment the tab opens instead of after the share has been opened;
+ * - their strips ([ShortsFrames]), so held sideways the frames are there
+ *   too. Only on a device with a screen big enough for the sideways panel:
+ *   a tablet, or a foldable (whose inner display may be folded away right
+ *   now — which is exactly when the warming is worth doing). Anywhere else
+ *   the strip is never shown, and making it would be reads for nothing.
  *
  * [take] hands over the seed that was warmed and starts warming the one
  * after it, so each visit opens on a deck prepared during the last.
- *
- * Only on a device with a screen big enough for the sideways panel: a
- * tablet, or a foldable (whose inner display may be folded away right now —
- * which is exactly when the warming is worth doing). Anywhere else the strip
- * is never shown, and making it would be reads for nothing.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 @Singleton
 class ShortsWarmup @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -46,6 +48,7 @@ class ShortsWarmup @Inject constructor(
     private val sources: SourceRepository,
     private val prefs: AppPreferences,
     private val frames: ShortsFrames,
+    private val openings: ShortsOpenings,
 ) {
     /** Background work nobody is waiting on: a failure is logged, never allowed to take the app down. */
     private val scope = CoroutineScope(
@@ -61,7 +64,6 @@ class ShortsWarmup @Inject constructor(
      * startup.
      */
     fun start() {
-        if (!canShowPanel()) return
         scope.launch {
             combine(sources.observeEnabledShares(), prefs.shortsLength) { shares, length -> shares.map { it.id } to length }
                 .distinctUntilChanged()
@@ -73,7 +75,7 @@ class ShortsWarmup @Inject constructor(
     fun take(): Long {
         val seed = upcoming
         upcoming = newSeed()
-        if (canShowPanel()) warm(upcoming)
+        warm(upcoming)
         return seed
     }
 
@@ -87,8 +89,9 @@ class ShortsWarmup @Inject constructor(
             val files = library.observeShorts(shares.map { it.id }, prefs.shortsLength.first().maxMs).first()
             // Dealt exactly as the feed deals it — same query, same order,
             // same seed — so these ARE the clips the next visit opens on.
-            val opening = ShortsDeck.deal(files, seed, emptySet()) { it.id }.take(WARM_CLIPS)
-            frames.warmAhead(opening.map { it.toShortsClip() })
+            val opening = ShortsDeck.deal(files, seed, emptySet()) { it.id }.take(WARM_CLIPS).map { it.toShortsClip() }
+            openings.warmAhead(opening)
+            if (canShowPanel()) frames.warmAhead(opening)
         }
     }
 
@@ -105,6 +108,3 @@ class ShortsWarmup @Inject constructor(
         const val TAG = "Regolith/ShortsFrames"
     }
 }
-
-/** A library row, as its Shorts strip knows it. */
-internal fun MediaFileEntity.toShortsClip() = ShortsClip(id, sizeBytes, modifiedAtMs, durationMs ?: 0)

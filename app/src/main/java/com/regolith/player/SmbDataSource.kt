@@ -24,11 +24,15 @@ import javax.inject.Inject
  * Contract (verified by Media3's DataSourceContractTest in the unit tests):
  * honor `dataSpec.position` and `dataSpec.length`, return
  * [C.RESULT_END_OF_INPUT] at the end, throw POSITION_OUT_OF_RANGE past it.
+ *
+ * @param readAhead false reads over one connection, exactly what is asked
+ *   for and no more; see [Factory.withoutReadAhead].
  */
 @UnstableApi
 class SmbDataSource(
     private val resolver: MediaResolver,
     private val gateway: SmbGateway,
+    private val readAhead: Boolean = true,
 ) : BaseDataSource(/* isNetwork = */ true) {
 
     private var uri: Uri? = null
@@ -54,7 +58,7 @@ class SmbDataSource(
             // headers a few bytes at a time, and one handle is capped near 40 Mbps on
             // Wi-Fi (see ReadAheadByteSource). Extra handles open only as needed.
             val open = { gateway.open(media.host, media.credentials, media.share, media.relPath) }
-            ReadAheadByteSource(open(), openAnother = open)
+            if (readAhead) ReadAheadByteSource(open(), openAnother = open) else open()
         } catch (e: SmbFailure) {
             throw DataSourceException(e.message ?: "SMB open failed", e, e.toErrorCode())
         }
@@ -139,5 +143,13 @@ class SmbDataSource(
         private val gateway: SmbGateway,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = SmbDataSource(resolver, gateway)
+
+        /**
+         * The same share, read over one connection with no read-ahead. For
+         * background reads that stop partway through a file (the Shorts
+         * openings): read-ahead fetches the next dozen megabytes the moment
+         * a file is opened, and a reader that stops early throws them away.
+         */
+        fun withoutReadAhead(): DataSource.Factory = DataSource.Factory { SmbDataSource(resolver, gateway, readAhead = false) }
     }
 }
