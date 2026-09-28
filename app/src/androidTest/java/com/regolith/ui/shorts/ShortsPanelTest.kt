@@ -44,9 +44,17 @@ class ShortsPanelTest {
     private val seeks = mutableListOf<Long>()
     private val jumps = mutableListOf<Int>()
     private val skips = mutableListOf<Long>()
+    private val picks = mutableListOf<Long?>()
     private var posters = 0
+    private var viewAlls = 0
 
-    private fun show(index: Int = 1, playing: Boolean, canMakePoster: Boolean = true, atMs: Long = 7_000) {
+    private fun show(
+        index: Int = 1,
+        playing: Boolean,
+        canMakePoster: Boolean = true,
+        atMs: Long = 7_000,
+        state: ShortsUiState = this.state,
+    ) {
         val clock = ClipClock().apply {
             positionMs = atMs
             durationMs = 18_000
@@ -67,7 +75,8 @@ class ShortsPanelTest {
                     onSound = {},
                     onSeek = { seeks += it },
                     onMakePoster = { posters++ },
-                    onPickFolder = {},
+                    onPickFolder = { picks += it },
+                    onViewAll = { viewAlls++ },
                     onShuffle = {},
                     onAutoAdvance = {},
                     onJumpTo = { jumps += it },
@@ -122,6 +131,35 @@ class ShortsPanelTest {
         assertEquals("clip 4 is item 3 of the deck", listOf(3), jumps)
         compose.onNodeWithTag("shorts_skip_3").performScrollTo().performClick()
         assertEquals(listOf(3L), skips)
+    }
+
+    @Test
+    fun aShareWithManyFoldersShowsTheBiggestFourAndAWayToTheRest() {
+        // Fifty folders is what the owner's share has; a row of fifty chips
+        // is a row nobody reads.
+        val folders = (1L..50L).map { id -> ShortsFolder(id, "Folder $id", count = id.toInt()) }
+        show(playing = true, state = state.copy(folders = folders))
+        compose.onNodeWithTag("shorts_chip_all").assertIsDisplayed()
+        // The four holding the most clips: 50, 49, 48 and 47.
+        for (id in 47L..50L) compose.onNodeWithTag("shorts_chip_$id").assertExists()
+        assertTrue(compose.onAllNodesWithTagCount("shorts_chip_46") == 0)
+        compose.onNodeWithTag("shorts_chip_view_all").performScrollTo().performClick()
+        assertEquals(1, viewAlls)
+    }
+
+    @Test
+    fun aFewFoldersNeedNoViewAll() {
+        show(playing = true)
+        assertTrue(compose.onAllNodesWithTagCount("shorts_chip_view_all") == 0)
+        compose.onNodeWithTag("shorts_chip_9").performClick()
+        assertEquals(listOf<Long?>(9L), picks)
+    }
+
+    @Test
+    fun theSoundButtonSitsWithTheTitle() {
+        show(playing = true)
+        compose.onNodeWithTag("shorts_panel_sound").assertIsDisplayed()
+        compose.onNodeWithTag("shorts_panel_title").assertIsDisplayed()
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onAllNodesWithTagCount(tag: String): Int =

@@ -247,6 +247,7 @@ fun ShortsScreen(
                         autoAdvance = autoAdvance,
                         onLocate = { onLocate(item.folderId, item.fileId) },
                         onSound = { settingsOpen = true },
+                        onViewAll = { sheetOpen = true },
                         onMakePoster = { positionMs -> onMakePoster(item.fileId, positionMs) },
                         onJumpTo = { index -> scope.launch { pager.scrollToPage(index) } },
                         onSkip = { clip ->
@@ -295,6 +296,7 @@ private fun SidewaysPanel(
     autoAdvance: Boolean,
     onLocate: () -> Unit,
     onSound: () -> Unit,
+    onViewAll: () -> Unit,
     onMakePoster: (positionMs: Long) -> Unit,
     onJumpTo: (index: Int) -> Unit,
     onSkip: (ShortItem) -> Unit,
@@ -305,12 +307,9 @@ private fun SidewaysPanel(
     val player = remember(index, bindVersion) { viewModel.pool.playerFor(index) }
     val clock = rememberClipClock(player)
     val strip by viewModel.strip.collectAsStateWithLifecycle()
-    // A short is admitted by its length, so the row nearly always knows it;
-    // the player's own figure covers a row that does not yet.
-    val durationMs = item.durationMs.takeIf { it > 0 } ?: clock.durationMs
-    LaunchedEffect(item.fileId, durationMs > 0) {
-        if (durationMs > 0) viewModel.showStrip(item.fileId, durationMs)
-    }
+    // Keyed on the clip as well as the place: a skip can put a different
+    // clip at the same index.
+    LaunchedEffect(item.fileId, index) { viewModel.showStrip(index) }
     DisposableEffect(viewModel) { onDispose { viewModel.hideStrip() } }
     val canMakePoster by produceState(false, item.fileId) { value = viewModel.canMakePoster(item.fileId) }
     ShortsPanel(
@@ -327,6 +326,7 @@ private fun SidewaysPanel(
         onSeek = viewModel::seekTo,
         onMakePoster = { onMakePoster(clock.positionMs) },
         onPickFolder = viewModel::pickFolder,
+        onViewAll = onViewAll,
         onShuffle = viewModel::toggleShuffle,
         onAutoAdvance = viewModel::toggleAutoAdvance,
         onJumpTo = onJumpTo,

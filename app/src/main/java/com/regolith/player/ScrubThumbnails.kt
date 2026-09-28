@@ -73,9 +73,7 @@ interface ScrubThumbnails {
  * [FrameSource] and serves the most recent request first (the channel is
  * conflated, so a fast drag skips the positions the finger passed), then
  * fills in the neighbours around where the finger stopped. Every frame is
- * one key-frame seek over SMB; buckets of 10 s keep the count bounded for a
- * film. A short's strip asks for buckets the size of its own slices instead
- * ([intervalMs]), or a clip under a minute would have six frames in all.
+ * one key-frame seek over SMB; buckets of 10 s keep the count bounded.
  *
  * **Two extractors, cheapest first.** The platform's
  * `MediaMetadataRetriever` ([com.regolith.data.artwork.RetrieverFrameSource])
@@ -89,7 +87,7 @@ interface ScrubThumbnails {
  * rest of the file is taken from Media3's `FrameExtractor` ([grabber]),
  * which uses the same extractors as playback and, unlike the retriever,
  * states which frame it actually gave you. A frame whose receipt is more
- * than [seekToleranceMs] from what was asked for is thrown away rather
+ * than [SEEK_TOLERANCE_MS] from what was asked for is thrown away rather
  * than shown under the wrong clock.
  *
  * The catch is a file asked for exactly one frame: with nothing to compare
@@ -106,11 +104,6 @@ class OnDemandScrubThumbnails(
     private val fileId: Long,
     /** Media3's extractor, used only once the platform one is caught lying. Null turns the fallback off. */
     private val grabber: FrameGrabber?,
-    /** One frame per this many ms: Jellyfin's 10 s for a film's timeline, a slice of a short for its strip. */
-    intervalMs: Long = FrameIndex.DEFAULT_INTERVAL_MS,
-    /** The box each frame is scaled to fit: a 16:9 thumb, unless the caller knows the picture stands up. */
-    private val frameWidth: Int = ArtworkKind.THUMB.width,
-    private val frameHeight: Int = ArtworkKind.THUMB.height,
     private val openSource: () -> FrameSource,
 ) : ScrubThumbnails {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -118,21 +111,7 @@ class OnDemandScrubThumbnails(
     private val requests = Channel<Long>(Channel.CONFLATED)
     /** Frames wanted one by one, none skipped. Served whenever the finger is still. */
     private val batch = Channel<Long>(Channel.UNLIMITED)
-    private val index = FrameIndex<Bitmap>(intervalMs = intervalMs, onEvict = { it.recycle() })
-
-    /**
-     * How far a frame may sit from the position asked for before it is
-     * thrown away rather than shown: two buckets.
-     *
-     * Generous, because `CLOSEST_SYNC` legitimately lands on the key frame
-     * BEFORE the request and a film's key frames can be ten seconds or more
-     * apart — but well inside the closest two chapter marks can ever be
-     * ([com.regolith.domain.playback.ChapterMarks.intervalsMs] starts at
-     * 10 s), so a frame from the wrong part never passes. It shrinks with
-     * the buckets: a short's strip has frames two seconds apart, and one
-     * from twenty seconds away would be from another clip's worth of time.
-     */
-    private val seekToleranceMs = 2 * intervalMs
+    private val index = FrameIndex<Bitmap>(onEvict = { it.recycle() })
     @Volatile private var latestRequestMs = -1L
     private val _updates = MutableStateFlow(0L)
     override val updates: StateFlow<Long> = _updates.asStateFlow()
@@ -220,7 +199,7 @@ class OnDemandScrubThumbnails(
     private suspend fun grab(src: FrameSource, bucket: Long): Bitmap? {
         val positionMs = index.positionOf(bucket)
         if (retrieverSeeks) {
-            val frame = src.frameAt(positionMs, frameWidth, frameHeight)
+            val frame = src.frameAt(positionMs, ArtworkKind.THUMB.width, ArtworkKind.THUMB.height)
             if (frame != null) {
                 val print = fingerprint(frame)
                 val clash = print?.let { p -> prints.entries.firstOrNull { it.value == p && it.key != bucket } }
@@ -238,9 +217,9 @@ class OnDemandScrubThumbnails(
                 _updates.value++
             }
         }
-        val grabbed = grabber?.frameAt(fileId, positionMs, frameWidth, frameHeight) ?: return null
+        val grabbed = grabber?.frameAt(fileId, positionMs, ArtworkKind.THUMB.width, ArtworkKind.THUMB.height) ?: return null
         val off = grabbed.presentationTimeMs - positionMs
-        if (abs(off) > seekToleranceMs) {
+        if (abs(off) > SEEK_TOLERANCE_MS) {
             // The receipt says this frame is from somewhere else entirely.
             // A dark tile is better than one lying about what it shows, and
             // asking again would only get the same answer.
@@ -283,6 +262,18 @@ class OnDemandScrubThumbnails(
     private companion object {
         const val TAG = "Regolith/Scrub"
         const val PREFETCH_RADIUS = 2
+
+        /**
+         * How far a frame may sit from the position asked for before it is
+         * thrown away rather than shown.
+         *
+         * Generous, because `CLOSEST_SYNC` legitimately lands on the key
+         * frame BEFORE the request and key frames can be ten seconds or more
+         * apart — but well inside the closest two marks can ever be
+         * ([com.regolith.domain.playback.ChapterMarks.intervalsMs] starts at
+         * 10 s), so a frame from the wrong part never passes.
+         */
+        const val SEEK_TOLERANCE_MS = 2 * FrameIndex.DEFAULT_INTERVAL_MS
 
         /** Pixels sampled per axis for [fingerprint]: 20x20 of a 320x180 tile. */
         const val FINGERPRINT_GRID = 20

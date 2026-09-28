@@ -11,12 +11,12 @@ import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.domain.media.ShortsDeck
-import com.regolith.domain.playback.Filmstrip
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.player.PlaybackSession
-import com.regolith.player.ScrubThumbnails
-import com.regolith.player.ScrubThumbnailsFactory
+import com.regolith.player.ShortsClip
+import com.regolith.player.ShortsFrames
 import com.regolith.player.ShortsPlayerPool
+import com.regolith.player.ShortsWarmup
 import com.regolith.ui.components.StripFrame
 import com.regolith.ui.util.formatDurationShort
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,10 +25,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -56,7 +59,8 @@ class ShortsViewModel @Inject constructor(
     private val session: PlaybackSession,
     val pool: ShortsPlayerPool,
     artwork: ArtworkPrefetcher,
-    private val scrubThumbnails: ScrubThumbnailsFactory,
+    private val frames: ShortsFrames,
+    private val warmup: ShortsWarmup,
     private val posters: PosterRepository,
 ) : ViewModel() {
 
@@ -113,9 +117,10 @@ class ShortsViewModel @Inject constructor(
      *
      * Starts ON: newest-first always opened on the same clip. This ViewModel
      * lives as long as the Shorts tab is on the back stack, so every arrival
-     * at the tab is a fresh deck.
+     * at the tab is a fresh deck — dealt from a seed [ShortsWarmup] chose
+     * during the last visit, so its first clips' strips are already made.
      */
-    private val _shuffleSeed = MutableStateFlow<Long?>(System.nanoTime())
+    private val _shuffleSeed = MutableStateFlow<Long?>(warmup.take())
 
     // The length is folded in UPSTREAM rather than into `uiState`: it changes
     // which files qualify, not how they are drawn, so it belongs in the query.
@@ -161,75 +166,52 @@ class ShortsViewModel @Inject constructor(
         folderId = folderId,
         onDevice = onDevice,
         durationMs = durationMs ?: 0,
+        sizeBytes = sizeBytes,
+        modifiedAtMs = modifiedAtMs,
     )
 
-    /** Settings › Playback › preview thumbnails. Off means the strip stays a row of blanks you can still tap. */
-    private val framesOn = prefs.scrubThumbnails.stateIn(viewModelScope, SharingStarted.Eagerly, true)
-
-    /** One clip's filmstrip: its frames arriving in the background, and the positions they are taken at. */
-    private class StripClip(val fileId: Long, val frames: ScrubThumbnails, val positions: List<Long>)
-
-    private val _stripClip = MutableStateFlow<StripClip?>(null)
+    /** The clip whose strip the panel is showing; null while there is no panel. */
+    private val _stripClip = MutableStateFlow<ShortsClip?>(null)
 
     /**
-     * The last few clips' strips, oldest first, so swiping back to one does
-     * not read its frames off the share again. The oldest is closed when it
-     * falls off the end, and closing recycles its bitmaps — which is safe
-     * only because it is two clips back by then, not the strip on screen.
-     */
-    private val stripCache = ArrayDeque<StripClip>()
-
-    /**
-     * The sideways panel's filmstrip for the clip on screen, filling in as
-     * frames land. Empty until [showStrip]: nothing is read for a panel that
-     * is not showing, which is every layout but the inner display on its side.
+     * The sideways panel's filmstrip for the clip on screen: frames made
+     * ahead of time by [ShortsFrames] and kept on disk, filling in as any
+     * that were not ready yet land. Empty until [showStrip] — nothing is
+     * shown, or made for this visit, while there is no panel.
      */
     val strip: StateFlow<List<StripFrame>> = _stripClip
         .flatMapLatest { clip ->
             if (clip == null) {
                 flowOf(emptyList())
             } else {
-                clip.frames.updates.map { clip.positions.map { at -> StripFrame(at, clip.frames.nearest(at, exact = true)) } }
+                frames.updates
+                    .map { frames.positions(clip).zip(frames.files(clip)) { at, file -> StripFrame(at, file = file) } }
+                    .distinctUntilChanged()
+                    .flowOn(Dispatchers.IO)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
-     * Load [fileId]'s strip. Its frames are the same pipeline as the film
-     * player's scrub previews, with buckets the size of one slice of THIS
-     * clip rather than a film's ten seconds, and a portrait frame box.
+     * The panel is showing the clip at [index]: show its strip, and have the
+     * strips of this clip and the next [STRIP_LOOKAHEAD] made first — so a
+     * swipe lands on frames that are already there, the way the player pool
+     * already has the next clip playing-ready.
      */
-    fun showStrip(fileId: Long, durationMs: Long) {
-        if (_stripClip.value?.fileId == fileId) return
-        stripCache.firstOrNull { it.fileId == fileId }?.let { cached ->
-            stripCache.remove(cached)
-            stripCache.addLast(cached)
-            _stripClip.value = cached
-            return
-        }
-        val positions = Filmstrip.positions(durationMs, STRIP_FRAMES)
-        if (positions.isEmpty() || !framesOn.value) {
-            _stripClip.value = StripClip(fileId, ScrubThumbnails.None, positions)
-            return
-        }
-        val frames = scrubThumbnails.create(
-            fileId,
-            durationMs,
-            intervalMs = Filmstrip.sliceMs(durationMs, STRIP_FRAMES),
-            frameWidth = STRIP_FRAME_WIDTH,
-            frameHeight = STRIP_FRAME_HEIGHT,
-        )
-        frames.requestAll(positions)
-        val clip = StripClip(fileId, frames, positions)
-        stripCache.addLast(clip)
-        while (stripCache.size > STRIP_CACHE) stripCache.removeFirst().frames.close()
-        _stripClip.value = clip
+    fun showStrip(index: Int) {
+        val items = uiState.value.items
+        val here = items.getOrNull(index) ?: return
+        _stripClip.value = here.toClip()
+        frames.warmNow(items.drop(index).take(1 + STRIP_LOOKAHEAD).map { it.toClip() })
     }
 
-    /** The panel went away (turned upright, or off the screen). Kept in [stripCache] for when it comes back. */
+    /** The panel went away (turned upright, or off the screen): nothing on screen needs frames now. */
     fun hideStrip() {
         _stripClip.value = null
+        frames.warmNow(emptyList())
     }
+
+    private fun ShortItem.toClip() = ShortsClip(fileId, sizeBytes, modifiedAtMs, durationMs)
 
     /** Jump the clip on screen to [positionMs] without pausing it: the strip's tap. */
     fun seekTo(positionMs: Long) = pool.seekTo(positionMs)
@@ -292,7 +274,7 @@ class ShortsViewModel @Inject constructor(
 
     /** Off, or on with a fresh order — asking to shuffle again should reshuffle. */
     fun toggleShuffle() {
-        _shuffleSeed.value = if (_shuffleSeed.value == null) System.nanoTime() else null
+        _shuffleSeed.value = if (_shuffleSeed.value == null) warmup.take() else null
         _skipped.value = emptySet()
     }
 
@@ -301,7 +283,7 @@ class ShortsViewModel @Inject constructor(
      * already on it asks for this, so the same clip is not always first.
      */
     fun reshuffle() {
-        _shuffleSeed.value = System.nanoTime()
+        _shuffleSeed.value = warmup.take()
         _skipped.value = emptySet()
     }
 
@@ -315,19 +297,11 @@ class ShortsViewModel @Inject constructor(
 
     override fun onCleared() {
         pool.releaseAll()
-        stripCache.forEach { it.frames.close() }
-        stripCache.clear()
+        frames.warmNow(emptyList())
     }
 
     private companion object {
-        /** Eight across: at half the inner display each frame is ~50dp, enough to tell one moment from another. */
-        const val STRIP_FRAMES = 8
-
-        /** A portrait box, because a short stands up: a 16:9 box would shrink each frame to a sliver. */
-        const val STRIP_FRAME_WIDTH = 180
-        const val STRIP_FRAME_HEIGHT = 320
-
-        /** This clip, the one before it, and one more: ~1.8 MB of frames each. */
-        const val STRIP_CACHE = 3
+        /** The clips after this one whose strips are made ahead: the next two swipes. */
+        const val STRIP_LOOKAHEAD = 2
     }
 }

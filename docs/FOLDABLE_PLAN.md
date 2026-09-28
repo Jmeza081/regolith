@@ -709,7 +709,9 @@ Half of the window is ~490dp, and the clip only ever needed ~415 of it, so
 it keeps its full height. What it gives up is chrome: the name, the six-glyph
 rail and the progress edge all move into the panel, so nothing is drawn over
 the picture at all. The panel never hides — like the flex deck, it is not on
-top of anything.
+top of anything. Sound and brightness is a pill beside the title: as the
+third button in the row of pills below it, it was squeezed into a sliver
+whenever the panel narrowed (the rail sliding out, a larger font).
 
 `wide` could not make this call. A phone turned sideways is wide too (900dp
 across clears the 600dp line) but only ~400dp tall, with no room beside a
@@ -722,14 +724,31 @@ open or fully closed.
 
 Eight frames from the middle of eight equal slices (`Filmstrip.positions`,
 now shared with the flex deck, whose strip became `ui/components/Filmstrip`).
-They come through the scrub-preview pipeline with two changes: buckets the
-size of ONE slice of this clip instead of a film's 10 s — which gave an
-18-second short two distinct frames — and a portrait frame box. A tap seeks
-and leaves the clip playing or paused as it was: the strip is a way to get
-somewhere, not a pause button. Pausing (a tap on the clip) is what offers
-**Make a poster**, which opens the existing poster editor on that moment;
-frame-by-frame stepping already lives there, so the panel does not repeat it.
-The owner cut a Save still button and frame-step controls from the mockup.
+A tap seeks and leaves the clip playing or paused as it was: the strip is a
+way to get somewhere, not a pause button. Pausing (a tap on the clip) is what
+offers **Make a poster**, which opens the existing poster editor on that
+moment; frame-by-frame stepping already lives there, so the panel does not
+repeat it. The owner cut a Save still button and frame-step controls from the
+mockup.
+
+### The frames are made before they are looked at
+
+Read off the share while you watched, a strip took seconds to fill: open the
+file, seek eight times, decode eight key frames. So `ShortsFrames` makes
+strips ahead of time — one clip at a time, one open of the file for all
+eight (`FrameGrabber.framesAt`) — and keeps them as small JPEGs in the cache
+directory, ~100 KB a clip and 200 clips at most. Two queues: the clip the
+panel shows and the next two come first; then the first five clips of the
+NEXT deck, which `ShortsWarmup` deals before the tab is opened. Every arrival
+at Shorts (and every reshuffle) takes the seed that was warmed and starts
+warming the one after, so even the first clip's strip is there the moment
+the tab opens. Only on a device that can show the panel: a tablet, or a
+foldable. Measured on the emulator: the panel draws with all eight frames in
+place, in step with the clip's first frame.
+
+The videos themselves are not warmed: doing it the obvious way means
+players — hardware decoders and their buffers — held while you are
+somewhere else in the app.
 
 ### Up next is the deck
 
@@ -737,7 +756,9 @@ The clips after this one, in the pager's own order, four across; a tile jumps
 the feed there. ✕ takes a clip out until the next deal (a folder chip, a
 reshuffle), with Undo — and it is taken out AFTER the shuffle, never before
 it (`ShortsDeck`), or every clip after the one on screen would change places.
-The folder chips are the "Play from" sheet laid flat; Shuffle and
+The chips name the four folders holding the most clips (`chipFolders`), and
+View all opens the "Play from" sheet with every one — the owner's share has
+fifty, and a row of fifty chips is a row nobody reads. Shuffle and
 Auto-advance sit in the section's header.
 
 ### Found on the way

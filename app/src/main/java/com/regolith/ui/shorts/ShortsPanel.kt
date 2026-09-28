@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -44,6 +45,8 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.playback.Filmstrip as StripPositions
+import com.regolith.player.ShortsFrames
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.FilterChip
 import com.regolith.ui.components.Filmstrip
@@ -114,7 +117,7 @@ internal fun rememberClipClock(player: Player?): ClipClock {
  *   already lives there, so it is not repeated here.
  * - **Up next** is the deck's own order after this clip. A tile jumps the
  *   feed there; ✕ takes one out until the next deal. The folder chips are
- *   the "Play from" sheet, laid flat.
+ *   the biggest few of the "Play from" sheet, with "View all" for the rest.
  *
  * Stateless: the screen owns the pager, the player and the messages.
  */
@@ -134,6 +137,8 @@ internal fun ShortsPanel(
     onSeek: (positionMs: Long) -> Unit,
     onMakePoster: () -> Unit,
     onPickFolder: (folderId: Long?) -> Unit,
+    /** Every folder, in the "Play from" sheet: the chips name only a few. */
+    onViewAll: () -> Unit,
     onShuffle: () -> Unit,
     onAutoAdvance: () -> Unit,
     onJumpTo: (index: Int) -> Unit,
@@ -158,16 +163,35 @@ internal fun ShortsPanel(
             .padding(start = Spacing.s18, end = Spacing.s30, top = Spacing.s18, bottom = Spacing.s30)
             .testTag("shorts_panel"),
     ) {
-        Text(
-            item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.testTag("shorts_panel_title"),
-        )
-        Text(
-            listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
-            style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        // The sound pill sits with the title rather than at the end of the
+        // row below: that row is as wide as the panel allows and no wider, so
+        // a third button there got squeezed into a sliver whenever the panel
+        // narrowed — the rail sliding out, a larger font. Here the title gives
+        // way to it instead.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    item.name, style = TextStyles.settingLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("shorts_panel_title"),
+                )
+                Text(
+                    listOf(item.folderLabel, item.meta).filter { it.isNotEmpty() }.joinToString(" · "),
+                    style = TextStyles.meta, color = colors.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.size(Spacing.s12))
+            IconCircleButton(
+                icon = painterResource(R.drawable.rg_ic_sliders), contentDescription = "Sound and brightness", onClick = onSound,
+                testTag = "shorts_panel_sound", size = 42.scaledDp(), width = 62.scaledDp(),
+            )
+        }
         Spacer(Modifier.size(Spacing.s18))
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
+        // Wraps rather than squeezes: at a large font the second pill moves
+        // down a line instead of being cut to fit.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+        ) {
             SecondaryButton(
                 text = "Show in folder", onClick = onLocate, testTag = "shorts_panel_locate",
                 leadingIcon = painterResource(R.drawable.rg_ic_folder_go), compact = true,
@@ -175,10 +199,6 @@ internal fun ShortsPanel(
             SecondaryButton(
                 text = if (item.onDevice) "On this device" else "Keep on device", onClick = onKeep, testTag = "shorts_panel_keep",
                 leadingIcon = painterResource(if (item.onDevice) R.drawable.rg_ic_check else R.drawable.rg_ic_download), compact = true,
-            )
-            IconCircleButton(
-                icon = painterResource(R.drawable.rg_ic_sliders), contentDescription = "Sound and brightness", onClick = onSound,
-                testTag = "shorts_panel_sound", size = 42.scaledDp(),
             )
         }
 
@@ -191,8 +211,13 @@ internal fun ShortsPanel(
             )
         }
         Spacer(Modifier.size(Spacing.s12))
+        // Placeholders until the strip's own list arrives, so the column never
+        // jumps down by a strip's height a moment after it is drawn.
+        val frames = strip.ifEmpty {
+            remember(item.durationMs) { StripPositions.positions(item.durationMs, ShortsFrames.STRIP_FRAMES).map { StripFrame(it) } }
+        }
         Filmstrip(
-            frames = strip,
+            frames = frames,
             positionMs = ringMs,
             onSeek = onSeek,
             testTag = "shorts_strip",
@@ -231,15 +256,23 @@ internal fun ShortsPanel(
             )
         }
         Spacer(Modifier.size(Spacing.s4))
-        // The "Play from" sheet, laid flat: every folder holding a short, and
-        // the way back to all of them first.
+        // The "Play from" sheet, laid flat — but only its first few: a share
+        // can hold fifty folders of clips, and a row of fifty chips is a
+        // row nobody reads. The biggest four, then "View all" for the sheet.
+        val chips = remember(state.folders, state.folderId) { chipFolders(state.folders, state.folderId) }
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("shorts_panel_folders"),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
         ) {
             FilterChip("All", selected = state.folderId == null, onClick = { onPickFolder(null) }, testTag = "shorts_chip_all")
-            state.folders.forEach { folder ->
+            chips.forEach { folder ->
                 FilterChip(folder.label, selected = state.folderId == folder.id, onClick = { onPickFolder(folder.id) }, testTag = "shorts_chip_${folder.id}")
+            }
+            if (state.folders.size > chips.size) {
+                FilterChip(
+                    "View all", selected = false, onClick = onViewAll, testTag = "shorts_chip_view_all",
+                    icon = R.drawable.rg_ic_folder_play,
+                )
             }
         }
         Spacer(Modifier.size(Spacing.s18))

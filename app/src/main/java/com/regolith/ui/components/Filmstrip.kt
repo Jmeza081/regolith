@@ -28,16 +28,22 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
+import coil3.compose.AsyncImage
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.ThumbShape
 import com.regolith.ui.theme.designSp
 import com.regolith.ui.util.formatClock
+import java.io.File
 import kotlin.math.absoluteValue
 
-/** One frame of a filmstrip: where it is in the clip, and the picture once it has arrived. */
-data class StripFrame(val positionMs: Long, val bitmap: Bitmap?)
+/**
+ * One frame of a filmstrip: where it is in the clip, and the picture once it
+ * has arrived — in memory ([bitmap], the film player's scrub frames) or on
+ * disk ([file], the Shorts strips made ahead of time).
+ */
+data class StripFrame(val positionMs: Long, val bitmap: Bitmap? = null, val file: File? = null)
 
 /**
  * A clip laid out as frames side by side; tapping one goes to that moment.
@@ -146,8 +152,12 @@ private fun FilmstripFrame(
                 .clip(ThumbShape)
                 .background(colors.skeleton),
         ) {
-            frame.bitmap?.let { bmp ->
-                Image(bitmap = bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            when {
+                frame.bitmap != null ->
+                    Image(bitmap = frame.bitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                // Decoded and memory-cached by Coil, off the main thread.
+                frame.file != null ->
+                    AsyncImage(model = frame.file, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
         }
         if (showTime) {
