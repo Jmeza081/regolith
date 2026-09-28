@@ -318,6 +318,19 @@ data class ArtworkEntity(
     val width: Int,
     val height: Int,
     val updatedAtMs: Long,
+    /**
+     * Schema v15: what the share's images for this owner looked like when
+     * this picture was made — a fingerprint of the names, sizes and modified
+     * times of its candidates ([com.regolith.domain.artwork.ArtworkFreshness.stamp]).
+     *
+     * The app's ETag for a poster.jpg. The bytes are copied into the app's
+     * own directory (G5), so without this the cache could never tell that the
+     * folder.jpg on the share is a different picture now; with it, every
+     * listing of the folder can check, for free. "" means the share had no
+     * image for the owner; null means unknown — a row made before v15, from
+     * a copy on the phone, or while the share could not be listed.
+     */
+    val sourceStamp: String? = null,
 )
 
 @Entity(

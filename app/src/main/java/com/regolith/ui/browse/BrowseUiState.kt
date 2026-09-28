@@ -27,9 +27,11 @@ sealed interface BrowseRow {
         val relPath: String = "",
         /** False when never listed, so a selection knows its counts are a floor. */
         val listed: Boolean = true,
+        /** Bumped when the folder's picture is replaced, so its tile redraws ([ArtworkRequest.revision]). */
+        val artworkRevision: Int = 0,
     ) : BrowseRow {
         override val testTag get() = "browse_folder_$folderId"
-        val artwork get() = ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.THUMB)
+        val artwork get() = ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.THUMB, artworkRevision)
     }
 
     data class FileRow(
@@ -44,9 +46,11 @@ sealed interface BrowseRow {
         val shareId: Long = 0,
         /** The folder holding it, so a selection can tell if an ancestor is picked. */
         val folderRelPath: String = "",
+        /** Bumped when the film's picture is replaced, so its tile redraws ([ArtworkRequest.revision]). */
+        val artworkRevision: Int = 0,
     ) : BrowseRow {
         override val testTag get() = "browse_file_$fileId"
-        val artwork get() = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB)
+        val artwork get() = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB, artworkRevision)
 
         /** 0..1 watched, for the bar along the bottom of a tile; null when never started. */
         val fraction: Float?

@@ -118,7 +118,7 @@ class UploadRunnerTest {
 
         val outcome = runner.send(queued)
 
-        assertEquals(UploadRunner.Outcome.Done(folderId, video = false), outcome)
+        assertEquals(UploadRunner.Outcome.Done(folderId, "20260914_183022.jpg"), outcome)
         assertArrayEquals(photo, onShare("20260914_183022.jpg"))
         assertNull("the .part is renamed, not left beside it", onShare("20260914_183022.jpg.part"))
         val done = row(queued.id)
@@ -128,9 +128,9 @@ class UploadRunnerTest {
     }
 
     @Test
-    fun `a video that lands asks for its folder to be listed again`() = runTest {
+    fun `a video that lands says what it landed as`() = runTest {
         val outcome = runner.send(queue("20260914_190455.mp4", bytes(2 * MiB)))
-        assertEquals(UploadRunner.Outcome.Done(folderId, video = true), outcome)
+        assertEquals(UploadRunner.Outcome.Done(folderId, "20260914_190455.mp4"), outcome)
     }
 
     @Test
@@ -154,7 +154,7 @@ class UploadRunnerTest {
         assertNotNull("the server is marked out of reach", db.serverDao().byId(serverId)!!.unreachableSinceMs)
         assertEquals(3L * MiB + 100, onShare("clip.mp4.part")!!.size.toLong())
 
-        assertEquals(UploadRunner.Outcome.Done(folderId, video = true), runner.send(paused))
+        assertEquals(UploadRunner.Outcome.Done(folderId, "clip.mp4"), runner.send(paused))
         assertArrayEquals(video, onShare("clip.mp4"))
         assertEquals("every byte crossed the wire exactly once", video.size.toLong(), gateway.appendedBytes)
         assertNull("reachable again once it answered", db.serverDao().byId(serverId)!!.unreachableSinceMs)
@@ -242,7 +242,7 @@ class UploadRunnerTest {
         val edited = bytes(2_000, seed = 5)
         val queued = queue("a.jpg", edited, size = 5_000)
 
-        assertEquals(UploadRunner.Outcome.Done(folderId, video = false), runner.send(queued))
+        assertEquals(UploadRunner.Outcome.Done(folderId, "a.jpg"), runner.send(queued))
         assertArrayEquals(edited, onShare("a.jpg"))
         assertEquals(2_000L, row(queued.id).sizeBytes)
     }

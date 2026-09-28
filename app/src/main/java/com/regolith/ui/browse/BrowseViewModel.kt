@@ -2,11 +2,13 @@ package com.regolith.ui.browse
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.regolith.data.artwork.ArtworkRepository
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.transfer.UploadRepository
+import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.transfer.FilePick
@@ -53,6 +55,7 @@ class BrowseViewModel @AssistedInject constructor(
     private val selection: SelectionPresenter,
     private val fileOps: FileOpsRepository,
     private val uploads: UploadRepository,
+    private val artwork: ArtworkRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -62,6 +65,13 @@ class BrowseViewModel @AssistedInject constructor(
 
     private val _uiState = MutableStateFlow(BrowseUiState())
     val uiState: StateFlow<BrowseUiState> = _uiState
+
+    /**
+     * How many times each owner's picture has been replaced while this
+     * screen was alive: the [com.regolith.domain.artwork.ArtworkRequest.revision]
+     * its tile asks with. Only owners that changed are in it.
+     */
+    private val artworkRevisions = MutableStateFlow<Map<ArtworkOwner, Int>>(emptyMap())
 
     init {
         if (folderId == null) observeRoot() else observeFolder(folderId)
@@ -127,10 +137,19 @@ class BrowseViewModel @AssistedInject constructor(
     }
 
     private fun observeFolder(id: Long) {
+        // A listing of this folder (the refresh below, an upload landing)
+        // can find that a picture on screen was replaced on the share. Its
+        // tile has drawn the old one already, and an image only loads again
+        // when its request changes — so the owner's revision goes up.
         viewModelScope.launch {
-            combine(library.observeFolder(id), library.observeContents(id)) { folder, items ->
-                folder to items
-            }.collect { (folder, items) ->
+            artwork.replaced.collect { owners ->
+                artworkRevisions.update { current -> current + owners.associateWith { (current[it] ?: 0) + 1 } }
+            }
+        }
+        viewModelScope.launch {
+            combine(library.observeFolder(id), library.observeContents(id), artworkRevisions) { folder, items, revisions ->
+                Triple(folder, items, revisions)
+            }.collect { (folder, items, revisions) ->
                 // The folder this screen IS was deleted — reachable now that
                 // folders are targets, because a pick survives walking into
                 // the thing that was picked. Nothing below can be drawn, so
@@ -145,7 +164,7 @@ class BrowseViewModel @AssistedInject constructor(
                     it.copy(
                         title = folder.name,
                         breadcrumb = (listOf(shareName) + folder.relPath.split('/').filter { p -> p.isNotEmpty() }).joinToString(" / "),
-                        rows = items.map { item -> item.toRow() },
+                        rows = items.map { item -> item.toRow(revisions) },
                         loaded = true,
                     )
                 }
@@ -592,8 +611,11 @@ class BrowseViewModel @AssistedInject constructor(
     private fun BrowseRow.FileRow.toPick() =
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
 
-    private fun BrowseItem.toRow(): BrowseRow = when (this) {
-        is BrowseItem.Folder -> BrowseRow.FolderRow(id, name, fileCount, byteCount, shareId, relPath, listed)
+    private fun BrowseItem.toRow(revisions: Map<ArtworkOwner, Int>): BrowseRow = when (this) {
+        is BrowseItem.Folder -> BrowseRow.FolderRow(
+            id, name, fileCount, byteCount, shareId, relPath, listed,
+            artworkRevision = revisions[ArtworkOwner.Folder(id)] ?: 0,
+        )
         is BrowseItem.File -> BrowseRow.FileRow(
             fileId = id,
             name = name,
@@ -604,6 +626,7 @@ class BrowseViewModel @AssistedInject constructor(
             resolutionLabel = VideoInfo.resolutionLabelFor(width, height),
             shareId = shareId,
             folderRelPath = folderRelPath,
+            artworkRevision = revisions[ArtworkOwner.File(id)] ?: 0,
         )
     }
 }

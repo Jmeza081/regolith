@@ -68,6 +68,12 @@ behind a 2:3 box and save. It is written as `poster.jpg` in the film's folder on
 the share, asking first if one is already there, and every tile picks it up at
 once.
 
+Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
+`poster.jpg` with a different picture — even under the same name — or put an
+`Arrival.2016.jpg` beside `Arrival.2016.mkv`, and the app makes the tile again the
+next time it lists that folder: when you open it, pull to refresh, or rescan. One
+uploaded from the phone is noticed as soon as the upload lands.
+
 ### Manages the files, not just the library
 
 Hold any video — or any folder — to start picking, and the floating nav pill stops
