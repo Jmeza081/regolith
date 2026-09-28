@@ -105,6 +105,8 @@ import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.player.NextItem
 import com.regolith.ui.components.ArtworkImage
+import com.regolith.ui.components.Filmstrip
+import com.regolith.ui.components.StripFrame
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.ErrorCard
 import com.regolith.ui.components.PrimaryButton
@@ -1625,22 +1627,17 @@ private fun FlexDeck(
     // While a drag is live the strip follows the finger, which is what
     // replaces the floating preview the phone shows.
     val here = scrubPreviewMs ?: state.positionMs
-    val currentMs = strip.minByOrNull { (it.positionMs - here).absoluteValue }?.positionMs
     Column(
         modifier.padding(horizontal = Spacing.s30).padding(top = Spacing.s18, bottom = Spacing.s12).navigationBarsPadding(),
         verticalArrangement = Arrangement.spacedBy(Spacing.s18),
     ) {
         if (strip.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().testTag("player_strip"), horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                strip.forEach { frame ->
-                    StripCell(
-                        frame = frame,
-                        current = frame.positionMs == currentMs,
-                        onSeek = { if (state.durationMs > 0) cb.onScrubEnd(frame.positionMs.toFloat() / state.durationMs) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            Filmstrip(
+                frames = strip,
+                positionMs = here,
+                onSeek = { ms -> if (state.durationMs > 0) cb.onScrubEnd(ms.toFloat() / state.durationMs) },
+                testTag = "player_strip",
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
             PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
@@ -1680,30 +1677,6 @@ private fun FlexDeck(
                 }
             }
         }
-    }
-}
-
-/** One frame of the filmstrip: the picture once it lands, its time beneath, ringed when the playhead is in its slice. */
-@Composable
-private fun StripCell(frame: StripFrame, current: Boolean, onSeek: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = RegolithTheme.colors
-    Column(
-        modifier.clickable(interactionSource = null, indication = null, onClick = onSeek).testTag("player_strip_${frame.positionMs}"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.s4),
-    ) {
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                .then(if (current) Modifier.border(2.dp, colors.ink, ThumbShape) else Modifier)
-                .padding(if (current) 3.dp else 0.dp)
-                .clip(ThumbShape)
-                .background(colors.skeleton),
-        ) {
-            frame.bitmap?.let { bmp ->
-                Image(bitmap = bmp.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-        }
-        Text(formatClock(frame.positionMs), style = TextStyles.meta.copy(lineHeight = 11.designSp()), color = if (current) colors.ink else colors.metadata, maxLines = 1)
     }
 }
 

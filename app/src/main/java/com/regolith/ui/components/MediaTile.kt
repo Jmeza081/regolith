@@ -94,7 +94,7 @@ fun ArtworkImage(
  * The poster tile (design section 01, "Media tiles"; section 05). 2:3 at
  * 12dp corners in a grid, a 4dp gap to the name at 600 12/14 and the
  * meta at 400 11/1.2. Over the art: a collection badge top-left (6dp),
- * the unwatched dot top-right (7dp), the resolution chip bottom-left
+ * the unwatched dot top-right (7dp), the chip bottom-left
  * (6dp in, 8dp up) and a 3dp progress bar along the bottom edge.
  *
  * An unmatched title draws its filename inside the art and "No match" in
@@ -109,8 +109,13 @@ fun MediaTile(
     modifier: Modifier = Modifier,
     kind: ArtworkKind = artwork?.kind ?: ArtworkKind.POSTER,
     meta: String? = null,
-    /** "4K", "1080p": the bottom-left chip. */
-    resolution: String? = null,
+    /**
+     * The chip in the art's bottom-left corner: one short fact about what
+     * the tile opens. A resolution on a film ("4K", "1080p"), the time a
+     * point of interest starts at in Search, a clip's length in Shorts' Up
+     * next.
+     */
+    chip: String? = null,
     count: Int? = null,
     unwatched: Boolean = false,
     dimmed: Boolean = false,
@@ -193,8 +198,8 @@ fun MediaTile(
             } else if (unwatched && count == null) {
                 UnwatchedDot(Modifier.align(Alignment.TopEnd).padding(5.dp))
             }
-            if (resolution != null) {
-                Chip(resolution, ChipStyle.OverArt, Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 8.dp), tight = true)
+            if (chip != null) {
+                Chip(chip, ChipStyle.OverArt, Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 8.dp), tight = true)
             }
             if (progress != null && progress > 0f) {
                 ProgressEdge(progress, Modifier.align(Alignment.BottomStart))

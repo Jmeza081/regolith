@@ -140,7 +140,9 @@ own confirmation.
 
 The inner display gets its own layouts: a nav rail that retracts to a spine, the
 library and browse walls beside a title pane with a divider you can reset, and
-two-column and flex-mode player layouts.
+two-column and flex-mode player layouts. Turned sideways, Shorts plays the clip in
+one half and fills the other with its frames — tap one to jump there, pause to make
+a poster from that moment — and the clips that play next.
 
 ### Locks itself
 
@@ -152,7 +154,8 @@ down rather than shutting you out.
 ## Try it without a share
 
 **Settings › Demo › Load** writes a pretend NAS — four collections, 18 titles, a
-few part-watched — and copies four bundled test clips onto the device. Everything
+few part-watched, and a folder of vertical phone clips for Shorts — and copies five
+bundled test clips onto the device. Everything
 plays, scrubs and shows real frame-grab posters with no network at all, which is
 what makes the app reviewable on a train. **Remove** deletes it; nothing else is
 touched.

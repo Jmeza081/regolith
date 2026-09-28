@@ -41,6 +41,8 @@ enum class FoldPosture {
  * - [width]: the window's own width, for the few places that need to divide
  *   it rather than just branch on it (the list pane's share of a two-pane
  *   screen).
+ * - [height]: the window's own height, for the one question [wide] cannot
+ *   answer — see [largeLandscape].
  */
 @Immutable
 data class WindowShape(
@@ -48,10 +50,27 @@ data class WindowShape(
     val posture: FoldPosture,
     val hinge: Rect?,
     val width: Dp,
+    val height: Dp = 915.dp,
 ) {
+    /**
+     * A big screen held sideways: wider than it is tall, and still at least
+     * [LARGE_HEIGHT] tall. The inner display turned on its side is; a tablet
+     * in landscape is.
+     *
+     * A phone turned sideways is NOT, and that is the whole reason this
+     * exists. It is [wide] — 900-odd dp across clears the 600dp line — but
+     * only ~400dp tall, so a vertical clip at full height leaves no room
+     * beside it worth using. Shorts splits the screen on this; everything
+     * else still keys on [wide].
+     */
+    val largeLandscape: Boolean get() = width > height && height >= LARGE_HEIGHT
+
     companion object {
         /** A phone: the value a screen sees outside [RegolithNavGraph][com.regolith.ui.navigation.RegolithNavGraph] (previews, tests). */
-        val Phone = WindowShape(wide = false, posture = FoldPosture.FLAT, hinge = null, width = 411.dp)
+        val Phone = WindowShape(wide = false, posture = FoldPosture.FLAT, hinge = null, width = 411.dp, height = 915.dp)
+
+        /** Material's medium width breakpoint, applied to height: tall enough to be a big screen whichever way up. */
+        val LARGE_HEIGHT = 600.dp
     }
 }
 
@@ -74,6 +93,7 @@ fun rememberWindowShape(): WindowShape {
         hinge != null && hinge.isVertical -> FoldPosture.BOOK
         else -> FoldPosture.FLAT
     }
-    val width = with(LocalDensity.current) { currentWindowSize().width.toDp() }
-    return WindowShape(wide = wide, posture = posture, hinge = hinge?.bounds, width = width)
+    val size = currentWindowSize()
+    val (width, height) = with(LocalDensity.current) { size.width.toDp() to size.height.toDp() }
+    return WindowShape(wide = wide, posture = posture, hinge = hinge?.bounds, width = width, height = height)
 }

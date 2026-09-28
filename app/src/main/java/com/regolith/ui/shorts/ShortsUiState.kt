@@ -9,6 +9,8 @@ data class ShortItem(
     val folderLabel: String,
     /** "0:18 · 1080×1920". */
     val meta: String,
+    /** How long the clip runs, for the sideways panel's filmstrip. 0 when not measured yet. */
+    val durationMs: Long = 0,
     /** What Locate opens, and what the folder picker filters on. */
     val folderId: Long,
     val onDevice: Boolean = false,

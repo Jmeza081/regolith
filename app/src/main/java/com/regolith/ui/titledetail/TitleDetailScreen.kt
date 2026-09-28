@@ -245,7 +245,7 @@ private fun TitleDetailContent(
                             state.siblings.forEach { s ->
                                 com.regolith.ui.components.MediaTile(
                                     artwork = s.artwork, kind = com.regolith.domain.artwork.ArtworkKind.THUMB, title = s.name, meta = s.meta,
-                                    resolution = s.resolutionLabel.ifEmpty { null }, onClick = { onPlay(s.fileId) }, testTag = "detail_sibling_${s.fileId}",
+                                    chip = s.resolutionLabel.ifEmpty { null }, onClick = { onPlay(s.fileId) }, testTag = "detail_sibling_${s.fileId}",
                                     modifier = Modifier.weight(1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 )
                             }

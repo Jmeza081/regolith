@@ -13,8 +13,10 @@ import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.playback.AbLoop
 import com.regolith.domain.playback.ChapterDraft
 import com.regolith.domain.playback.ChapterWriteOutcome
+import com.regolith.domain.playback.Filmstrip
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import com.regolith.ui.components.StripFrame
 import com.regolith.ui.titledetail.TransferView
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -533,10 +535,6 @@ class PlayerViewModel @AssistedInject constructor(
         const val SUGGEST_QUERY_LIMIT = 50
 
         /** The middle of each of [STRIP_FRAMES] equal slices, or empty until the duration is known. */
-        fun stripPositions(durationMs: Long): List<Long> =
-            if (durationMs <= 0) emptyList() else List(STRIP_FRAMES) { i -> (durationMs * (2 * i + 1)) / (2 * STRIP_FRAMES) }
+        fun stripPositions(durationMs: Long): List<Long> = Filmstrip.positions(durationMs, STRIP_FRAMES)
     }
 }
-
-/** One frame of the flex-mode filmstrip: where it is in the film, and the picture once it has arrived. */
-data class StripFrame(val positionMs: Long, val bitmap: Bitmap?)

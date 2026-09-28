@@ -694,3 +694,56 @@ the device was sideways. The test is the window plus "this came from the
 library"; when the folder is merely finished, the column stays and says
 "Nothing after this one", because a column that goes blank reads as a
 screen that failed to draw.
+
+## F14 — round ten: Shorts held sideways
+
+The feed on the inner display turned on its side was a vertical clip in the
+middle of a black screen: a 9:16 picture at full height is about 415dp of
+~980. **So the screen splits in two**: the clip in one half, and a panel in
+the other (`ShortsPanel`, design in `design/shorts-landscape/`). Upright, and
+on the cover screen, Shorts is exactly what it was.
+
+### The split is free
+
+Half of the window is ~490dp, and the clip only ever needed ~415 of it, so
+it keeps its full height. What it gives up is chrome: the name, the six-glyph
+rail and the progress edge all move into the panel, so nothing is drawn over
+the picture at all. The panel never hides — like the flex deck, it is not on
+top of anything.
+
+`wide` could not make this call. A phone turned sideways is wide too (900dp
+across clears the 600dp line) but only ~400dp tall, with no room beside a
+vertical clip. `WindowShape` gained the window's height and one derived
+answer, `largeLandscape`: wider than tall AND at least 600dp tall.
+Half-folded is deliberately not a case here; the owner uses the phone fully
+open or fully closed.
+
+### The strip is the timeline
+
+Eight frames from the middle of eight equal slices (`Filmstrip.positions`,
+now shared with the flex deck, whose strip became `ui/components/Filmstrip`).
+They come through the scrub-preview pipeline with two changes: buckets the
+size of ONE slice of this clip instead of a film's 10 s — which gave an
+18-second short two distinct frames — and a portrait frame box. A tap seeks
+and leaves the clip playing or paused as it was: the strip is a way to get
+somewhere, not a pause button. Pausing (a tap on the clip) is what offers
+**Make a poster**, which opens the existing poster editor on that moment;
+frame-by-frame stepping already lives there, so the panel does not repeat it.
+The owner cut a Save still button and frame-step controls from the mockup.
+
+### Up next is the deck
+
+The clips after this one, in the pager's own order, four across; a tile jumps
+the feed there. ✕ takes a clip out until the next deal (a folder chip, a
+reshuffle), with Undo — and it is taken out AFTER the shuffle, never before
+it (`ShortsDeck`), or every clip after the one on screen would change places.
+The folder chips are the "Play from" sheet laid flat; Shuffle and
+Auto-advance sit in the section's header.
+
+### Found on the way
+
+The buffering spinner was read once, when a page was drawn. Upright, the nav
+chrome's timer redrew the page within seconds and hid it; beside the panel
+nothing redraws the page, and the spinner sat on a playing clip for good. A
+page now listens to its player for buffering, which also stops it lingering
+upright.
