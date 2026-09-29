@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.regolith.R
@@ -49,6 +51,11 @@ import com.regolith.ui.theme.scaledDp
  * a list of answers should use [SheetOption] for the rows; a sheet whose
  * rows carry more than a label (Play all's glyph and explanation) keeps its
  * own row and still sits in this frame.
+ *
+ * Only [content] scrolls. The title stays put above it, and [footer], when
+ * there is one, stays put below it: that is where the action a sheet exists
+ * for goes, so a long list never pushes it a scroll away. Content that fits
+ * looks exactly as it did before the split.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +66,16 @@ fun RegolithSheet(
     modifier: Modifier = Modifier,
     /** A line under the title: what is being chosen between, or how much of it there is. */
     subtitle: String? = null,
+    /** Pinned under [content], outside its scroll: the move sheet's "Move to …" button. */
+    footer: (@Composable ColumnScope.() -> Unit)? = null,
+    /**
+     * False when [content] brings its own lazy list. A LazyColumn cannot sit
+     * inside a scrolling Column (it would be measured as infinitely tall and
+     * throw), so the list does the scrolling itself. Give it
+     * `Modifier.weight(1f, fill = false)` so it takes what the title and the
+     * footer leave, and no more.
+     */
+    contentScrolls: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RegolithTheme.colors
@@ -71,14 +88,13 @@ fun RegolithSheet(
         dragHandle = null,
     ) {
         Column(
-            // Scrolls, because a sheet is only ever as tall as the screen
-            // allows and the list inside it is not. Without this a share with
-            // 49 folders offered the first ten and silently swallowed the
-            // rest -- and the same was true of any sort or filter list that
-            // outgrew the sheet. `PlayerSheetHost` had it; this did not.
-            modifier.verticalScroll(rememberScrollState())
-                .padding(start = Spacing.s18, end = Spacing.s18, top = Spacing.s12)
-                .navigationBarsPadding().testTag(testTag),
+            modifier.padding(start = SheetGutter, end = SheetGutter, top = Spacing.s12)
+                .navigationBarsPadding()
+                // A sheet is a window of its own, like a Dialog, so the root
+                // Scaffold's setting does not reach it; without this no tag
+                // inside is visible to uiautomator.
+                .semantics { testTagsAsResourceId = true }
+                .testTag(testTag),
         ) {
             Box38Handle()
             Spacer(Modifier.height(Spacing.s12))
@@ -87,11 +103,32 @@ fun RegolithSheet(
                 Text(subtitle, style = TextStyles.meta12, color = colors.metadata, modifier = Modifier.padding(top = Spacing.s2))
             }
             Spacer(Modifier.height(Spacing.s4))
-            content()
+            Column(
+                // Scrolls, because a sheet is only ever as tall as the screen
+                // allows and the list inside it is not. Without this a share
+                // with 49 folders offered the first ten and silently swallowed
+                // the rest -- and the same was true of any sort or filter list
+                // that outgrew the sheet. `PlayerSheetHost` had it; this did
+                // not. The weight without `fill` is what keeps the footer on
+                // screen: this region is as tall as its content, but never
+                // taller than the room the title and the footer leave.
+                Modifier.weight(1f, fill = false)
+                    .then(if (contentScrolls) Modifier.verticalScroll(rememberScrollState()) else Modifier),
+            ) {
+                content()
+            }
+            footer?.invoke(this)
             Spacer(Modifier.height(Spacing.s12))
         }
     }
 }
+
+/**
+ * The sheet's side padding. Public for the one thing that has to reach past
+ * it to the sheet's edge: the move sheet's [AlphabetRail], which belongs
+ * where a thumb goes looking for it.
+ */
+val SheetGutter = Spacing.s18
 
 /** The grab handle. Drawn rather than Material's, which is taller than the design's. */
 @Composable
