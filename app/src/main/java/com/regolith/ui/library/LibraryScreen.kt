@@ -117,6 +117,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.regolith.domain.media.PhoneAccess
 import com.regolith.ui.components.FilterChip
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import com.regolith.ui.adaptive.LocalWindowShape
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.withTimeoutOrNull
 
 private enum class LibraryTab { NETWORK, ON_DEVICE }
 
@@ -410,9 +418,30 @@ fun LibraryScreen(
         }
         val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, onScan = viewModel::scanAll) }
 
+        // A page opening beside the wall reflows it — five across become two
+        // on the inner display — and a keyed grid keeps its FIRST visible
+        // tile where it was, which can push the one just tapped off the
+        // bottom. For as long as the page takes to arrive, each new width
+        // gets one look, and a tapped tile left out of view is brought up to
+        // the top, level with the page's art. Rows need none of this: a row
+        // is the same height at any width, so it stays where it was.
+        val leadingItems = (if (showUnreachable) 1 else 0) + (if (showScanLine) 1 else 0)
+        LaunchedEffect(selectedFileId) {
+            val id = selectedFileId ?: return@LaunchedEffect
+            if (state.viewMode != ViewMode.GRID) return@LaunchedEffect
+            val tile = state.tiles.indexOfFirst { it.isSelected(id) }
+            if (tile < 0) return@LaunchedEffect
+            val index = leadingItems + tile
+            withTimeoutOrNull(REVEAL_WINDOW_MS) {
+                snapshotFlow { gridState.layoutInfo.viewportSize.width }.distinctUntilChanged().collect {
+                    if (!gridState.showsWhole(index)) gridState.animateScrollToItem(index)
+                }
+            }
+        }
+
         if (state.viewMode == ViewMode.GRID) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = WallCells(wide = LocalWindowShape.current.wide),
                 state = gridState,
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
                 contentPadding = PaddingValues(
@@ -528,6 +557,41 @@ fun LibraryScreen(
 /** Is this the title the detail pane is showing? Collections are never selected: they open a wall, not a detail. */
 private fun LibraryTile.isSelected(selectedFileId: Long?): Boolean =
     selectedFileId != null && this is LibraryTile.Title && fileId == selectedFileId
+
+/**
+ * How many tiles across a wall gets — the Network wall and the On this device
+ * grid alike, so the two tabs stay the same kind of page at the same size.
+ *
+ * A phone: three, always. A wide window gives the wall the whole width until
+ * a title's page opens beside it, so there the tiles keep about a phone's
+ * size and the COLUMNS come and go instead — five across the inner display,
+ * two beside an open page — rather than three posters swelling to fill a
+ * tablet. Never fewer than two: one column beside a page reads as a list
+ * that lost its layout.
+ */
+private fun wallColumns(width: Dp, wide: Boolean): Int =
+    if (!wide) PHONE_COLUMNS else maxOf(2, ((width + Spacing.s8) / (WIDE_TILE_MIN + Spacing.s8)).toInt())
+
+/** [wallColumns] as a lazy grid's column rule, the cells sharing the width evenly as [GridCells.Fixed] does. */
+private class WallCells(private val wide: Boolean) : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = wallColumns(availableSize.toDp(), wide)
+        val usable = availableSize - spacing * (count - 1)
+        return List(count) { usable / count + if (it < usable % count) 1 else 0 }
+    }
+
+    override fun equals(other: Any?): Boolean = other is WallCells && other.wide == wide
+
+    override fun hashCode(): Int = wide.hashCode()
+}
+
+/** Is grid item [index] on screen from its top edge to its bottom one? */
+private fun LazyGridState.showsWhole(index: Int): Boolean {
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
+    return item.offset.y >= info.viewportStartOffset &&
+        item.offset.y + item.size.height <= info.viewportEndOffset - info.afterContentPadding
+}
 
 /** One tile on the wall. Both layouts hand a [LibraryTile] to the same two components. */
 @Composable
@@ -967,12 +1031,15 @@ private fun DeviceTab(
                 dimThumb = dimThumb,
             )
         }
-    // Tiles, three across. Chunked rows rather than a LazyVerticalGrid: this
-    // is already inside a LazyColumn, which cannot give a nested lazy grid a
-    // height to work with.
+    // Tiles, as many across as the Network wall has (wallColumns). Chunked
+    // rows rather than a LazyVerticalGrid: this is already inside a
+    // LazyColumn, which cannot give a nested lazy grid a height to work with.
+    val wide = LocalWindowShape.current.wide
     val deviceGrid: @Composable (List<DeviceRow>) -> Unit = { rows ->
+        BoxWithConstraints {
+        val columns = wallColumns(maxWidth, wide)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-            rows.chunked(DEVICE_COLUMNS).forEach { rowOfTiles ->
+            rows.chunked(columns).forEach { rowOfTiles ->
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     rowOfTiles.forEach { row ->
                         val pickable = selecting && !row.phone
@@ -989,9 +1056,10 @@ private fun DeviceTab(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    repeat(DEVICE_COLUMNS - rowOfTiles.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(columns - rowOfTiles.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+        }
         }
     }
     val filter = state.filter
@@ -1323,11 +1391,18 @@ private fun DeviceRowView(
     }
 }
 
+/** Tiles across a wall on a phone ([wallColumns]): the design's three. */
+private const val PHONE_COLUMNS = 3
+
 /**
- * Tiles across the On this device grid. Three, like the Library wall, so
- * the two tabs read as the same kind of page at the same size.
+ * The narrowest a tile gets on a wide window ([wallColumns]): about the
+ * phone's own (three across a 411dp screen are 120dp; the Fold's cover screen
+ * makes them ~106), so a wall that widens gains tiles rather than growing them.
  */
-private const val DEVICE_COLUMNS = 3
+private val WIDE_TILE_MIN = 104.dp
+
+/** How long after a title opens the wall keeps checking that its tile is in view: the page's arrival, and a little. */
+private const val REVEAL_WINDOW_MS = 600L
 
 /** Videos in one folder's strip on the All view; the folder's chip or header shows the rest. */
 private const val PHONE_STRIP_MAX = 12

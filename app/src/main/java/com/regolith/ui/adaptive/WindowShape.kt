@@ -39,8 +39,7 @@ enum class FoldPosture {
  * - [posture] and [hinge]: only for the player's flex mode, which splits the
  *   screen exactly at the hinge. [hinge] is in window pixels.
  * - [width]: the window's own width, for the few places that need to divide
- *   it rather than just branch on it (the list pane's share of a two-pane
- *   screen).
+ *   it rather than just branch on it (the landscape player's side column).
  * - [height]: the window's own height, for the one question [wide] cannot
  *   answer — see [largeLandscape].
  */

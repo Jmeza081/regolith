@@ -83,10 +83,9 @@ fun TitleDetailScreen(
     onPlay: (fileId: Long) -> Unit,
     modifier: Modifier = Modifier,
     /**
-     * True when this is the detail pane beside the wall on a wide window
-     * (F2). Nothing was pushed, so the glyph over the art closes the pane
-     * instead of stepping back, and the art does not run under the status
-     * bar because the pane does not reach it.
+     * True when this is the page beside a wall on a wide window (`WallScene`,
+     * read from `LocalBesideWall`). The glyph over the art then closes the
+     * page — the wall spreads back out — instead of stepping back.
      */
     inPane: Boolean = false,
 ) {

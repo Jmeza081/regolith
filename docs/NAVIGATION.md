@@ -68,7 +68,9 @@ system back from any tab returns to Home and back from Home leaves the app.
 
 `Library(folderId = null)` is the poster wall of every enabled share's root:
 collections and loose titles. Tapping a collection pushes `Library(folderId)`,
-that folder's wall. Titles push `TitleDetail`. The search icon pushes `Search`.
+that folder's wall (on a wide window, closing an open page first — see
+below). Titles push `TitleDetail`. A collection's back arrow leaves the wall,
+taking an open page with it. The search icon pushes `Search`.
 `Library(onDevice = true)` lands on the "On this device" tab; Home's
 "N downloads ready" row resets the stack to `[Home, Library(onDevice)]`.
 
@@ -81,36 +83,35 @@ every depth and back pops one level. On a wide window a share tree stands to
 the left of the list (`ShareTree`), listing every enabled share and its
 top-level folders; tapping one RESTARTS the chain (`[Home, Browse(folder)]`)
 rather than pushing, so back from a jump leaves Browse instead of walking back
-through folders you skipped. The tree is dropped below 600dp of screen width. A file pushes `TitleDetail(fileId)`,
+through folders you skipped. The tree needs 600dp of Browse's own width, so
+it stands beside the list while Browse has the window and steps aside while a
+file's page is open beside it. A file pushes `TitleDetail(fileId)`,
 whose red Play pushes `Player(fileId)` (since Phase 3; in Phases 1–2 a file
 opened the player directly).
 
-## Title Detail is a pane on a wide window
+## Title Detail is a page beside the wall on a wide window
 
-`Library` and `Browse` both carry `ListDetailSceneStrategy.listPane()`
-metadata and `TitleDetail` carries `detailPane()`. On a wide window the strategy renders the
-top two keys as one two-pane scene: the wall on the start edge (inside the
-rail's inset), the detail beside it, with "Choose a title" in the pane until
-one is picked. **The back stack is identical either way** — back pops the
-detail first, then the wall — and the rail keeps the tab that owns the wall.
-Picking another title replaces the open detail rather than stacking one.
+`Library` and `Browse` carry `WallSceneStrategy.wall()` metadata and
+`TitleDetail` carries `WallSceneStrategy.page()` (`ui/navigation/WallScene.kt`).
+On a wide window:
 
-A detail opened from `Home` or `Search` has no wall beneath it, so it fills the
+- **Nothing open** (`[…, Library]`): the wall has the whole window beside the
+  rail, five tiles across the inner display.
+- **A title open** (`[…, Library, TitleDetail]`): its page slides in from the
+  end edge and takes half the window; the wall reflows into the other half
+  and rings the open tile. The split is even and does not move.
+- **Closing it** — the ✕ on the page (`detail_close_button`), system back, or
+  the ringed tile tapped again — pops `TitleDetail` and the page slides back
+  out over the full-width wall. Back closes only the page, never the wall.
+
+**The back stack is identical to a phone's either way**, and the rail keeps
+the tab that owns the wall. Picking another title replaces the open page
+rather than stacking one; walking into a collection or folder from the wall
+closes the page first.
+
+A page opened from `Home` or `Search` has no wall beneath it, so it fills the
 window and keeps the back arrow. On a compact window nothing changes: the
-detail is pushed and slides in, as it has since Phase 6.
-
-### The divider
-
-Three rest positions: the wall collapsed behind the rail, the even split
-(`listPaneWidth`), and 85% (which leaves the detail a sliver). Whenever the
-divider is off the even split, the grab handle carries a reset button
-(`pane_reset_split`); double-tapping the handle does the same. It lives on the
-handle rather than in either pane because the handle is the one thing that is
-on screen in **every** split — a control drawn inside a pane disappears with
-that pane, which is exactly how the collapsed state used to become a dead end.
-
-Closing the detail returns the divider to the even split, so collapsing the
-wall is a gesture for one title rather than a mode carried between screens.
+page is pushed and slides in, as it has since Phase 6.
 
 ## Pushed screens (pill hidden)
 

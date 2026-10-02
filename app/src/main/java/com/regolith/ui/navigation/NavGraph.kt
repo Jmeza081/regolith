@@ -51,14 +51,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.regolith.AppViewModel
 import com.regolith.BuildConfig
 import com.regolith.R
-import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.material3.adaptive.layout.rememberPaneExpansionState
-import androidx.compose.material3.adaptive.layout.PaneExpansionAnchor
-import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth
-import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
-import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.adaptive.rememberWindowShape
 import com.regolith.ui.addserver.AddServerViewModel
@@ -79,7 +72,6 @@ import com.regolith.ui.browse.BrowseViewModel
 import com.regolith.ui.onboarding.SPLASH_MS
 import com.regolith.ui.player.PlayerScreen
 import com.regolith.ui.player.PlayerViewModel
-import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.LocalNavChromeHold
 import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
@@ -146,8 +138,7 @@ import dev.chrisbanes.haze.hazeSource
  */
 // Media3's UnstableApi is a Java opt-in marker; androidx's @OptIn (not Kotlin's) is what lint checks for.
 @androidx.annotation.OptIn(UnstableApi::class)
-// The adaptive list-detail scene (F2) is still an experimental Material 3 API.
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3AdaptiveApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RegolithNavGraph(appViewModel: AppViewModel) {
     val start by appViewModel.startDestination.collectAsStateWithLifecycle()
@@ -172,11 +163,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // rather than an Activity restart. The log line is how the QA loop reads
     // it on the emulator (`adb logcat -s Regolith`).
     val windowShape = rememberWindowShape()
-    // On a wide window Title Detail is a PANE beside the wall that opened it,
-    // not a pushed screen (F2). The key underneath is then still the visible
-    // tab, so the rail keeps its selection and the wall marks the open title.
-    // Both walls qualify: a file opened from Browse behaves exactly like one
-    // opened from Library, which is what the F2 plan called for.
+    // On a wide window Title Detail is a PAGE beside the wall that opened it,
+    // not a pushed screen (WallSceneStrategy, below). The key underneath is
+    // then still the visible tab, so the rail keeps its selection and the wall
+    // rings the open title. Both walls qualify: a file opened from Browse
+    // behaves exactly like one opened from Library. This is the same test the
+    // strategy makes, read off the same stack, so the two cannot disagree.
     val paneListKey = if (windowShape.wide && topKey is RegolithKey.TitleDetail) {
         (backStack.getOrNull(backStack.lastIndex - 1) as? RegolithKey)
             ?.takeIf { it is RegolithKey.Library || it is RegolithKey.Browse }
@@ -256,14 +248,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         else -> NAV_RAIL_SPINE_INSET
     }
     val railInset by animateDpAsState(railInsetTarget, label = "railInset")
-    // Pane geometry keys off the PINNED state only. It must not follow the
-    // animation: the scaffold below is keyed on the pane width, so an
-    // animated one would rebuild it on every frame of a retraction.
-    val paneRailInset = when {
-        !windowShape.wide -> 0.dp
-        railHidden -> NAV_RAIL_SPINE_INSET
-        else -> NAV_RAIL_INSET
-    }
     // Every touch in the app, observed without consuming (Initial pass) and
     // reported down a flow rather than into state, so a scroll does not
     // recompose the tree on every frame. collectLatest restarts the delay on
@@ -296,27 +280,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         }
     }
 
-    // How wide the list pane asks to be. The rail lives INSIDE that pane, so
-    // the wall keeps its three columns only if the pane pays for both; the
-    // 55% cap keeps the detail worth reading on a window barely over the
-    // two-pane threshold, where the full ask would crush it.
-    //
-    // THE SPLIT DOES NOT MOVE (F13). A draggable divider was built over three
-    // rounds and made the app worse every time: whatever the two panes did as
-    // it moved — reflow, clip, fade — something on one side of the screen was
-    // always wrong, and fixing one side broke the other. An even split is
-    // right for both and needs no handle, no anchors, no reset control and no
-    // rule about what happens at the extremes. What the divider was really
-    // for — seeing the whole wall — is what closing the detail already does.
-    val listDetail = rememberListDetailSceneStrategy<NavKey>(
-        shouldHandleSinglePaneLayout = false,
-        // Two panes from 600dp, matching WindowShape.wide. The Material default
-        // waits for 840dp, which the inner display clears by only 12dp.
-        directive = calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(currentWindowAdaptiveInfo()),
-        paneExpansionState = rememberPaneExpansionState(anchors = EVEN_SPLIT, initialAnchoredIndex = 0),
-        // No drag handle: the divider is a line, not a control.
-        paneExpansionDragHandle = null,
-    )
+    // How the walls use a wide window (F15): the whole window while nothing
+    // is open, and an even split once a title's page slides in beside them.
+    // Two panes from 600dp, the same line as WindowShape.wide, so the rail and
+    // the split arrive together. The split itself never moves (F13): what a
+    // divider was for — seeing the whole wall — is what closing the page does.
+    val wallScenes = remember(windowShape.wide) { WallSceneStrategy<NavKey>(windowShape.wide) }
 
     // A film handed over by another app opens the player on top of whatever
     // was there, and is consumed so a rotation does not reopen it.
@@ -386,7 +355,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         }
     }
 
-    val listPaneMeta = ListDetailSceneStrategy.listPane(detailPlaceholder = { NoTitleChosen() })
     // The four tab screens sit beside the rail on a wide window. Pushed
     // screens (Player, Title Detail, Add Server) have no rail and take the
     // whole width, so the inset is applied per entry, not on the NavDisplay.
@@ -398,11 +366,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
     }
 
-    // Opening a title. In the pane layout the wall stays live beside the
-    // detail, so picking another title REPLACES the open one; stacking two
-    // details would leave the wall marking the wrong tile and turn the pane's
-    // close control back into a back arrow. On a phone the wall is covered,
-    // so the top key is never a detail and this is the plain push it was.
     // Play all / Shuffle from a collection. The order is the one the wall was
     // showing, shuffled here rather than in the session so the session never
     // has to know what a wall is; the queue rides on the Player key so it
@@ -413,9 +376,38 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         backStack.add(RegolithKey.Player(first, queue = queue))
     }
 
+    // Opening a title. Beside a wall the wall stays live, so picking another
+    // title REPLACES the open page — stacking two would leave the wall ringing
+    // the wrong tile and turn the page's close control back into a back arrow
+    // — and picking the SAME one again puts the page away: the ringed tile is
+    // the toggle. On a phone the wall is covered, so the top key is never a
+    // page and this is the plain push it always was.
     fun openTitle(fileId: Long) {
-        if (windowShape.wide && backStack.lastOrNull() is RegolithKey.TitleDetail) backStack.removeLastOrNull()
+        val open = backStack.lastOrNull() as? RegolithKey.TitleDetail
+        if (windowShape.wide && open != null) {
+            backStack.removeLastOrNull()
+            if (open.fileId == fileId) return
+        }
         backStack.add(RegolithKey.TitleDetail(fileId))
+    }
+
+    // Walking somewhere else from a wall whose page is open — into a
+    // collection, a folder — closes the page first. The page belongs to the
+    // wall it was opened from; carried into the next one it would sit beside
+    // tiles it is not among, and back would bring it round again. A phone
+    // never has a page beside a wall, so there it is the plain push.
+    fun openFromWall(key: RegolithKey) {
+        if (windowShape.wide && backStack.lastOrNull() is RegolithKey.TitleDetail) backStack.removeLastOrNull()
+        backStack.add(key)
+    }
+
+    // A collection wall's own back arrow leaves the WALL, page and all. With a
+    // page open, the top key is the page, so a plain pop would only close it
+    // and the arrow would take two taps to do what it says.
+    fun leaveWall(wall: RegolithKey) {
+        val at = backStack.lastIndexOf(wall)
+        if (at < 0) return
+        while (backStack.size > at) backStack.removeAt(backStack.lastIndex)
     }
 
     /**
@@ -483,7 +475,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 NavDisplay(
                     backStack = backStack,
                     onBack = { backStack.removeLastOrNull() },
-                    sceneStrategies = listOf(listDetail),
+                    sceneStrategies = listOf(wallScenes),
                 entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator(),
@@ -532,14 +524,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 )
                             }
                         }
-                        entry<RegolithKey.Library>(metadata = tabScreen + listPaneMeta) { key ->
+                        entry<RegolithKey.Library>(metadata = tabScreen + WallSceneStrategy.wall()) { key ->
                             tabContent {
                                 LibraryScreen(
                                     viewModel = hiltViewModel<LibraryViewModel, LibraryViewModel.Factory>(
                                         creationCallback = { it.create(key.folderId) },
                                     ),
-                                    onBack = if (key.folderId == null) null else ({ backStack.removeLastOrNull() }),
-                                    onOpenCollection = { backStack.add(RegolithKey.Library(it)) },
+                                    onBack = if (key.folderId == null) null else ({ leaveWall(key) }),
+                                    onOpenCollection = { openFromWall(RegolithKey.Library(it)) },
                                     onOpenTitle = { openTitle(it) },
                                     onSearch = { backStack.add(RegolithKey.Search) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
@@ -568,7 +560,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                             )
                         }
-                        entry<RegolithKey.Browse>(metadata = tabScreen + listPaneMeta) { key ->
+                        entry<RegolithKey.Browse>(metadata = tabScreen + WallSceneStrategy.wall()) { key ->
                             tabContent {
                                 BrowseScreen(
                                     selectedFileId = paneFileId,
@@ -576,8 +568,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     viewModel = hiltViewModel<BrowseViewModel, BrowseViewModel.Factory>(
                                         creationCallback = { it.create(key.folderId) },
                                     ),
-                                    onBack = if (key.folderId == null) null else ({ backStack.removeLastOrNull() }),
-                                    onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
+                                    onBack = if (key.folderId == null) null else ({ leaveWall(key) }),
+                                    onOpenFolder = { openFromWall(RegolithKey.Browse(it)) },
                                     onOpenFile = { openTitle(it) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     onPlayAll = ::playAll,
@@ -597,14 +589,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 )
                             }
                         }
-                        entry<RegolithKey.TitleDetail>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+                        entry<RegolithKey.TitleDetail>(metadata = WallSceneStrategy.page()) { key ->
                             TitleDetailScreen(
                                 viewModel = hiltViewModel<TitleDetailViewModel, TitleDetailViewModel.Factory>(
                                     creationCallback = { it.create(key.fileId) },
                                 ),
                                 onBack = { backStack.removeLastOrNull() },
                                 onPlay = { backStack.add(RegolithKey.Player(it)) },
-                                inPane = paneListKey != null,
+                                inPane = LocalBesideWall.current,
                             )
                         }
                         entry<RegolithKey.Shorts>(metadata = tabScreen) {
@@ -898,31 +890,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     }
 }
 
-
-/**
- * The width the Library and Browse walls want beside a detail pane: three
- * tiles at the design's 8dp gaps inside the s18 gutters. The pane asks for
- * this plus the rail it contains.
- */
-private val WALL_WIDTH = 364.dp
-
-/**
- * The only place the divider is ever put: down the middle. A list of one
- * anchor is how the scaffold is told the split does not move.
- */
-@OptIn(ExperimentalMaterial3AdaptiveApi::class)
-private val EVEN_SPLIT = listOf(PaneExpansionAnchor.Proportion(0.5f))
-
-/**
- * The detail pane before a title is chosen (wide windows only). The wall is
- * the content; this side says why it is empty and nothing more.
- */
-@Composable
-private fun NoTitleChosen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Eyebrow("Choose a title", muted = true)
-    }
-}
 
 /**
  * How wide the background-work tier may get on a wide window. The chrome is
