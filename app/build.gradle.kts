@@ -111,9 +111,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     // Adaptive layouts: window size class + fold posture for the foldable inner
-    // display (ui/adaptive), and the list-detail scene strategy for Navigation 3.
+    // display (ui/adaptive). The two-pane walls are our own Navigation 3 scene
+    // (ui/navigation/WallScene.kt), not Material's list-detail strategy.
     implementation(libs.androidx.compose.material3.adaptive)
-    implementation(libs.androidx.compose.material3.adaptive.navigation3)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.androidx.core.ktx)

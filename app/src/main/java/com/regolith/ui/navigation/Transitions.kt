@@ -1,6 +1,8 @@
 package com.regolith.ui.navigation
 
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -65,3 +67,33 @@ val tabScreen: Map<String, Any> =
     NavDisplay.transitionSpec { tabTransition } +
         NavDisplay.popTransitionSpec { tabTransition } +
         NavDisplay.predictivePopTransitionSpec { _ -> tabTransition }
+
+/*
+ * A title's page opening beside a wall on a wide window (WallScene).
+ *
+ * The page alone moves: in from the end edge on the push's clock, back out
+ * on the pop's. The wall beside it never slides — it is the thing you were
+ * looking at, and it reflows into its half in one step instead. So the scene
+ * as a whole does nothing ([paneScene]) and the page carries its own motion
+ * through `animateEnterExit`, which NavDisplay's transition drives — and
+ * predictive back seeks, so the page follows the thumb out.
+ */
+
+/** The page arriving. */
+val paneEnter: EnterTransition
+    get() = slideInHorizontally(tween(PUSH_MS, easing = EaseOutCubic)) { width -> width }
+
+/** The page leaving: ✕, back, or its tile tapped again. */
+val paneExit: ExitTransition
+    get() = slideOutHorizontally(tween(POP_MS, easing = EaseOutCubic)) { width -> width }
+
+// ExitTransition.None still keeps the outgoing scene composed until every
+// animation inside it has finished — the page's slide-out among them.
+private val paneSceneTransition: ContentTransform
+    get() = EnterTransition.None togetherWith ExitTransition.None
+
+/** Scene metadata for a wall with a page beside it: no scene-wide motion, in either direction. */
+val paneScene: Map<String, Any> =
+    NavDisplay.transitionSpec { paneSceneTransition } +
+        NavDisplay.popTransitionSpec { paneSceneTransition } +
+        NavDisplay.predictivePopTransitionSpec { _ -> paneSceneTransition }

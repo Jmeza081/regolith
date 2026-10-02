@@ -143,9 +143,10 @@ own confirmation.
 
 ### Opens out on a foldable
 
-The inner display gets its own layouts: a nav rail that retracts to a spine, the
-library and browse walls beside a title pane with a divider you can reset, and
-two-column and flex-mode player layouts. Turned sideways, Shorts plays the clip in
+The inner display gets its own layouts: a nav rail that retracts to a spine, and
+library and browse walls that fill the screen until you open a title, whose page
+then slides in beside the wall and slides away again when you close it. The
+player has two-column and flex-mode layouts. Turned sideways, Shorts plays the clip in
 one half and fills the other with its frames — tap one to jump there, pause to make
 a poster from that moment — and the clips that play next.
 

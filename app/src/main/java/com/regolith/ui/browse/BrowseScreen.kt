@@ -141,8 +141,10 @@ fun BrowseScreen(
     LaunchedEffect(state.gone) { if (state.gone) onBack?.invoke() }
 
     // The tree stands beside the list only where both fit. Measured on this
-    // screen's own width, not the window's: with a Title Detail pane open
-    // beside it Browse is a third of the window, and the list has to win.
+    // screen's own width, not the window's: Browse has the whole inner display
+    // until a file's page opens beside it, and then half of it — too little
+    // for three columns, and the list has to win. Closing the page brings
+    // the tree back.
     BoxWithConstraints(modifier.fillMaxSize()) {
         val showTree = onOpenTree != null && maxWidth >= SHARE_TREE_MIN_WIDTH && state.tree.isNotEmpty() && !state.noSource
         Row(Modifier.fillMaxSize()) {

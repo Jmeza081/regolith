@@ -771,3 +771,87 @@ chrome's timer redrew the page within seconds and hid it; beside the panel
 nothing redraws the page, and the spinner sat on a playing clip for good. A
 page now listens to its player for buffering, which also stops it lingering
 upright.
+
+## F15 — round eleven: the wall comes first
+
+Asked for by the owner after using the split on the Fold: with nothing open,
+the right half of the inner display said "Choose a title" and the wall was
+squeezed into the left half, three 72dp posters across. Browse was worse off
+than it looked: its pane was always half the window, below the 600dp the
+share tree needs, so the tree F3 built had never once appeared on the Fold.
+
+### The flow
+
+- **Nothing open:** the wall fills the window beside the rail. Library shows
+  five posters across, about a phone's tile size (seven when held sideways).
+  Browse gets its share tree back beside the folder list.
+- **Open a title:** its page slides in from the end edge on the push's clock
+  and takes half the window. The wall reflows into the other half in one step,
+  as two columns of the same-sized tiles, and the tile you tapped stays ringed.
+  If the reflow pushed it off the bottom, the wall brings it back into view.
+  In Browse the tree steps aside, exactly as F6 intended.
+- **Tap another tile:** the page swaps to it in place, with no slide.
+- **Close it:** the ✕ on the page, system back, or the ringed tile tapped a
+  second time. The wall spreads back out first and the page slides away over
+  it. Predictive back drags the page out under the thumb.
+- **Walk elsewhere from the wall** (a collection, a folder): the page closes
+  first. A collection's back arrow leaves the wall, page and all.
+
+Closing the page deselects the title. The owner floated a toggle that hides
+the page but keeps the selection; it was not built. A ring with nothing
+attached says less than no ring, and the wall already keeps its scroll
+position, so reopening is the same one tap on the same tile.
+
+### How it is built
+
+`ui/navigation/WallScene.kt` is a Navigation 3 `SceneStrategy` of about a
+hundred lines, replacing Material's `ListDetailSceneStrategy`. The trick is
+two scene keys: "the wall alone" and "the wall with a page". Opening and
+closing a page is then a scene change, and NavDisplay's own transition
+machinery does three things for free:
+
+- it keeps a popped page drawn while it slides out;
+- predictive back seeks that same transition;
+- it moves the wall's composition between the two layouts instead of
+  rebuilding it. Every entry is already wrapped in `movableContentOf` by
+  Navigation 3, so scroll position, loaded posters and the tab the wall is
+  on all survive.
+
+The scene itself stands still (`paneScene`). Only the page moves, through
+`animateEnterExit` (`paneEnter` / `paneExit` in `Transitions.kt`).
+
+Material's scene could only have done "the list alone until a detail exists"
+by feeding it a directive computed from the back stack. Its pane animation
+then re-measures the wall on every frame, which is the resizing F12 was about.
+It also drops a popped detail's content the instant it leaves the stack, so the
+page could not slide out, only vanish.
+
+**A bug found on the way.** Material's default back behaviour,
+`PopUntilScaffoldValueChange`, treated "wall + placeholder" and "wall +
+detail" as the same layout. Back from an open title popped the wall too, and
+went straight to Home. The new scene's back pops only the page.
+
+**Two details that matter.**
+
+- Title Detail learns that it is beside a wall from `LocalBesideWall`, which
+  the scene provides, not from the back stack. A closed page is already off
+  the stack while it slides out. A page that read the stack turned its ✕ into
+  a back arrow on the way out.
+- The page's half has an opaque ground. During a pop the full-width wall is
+  already drawn underneath it.
+
+### Verified
+
+Checked on the `Samsung_Galaxy_Main_Display` AVD:
+
+- the wall at full width and in the split, upright and sideways;
+- the slide in and out, frame by frame with animations slowed 10×, and a
+  predictive back swipe held halfway;
+- back, ✕ and the ringed tile all close only the page (the old build went
+  Home);
+- a title swaps in place; Play, then back from the player, returns to the split;
+- a folder opened from beside a page opens full width;
+- the On this device grid uses the same columns;
+- the phone layout is unchanged (`wm size 1080x2400`).
+
+Not yet seen on the real Fold.
