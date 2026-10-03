@@ -1,13 +1,16 @@
 package com.regolith.ui.navigation
 
+import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategyScope
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -93,5 +96,29 @@ class WallSceneStrategyTest {
     fun `alone a wall keeps its own transitions, and with a page the scene stands still`() {
         assertEquals(films.metadata, scene(listOf(home, films))!!.metadata)
         assertSame(paneScene, scene(listOf(home, films, page(4)))!!.metadata)
+    }
+
+    @Test
+    fun `a page opening or closing beside its wall stays on the same wall`() {
+        val alone = scene(listOf(home, films))!!
+        val withPage = scene(listOf(home, films, page(4)))!!
+        assertTrue(withPage.isSameWallAs(alone))
+        assertTrue(alone.isSameWallAs(withPage))
+    }
+
+    @Test
+    fun `the wall's back arrow lands on another wall, or off the walls, so the scene cross-fades`() {
+        val withPage = scene(listOf(home, library, films, page(4)))!!
+        assertFalse("Films with a page, back to Library", withPage.isSameWallAs(scene(listOf(home, library))!!))
+        assertFalse("Films with a page, back to Home", withPage.isSameWallAs(NotAWall))
+        assertFalse(NotAWall.isSameWallAs(withPage))
+    }
+
+    /** Stands in for the default full-screen scene Home is drawn in. */
+    private object NotAWall : Scene<NavKey> {
+        override val key: Any = "home"
+        override val entries: List<NavEntry<NavKey>> = emptyList()
+        override val previousEntries: List<NavEntry<NavKey>> = emptyList()
+        override val content: @Composable () -> Unit = {}
     }
 }

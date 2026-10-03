@@ -1,5 +1,6 @@
 package com.regolith.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -50,18 +51,22 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   takes half the window; the wall dissolves and reappears in the other half.
  * - **Closed again** (its ✕, back, or the ringed tile tapped a second time):
  *   the page slides back out, the wall dissolves with it, and reappears
- *   across the full width once its pictures are drawn ([WallAt]).
+ *   across the full width once its pictures are drawn ([WallAt]). Android's
+ *   back closes it the same way as the ✕ — see [WallWithPageLayout].
+ * - **Left altogether** (the wall's own back arrow takes the page and the
+ *   collection off together): the screen cross-fades to wherever that
+ *   lands, as leaving a collection does without a page ([paneScene]).
  *
  * Same back stack as a phone either way — `[…, Library, TitleDetail]` — so
  * this decides only how the top keys are laid out (guardrail G10).
  *
  * "The wall" and "the wall with a page beside it" are two DIFFERENT scenes on
  * purpose. NavDisplay then animates between them with its own machinery,
- * which is what gives three things for free: a popped Title Detail stays on
- * screen for its slide-out, predictive back drags it out under your thumb,
- * and the wall's composition — scroll position, loaded posters, which tab it
- * is on — moves between the two layouts instead of being rebuilt, because
- * Navigation 3 wraps every entry in `movableContentOf`.
+ * which is what gives two things for free: a popped Title Detail stays on
+ * screen for its slide-out, and the wall's composition — scroll position,
+ * loaded posters, which tab it is on — moves between the two layouts instead
+ * of being rebuilt, because Navigation 3 wraps every entry in
+ * `movableContentOf`.
  *
  * Web analogy: a route whose layout changes with the URL. `/films` renders
  * `<Wall/>`, `/films/42` renders `<Split><Wall/><Page/></Split>`, and the
@@ -87,7 +92,7 @@ class WallSceneStrategy<T : Any>(private val wide: Boolean) : SceneStrategy<T> {
             // A page with no wall under it (opened from Home or Search) is not
             // ours: it falls through to the default scene and fills the window.
             top.role == Role.PAGE && below?.role == Role.WALL ->
-                WallScene(wall = below, page = top, previousEntries = entries.dropLast(1), widths = widths)
+                WallScene(wall = below, page = top, previousEntries = entries.dropLast(1), widths = widths, onBack = onBack)
             else -> null
         }
     }
@@ -112,6 +117,8 @@ internal class WallScene<T : Any>(
     val page: NavEntry<T>?,
     override val previousEntries: List<NavEntry<T>>,
     private val widths: WallWidths = WallWidths(),
+    /** NavDisplay's own pop, which Android's back calls while a page is open (see [WallWithPageLayout]). */
+    private val onBack: () -> Unit = {},
 ) : Scene<T> {
 
     override val key: Any = if (page == null) WallAlone(wall.contentKey) else WallWithPage(wall.contentKey)
@@ -120,8 +127,9 @@ internal class WallScene<T : Any>(
 
     /**
      * Alone, the wall's own transitions apply (a tab cross-fades in, as on a
-     * phone). With a page, the scene itself does not move at all and the
-     * page animates on its own ([paneScene]), so the wall never slides.
+     * phone). With a page, the scene itself does not move as the page comes
+     * and goes, and the page animates on its own ([paneScene]), so the wall
+     * never slides.
      */
     override val metadata: Map<String, Any> = if (page == null) wall.metadata else paneScene
 
@@ -129,7 +137,7 @@ internal class WallScene<T : Any>(
         if (page == null) {
             WallAloneLayout(wall, widths)
         } else {
-            WallWithPageLayout(wall, page, widths)
+            WallWithPageLayout(wall, page, widths, onBack)
         }
     }
 
@@ -164,13 +172,25 @@ private fun <T : Any> WallAloneLayout(wall: NavEntry<T>, widths: WallWidths) {
  * reappearing at the other ([WallAt]). During a pop the wall is drawn by the
  * full-width scene underneath, so this half is left empty and the page slides
  * out over the wall as it dissolves.
+ *
+ * Android's back (the gesture, or the navigation bar's button) is answered
+ * here, with the same plain pop as the page's ✕ — so all three close the
+ * page alike. Left to NavDisplay, back is predictive: the press alone, before
+ * any decision, builds the full-width scene and moves the wall into it, and
+ * the close then runs as the tail of a gesture rather than from the start.
+ * On the Fold that read as the old two columns hanging on while the new wall
+ * drew, though the ✕ closed cleanly. The page no longer follows a thumb out;
+ * it slides out once the gesture is let go, exactly as for the ✕.
  */
 @Composable
-private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, widths: WallWidths) {
+private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, widths: WallWidths, onBack: () -> Unit) {
     val motion = LocalNavAnimatedContentScope.current
     val key = wall.contentKey
     val from = remember { widths.alone[key] }
     DisposableEffect(key) { onDispose { widths.beside.remove(key) } }
+    // Only while the page is open: popped, it stays composed for its slide-out,
+    // and a second back then belongs to NavDisplay (it leaves the wall).
+    BackHandler(enabled = motion.transition.targetState == EnterExitState.Visible) { onBack() }
     Row(Modifier.fillMaxSize()) {
         WallAt(wall, from, widths.picturesFor(key), Modifier.weight(1f).fillMaxHeight()) { widths.beside[key] = it }
         Spacer(Modifier.width(PANE_GAP))
@@ -196,8 +216,7 @@ private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, w
  * three steps:
  *
  * 1. **It leaves** as it was: from the very first frame it dissolves, on the
- *    scene change's own clock, alongside the page — so predictive back
- *    scrubs it, and a cancelled gesture puts it back whole.
+ *    scene change's own clock, alongside the page.
  * 2. **It changes width** only once a frame has been DRAWN with it gone.
  *    A frame that runs long (the re-layout composes a wall's worth of new
  *    tiles) then holds the screen with no wall on it, never the old one.
@@ -305,3 +324,11 @@ private val NavEntry<*>.role: Role? get() = metadata[ROLE_KEY] as? Role
 private data class WallAlone(val wallKey: Any)
 
 private data class WallWithPage(val wallKey: Any)
+
+/**
+ * True when [this] and [other] are the same wall with or without a page: a
+ * page opening or closing beside it, as opposed to leaving for another
+ * screen. [paneScene] keeps the first still and cross-fades the second.
+ */
+internal fun Scene<*>.isSameWallAs(other: Scene<*>): Boolean =
+    this is WallScene<*> && other is WallScene<*> && wall.contentKey == other.wall.contentKey

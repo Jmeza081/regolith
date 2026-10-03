@@ -792,10 +792,13 @@ share tree needs, so the tree F3 built had never once appeared on the Fold.
   In Browse the tree steps aside, exactly as F6 intended.
 - **Tap another tile:** the page swaps to it in place, with no slide.
 - **Close it:** the ✕ on the page, system back, or the ringed tile tapped a
-  second time. The wall spreads back out first and the page slides away over
-  it. Predictive back drags the page out under the thumb.
+  second time, all three alike. The page slides away while the wall
+  dissolves, and the wall comes back across the full width once its pictures
+  are drawn (`WallAt`, 2026-10-03). Back is not predictive here: a swipe
+  closes the page when it is let go, the same close as the ✕.
 - **Walk elsewhere from the wall** (a collection, a folder): the page closes
-  first. A collection's back arrow leaves the wall, page and all.
+  first. A collection's back arrow leaves the wall, page and all, and
+  cross-fades as leaving a collection always does.
 
 Closing the page deselects the title. The owner floated a toggle that hides
 the page but keeps the selection; it was not built. A ring with nothing
@@ -808,10 +811,9 @@ position, so reopening is the same one tap on the same tile.
 hundred lines, replacing Material's `ListDetailSceneStrategy`. The trick is
 two scene keys: "the wall alone" and "the wall with a page". Opening and
 closing a page is then a scene change, and NavDisplay's own transition
-machinery does three things for free:
+machinery does two things for free:
 
 - it keeps a popped page drawn while it slides out;
-- predictive back seeks that same transition;
 - it moves the wall's composition between the two layouts instead of
   rebuilding it. Every entry is already wrapped in `movableContentOf` by
   Navigation 3, so scroll position, loaded posters and the tab the wall is
