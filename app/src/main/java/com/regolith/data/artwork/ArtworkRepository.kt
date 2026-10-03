@@ -374,7 +374,27 @@ class ArtworkRepository @Inject constructor(
     /**
      * A poster.jpg was just written beside [fileId] (the poster editor). Use
      * [bytes] for every owner it now belongs to, right away, instead of
-     * waiting for a scan to notice the file.
+     * waiting for a scan to notice the file ([adoptInFolder]).
+     */
+    suspend fun adoptPoster(fileId: Long, bytes: ByteArray) {
+        val file = mediaFileDao.byId(fileId) ?: return
+        adoptInFolder(file.shareId, file.folderId, file.relPath.substringBeforeLast('/', ""), bytes)
+        Log.i(TAG, "poster for file $fileId adopted")
+    }
+
+    /**
+     * A poster.jpg was just uploaded into [folderId] from the phone (P19):
+     * the same as [adoptPoster], for a folder rather than the film beside it.
+     */
+    suspend fun adoptFolderPoster(folderId: Long, bytes: ByteArray) {
+        val folder = folderDao.byId(folderId) ?: return
+        adoptInFolder(folder.shareId, folder.id, folder.relPath, bytes)
+        Log.i(TAG, "poster for folder $folderId adopted")
+    }
+
+    /**
+     * A poster.jpg was just written into the folder at [folderRelPath]. Use
+     * [bytes] for every owner it now belongs to, right away.
      *
      * Nothing else would notice: a cached picture is served for as long as
      * its file exists ([cached]), and the folder listing it was chosen from
@@ -382,39 +402,38 @@ class ArtworkRepository @Inject constructor(
      * new image is written in their place, and the listing is forgotten.
      *
      * Which owners follows the source order ([ArtworkCandidates.forFile]):
-     * the folder always, and the film too when it is the only video in it —
-     * in a folder of several, poster.jpg is the collection's, not the film's.
+     * the folder always, and its film too when it is the only video in it —
+     * in a folder of several, poster.jpg is the collection's, not a film's.
      *
      * The owners' pictures are dropped from the image loader's memory and
      * announced on [replaced], so every screen showing them redraws.
      */
-    suspend fun adoptPoster(fileId: Long, bytes: ByteArray) {
-        val file = mediaFileDao.byId(fileId) ?: return
-        val folderRelPath = file.relPath.substringBeforeLast('/', "")
-        listingsLock.withLock { listings.remove(file.shareId to folderRelPath) }
+    private suspend fun adoptInFolder(shareId: Long, folderId: Long, folderRelPath: String, bytes: ByteArray) {
+        listingsLock.withLock { listings.remove(shareId to folderRelPath) }
         // One fresh listing, so the adopted picture carries the stamp of the
         // poster.jpg just written: the next listing then sees nothing changed,
         // instead of reading the poster straight back off the share.
         val entries = try {
-            locate(file.shareId)?.let { listing(it, file.shareId, folderRelPath) }
+            locate(shareId)?.let { listing(it, shareId, folderRelPath) }
         } catch (e: SmbFailure) {
             null
         }
+        val film = mediaFileDao.inFolder(folderId).singleOrNull()
         val owners = buildList {
-            add(ArtworkOwner.Folder(file.folderId))
-            if (mediaFileDao.inFolder(file.folderId).size <= 1) add(ArtworkOwner.File(fileId))
+            add(ArtworkOwner.Folder(folderId))
+            if (film != null) add(ArtworkOwner.File(film.id))
         }
         for (owner in owners) {
             artworkDao.deleteOwner(owner.typeName, owner.id)
             store.delete(owner)
             val stamp = entries?.let {
-                val candidates = if (owner is ArtworkOwner.File) ArtworkCandidates.forFile(file.name, it) else ArtworkCandidates.forFolder(it)
+                val candidates = if (owner is ArtworkOwner.File && film != null) ArtworkCandidates.forFile(film.name, it) else ArtworkCandidates.forFolder(it)
                 ArtworkFreshness.stamp(candidates, it)
             }
             saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills, stamp)
         }
         announceReplaced(owners)
-        Log.i(TAG, "poster for file $fileId adopted by $owners")
+        Log.i(TAG, "poster in folder $folderId adopted by $owners")
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */

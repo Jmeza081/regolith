@@ -1,5 +1,12 @@
 package com.regolith.ui.navigation
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -9,16 +16,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import com.regolith.ui.components.LocalPendingArtwork
+import com.regolith.ui.components.PendingArtwork
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * How a wall (Library or Browse) uses a wide window — a foldable's inner
@@ -27,20 +48,25 @@ import com.regolith.ui.theme.Spacing
  *
  * - **Nothing open:** the wall has the whole window beside the rail.
  * - **A title open:** its page (Title Detail) slides in from the end edge and
- *   takes half the window; the wall reflows into the other half in one step.
+ *   takes half the window; the wall dissolves and reappears in the other half.
  * - **Closed again** (its ✕, back, or the ringed tile tapped a second time):
- *   the page slides back out and the wall spreads out to the full width.
+ *   the page slides back out, the wall dissolves with it, and reappears
+ *   across the full width once its pictures are drawn ([WallAt]). Android's
+ *   back closes it the same way as the ✕ — see [WallWithPageLayout].
+ * - **Left altogether** (the wall's own back arrow takes the page and the
+ *   collection off together): the screen cross-fades to wherever that
+ *   lands, as leaving a collection does without a page ([paneScene]).
  *
  * Same back stack as a phone either way — `[…, Library, TitleDetail]` — so
  * this decides only how the top keys are laid out (guardrail G10).
  *
  * "The wall" and "the wall with a page beside it" are two DIFFERENT scenes on
  * purpose. NavDisplay then animates between them with its own machinery,
- * which is what gives three things for free: a popped Title Detail stays on
- * screen for its slide-out, predictive back drags it out under your thumb,
- * and the wall's composition — scroll position, loaded posters, which tab it
- * is on — moves between the two layouts instead of being rebuilt, because
- * Navigation 3 wraps every entry in `movableContentOf`.
+ * which is what gives two things for free: a popped Title Detail stays on
+ * screen for its slide-out, and the wall's composition — scroll position,
+ * loaded posters, which tab it is on — moves between the two layouts instead
+ * of being rebuilt, because Navigation 3 wraps every entry in
+ * `movableContentOf`.
  *
  * Web analogy: a route whose layout changes with the URL. `/films` renders
  * `<Wall/>`, `/films/42` renders `<Split><Wall/><Page/></Split>`, and the
@@ -54,16 +80,19 @@ import com.regolith.ui.theme.Spacing
  */
 class WallSceneStrategy<T : Any>(private val wide: Boolean) : SceneStrategy<T> {
 
+    /** Shared by every scene this strategy makes, so each layout can start a wall where the other left it. */
+    private val widths = WallWidths()
+
     override fun SceneStrategyScope<T>.calculateScene(entries: List<NavEntry<T>>): Scene<T>? {
         if (!wide) return null
         val top = entries.last()
         val below = entries.getOrNull(entries.lastIndex - 1)
         return when {
-            top.role == Role.WALL -> WallScene(wall = top, page = null, previousEntries = entries.dropLast(1))
+            top.role == Role.WALL -> WallScene(wall = top, page = null, previousEntries = entries.dropLast(1), widths = widths)
             // A page with no wall under it (opened from Home or Search) is not
             // ours: it falls through to the default scene and fills the window.
             top.role == Role.PAGE && below?.role == Role.WALL ->
-                WallScene(wall = below, page = top, previousEntries = entries.dropLast(1))
+                WallScene(wall = below, page = top, previousEntries = entries.dropLast(1), widths = widths, onBack = onBack)
             else -> null
         }
     }
@@ -87,6 +116,9 @@ internal class WallScene<T : Any>(
     val wall: NavEntry<T>,
     val page: NavEntry<T>?,
     override val previousEntries: List<NavEntry<T>>,
+    private val widths: WallWidths = WallWidths(),
+    /** NavDisplay's own pop, which Android's back calls while a page is open (see [WallWithPageLayout]). */
+    private val onBack: () -> Unit = {},
 ) : Scene<T> {
 
     override val key: Any = if (page == null) WallAlone(wall.contentKey) else WallWithPage(wall.contentKey)
@@ -95,16 +127,17 @@ internal class WallScene<T : Any>(
 
     /**
      * Alone, the wall's own transitions apply (a tab cross-fades in, as on a
-     * phone). With a page, the scene itself does not move at all and the
-     * page animates on its own ([paneScene]), so the wall never slides.
+     * phone). With a page, the scene itself does not move as the page comes
+     * and goes, and the page animates on its own ([paneScene]), so the wall
+     * never slides.
      */
     override val metadata: Map<String, Any> = if (page == null) wall.metadata else paneScene
 
     override val content: @Composable () -> Unit = {
         if (page == null) {
-            wall.Content()
+            WallAloneLayout(wall, widths)
         } else {
-            WallWithPageLayout(wall, page)
+            WallWithPageLayout(wall, page, widths, onBack)
         }
     }
 
@@ -120,18 +153,46 @@ internal class WallScene<T : Any>(
 }
 
 /**
+ * The wall with the window to itself. Arriving from its own split — the page
+ * beside it closing — it starts as wide as it was beside the page ([WallAt]).
+ */
+@Composable
+private fun <T : Any> WallAloneLayout(wall: NavEntry<T>, widths: WallWidths) {
+    val key = wall.contentKey
+    val from = remember { widths.beside[key] }
+    DisposableEffect(key) { onDispose { widths.alone.remove(key) } }
+    WallAt(wall, from, widths.picturesFor(key), Modifier.fillMaxSize()) { widths.alone[key] = it }
+}
+
+/**
  * The split: the wall in the start half (the rail's inset is inside it, as it
  * is inside every tab screen), the page in the end half. Even, and fixed (F13).
  *
- * Only the page animates. During a pop the wall is drawn by the full-width
- * scene underneath, so this half is left empty and the page slides out over
- * the wall as it will be, not as it was.
+ * The page slides; the wall stays where it is, dissolving at one width and
+ * reappearing at the other ([WallAt]). During a pop the wall is drawn by the
+ * full-width scene underneath, so this half is left empty and the page slides
+ * out over the wall as it dissolves.
+ *
+ * Android's back (the gesture, or the navigation bar's button) is answered
+ * here, with the same plain pop as the page's ✕ — so all three close the
+ * page alike. Left to NavDisplay, back is predictive: the press alone, before
+ * any decision, builds the full-width scene and moves the wall into it, and
+ * the close then runs as the tail of a gesture rather than from the start.
+ * On the Fold that read as the old two columns hanging on while the new wall
+ * drew, though the ✕ closed cleanly. The page no longer follows a thumb out;
+ * it slides out once the gesture is let go, exactly as for the ✕.
  */
 @Composable
-private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>) {
+private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, widths: WallWidths, onBack: () -> Unit) {
     val motion = LocalNavAnimatedContentScope.current
+    val key = wall.contentKey
+    val from = remember { widths.alone[key] }
+    DisposableEffect(key) { onDispose { widths.beside.remove(key) } }
+    // Only while the page is open: popped, it stays composed for its slide-out,
+    // and a second back then belongs to NavDisplay (it leaves the wall).
+    BackHandler(enabled = motion.transition.targetState == EnterExitState.Visible) { onBack() }
     Row(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxHeight()) { wall.Content() }
+        WallAt(wall, from, widths.picturesFor(key), Modifier.weight(1f).fillMaxHeight()) { widths.beside[key] = it }
         Spacer(Modifier.width(PANE_GAP))
         Box(
             with(motion) { Modifier.animateEnterExit(enter = paneEnter, exit = paneExit) }
@@ -144,6 +205,100 @@ private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>) {
             CompositionLocalProvider(LocalBesideWall provides true) { page.Content() }
         }
     }
+}
+
+/**
+ * Lays [wall] out in the layout it is arriving in. [report] hears the width
+ * it is given on every pass, for the other layout to start from in turn.
+ *
+ * Arriving from its other layout — a page opening or closing beside it, and
+ * [from] the width it had there — it does not jump to the new width. In
+ * three steps:
+ *
+ * 1. **It leaves** as it was: from the very first frame it dissolves, on the
+ *    scene change's own clock, alongside the page.
+ * 2. **It changes width** only once a frame has been DRAWN with it gone.
+ *    A frame that runs long (the re-layout composes a wall's worth of new
+ *    tiles) then holds the screen with no wall on it, never the old one.
+ * 3. **It arrives** when the pictures of the new layout are decoded
+ *    ([PendingArtwork], at most [WALL_PICTURES_WAIT_MS] for a slow share),
+ *    fading in on its own clock — so a slow frame cannot cut the fade short,
+ *    and the wall never appears over placeholders that then crossfade.
+ *
+ * Before, on the Fold, the old two columns stood on screen while the wide
+ * wall drew beneath them, and new tiles crossfaded from "reading" to their
+ * posters in full view: the tearing the owner saw closing a page.
+ *
+ * While a page opens, the wall is still the old, wider width until it has
+ * gone: it overflows under the page, which is drawn on top of it.
+ */
+@Composable
+private fun <T : Any> WallAt(wall: NavEntry<T>, from: Int?, pictures: PendingArtwork, modifier: Modifier, report: (Int) -> Unit) {
+    if (from == null) {
+        Box(
+            modifier.layout { measurable, constraints ->
+                report(constraints.maxWidth)
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+            },
+        ) {
+            CompositionLocalProvider(LocalPendingArtwork provides pictures) { wall.Content() }
+        }
+        return
+    }
+    val leaving = LocalNavAnimatedContentScope.current.transition.animateFloat(
+        transitionSpec = { tween(WALL_LEAVE_MS, easing = LinearEasing) },
+        label = "wall leaving",
+    ) { state -> if (state == EnterExitState.PreEnter) 0f else 1f }
+    var changed by remember { mutableStateOf(false) }
+    val arriving = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { leaving.value >= 1f }.first { it }
+        // That frame drew the old layout at nothing; only now may it change.
+        withFrameNanos { }
+        changed = true
+        // The new layout's first frame has run, so its tiles have asked for their pictures.
+        withFrameNanos { }
+        withTimeoutOrNull(WALL_PICTURES_WAIT_MS) { snapshotFlow { pictures.count }.first { it == 0 } }
+        arriving.animateTo(1f, tween(WALL_ARRIVE_MS, easing = LinearOutSlowInEasing))
+    }
+    Box(
+        modifier
+            .layout { measurable, constraints ->
+                report(constraints.maxWidth)
+                val width = if (changed) constraints.maxWidth else from
+                val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                layout(constraints.maxWidth, placeable.height) { placeable.place(0, 0) }
+            }
+            // Inside the width change, so the layer is the wall's own size. A
+            // see-through layer is drawn off screen at the size of its box, and
+            // outside the box it would cut a wall that is still the old,
+            // wider width off at the new one, leaving a gap before the page.
+            .graphicsLayer { alpha = if (changed) arriving.value else 1f - leaving.value },
+    ) {
+        CompositionLocalProvider(LocalPendingArtwork provides pictures) { wall.Content() }
+    }
+}
+
+/**
+ * The width, in pixels, each wall last had alone and beside a page, kept for
+ * as long as that layout is composed. Plain maps on purpose: they are written
+ * while a layout is measured and read when the other layout first composes,
+ * a frame later, and nothing should recompose because they changed.
+ */
+internal class WallWidths {
+    val alone = HashMap<Any, Int>()
+    val beside = HashMap<Any, Int>()
+
+    /**
+     * One [PendingArtwork] per wall, the same whichever layout it is in: a
+     * different one on each side would hand every tile a new value as the
+     * wall moves between the scenes and recompose them all, in the frame
+     * that is already the most expensive of the change.
+     */
+    private val pictures = HashMap<Any, PendingArtwork>()
+
+    fun picturesFor(wallKey: Any): PendingArtwork = pictures.getOrPut(wallKey) { PendingArtwork() }
 }
 
 /**
@@ -169,3 +324,11 @@ private val NavEntry<*>.role: Role? get() = metadata[ROLE_KEY] as? Role
 private data class WallAlone(val wallKey: Any)
 
 private data class WallWithPage(val wallKey: Any)
+
+/**
+ * True when [this] and [other] are the same wall with or without a page: a
+ * page opening or closing beside it, as opposed to leaving for another
+ * screen. [paneScene] keeps the first still and cross-fades the second.
+ */
+internal fun Scene<*>.isSameWallAs(other: Scene<*>): Boolean =
+    this is WallScene<*> && other is WallScene<*> && wall.contentKey == other.wall.contentKey

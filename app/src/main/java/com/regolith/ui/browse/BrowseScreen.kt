@@ -614,6 +614,10 @@ private fun BrowseContent(
         val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             viewModel.onPicked(uris.map { it.toString() })
         }
+        // One picture, to be the folder's poster (P19): images only, and one.
+        val posterPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) viewModel.onPosterPicked(uri.toString())
+        }
         if (state.uploadSheet) {
             UploadSourceSheet(
                 folderName = state.title,
@@ -628,11 +632,19 @@ private fun BrowseContent(
                     onSendingAway()
                     filePicker.launch(arrayOf("*/*"))
                 },
+                onPoster = {
+                    viewModel.dismissUploadSheet()
+                    onSendingAway()
+                    posterPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
                 onDismiss = viewModel::dismissUploadSheet,
             )
         }
         state.uploadQuestion?.let { question ->
             UploadQuestionSheet(question, onAnswer = viewModel::answerUploadQuestion, onDismiss = viewModel::dismissUploadQuestion)
+        }
+        state.posterQuestion?.let { question ->
+            PosterQuestionSheet(question, onAnswer = viewModel::answerPosterQuestion, onDismiss = viewModel::dismissPosterQuestion)
         }
 
         // One host for the whole app, drawn by the chrome above the pill.

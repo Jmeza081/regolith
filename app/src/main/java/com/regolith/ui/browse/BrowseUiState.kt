@@ -121,6 +121,8 @@ data class BrowseUiState(
     val uploadSheet: Boolean = false,
     /** Names in a pick are taken: the one question, asked before anything is sent. */
     val uploadQuestion: UploadQuestion? = null,
+    /** A poster was picked for a folder that has pictures of its own already: replace or rename them (P19). */
+    val posterQuestion: PosterQuestion? = null,
     /** The uploads into this folder, at the top of its list. Null when there are none. */
     val uploads: UploadSection? = null,
 )

@@ -70,7 +70,8 @@ system back from any tab returns to Home and back from Home leaves the app.
 collections and loose titles. Tapping a collection pushes `Library(folderId)`,
 that folder's wall (on a wide window, closing an open page first — see
 below). Titles push `TitleDetail`. A collection's back arrow leaves the wall,
-taking an open page with it. The search icon pushes `Search`.
+taking an open page with it, and cross-fades as it does without one. The
+search icon pushes `Search`.
 `Library(onDevice = true)` lands on the "On this device" tab; Home's
 "N downloads ready" row resets the stack to `[Home, Library(onDevice)]`.
 
@@ -101,8 +102,11 @@ On a wide window:
   end edge and takes half the window; the wall reflows into the other half
   and rings the open tile. The split is even and does not move.
 - **Closing it** — the ✕ on the page (`detail_close_button`), system back, or
-  the ringed tile tapped again — pops `TitleDetail` and the page slides back
-  out over the full-width wall. Back closes only the page, never the wall.
+  the ringed tile tapped again — pops `TitleDetail`: the page slides back out
+  while the wall dissolves, and the wall returns at full width. Back closes
+  only the page, never the wall. The wall's scene answers system back itself
+  with the ✕'s own pop, so it is not predictive here: a swipe closes the page
+  once it is let go, and all three ways look the same.
 
 **The back stack is identical to a phone's either way**, and the rail keeps
 the tab that owns the wall. Picking another title replaces the open page

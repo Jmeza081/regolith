@@ -1,5 +1,6 @@
 package com.regolith.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -10,6 +11,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
 
 /*
@@ -73,10 +75,12 @@ val tabScreen: Map<String, Any> =
  *
  * The page alone moves: in from the end edge on the push's clock, back out
  * on the pop's. The wall beside it never slides — it is the thing you were
- * looking at, and it reflows into its half in one step instead. So the scene
+ * looking at, and it dissolves and reappears at its new width instead (below). So the scene
  * as a whole does nothing ([paneScene]) and the page carries its own motion
- * through `animateEnterExit`, which NavDisplay's transition drives — and
- * predictive back seeks, so the page follows the thumb out.
+ * through `animateEnterExit`, which NavDisplay's transition drives. Back is
+ * not predictive here: the scene answers it with the ✕'s own pop
+ * (WallScene.WallWithPageLayout), so every way of closing the page looks
+ * the same.
  */
 
 /** The page arriving. */
@@ -87,12 +91,42 @@ val paneEnter: EnterTransition
 val paneExit: ExitTransition
     get() = slideOutHorizontally(tween(POP_MS, easing = EaseOutCubic)) { width -> width }
 
-// ExitTransition.None still keeps the outgoing scene composed until every
-// animation inside it has finished — the page's slide-out among them.
-private val paneSceneTransition: ContentTransform
-    get() = EnterTransition.None togetherWith ExitTransition.None
+/*
+ * The wall changing width for a page that comes or goes (WallScene.WallAt).
+ * Two columns beside a page and five without is too big a re-arrangement to
+ * animate tile by tile: gliding there, the tiles crossed over each other the
+ * whole way. So the wall leaves as it was, changes width while it cannot be
+ * seen, and arrives at the new one once its pictures are drawn. The page
+ * slides meanwhile.
+ */
 
-/** Scene metadata for a wall with a page beside it: no scene-wide motion, in either direction. */
+/** How long the wall takes to dissolve as it was: inside the page's own slide, so the two leave together. */
+const val WALL_LEAVE_MS = 120
+
+/** How long the wall takes to fade in at its new width, once it is ready to be seen. */
+const val WALL_ARRIVE_MS = 200
+
+/**
+ * The longest the wall waits at its new width for its pictures before it
+ * fades in anyway: posters already on the phone decode in a frame or two,
+ * and one still on its way from the share should not hold the wall back.
+ */
+const val WALL_PICTURES_WAIT_MS = 300L
+
+/**
+ * A page coming or going beside the same wall moves nothing scene-wide.
+ * ExitTransition.None still keeps the outgoing scene composed until every
+ * animation inside it has finished — the page's slide-out among them.
+ *
+ * Anything else — the wall's own back arrow takes the page AND the
+ * collection off, landing on another wall or Home — cross-fades like a tab,
+ * as leaving a collection without a page does. Kept still, the old wall half
+ * stood fully drawn over the new screen until the page had slid out.
+ */
+private val AnimatedContentTransitionScope<Scene<*>>.paneSceneTransition: ContentTransform
+    get() = if (initialState.isSameWallAs(targetState)) EnterTransition.None togetherWith ExitTransition.None else tabTransition
+
+/** Scene metadata for a wall with a page beside it: still beside its own wall, a cross-fade anywhere else. */
 val paneScene: Map<String, Any> =
     NavDisplay.transitionSpec { paneSceneTransition } +
         NavDisplay.popTransitionSpec { paneSceneTransition } +
