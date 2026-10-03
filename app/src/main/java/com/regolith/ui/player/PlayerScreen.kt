@@ -91,6 +91,7 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.SeekStacker
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.player.PlaybackState
@@ -182,7 +183,7 @@ fun PlayerScreen(
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val ambientLight by viewModel.ambientLight.collectAsStateWithLifecycle()
-    val ambientFrame by rememberAmbientLight(enabled = ambientLight, key = state.fileId)
+    val ambientSample by rememberAmbientLight(light = ambientLight, key = state.fileId)
     val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
@@ -540,11 +541,12 @@ fun PlayerScreen(
             player?.let { p ->
                 // A SurfaceView goes straight to the compositor and cannot be
                 // read back; a TextureView draws through the view hierarchy and
-                // can. That is the whole trade behind the Ambient light switch,
-                // so the surface type follows it rather than being a constant.
+                // can. That is the whole trade behind the Ambient light setting,
+                // so the surface type follows it rather than being a constant —
+                // and both live lights read the picture, so both need it.
                 ContentFrame(
                     p, Modifier.fillMaxSize(),
-                    if (ambientLight) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
+                    if (ambientLight.live) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
                     if (fill) ContentScale.Crop else ContentScale.Fit,
                 )
             }
@@ -603,7 +605,7 @@ fun PlayerScreen(
         }
         Column(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
             Box(Modifier.fillMaxWidth().height(topHeight)) {
-                AmbientGlow(state.fileId, Modifier.fillMaxSize(), frame = ambientFrame)
+                AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
                 video()
             }
             FlexDeck(
@@ -628,7 +630,7 @@ fun PlayerScreen(
             // different thing and stay exactly as they are — those pixels are
             // the picture. Black stays underneath, so a film whose poster
             // never loaded looks the way it always did.
-            AmbientGlow(state.fileId, Modifier.fillMaxSize(), spill = true, frame = ambientFrame)
+            AmbientGlow(state.fileId, Modifier.fillMaxSize(), spill = true, light = ambientLight, sample = ambientSample)
             Box(Modifier.fillMaxSize().graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
             // A SurfaceView ignores alpha from a parent layer, so "dimming"
             // is a scrim drawn over it rather than a fade applied to it.
@@ -644,7 +646,7 @@ fun PlayerScreen(
         // beside the picture rather than below a screenful of settings.
         val sideWidth = (windowShape.width * SIDE_COLUMN_FRACTION).coerceIn(300.dp, 460.dp)
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
-            AmbientGlow(state.fileId, Modifier.fillMaxSize(), frame = ambientFrame)
+            AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
             Row(Modifier.fillMaxSize().systemBarsPadding()) {
                 Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.s12)) {
                     Box(
@@ -682,7 +684,7 @@ fun PlayerScreen(
         }
     } else {
         Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
-        AmbientGlow(state.fileId, Modifier.fillMaxSize(), frame = ambientFrame)
+        AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f).graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
             PlayerDetails(
@@ -1682,9 +1684,14 @@ private fun FlexDeck(
 
 /**
  * The ambient light behind and beside the picture: a bias light, the way a
- * strip behind a TV works. Scaled out so nothing has an edge, blurred, and
- * dimmed under a scrim. A 2:39 film then sits in its own colour instead of
- * a black band, which is the whole point.
+ * strip behind a TV works. A 2:39 film then sits in its own colour instead
+ * of a black band, which is the whole point.
+ *
+ * Color bleed is its own drawing ([ColorBleedLight]): colour from the
+ * picture's edges, shone outward. Everything below is Mirror, and Off.
+ *
+ * Mirror is scaled out so nothing has an edge, blurred, and dimmed under a
+ * scrim.
  *
  * Two layers. The base coat is the title's own backdrop, which costs no
  * read over the share and is there before the first frame is drawn — and is
@@ -1703,9 +1710,15 @@ private fun AmbientGlow(
     fileId: Long?,
     modifier: Modifier = Modifier,
     spill: Boolean = false,
-    frame: android.graphics.Bitmap? = null,
+    light: AmbientLight = AmbientLight.DEFAULT,
+    sample: AmbientSample? = null,
 ) {
     if (fileId == null) return
+    if (light == AmbientLight.COLOR_BLEED) {
+        ColorBleedLight(sample as? AmbientSample.Edges, modifier, spill = spill)
+        return
+    }
+    val frame = (sample as? AmbientSample.Frame)?.bitmap
     // The backdrop, not the poster: this sits behind a 16:9 picture and
     // fills the bands beside it, so a 2:3 centre crop would show the
     // middle strip of the frame stretched across the whole window.

@@ -54,7 +54,9 @@ import com.regolith.domain.playback.ChapterSource
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import androidx.compose.ui.platform.LocalConfiguration
+import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
+import com.regolith.ui.util.note
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.Eyebrow
@@ -110,6 +112,48 @@ fun PlayerSheetHost(
 
 val PLAYBACK_SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
 
+/**
+ * One choice from a short row of pills: the playback sheet's own control,
+ * shared by Speed, Rotation and Ambient light. The chosen pill wears the
+ * sheet's red; a row that cannot be used ([enabled] false) greys out but
+ * keeps its shape, so it still says what the choices would be.
+ */
+@Composable
+private fun <T> ChoicePills(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    testTag: (T) -> String,
+    onPick: (T) -> Unit,
+    enabled: Boolean = true,
+) {
+    val colors = RegolithTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+        options.forEach { option ->
+            val chosen = option == selected && enabled
+            Box(
+                Modifier.weight(1f).height(36.scaledDp()).clip(PillShape)
+                    .background(if (chosen) colors.accent else colors.frostBg)
+                    .then(if (chosen) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
+                    .clickable(interactionSource = null, indication = null, enabled = enabled) { onPick(option) }
+                    .testTag(testTag(option)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label(option),
+                    style = if (chosen) TextStyles.chipSelected else TextStyles.buttonSmall,
+                    color = when {
+                        !enabled -> colors.metadata
+                        chosen -> Color.White
+                        else -> colors.inkSoft
+                    },
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
 /** "PLAYBACK": speed, decoder, scrub thumbnails (design section 10), and the way into the poster editor. */
 @Composable
 fun PlaybackSheetContent(
@@ -118,7 +162,7 @@ fun PlaybackSheetContent(
     scrubThumbnails: Boolean,
     autoplayNext: Boolean,
     autoplayImmediately: Boolean,
-    ambientLight: Boolean,
+    ambientLight: AmbientLight,
     orientation: PlayerOrientation,
     onSpeed: (Float) -> Unit,
     onOrientation: (PlayerOrientation) -> Unit,
@@ -126,7 +170,7 @@ fun PlaybackSheetContent(
     onScrubThumbnails: (Boolean) -> Unit,
     onAutoplayNext: (Boolean) -> Unit,
     onAutoplayImmediately: (Boolean) -> Unit,
-    onAmbientLight: (Boolean) -> Unit,
+    onAmbientLight: (AmbientLight) -> Unit,
     onClose: () -> Unit,
     /**
      * False where this is not a sheet but a panel already on the screen (the
@@ -152,21 +196,12 @@ fun PlaybackSheetContent(
 
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
         Eyebrow("Speed", muted = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-            PLAYBACK_SPEEDS.forEach { s ->
-                val selected = s == speed
-                Box(
-                    Modifier.weight(1f).height(36.scaledDp()).clip(PillShape)
-                        .background(if (selected) colors.accent else colors.frostBg)
-                        .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
-                        .clickable(interactionSource = null, indication = null) { onSpeed(s) }
-                        .testTag("player_speed_${formatSpeed(s).dropLast(1)}"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(formatSpeed(s).dropLast(1), style = if (selected) TextStyles.chipSelected else TextStyles.buttonSmall, color = if (selected) Color.White else colors.inkSoft)
-                }
-            }
-        }
+        ChoicePills(
+            options = PLAYBACK_SPEEDS, selected = speed,
+            label = { formatSpeed(it).dropLast(1) },
+            testTag = { "player_speed_${formatSpeed(it).dropLast(1)}" },
+            onPick = onSpeed,
+        )
     }
 
     // Rotation sits with Speed: both are "how it plays", both are one choice
@@ -182,29 +217,13 @@ fun PlaybackSheetContent(
     val lockable = LocalConfiguration.current.smallestScreenWidthDp < LARGE_SCREEN_DP
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
         Eyebrow("Rotation", muted = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-            PlayerOrientation.entries.forEach { option ->
-                val selected = option == orientation
-                Box(
-                    Modifier.weight(1f).height(36.scaledDp()).clip(PillShape)
-                        .background(if (selected && lockable) colors.accent else colors.frostBg)
-                        .then(if (selected && lockable) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
-                        .clickable(interactionSource = null, indication = null, enabled = lockable) { onOrientation(option) }
-                        .testTag("player_rotation_${option.name.lowercase()}"),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        option.label,
-                        style = if (selected && lockable) TextStyles.chipSelected else TextStyles.buttonSmall,
-                        color = when {
-                            !lockable -> colors.metadata
-                            selected -> Color.White
-                            else -> colors.inkSoft
-                        },
-                    )
-                }
-            }
-        }
+        ChoicePills(
+            options = PlayerOrientation.entries, selected = orientation,
+            label = { it.label },
+            testTag = { "player_rotation_${it.name.lowercase()}" },
+            onPick = onOrientation,
+            enabled = lockable,
+        )
         if (!lockable) {
             Text(
                 "This screen is large enough that Android does the deciding. The lock works on the cover screen and on a phone.",
@@ -230,16 +249,20 @@ fun PlaybackSheetContent(
         SwitchControl(checked = scrubThumbnails, onCheckedChange = onScrubThumbnails, testTag = "player_scrub_thumbnails_switch")
     }
 
-    // Settings › Display › Ambient light, reachable from where you would
-    // actually notice it — the wash is the most visible thing on this screen
-    // and the switch used to be two tabs away.
-    Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text("Ambient light", style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()), color = colors.inkSoft)
-            Text("Colour from the picture spills onto the screen around it. Costs a little battery.", style = TextStyles.settingMeta, color = colors.metadata)
-        }
-        Spacer(Modifier.width(Spacing.s12))
-        SwitchControl(checked = ambientLight, onCheckedChange = onAmbientLight, testTag = "player_ambient_light_switch")
+    // Settings › Display › Ambient light, offered where you would actually
+    // notice it — the light is the most visible thing on this screen, and
+    // the choice used to be two tabs away. Picking one here changes the
+    // light behind the sheet straight away, which is the easiest way to
+    // tell Mirror from Color bleed.
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        Eyebrow("Ambient light", muted = true)
+        ChoicePills(
+            options = AmbientLight.entries, selected = ambientLight,
+            label = { it.label },
+            testTag = { "player_ambient_light_${it.name.lowercase()}" },
+            onPick = onAmbientLight,
+        )
+        Text(ambientLight.note, style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.testTag("player_ambient_light_note"))
     }
 
     // The same two preferences as Settings › Playback: this is where you

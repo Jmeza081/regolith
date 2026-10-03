@@ -9,6 +9,7 @@ import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.SortDirection
+import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
@@ -49,7 +50,9 @@ class AppPreferences @Inject constructor(
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
+        /** The old on/off switch, from before Color bleed. Read once for its answer, then superseded by [ambientLightMode]. */
         val ambientLight = booleanPreferencesKey("ambient_light")
+        val ambientLightMode = stringPreferencesKey("ambient_light_mode")
         val appLock = booleanPreferencesKey("app_lock")
         val appLockAfter = stringPreferencesKey("app_lock_after")
         val shortsAutoAdvance = booleanPreferencesKey("shorts_auto_advance")
@@ -161,16 +164,25 @@ class AppPreferences @Inject constructor(
     }
 
     /**
-     * Settings › Display › Ambient light. On by default — it is most of what
-     * the player looks like — but it is a switch rather than a constant
-     * because it is the one feature here that reads the video surface back
-     * off the GPU several times a second, and that is battery a phone on a
-     * long flight may want back.
+     * Settings › Display › Ambient light: Off, Mirror or Color bleed. Mirror
+     * by default — it is most of what the player looks like — but it is a
+     * choice rather than a constant because both live lights read the video
+     * surface back off the GPU several times a second, and that is battery a
+     * phone on a long flight may want back.
+     *
+     * It used to be a switch. A phone that turned it off before the choice
+     * existed is still off; see [AmbientLight.of].
      */
-    val ambientLight: Flow<Boolean> = store.data.map { it[Keys.ambientLight] ?: true }
+    val ambientLight: Flow<AmbientLight> = store.data.map {
+        AmbientLight.of(it[Keys.ambientLightMode], legacyOn = it[Keys.ambientLight])
+    }
 
-    suspend fun setAmbientLight(enabled: Boolean) {
-        store.edit { it[Keys.ambientLight] = enabled }
+    suspend fun setAmbientLight(light: AmbientLight) {
+        store.edit {
+            it[Keys.ambientLightMode] = light.name
+            // Answered by name from here on; the old switch has said all it will.
+            it.remove(Keys.ambientLight)
+        }
     }
 
     /**
