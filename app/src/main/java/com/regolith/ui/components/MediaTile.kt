@@ -40,6 +40,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntOffset
@@ -80,6 +82,11 @@ fun ArtworkImage(
         UnmatchedArt(fallbackLabel, modifier)
         return
     }
+    // Counted while it is on its way, when a layout above is waiting to
+    // appear with its pictures drawn ([LocalPendingArtwork]).
+    val pending = LocalPendingArtwork.current
+    val mark = remember { PendingMark() }
+    if (pending != null) DisposableEffect(pending) { onDispose { mark.done(pending) } }
     SubcomposeAsyncImage(
         model = artwork,
         contentDescription = null,
@@ -87,7 +94,58 @@ fun ArtworkImage(
         loading = { ReadingArt() },
         error = { UnmatchedArt(fallbackLabel, Modifier.fillMaxSize()) },
         success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
+        onLoading = pending?.let { p -> { _ -> mark.start(p) } },
+        onSuccess = pending?.let { p -> { _ -> mark.done(p) } },
+        onError = pending?.let { p -> { _ -> mark.done(p) } },
     )
+}
+
+/**
+ * How many pictures below it are still on their way: every [ArtworkImage]
+ * under a [LocalPendingArtwork] counts itself in while it loads and out
+ * when it has drawn, or failed, or left.
+ *
+ * For a layout that is about to appear — the wall when a page closes beside
+ * it — to wait until this reaches zero, and arrive with its pictures drawn
+ * instead of fading in over a row of "reading" placeholders that then
+ * crossfade to their posters one by one, which is what it used to do.
+ * Web analogy: waiting on `img.decode()` for every image before revealing
+ * a section.
+ */
+@Stable
+class PendingArtwork {
+    var count by mutableIntStateOf(0)
+        private set
+
+    internal fun started() {
+        count++
+    }
+
+    internal fun finished() {
+        if (count > 0) count--
+    }
+}
+
+/** The [PendingArtwork] the pictures below report into. Null everywhere nothing is waiting on them. */
+val LocalPendingArtwork = staticCompositionLocalOf<PendingArtwork?> { null }
+
+/** Whether one picture is counted in a [PendingArtwork], so it is counted in once and out once. */
+private class PendingMark {
+    private var counted = false
+
+    fun start(pending: PendingArtwork) {
+        if (!counted) {
+            counted = true
+            pending.started()
+        }
+    }
+
+    fun done(pending: PendingArtwork) {
+        if (counted) {
+            counted = false
+            pending.finished()
+        }
+    }
 }
 
 /**

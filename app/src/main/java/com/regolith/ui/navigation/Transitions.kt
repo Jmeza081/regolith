@@ -4,8 +4,6 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.EaseOutCubic
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -75,7 +73,7 @@ val tabScreen: Map<String, Any> =
  *
  * The page alone moves: in from the end edge on the push's clock, back out
  * on the pop's. The wall beside it never slides — it is the thing you were
- * looking at, and it fades through to its new width instead (below). So the scene
+ * looking at, and it dissolves and reappears at its new width instead (below). So the scene
  * as a whole does nothing ([paneScene]) and the page carries its own motion
  * through `animateEnterExit`, which NavDisplay's transition drives — and
  * predictive back seeks, so the page follows the thumb out.
@@ -90,26 +88,26 @@ val paneExit: ExitTransition
     get() = slideOutHorizontally(tween(POP_MS, easing = EaseOutCubic)) { width -> width }
 
 /*
- * The wall changing width for a page that comes or goes (WallScene). Two
- * columns beside a page and five without is too big a re-arrangement to
+ * The wall changing width for a page that comes or goes (WallScene.WallAt).
+ * Two columns beside a page and five without is too big a re-arrangement to
  * animate tile by tile: gliding there, the tiles crossed over each other the
- * whole way. So it is a "fade through" (Material's pattern for one layout
- * replacing another): the wall fades out as it was, changes width while it
- * cannot be seen, and fades in at the new one. The page slides meanwhile.
+ * whole way. So the wall leaves as it was, changes width while it cannot be
+ * seen, and arrives at the new one once its pictures are drawn. The page
+ * slides meanwhile.
  */
 
-/** How long a wall's fade through takes, from the moment the page starts to move. */
-const val WALL_FADE_THROUGH_MS = 240
+/** How long the wall takes to dissolve as it was: inside the page's own slide, so the two leave together. */
+const val WALL_LEAVE_MS = 120
 
-/** How far into the fade through the wall is gone and changes width: Material's 30%. */
-const val WALL_FADE_THROUGH_SWITCH = 0.3f
+/** How long the wall takes to fade in at its new width, once it is ready to be seen. */
+const val WALL_ARRIVE_MS = 200
 
-/** The wall's alpha [progress] of the way through its fade through: out, then in. */
-fun wallFadeThroughAlpha(progress: Float): Float = when {
-    progress >= 1f -> 1f
-    progress < WALL_FADE_THROUGH_SWITCH -> 1f - FastOutLinearInEasing.transform(progress / WALL_FADE_THROUGH_SWITCH)
-    else -> LinearOutSlowInEasing.transform((progress - WALL_FADE_THROUGH_SWITCH) / (1f - WALL_FADE_THROUGH_SWITCH))
-}
+/**
+ * The longest the wall waits at its new width for its pictures before it
+ * fades in anyway: posters already on the phone decode in a frame or two,
+ * and one still on its way from the share should not hold the wall back.
+ */
+const val WALL_PICTURES_WAIT_MS = 300L
 
 // ExitTransition.None still keeps the outgoing scene composed until every
 // animation inside it has finished — the page's slide-out among them.
