@@ -239,3 +239,122 @@ object ColorBleed {
             ((g.coerceIn(0f, 1f) * 255f).roundToInt() shl 8) or
             (b.coerceIn(0f, 1f) * 255f).roundToInt()
 }
+
+/**
+ * The light along each edge of the picture as an even run of colours, corner
+ * to corner, so the zones blend into one another instead of standing side by
+ * side as separate pools of light.
+ *
+ * Each colour is a weighted mix of the zones around it, the way the light of
+ * neighbouring LEDs overlaps on a wall: a bell curve [SPREAD] zones wide,
+ * measured round the picture the way a strip runs, so the mix carries on
+ * round each corner with no seam. A zone's own colour still leads at its
+ * centre (about 85% of it), halfway to the next zone the two are even, and
+ * nothing of it is left two zones away. Zones of one colour make a perfectly
+ * even band: no brighter column at each zone, no dip between them.
+ *
+ * Expects the zones in the order [ColorBleed.zones] lists them, each one step
+ * round the picture. The weights depend only on that layout, so they are
+ * worked out once, here; [fill] then runs every frame without allocating.
+ *
+ * @param samples how many colours each strip holds, corner to corner with
+ *   both corners included. They are drawn stretched along the edge, blended
+ *   in straight lines between neighbours, so a hundred or so is smooth along
+ *   even the longest edge.
+ */
+class BleedStrips(zones: List<BleedZone>, val samples: Int = SAMPLES) {
+
+    /** Left to right along the top. */
+    val top = IntArray(samples)
+
+    /** Top to bottom down the right side. */
+    val right = IntArray(samples)
+
+    /** Left to right along the bottom. */
+    val bottom = IntArray(samples)
+
+    /** Top to bottom down the left side. */
+    val left = IntArray(samples)
+
+    // For each sample of each strip (top, right, bottom, left in turn), the
+    // [NEAREST] zones that light it and their share of its colour.
+    private val zoneOf = IntArray(4 * samples * NEAREST)
+    private val shareOf = FloatArray(4 * samples * NEAREST)
+
+    init {
+        val edges = zones.map { it.edge }
+        val counts = BleedZone.Edge.entries.map { e -> edges.count { it == e } }
+        require(counts.all { it > 0 }) { "every edge needs at least one zone" }
+        require(edges == edges.sorted()) { "zones must run the way a strip does: top, right, bottom, left" }
+        // Positions round the picture in zones, from the top-left corner:
+        // the top runs from 0 to t, the right side on to t + r, and so on
+        // back to the top-left corner at n, which is 0 again.
+        val (t, r, b, l) = counts.map { it.toFloat() }
+        for (j in 0 until samples) {
+            val f = if (samples == 1) 0.5f else j.toFloat() / (samples - 1)
+            weigh(0, j, f * t, zones.size)
+            weigh(1, j, t + f * r, zones.size)
+            // The bottom and left strips read against the way the strip runs.
+            weigh(2, j, t + r + (1f - f) * b, zones.size)
+            weigh(3, j, t + r + b + (1f - f) * l, zones.size)
+        }
+    }
+
+    /** Works out which zones light sample [j] of [strip], at [at] zones round the picture, and how much. */
+    private fun weigh(strip: Int, j: Int, at: Float, n: Int) {
+        val o = (strip * samples + j) * NEAREST
+        val first = floor(at).toInt() - NEAREST / 2
+        var total = 0f
+        for (k in 0 until NEAREST) {
+            val zone = first + k // counted on past the end of the list, or before it, to wrap round
+            val d = at - (zone + 0.5f)
+            val w = exp(-d * d / (2f * SPREAD * SPREAD))
+            zoneOf[o + k] = ((zone % n) + n) % n
+            shareOf[o + k] = w
+            total += w
+        }
+        for (k in 0 until NEAREST) shareOf[o + k] /= total
+    }
+
+    /** Fills the four strips from [colors], one ARGB colour per zone in the layout's order. */
+    fun fill(colors: IntArray) {
+        blend(top, 0, colors)
+        blend(right, 1, colors)
+        blend(bottom, 2, colors)
+        blend(left, 3, colors)
+    }
+
+    private fun blend(out: IntArray, strip: Int, colors: IntArray) {
+        for (j in 0 until samples) {
+            val o = (strip * samples + j) * NEAREST
+            var r = 0f
+            var g = 0f
+            var b = 0f
+            for (k in o until o + NEAREST) {
+                val c = colors[zoneOf[k]]
+                val share = shareOf[k]
+                r += share * (c shr 16 and 0xFF)
+                g += share * (c shr 8 and 0xFF)
+                b += share * (c and 0xFF)
+            }
+            out[j] = (0xFF shl 24) or (channel(r) shl 16) or (channel(g) shl 8) or channel(b)
+        }
+    }
+
+    companion object {
+        const val SAMPLES = 128
+
+        /**
+         * How far a zone's light spreads along the edge, in zone widths (one
+         * standard deviation of the bell curve). Narrower, and each zone
+         * holds its colour flat across its own width, which reads as a row of
+         * columns; wider, and neighbouring colours mix to mud.
+         */
+        const val SPREAD = 0.45f
+
+        /** Zones that light each sample: the nearest five, enough for [SPREAD]'s bell curve to have run out. */
+        private const val NEAREST = 5
+
+        private fun channel(v: Float): Int = v.roundToInt().coerceIn(0, 255)
+    }
+}

@@ -49,7 +49,8 @@ A film rarely fills the screen exactly, and the bars around it carry its own
 colour instead of black. Settings › Display › Ambient light picks how. **Mirror**
 fills the space with a soft, blurred copy of the picture. **Color bleed** does
 what a Govee or Ambilight strip does behind a TV: it reads the colour along each
-edge of the picture, zone by zone, and shines it outward. Both follow the film
+edge of the picture, zone by zone, and shines it outward as one soft glow, each
+zone's colour flowing into the next. Both follow the film
 as it plays; **Off** keeps a still glow from its artwork and saves the battery
 the live ones cost.
 

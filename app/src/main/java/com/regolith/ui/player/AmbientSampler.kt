@@ -158,9 +158,10 @@ private suspend fun sampleMirror(root: View, scratch: Bitmap, blend: Bitmap, emi
 
 /**
  * Color bleed: read a 64×36 of the picture, and give each zone around it
- * one colour. No blending here — each zone eases on its own where it is
- * drawn ([ColorBleedLight]), every frame, which is smoother than eight
- * steps a second and costs two dozen numbers rather than a bitmap.
+ * one colour. Nothing more here: each zone eases to its colour, and the
+ * zones blend into one another, where they are drawn ([ColorBleedLight]),
+ * every frame — smoother than eight steps a second, and two dozen numbers
+ * to hand over rather than a bitmap.
  */
 private suspend fun sampleEdges(root: View, edges: Bitmap, pixels: IntArray, emit: (AmbientSample) -> Unit) {
     val at = IntArray(2)

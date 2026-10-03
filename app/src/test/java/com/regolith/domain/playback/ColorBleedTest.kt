@@ -190,4 +190,91 @@ class ColorBleedTest {
         val c = 0xFF123456.toInt()
         assertEquals(c, ColorBleed.colorAt(ColorBleed.seed(intArrayOf(c)), 0))
     }
+
+    // ---- blending the zones into one strip of light per edge
+
+    private val scope = ColorBleed.zones(24, aspect = 2.35f) // 8 · 4 · 8 · 4
+    private fun colorsBy(edgeColor: (Edge) -> Int) = IntArray(scope.size) { edgeColor(scope[it].edge) }
+
+    @Test
+    fun `zones of one colour make an even band - no pillars`() {
+        val strips = BleedStrips(scope)
+        strips.fill(IntArray(scope.size) { green })
+        listOf(strips.top, strips.right, strips.bottom, strips.left).forEach { strip ->
+            strip.forEach { assertEquals(green, it) }
+        }
+    }
+
+    @Test
+    fun `each zone's own colour leads at its centre`() {
+        // Red and blue zones in turn all the way round. Seventeen samples
+        // corner to corner put every odd one on one of the eight top centres.
+        val red = 0xFFE02020.toInt()
+        val blue = 0xFF2040E0.toInt()
+        val strips = BleedStrips(scope, samples = 17)
+        val colors = IntArray(scope.size) { if (it % 2 == 0) red else blue }
+        strips.fill(colors)
+        scope.indices.filter { scope[it].edge == Edge.TOP }.forEachIndexed { k, zone ->
+            val own = colors[zone]
+            val other = if (own == red) blue else red
+            val c = strips.top[2 * k + 1]
+            // At least four fifths of the way from the other colour to its own.
+            assertTrue("zone $k", (r(c) - r(other)).toFloat() / (r(own) - r(other)) >= 0.8f)
+            assertTrue("zone $k", (b(c) - b(other)).toFloat() / (b(own) - b(other)) >= 0.8f)
+        }
+    }
+
+    @Test
+    fun `colours ease from one zone to the next without overshooting`() {
+        val red = 0xFFE02020.toInt()
+        val strips = BleedStrips(scope, samples = 256)
+        strips.fill(colorsBy { if (it == Edge.TOP) red else green }.also { c ->
+            // Right half of the top green, left half red: one boundary in the middle.
+            scope.indices.filter { scope[it].edge == Edge.TOP }.drop(4).forEach { c[it] = green }
+        })
+        val middle = strips.top.slice(64 until 192)
+        middle.zipWithNext().forEach { (a, b) ->
+            assertTrue("red only falls", r(b) <= r(a))
+            assertTrue("green only rises", g(b) >= g(a))
+        }
+        middle.forEach { c ->
+            assertTrue(r(c) in min(r(red), r(green))..max(r(red), r(green)))
+            assertTrue(g(c) in min(g(red), g(green))..max(g(red), g(green)))
+        }
+    }
+
+    @Test
+    fun `the glow turns each corner without a seam`() {
+        val red = 0xFFE02020.toInt()
+        val blue = 0xFF2040E0.toInt()
+        val strips = BleedStrips(scope)
+        strips.fill(colorsBy { if (it == Edge.TOP || it == Edge.BOTTOM) red else blue })
+        // Each pair of strips ends on exactly the same colour at the corner they share.
+        assertEquals("top-left", strips.top.first(), strips.left.first())
+        assertEquals("top-right", strips.top.last(), strips.right.first())
+        assertEquals("bottom-right", strips.bottom.last(), strips.right.last())
+        assertEquals("bottom-left", strips.bottom.first(), strips.left.last())
+        // …and that colour is an even mix of the two edges meeting there: as
+        // much of the red's red as of the blue's blue.
+        val purple = strips.top.first()
+        assertEquals(r(purple), b(purple))
+        assertTrue(r(purple) in b(red) + 1 until r(red))
+    }
+
+    @Test
+    fun `a lone bright zone spills into its neighbours rather than standing as a column`() {
+        // One white zone along the top, every other zone black. With 33
+        // samples corner to corner, sample j sits j/4 of a zone along.
+        val strips = BleedStrips(scope, samples = 33)
+        val white = scope.indices.filter { scope[it].edge == Edge.TOP }[3]
+        strips.fill(IntArray(scope.size) { if (it == white) 0xFFFFFFFF.toInt() else black })
+        val lit = { j: Int -> r(strips.top[j]) }
+        assertTrue("its own centre is mostly its own colour", lit(14) > 200)
+        assertTrue("halfway to the next zone it is half lit", lit(16) in 100..155)
+        assertTrue("a little reaches the next zone's centre", lit(18) in 8..40)
+        assertTrue("none is left two zones away", lit(22) < 3)
+        // …and it spreads the same way on both sides.
+        assertEquals(lit(12), lit(16))
+        assertEquals(lit(10), lit(18))
+    }
 }
