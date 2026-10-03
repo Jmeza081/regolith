@@ -57,6 +57,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.regolith.domain.security.BiometricAvailability
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.playback.AmbientLight
+import com.regolith.ui.util.note
 import com.regolith.domain.security.LockAfter
 import com.regolith.domain.display.NavHideAfter
 import com.regolith.ui.components.Segment
@@ -343,14 +345,27 @@ fun SettingsScreen(
                             )
                         }
                     }
-                    // The one switch in the app that is about battery rather
-                    // than taste, so the note says what it costs instead of
-                    // only what it does.
-                    RegolithSwitch(
-                        label = "Ambient light",
-                        note = "Colour from the picture spills onto the screen around it, and follows the film as it plays. Costs a little battery.",
-                        checked = state.ambientLight, onCheckedChange = viewModel::setAmbientLight, testTag = "settings_ambient_light_switch",
-                    )
+                    // Three lights, one choice. The note follows the choice,
+                    // because "Mirror" and "Color bleed" mean nothing until
+                    // you have seen them — and the two live ones are the only
+                    // settings here about battery rather than taste, so they
+                    // say what they cost as well as what they do.
+                    Column(
+                        Modifier.padding(vertical = Spacing.s12),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        Text("Ambient light", style = TextStyles.settingLabel, color = colors.ink)
+                        Text(
+                            state.ambientLight.note,
+                            style = TextStyles.settingMeta, color = colors.metadata,
+                            modifier = Modifier.testTag("settings_ambient_light_note"),
+                        )
+                        SegmentedTabs(
+                            segments = AmbientLight.entries.map { Segment(it.label, "settings_ambient_light_${it.name.lowercase()}") },
+                            selected = AmbientLight.entries.indexOf(state.ambientLight),
+                            onSelect = { viewModel.setAmbientLight(AmbientLight.entries[it]) },
+                        )
+                    }
                 }
             }
 

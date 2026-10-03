@@ -43,6 +43,16 @@ first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
 of the next clips are fetched in the background while you are elsewhere in the app.
 
+### Lights the room around the picture
+
+A film rarely fills the screen exactly, and the bars around it carry its own
+colour instead of black. Settings › Display › Ambient light picks how. **Mirror**
+fills the space with a soft, blurred copy of the picture. **Color bleed** does
+what a Govee or Ambilight strip does behind a TV: it reads the colour along each
+edge of the picture, zone by zone, and shines it outward. Both follow the film
+as it plays; **Off** keeps a still glow from its artwork and saves the battery
+the live ones cost.
+
 ### Scrub by thumbnail
 
 Drag the scrubber and frames appear above your finger, the way Jellyfin and Plex

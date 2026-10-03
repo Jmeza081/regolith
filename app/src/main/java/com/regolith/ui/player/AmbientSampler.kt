@@ -3,6 +3,7 @@ package com.regolith.ui.player
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Rect
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
@@ -15,9 +16,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalView
 import androidx.core.graphics.createBitmap
+import com.regolith.domain.playback.AmbientLight
+import com.regolith.domain.playback.BleedZone
+import com.regolith.domain.playback.ColorBleed
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
+import kotlin.math.abs
 
 /**
  * The ambient light's source: the picture that is actually on screen,
@@ -35,11 +40,37 @@ import kotlin.coroutines.coroutineContext
  * through the view hierarchy's own drawing instead of straight to the
  * compositor. With the light off the player keeps its SurfaceView and none
  * of this runs.
+ *
+ * Both live lights read the same surface on the same clock; they differ in
+ * what they keep. Mirror keeps the picture (a blended 32×18); Color bleed
+ * keeps one colour per zone along its edges ([ColorBleed]).
  */
+
+/** What a live light has to draw with this time round. */
+sealed interface AmbientSample {
+    /** Mirror: the picture on screen, shrunk to 32×18 and blended into the last sample. */
+    class Frame(val bitmap: Bitmap) : AmbientSample
+
+    /**
+     * Color bleed: the light each zone shines (ARGB, in [zones] order) and
+     * where the picture sits in the window, in px — the lights are hung on
+     * its edges, so the light has to know where those are.
+     */
+    class Edges(val colors: IntArray, val zones: List<BleedZone>, val picture: Rect) : AmbientSample
+}
 
 /** The grid the light is built from. Tiny on purpose: see [rememberAmbientLight]. */
 private const val SAMPLE_W = 32
 private const val SAMPLE_H = 18
+
+/**
+ * Color bleed's read of the same surface: finer than Mirror's, because each
+ * zone along the top of a scope film is only an eighth of the width and a
+ * fifth of the height, and 32×18 would give it a dozen pixels to vote with.
+ * Still a 9 KB read.
+ */
+private const val EDGE_W = 64
+private const val EDGE_H = 36
 
 /**
  * How often the surface is read. Eight times a second is under the rate at
@@ -67,50 +98,102 @@ private const val SAMPLE_MIX = 0.30f
  * The live ambient light, or null when it is off, has no surface to read,
  * or has not yet seen a frame.
  *
- * Returns a 32×18 bitmap, not a picture: it is drawn scaled up to the whole
- * screen and blurred, so anything more is detail that gets thrown away. It
- * also means each sample is a 2 KB upload rather than a full frame, which
- * is what makes eight a second affordable.
+ * For Mirror, a 32×18 bitmap, not a picture: it is drawn scaled up to the
+ * whole screen and blurred, so anything more is detail that gets thrown
+ * away. It also means each sample is a 2 KB upload rather than a full frame,
+ * which is what makes eight a second affordable.
  *
- * @param enabled the setting, and the only thing that stops the loop.
+ * For Color bleed, two dozen colours and the picture's place on screen —
+ * and only when one of them changed, so a paused film emits nothing and
+ * the light behind it stops redrawing.
+ *
+ * @param light the setting, and the only thing that stops the loop.
  * @param key changes when the film does, so the light starts clean.
  */
 @Composable
-fun rememberAmbientLight(enabled: Boolean, key: Any?): State<Bitmap?> {
+fun rememberAmbientLight(light: AmbientLight, key: Any?): State<AmbientSample?> {
     val root = LocalView.current
-    val out = remember { mutableStateOf<Bitmap?>(null) }
-    // Two buffers, reused for the life of the player: one to read into, one
-    // holding the blend. Allocating a pair per sample would be 16 bitmaps a
-    // second for the collector to clean up.
+    val out = remember { mutableStateOf<AmbientSample?>(null) }
+    // Buffers reused for the life of the player: allocating per sample would
+    // be a stream of bitmaps for the collector to clean up.
     val scratch = remember { createBitmap(SAMPLE_W, SAMPLE_H) }
     val blend = remember { createBitmap(SAMPLE_W, SAMPLE_H) }
+    val edges = remember { createBitmap(EDGE_W, EDGE_H) }
+    val pixels = remember { IntArray(EDGE_W * EDGE_H) }
 
-    LaunchedEffect(enabled, key) {
+    LaunchedEffect(light, key) {
         out.value = null
-        if (!enabled) return@LaunchedEffect
-        val canvas = Canvas(blend)
-        val paint = Paint()
-        var seeded = false
-        while (coroutineContext.isActive) {
-            val texture = root.findTextureView()
-            val got = texture != null && texture.isAvailable &&
-                runCatching { texture.getBitmap(scratch) != null }.getOrDefault(false)
-            if (got && !scratch.isBlank()) {
-                // Fully opaque for the first sample, so the light arrives at
-                // the picture's own colour rather than fading up out of black.
-                paint.alpha = if (seeded) (SAMPLE_MIX * 255).toInt() else 255
-                canvas.drawBitmap(scratch, 0f, 0f, paint)
-                seeded = true
-                // A new bitmap per emission, not the one being drawn: Compose
-                // may be reading the last one on the render thread while this
-                // one is written, and a torn frame is a visible flash.
-                out.value = blend.copy(Bitmap.Config.ARGB_8888, false)
-            }
-            delay(SAMPLE_PERIOD_MS)
+        when (light) {
+            AmbientLight.OFF -> Unit
+            AmbientLight.MIRROR -> sampleMirror(root, scratch, blend) { out.value = it }
+            AmbientLight.COLOR_BLEED -> sampleEdges(root, edges, pixels) { out.value = it }
         }
     }
     return out
 }
+
+/** Mirror: blend each new 32×18 into the last, eight times a second. */
+private suspend fun sampleMirror(root: View, scratch: Bitmap, blend: Bitmap, emit: (AmbientSample) -> Unit) {
+    val canvas = Canvas(blend)
+    val paint = Paint()
+    var seeded = false
+    while (coroutineContext.isActive) {
+        val texture = root.findTextureView()
+        val got = texture != null && texture.isAvailable &&
+            runCatching { texture.getBitmap(scratch) != null }.getOrDefault(false)
+        if (got && !scratch.isBlank()) {
+            // Fully opaque for the first sample, so the light arrives at
+            // the picture's own colour rather than fading up out of black.
+            paint.alpha = if (seeded) (SAMPLE_MIX * 255).toInt() else 255
+            canvas.drawBitmap(scratch, 0f, 0f, paint)
+            seeded = true
+            // A new bitmap per emission, not the one being drawn: Compose
+            // may be reading the last one on the render thread while this
+            // one is written, and a torn frame is a visible flash.
+            emit(AmbientSample.Frame(blend.copy(Bitmap.Config.ARGB_8888, false)))
+        }
+        delay(SAMPLE_PERIOD_MS)
+    }
+}
+
+/**
+ * Color bleed: read a 64×36 of the picture, and give each zone around it
+ * one colour. No blending here — each zone eases on its own where it is
+ * drawn ([ColorBleedLight]), every frame, which is smoother than eight
+ * steps a second and costs two dozen numbers rather than a bitmap.
+ */
+private suspend fun sampleEdges(root: View, edges: Bitmap, pixels: IntArray, emit: (AmbientSample) -> Unit) {
+    val at = IntArray(2)
+    var zones: List<BleedZone> = emptyList()
+    var zonesAspect = 0f
+    var last: AmbientSample.Edges? = null
+    while (coroutineContext.isActive) {
+        val texture = root.findTextureView()
+        val got = texture != null && texture.isAvailable && texture.width > 0 && texture.height > 0 &&
+            runCatching { texture.getBitmap(edges) != null }.getOrDefault(false)
+        if (got && !edges.isBlank()) {
+            // The zones follow the picture's shape on screen: a scope film
+            // hangs more lights along the top than a 4:3 one does.
+            val aspect = texture.width / texture.height.toFloat()
+            if (abs(aspect - zonesAspect) > ASPECT_SLACK) {
+                zones = ColorBleed.zones(aspect = aspect)
+                zonesAspect = aspect
+            }
+            edges.getPixels(pixels, 0, EDGE_W, 0, 0, EDGE_W, EDGE_H)
+            val colors = ColorBleed.colors(pixels, EDGE_W, EDGE_H, zones)
+            texture.getLocationInWindow(at)
+            val picture = Rect(at[0], at[1], at[0] + texture.width, at[1] + texture.height)
+            val before = last
+            if (before == null || before.zones !== zones || before.picture != picture || !before.colors.contentEquals(colors)) {
+                last = AmbientSample.Edges(colors, zones, picture).also(emit)
+            }
+        }
+        delay(SAMPLE_PERIOD_MS)
+    }
+}
+
+/** How far the picture's shape may drift before its zones are laid out again. */
+private const val ASPECT_SLACK = 0.01f
 
 /**
  * True while the surface has drawn nothing yet. A TextureView with no frame

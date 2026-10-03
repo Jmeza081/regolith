@@ -20,6 +20,7 @@ import com.regolith.ui.components.StripFrame
 import com.regolith.ui.titledetail.TransferView
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.PlaybackSession
 import com.regolith.player.ScrubThumbnails
@@ -103,8 +104,8 @@ class PlayerViewModel @AssistedInject constructor(
         .flatMapLatest { thumbs -> combine(scrubMs, thumbs.updates) { ms, _ -> ms?.let { thumbs.nearest(it) } } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Settings › Display › Ambient light: the live wash behind the picture. */
-    val ambientLight: StateFlow<Boolean> = prefs.ambientLight.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    /** Settings › Display › Ambient light: what lights the space around the picture. */
+    val ambientLight: StateFlow<AmbientLight> = prefs.ambientLight.stateIn(viewModelScope, SharingStarted.Eagerly, AmbientLight.DEFAULT)
 
     /**
      * The filmstrip under the hinge in flex mode: [STRIP_FRAMES] frames, one
@@ -231,8 +232,8 @@ class PlayerViewModel @AssistedInject constructor(
         _brightness.value = fraction.coerceIn(0.01f, 1f)
     }
 
-    /** Settings › Display › Ambient light, also switchable from the playback sheet. */
-    fun setAmbientLight(enabled: Boolean) = viewModelScope.launch { prefs.setAmbientLight(enabled) }.let { }
+    /** Settings › Display › Ambient light, also chosen from the playback sheet. */
+    fun setAmbientLight(light: AmbientLight) = viewModelScope.launch { prefs.setAmbientLight(light) }.let { }
 
     /**
      * The download of the file on screen, for the pill beside the settings

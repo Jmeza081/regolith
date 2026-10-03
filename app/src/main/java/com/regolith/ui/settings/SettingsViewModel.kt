@@ -13,6 +13,7 @@ import com.regolith.data.security.BiometricGate
 import com.regolith.domain.security.AuthResult
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.display.NavHideAfter
+import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.security.LockAfter
 import com.regolith.data.repository.DeviceLibrary
 import com.regolith.data.repository.PhoneLibrary
@@ -283,7 +284,7 @@ class SettingsViewModel @Inject constructor(
     /** Settings › Display › Hide after: how long the navigation waits before it goes. */
     fun setNavHideAfter(after: NavHideAfter) = viewModelScope.launch { prefs.setNavHideAfter(after) }.let { }
 
-    fun setAmbientLight(enabled: Boolean) = viewModelScope.launch { prefs.setAmbientLight(enabled) }.let { }
+    fun setAmbientLight(light: AmbientLight) = viewModelScope.launch { prefs.setAmbientLight(light) }.let { }
 
     /** Settings › Shorts: the longest a clip may be and still reach the feed. */
     fun setShortsLength(length: ShortsLength) = viewModelScope.launch { prefs.setShortsLength(length) }.let { }
