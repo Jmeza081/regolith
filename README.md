@@ -138,6 +138,15 @@ that is already taken is asked about once for the whole pick — keep both, skip
 or replace — except the same file sent twice, which is simply skipped.
 Nothing half-written ever sits on the share under a real name.
 
+**Folder poster**, the third choice under Upload, makes one picture the
+folder's own poster. It is saved as `poster.jpg` — the first name Regolith looks
+for, and one every media server reads — the right way up and as a JPEG,
+whatever the phone took it as, and every tile showing the folder changes at
+once. If the folder already has a picture of its own (a `folder.jpg`, a
+`cover.png`, an older `poster.jpg`), you are asked first: rename the old one
+out of the way — `folder.jpg` becomes `folder (1).jpg`, still there but no
+longer the poster — or replace it.
+
 ### Plays what the phone already has
 
 **Library › On this device** also lists the videos that were on the phone before

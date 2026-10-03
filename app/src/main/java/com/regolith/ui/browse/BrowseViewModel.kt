@@ -3,12 +3,15 @@ package com.regolith.ui.browse
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.artwork.ArtworkRepository
+import com.regolith.data.artwork.PosterRepository
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.transfer.UploadRepository
 import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ExistingArtwork
+import com.regolith.domain.artwork.FolderPosterOutcome
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.transfer.FilePick
@@ -56,6 +59,7 @@ class BrowseViewModel @AssistedInject constructor(
     private val fileOps: FileOpsRepository,
     private val uploads: UploadRepository,
     private val artwork: ArtworkRepository,
+    private val posters: PosterRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -583,6 +587,74 @@ class BrowseViewModel @AssistedInject constructor(
             )
         },
     )
+
+    // ── Folder poster (P19) ────────────────────────────────────────────
+    //
+    // One picture, written straight from here the way the poster editor
+    // writes its poster.jpg — a few hundred KB, not a job for the upload
+    // queue. The folder's tiles then redraw through artwork.replaced.
+
+    /** A poster picked for a folder with pictures of its own, while its question is up. Not UI state. */
+    private var pendingPoster: String? = null
+
+    /**
+     * The photo picker came back with [uri] to be this folder's poster. It
+     * goes straight up, unless the folder has a picture of its own already:
+     * then the one question first, replace it or rename it out of the way.
+     */
+    fun onPosterPicked(uri: String) {
+        val id = folderId ?: return
+        val where = destination ?: return
+        viewModelScope.launch {
+            val art = try {
+                posters.folderArtwork(id)
+            } catch (e: SmbFailure) {
+                _uiState.update { it.copy(fileOpMessage = FileOpMessage("Couldn't reach ${where.serverName}", failed = true)) }
+                return@launch
+            } ?: return@launch
+            if (art.existing.isEmpty()) {
+                uploadPoster(id, uri, ExistingArtwork.KEEP)
+            } else {
+                pendingPoster = uri
+                val question = posterQuestion(
+                    folderId = id,
+                    folderName = art.folderName,
+                    serverName = where.serverName,
+                    pickedUri = uri,
+                    existing = art.existing.map { it.name to it.sizeBytes },
+                    keptNames = art.keptNames,
+                )
+                _uiState.update { it.copy(posterQuestion = question) }
+            }
+        }
+    }
+
+    fun answerPosterQuestion(choice: ExistingArtwork) {
+        val id = folderId ?: return
+        val uri = pendingPoster ?: return
+        pendingPoster = null
+        _uiState.update { it.copy(posterQuestion = null) }
+        viewModelScope.launch { uploadPoster(id, uri, choice) }
+    }
+
+    /** Backed out of the question: nothing is sent and nothing on the share changes. */
+    fun dismissPosterQuestion() {
+        pendingPoster = null
+        _uiState.update { it.copy(posterQuestion = null) }
+    }
+
+    private suspend fun uploadPoster(id: Long, uri: String, existing: ExistingArtwork) {
+        val folderName = destination?.folderName ?: "this folder"
+        val server = destination?.serverName ?: "the server"
+        val message = when (posters.uploadFolderPoster(id, uri, existing)) {
+            FolderPosterOutcome.SAVED -> FileOpMessage("Poster set for $folderName")
+            FolderPosterOutcome.UNREADABLE -> FileOpMessage("Couldn't read that picture", failed = true)
+            FolderPosterOutcome.READ_ONLY -> FileOpMessage("$server is read-only, so the poster can't be saved there", failed = true)
+            FolderPosterOutcome.UNREACHABLE -> FileOpMessage("Couldn't reach $server", failed = true)
+            FolderPosterOutcome.FAILED -> FileOpMessage("The poster couldn't be saved. Try again", failed = true)
+        }
+        _uiState.update { it.copy(fileOpMessage = message) }
+    }
 
     fun onUploadAction(action: UploadSectionAction) {
         val id = folderId ?: return

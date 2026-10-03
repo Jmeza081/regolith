@@ -54,6 +54,10 @@ object ArtworkCandidates {
 
     fun isImage(name: String): Boolean = MediaFileTypes.extensionOf(name) in imageExtensions
 
+    /** True for a name that is a folder's own picture whatever its size: one of [sidecarStems] in one of [imageExtensions]. */
+    fun isSidecarName(name: String): Boolean =
+        isImage(name) && name.substringBeforeLast('.').lowercase() in sidecarStems
+
     /**
      * Candidates for a video, given the entries of the folder it is in.
      *

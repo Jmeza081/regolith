@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
+import com.regolith.domain.artwork.ExistingArtwork
 import com.regolith.domain.transfer.ConflictPolicy
 import com.regolith.ui.components.EyebrowAction
 import com.regolith.ui.components.ListRow
@@ -119,11 +120,67 @@ internal fun UploadSourceSheet(
     detail: String?,
     onPhotos: () -> Unit,
     onFiles: () -> Unit,
+    onPoster: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     RegolithSheet(title = "Upload to $folderName", subtitle = detail, onDismiss = onDismiss, testTag = "upload_sheet") {
         SheetChoice(LucideR.drawable.lucide_ic_images, "Photos & videos", "From your gallery", "upload_sheet_photos", onClick = onPhotos)
         SheetChoice(LucideR.drawable.lucide_ic_file, "Files", "Downloads, documents, anything else", "upload_sheet_files", onClick = onFiles)
+        // P19: one picture, which becomes the folder's own poster.
+        SheetChoice(
+            LucideR.drawable.lucide_ic_image_up, "Folder poster", "A picture for this folder's tile, saved as poster.jpg", "upload_sheet_poster",
+            onClick = onPoster,
+        )
+    }
+}
+
+/**
+ * A poster was picked for a folder that has a picture of its own already
+ * (P19). Both are shown — the one the folder has now, as the app draws it,
+ * and yours — so the choice is between two things you can see. Rename comes
+ * first because it loses nothing; Replace is the one that deletes, so its
+ * glyph is the accent, as in [UploadQuestionSheet].
+ */
+@Composable
+internal fun PosterQuestionSheet(
+    question: PosterQuestion,
+    onAnswer: (ExistingArtwork) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    RegolithSheet(title = "${question.folderName} already has a poster", subtitle = question.subtitle, onDismiss = onDismiss, testTag = "poster_question_sheet") {
+        SurfaceCard(
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.s8, bottom = Spacing.s8),
+            contentPadding = PaddingValues(horizontal = Spacing.s12),
+        ) {
+            question.existing.forEachIndexed { index, picture ->
+                ListRow(
+                    title = picture.name,
+                    meta = picture.detail,
+                    // The first is the one the folder shows, and the app has that picture to hand.
+                    leading = if (index == 0) RowLeading.Poster(question.current, picture.name) else RowLeading.Glyph(LucideR.drawable.lucide_ic_image),
+                    trailing = RowTrailing.None,
+                    compact = true,
+                    onClick = {},
+                    testTag = "poster_question_existing",
+                )
+            }
+            ListRow(
+                title = "Your picture",
+                meta = question.pickedNote,
+                leading = RowLeading.Picture(question.picked, LucideR.drawable.lucide_ic_image, poster = true),
+                trailing = RowTrailing.None,
+                compact = true,
+                onClick = {},
+                testTag = "poster_question_picked",
+            )
+        }
+        SheetChoice(LucideR.drawable.lucide_ic_copy, question.renameLabel, question.renameNote, "poster_question_rename") {
+            onAnswer(ExistingArtwork.KEEP)
+        }
+        SheetChoice(
+            LucideR.drawable.lucide_ic_replace, question.replaceLabel, question.replaceNote, "poster_question_replace", tint = colors.accent,
+        ) { onAnswer(ExistingArtwork.REPLACE) }
     }
 }
 

@@ -68,6 +68,9 @@ class FakeSmbGateway : SmbGateway {
     /** Listing a folder that does not exist fails with [SmbFailure.NotFound], as on a real server. */
     var missingFoldersAreNotFound = false
 
+    /** Every whole-file write fails with this, while renames and deletes still work: a share that is full, or refuses new files. */
+    var writeFailure: SmbFailure? = null
+
     fun addFile(share: String, relPath: String, bytes: ByteArray, modifiedAtMs: Long = DEFAULT_MTIME) {
         addShare(share)
         files.getValue(share)[relPath] = bytes
@@ -99,6 +102,7 @@ class FakeSmbGateway : SmbGateway {
 
     override suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long {
         checkWritable(host, credentials, share)
+        writeFailure?.let { throw it }
         val at = clockMs
         clockMs += 1_000
         files.getValue(share)[relPath] = bytes.copyOf()

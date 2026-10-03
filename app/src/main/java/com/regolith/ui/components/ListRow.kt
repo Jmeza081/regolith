@@ -58,12 +58,14 @@ sealed interface RowLeading {
     data class Poster(val artwork: ArtworkRequest?, val fallbackLabel: String = "") : RowLeading
 
     /**
-     * A [Thumb]-sized 16:9 picture of something that is not in the library
-     * yet — an upload's own thumbnail from the phone. [model] is anything the
-     * app's image loader knows (a `UploadThumb`); [fallbackIcon] shows until
-     * it arrives, and stays when there is none (a PDF has no picture).
+     * A picture of something that is not in the library yet — an upload's
+     * own thumbnail from the phone. [model] is anything the app's image loader
+     * knows (a `UploadThumb`); [fallbackIcon] shows until it arrives, and
+     * stays when there is none (a PDF has no picture). [Thumb]-sized and 16:9,
+     * or [Poster]-sized and 2:3 with [poster], for a picture that is about to
+     * become a folder's poster and sits beside the one it would replace.
      */
-    data class Picture(val model: Any?, val fallbackIcon: Int) : RowLeading
+    data class Picture(val model: Any?, val fallbackIcon: Int, val poster: Boolean = false) : RowLeading
 
     /**
      * Selection mode on a row you can still walk into: a 38dp box holding
@@ -171,7 +173,9 @@ fun ListRow(
             // The glyph sits UNDER the picture: a thumbnail that arrives covers
             // it, and one that never does leaves it showing, with no state kept.
             is RowLeading.Picture -> Box(
-                Modifier.width(52.scaledDp()).aspectRatio(16f / 9f).clip(ThumbShape).background(colors.badgeBg),
+                (if (leading.poster) Modifier.width(34.scaledDp()).aspectRatio(2f / 3f) else Modifier.width(52.scaledDp()).aspectRatio(16f / 9f))
+                    .clip(ThumbShape)
+                    .background(colors.badgeBg),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(painterResource(leading.fallbackIcon), contentDescription = null, tint = colors.metadata, modifier = Modifier.size(15.scaledDp()))
