@@ -26,6 +26,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 import java.io.IOException
 import java.util.Collections
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -59,7 +60,8 @@ class ShortsOpeningsTest {
     /** Every byte the share has handed over. */
     private val fromShare = AtomicLong()
 
-    private val failFor = mutableSetOf<Long>()
+    /** Files the share fails to open. Read on Media3's loading threads, so synchronized. */
+    private val failFor: MutableSet<Long> = Collections.synchronizedSet(mutableSetOf())
     private val onDevice = mutableSetOf<Long>()
     @Volatile private var unmetered = true
 
@@ -100,8 +102,29 @@ class ShortsOpeningsTest {
         val durationUs = MetadataRetriever.Builder(context, openings.mediaItem(clip, uriFor(clip.fileId)))
             .setMediaSourceFactory(sources)
             .build()
-            .use { it.retrieveDurationUs().get() }
+            // Bounded: with the share gone and the clip not on disk, Media3
+            // retries without end, and an unbounded get() would hang CI.
+            .use { it.retrieveDurationUs().get(15, TimeUnit.SECONDS) }
         return durationUs to fromShare.get() - before
+    }
+
+    /**
+     * Prepares [clip] as [prepareLikeThePlayer] does, but with the share gone,
+     * and returns its duration — which it can only find if everything the
+     * player needs to get ready is on disk.
+     *
+     * Not "how many bytes did the share hand over": once ready, the player's
+     * loader keeps reading ahead on its own thread, and how far it gets before
+     * it is stopped depends on the machine. For a clip with its index at the
+     * front, a CI runner read 43 KB past the opening that a Mac never reached.
+     */
+    private fun prepareWithoutTheShare(openings: ShortsOpenings, clip: ShortsClip): Long {
+        failFor += clip.fileId
+        try {
+            return prepareLikeThePlayer(openings, clip).first
+        } finally {
+            failFor -= clip.fileId
+        }
     }
 
     /** Reads [clip]'s samples up to [untilMs] the way the player's extractor does; returns the bytes the share handed over. */
@@ -129,9 +152,7 @@ class ShortsOpeningsTest {
         assertTrue(openings.isWarm(clip))
         assertTrue("the opening, not the whole clip: ${openings.bytesOnDisk(clip)} of ${indexAtEnd.size}", openings.bytesOnDisk(clip) < indexAtEnd.size / 2)
 
-        val (durationUs, shareBytes) = prepareLikeThePlayer(openings, clip)
-        assertEquals("duration, in ms", 20_000.0, durationUs / 1_000.0, 100.0)
-        assertEquals("bytes the share was asked for while preparing", 0L, shareBytes)
+        assertEquals("duration, in ms", 20_000.0, prepareWithoutTheShare(openings, clip) / 1_000.0, 100.0)
     }
 
     @Test
@@ -151,7 +172,7 @@ class ShortsOpeningsTest {
         openings.warmAhead(listOf(clip))
         openings.awaitHandled(1)
         assertTrue(openings.isWarm(clip))
-        assertEquals(0L, prepareLikeThePlayer(openings, clip).second)
+        assertEquals("duration, in ms", 20_000.0, prepareWithoutTheShare(openings, clip) / 1_000.0, 100.0)
         assertEquals(0L, playLikeThePlayer(openings, clip, untilMs = 4_500))
     }
 
