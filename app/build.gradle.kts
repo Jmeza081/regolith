@@ -103,6 +103,13 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// A failing test prints its assertion message and stack in the build log —
+// "expected:<0> but was:<43495>" — not just "AssertionError at File.kt:154".
+// The release workflow keeps no reports, so the log is all there is.
+tasks.withType<Test>().configureEach {
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+}
+
 dependencies {
     // Compose. The BOM pins every Compose artifact to one tested set.
     implementation(platform(libs.androidx.compose.bom))
