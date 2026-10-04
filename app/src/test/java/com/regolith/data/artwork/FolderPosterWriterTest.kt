@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -41,6 +42,24 @@ class FolderPosterWriterTest {
         assertTrue(done.renamed.isEmpty() && done.deleted.isEmpty())
         assertArrayEquals(film, bytesAt("Heat.1995.mkv"))
         assertFalse(files.keys.any { it.endsWith(".part") })
+    }
+
+    @Test
+    fun `a moving poster goes up as poster gif, and an old poster jpg that would outrank it goes`() = runTest {
+        gateway.addFile("media", "$folder/poster.jpg", oldPoster)
+        val done = writer.write(host, creds, "media", folder, picture, ExistingArtwork.REPLACE, name = "poster.gif")
+        assertArrayEquals(picture, bytesAt("poster.gif"))
+        assertEquals(listOf("poster.jpg"), done.deleted)
+        assertNull(bytesAt("poster.jpg"))
+    }
+
+    @Test
+    fun `kept beside a moving poster, an old poster jpg is renamed out of the way`() = runTest {
+        gateway.addFile("media", "$folder/poster.jpg", oldPoster)
+        writer.write(host, creds, "media", folder, picture, ExistingArtwork.KEEP, name = "poster.gif")
+        assertArrayEquals(picture, bytesAt("poster.gif"))
+        assertArrayEquals(oldPoster, bytesAt("poster (1).jpg"))
+        assertNull(bytesAt("poster.jpg"))
     }
 
     @Test

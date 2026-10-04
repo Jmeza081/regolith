@@ -147,6 +147,12 @@ once. If the folder already has a picture of its own (a `folder.jpg`, a
 out of the way — `folder.jpg` becomes `folder (1).jpg`, still there but no
 longer the poster — or replace it.
 
+A GIF can be a poster too. For a top-level folder — a collection on the
+Library's first screen — it moves there: Upload › Folder poster sends it
+unchanged as `poster.gif`, and a `poster.gif` already on the share plays the
+same way. Anywhere else, or over 8 MB, a GIF is a still of its first frame.
+Android's Remove animations setting (Settings › Accessibility) holds them still.
+
 ### Plays what the phone already has
 
 **Library › On this device** also lists the videos that were on the phone before

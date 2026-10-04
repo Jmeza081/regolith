@@ -44,6 +44,21 @@ class PosterQuestionTest {
     }
 
     @Test
+    fun `a gif that moves says it is saved as poster gif`() {
+        val q = posterQuestion(
+            folderId = 12,
+            folderName = "Films",
+            serverName = "TOWER",
+            pickedUri = "content://media/picker/0/43",
+            existing = listOf("poster.jpg" to 1L),
+            keptNames = mapOf("poster.jpg" to "poster (1).jpg"),
+            pickedName = "poster.gif",
+        )
+        assertEquals("Saved as poster.gif", q.pickedNote)
+        assertEquals("poster.jpg becomes poster (1).jpg", q.renameNote)
+    }
+
+    @Test
     fun `the folder's current picture is the one the app already shows for it`() {
         val q = question("folder.jpg" to 1L)
         assertEquals(ArtworkOwner.Folder(12), q.current.owner)

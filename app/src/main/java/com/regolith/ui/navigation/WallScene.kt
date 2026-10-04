@@ -49,10 +49,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * - **Nothing open:** the wall has the whole window beside the rail.
  * - **A title open:** its page (Title Detail) slides in from the end edge and
  *   takes half the window; the wall dissolves and reappears in the other half.
- * - **Closed again** (its ✕, back, or the ringed tile tapped a second time):
- *   the page slides back out, the wall dissolves with it, and reappears
- *   across the full width once its pictures are drawn ([WallAt]). Android's
- *   back closes it the same way as the ✕ — see [WallWithPageLayout].
+ * - **Closed again** (its close button, back, or the ringed tile tapped a
+ *   second time): the page slides back out, the wall dissolves with it, and
+ *   reappears across the full width once its pictures are drawn ([WallAt]).
+ *   Android's back closes it the same way as the close button — see
+ *   [WallWithPageLayout].
  * - **Left altogether** (the wall's own back arrow takes the page and the
  *   collection off together): the screen cross-fades to wherever that
  *   lands, as leaving a collection does without a page ([paneScene]).
@@ -174,13 +175,14 @@ private fun <T : Any> WallAloneLayout(wall: NavEntry<T>, widths: WallWidths) {
  * out over the wall as it dissolves.
  *
  * Android's back (the gesture, or the navigation bar's button) is answered
- * here, with the same plain pop as the page's ✕ — so all three close the
- * page alike. Left to NavDisplay, back is predictive: the press alone, before
- * any decision, builds the full-width scene and moves the wall into it, and
- * the close then runs as the tail of a gesture rather than from the start.
- * On the Fold that read as the old two columns hanging on while the new wall
- * drew, though the ✕ closed cleanly. The page no longer follows a thumb out;
- * it slides out once the gesture is let go, exactly as for the ✕.
+ * here, with the same plain pop as the page's close button — so all three
+ * close the page alike. Left to NavDisplay, back is predictive: the press
+ * alone, before any decision, builds the full-width scene and moves the wall
+ * into it, and the close then runs as the tail of a gesture rather than from
+ * the start. On the Fold that read as the old two columns hanging on while
+ * the new wall drew, though the close button closed cleanly. The page no
+ * longer follows a thumb out; it slides out once the gesture is let go,
+ * exactly as for the close button.
  */
 @Composable
 private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, widths: WallWidths, onBack: () -> Unit) {
@@ -303,12 +305,12 @@ internal class WallWidths {
 
 /**
  * True for a page drawn beside a wall by [WallScene] — Title Detail reads it
- * to wear a close ✕ instead of a back arrow.
+ * to wear a close-panel button instead of a back arrow.
  *
  * Asked of the layout rather than worked out from the back stack, because
  * the two disagree for exactly the moment that matters: a closed page is
  * already off the stack while it slides out, and a page that read the stack
- * would turn its ✕ into a back arrow halfway out of the door.
+ * would turn its close button into a back arrow halfway out of the door.
  */
 val LocalBesideWall = staticCompositionLocalOf { false }
 

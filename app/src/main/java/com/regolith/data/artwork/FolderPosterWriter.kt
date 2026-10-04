@@ -10,7 +10,8 @@ import com.regolith.domain.smb.SmbHost
 import javax.inject.Inject
 
 /**
- * Puts a folder poster on the share (P19): [FolderPoster.NAME] in the folder,
+ * Puts a folder poster on the share (P19): [FolderPoster.NAME] in the folder
+ * (or `poster.gif` for one that moves, [com.regolith.domain.artwork.PickedPoster]),
  * with the pictures it takes over from deleted or renamed out of its way.
  *
  * The steps are ordered so that a failure part-way loses nothing:
@@ -34,7 +35,8 @@ class FolderPosterWriter @Inject constructor(private val gateway: SmbGateway) {
 
     /**
      * Write [bytes] as the poster of the folder at [folderRelPath] (`""` for
-     * the share root), doing [existing] with the pictures already there.
+     * the share root), called [name], doing [existing] with the pictures
+     * already there.
      *
      * @throws SmbFailure when the share refuses or drops, after putting back
      *   anything it had already moved.
@@ -46,27 +48,28 @@ class FolderPosterWriter @Inject constructor(private val gateway: SmbGateway) {
         folderRelPath: String,
         bytes: ByteArray,
         existing: ExistingArtwork,
+        name: String = FolderPoster.NAME,
     ): Done {
         fun path(name: String) = if (folderRelPath.isEmpty()) name else "$folderRelPath/$name"
         val entries = gateway.list(host, credentials, share, folderRelPath)
         val old = FolderPoster.existing(entries).map { it.name }
         return when (existing) {
             ExistingArtwork.REPLACE -> {
-                gateway.writeReplacing(host, credentials, share, path(FolderPoster.NAME), bytes)
-                // An old poster.jpg is gone already: the write went over it.
-                val others = old.filterNot { it.equals(FolderPoster.NAME, ignoreCase = true) }
+                gateway.writeReplacing(host, credentials, share, path(name), bytes)
+                // A picture of the same name is gone already: the write went over it.
+                val others = old.filterNot { it.equals(name, ignoreCase = true) }
                 for (name in others) gateway.delete(host, credentials, share, path(name))
                 Done(renamed = emptyMap(), deleted = others)
             }
             ExistingArtwork.KEEP -> {
-                val names = FolderPoster.keptNames(old, entries.map { it.name })
+                val names = FolderPoster.keptNames(old, entries.map { it.name }, name)
                 val moved = mutableListOf<Pair<String, String>>()
                 try {
                     for ((from, to) in names) {
                         gateway.rename(host, credentials, share, path(from), path(to))
                         moved += from to to
                     }
-                    gateway.writeReplacing(host, credentials, share, path(FolderPoster.NAME), bytes)
+                    gateway.writeReplacing(host, credentials, share, path(name), bytes)
                 } catch (e: SmbFailure) {
                     // Newest first, so a chain of renames unwinds in order.
                     for ((from, to) in moved.asReversed()) {

@@ -14,6 +14,7 @@ import com.regolith.data.db.ShareDao
 import com.regolith.data.db.UserChapterDao
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.repository.SourceRepository
+import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkFreshness
 import com.regolith.domain.artwork.CachedPicture
@@ -431,6 +432,7 @@ class ArtworkRepository @Inject constructor(
                 ArtworkFreshness.stamp(candidates, it)
             }
             saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills, stamp)
+            if (owner is ArtworkOwner.Folder) keepAnimated(owner, folderRelPath, bytes, ArtworkKind.stills)
         }
         announceReplaced(owners)
         Log.i(TAG, "poster in folder $folderId adopted by $owners")
@@ -452,6 +454,25 @@ class ArtworkRepository @Inject constructor(
 
     /** Where a ready row's bytes are. */
     fun fileFor(row: ArtworkEntity): java.io.File = store.fileFor(row.relPath)
+
+    /** [owner]'s moving poster, when it has one ([AnimatedPoster]): for the Library tiles that play it. */
+    fun animatedFileFor(owner: ArtworkOwner): java.io.File? = store.animatedFile(owner)
+
+    /**
+     * Beside a folder's still poster, the GIF it was made from, kept as it
+     * came, when the folder's poster may move ([AnimatedPoster.allowedFor]).
+     * Otherwise, [bytes] null or not a GIF, a GIF kept before goes. Only
+     * with a poster among [kinds], so a pass that makes something else
+     * cannot drop it.
+     */
+    private fun keepAnimated(owner: ArtworkOwner.Folder, folderRelPath: String, bytes: ByteArray?, kinds: List<ArtworkKind>) {
+        if (ArtworkKind.POSTER !in kinds) return
+        if (bytes != null && AnimatedPoster.isGif(bytes) && AnimatedPoster.allowedFor(folderRelPath)) {
+            store.saveAnimated(bytes, owner)
+        } else {
+            store.deleteAnimated(owner)
+        }
+    }
 
     // --- the pipeline
 
@@ -812,12 +833,17 @@ class ArtworkRepository @Inject constructor(
                 for (candidate in candidates) {
                     val path = if (folder.relPath.isEmpty()) candidate.name else "${folder.relPath}/${candidate.name}"
                     val bytes = readImage(location, path) ?: continue
-                    if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) return
+                    if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) {
+                        keepAnimated(owner, folder.relPath, bytes, kinds)
+                        return
+                    }
                 }
             }
         } catch (e: SmbFailure) {
             unreachable = e
         }
+        // No picture of its own any more, so nothing to move either.
+        keepAnimated(owner, folder.relPath, null, kinds)
         if (mosaic(owner, kinds, stamp)) return
         unreachable?.let { throw it }
         placeholder(owner, kinds, stamp)

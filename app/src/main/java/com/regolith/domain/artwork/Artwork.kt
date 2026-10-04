@@ -110,5 +110,10 @@ sealed interface ArtworkOwner {
  * again when its model changes — like an `<img>` whose `src` is the same
  * string — so the screen bumps the number, the way a web page adds `?v=2`.
  * It is not part of the cache key: every screen gets the new picture.
+ *
+ * [animated] asks for a folder's moving poster where it has one
+ * ([AnimatedPoster]), and the still one where it has not. Only the
+ * collection tiles on the Library's first screen ask, which is what keeps
+ * the number of moving tiles to a handful.
  */
-data class ArtworkRequest(val owner: ArtworkOwner, val kind: ArtworkKind, val revision: Int = 0)
+data class ArtworkRequest(val owner: ArtworkOwner, val kind: ArtworkKind, val revision: Int = 0, val animated: Boolean = false)

@@ -80,4 +80,16 @@ class FolderPosterTest {
     fun `a picture far longer than it is wide still keeps a pixel across`() {
         assertEquals(1 to 2000, FolderPoster.targetSize(1, 9000))
     }
+
+    @Test
+    fun `a gif already there counts as the folder's artwork, after the formats ranked above it`() {
+        val entries = listOf(file("poster.gif"), file("folder.png"), file("poster.jpg"))
+        assertEquals(listOf("poster.jpg", "poster.gif", "folder.png"), FolderPoster.existing(entries).map { it.name })
+    }
+
+    @Test
+    fun `a new poster gif moves an old poster jpg out of its way, since the jpeg would outrank it`() {
+        val kept = FolderPoster.keptNames(listOf("poster.jpg"), taken = listOf("poster.jpg", "poster (1).jpg"), name = AnimatedPoster.NAME)
+        assertEquals(mapOf("poster.jpg" to "poster (2).jpg"), kept)
+    }
 }

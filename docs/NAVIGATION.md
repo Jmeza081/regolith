@@ -101,12 +101,13 @@ On a wide window:
 - **A title open** (`[…, Library, TitleDetail]`): its page slides in from the
   end edge and takes half the window; the wall reflows into the other half
   and rings the open tile. The split is even and does not move.
-- **Closing it** — the ✕ on the page (`detail_close_button`), system back, or
-  the ringed tile tapped again — pops `TitleDetail`: the page slides back out
-  while the wall dissolves, and the wall returns at full width. Back closes
-  only the page, never the wall. The wall's scene answers system back itself
-  with the ✕'s own pop, so it is not predictive here: a swipe closes the page
-  once it is let go, and all three ways look the same.
+- **Closing it** — the close-panel button on the page (`detail_close_button`,
+  a side panel with a chevron), system back, or the ringed tile tapped again
+  — pops `TitleDetail`: the page slides back out while the wall dissolves,
+  and the wall returns at full width. Back closes only the page, never the
+  wall. The wall's scene answers system back itself with the close button's
+  own pop, so it is not predictive here: a swipe closes the page once it is
+  let go, and all three ways look the same.
 
 **The back stack is identical to a phone's either way**, and the rail keeps
 the tab that owns the wall. Picking another title replaces the open page

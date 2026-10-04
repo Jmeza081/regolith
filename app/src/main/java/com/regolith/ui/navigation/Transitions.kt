@@ -78,7 +78,7 @@ val tabScreen: Map<String, Any> =
  * looking at, and it dissolves and reappears at its new width instead (below). So the scene
  * as a whole does nothing ([paneScene]) and the page carries its own motion
  * through `animateEnterExit`, which NavDisplay's transition drives. Back is
- * not predictive here: the scene answers it with the ✕'s own pop
+ * not predictive here: the scene answers it with the close button's own pop
  * (WallScene.WallWithPageLayout), so every way of closing the page looks
  * the same.
  */
@@ -87,7 +87,7 @@ val tabScreen: Map<String, Any> =
 val paneEnter: EnterTransition
     get() = slideInHorizontally(tween(PUSH_MS, easing = EaseOutCubic)) { width -> width }
 
-/** The page leaving: ✕, back, or its tile tapped again. */
+/** The page leaving: its close button, back, or its tile tapped again. */
 val paneExit: ExitTransition
     get() = slideOutHorizontally(tween(POP_MS, easing = EaseOutCubic)) { width -> width }
 
