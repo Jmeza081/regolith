@@ -175,15 +175,16 @@ private fun TitleDetailContent(
                 // In a pane the glyph closes the pane (and sits at the end, where
                 // a close control belongs); pushed, it is the back circle the
                 // design draws at the start. The pane's glyph is a side panel
-                // with a chevron (Lucide's panel-right-open, the mark Spotify
-                // closes its side panel with) rather than a ✕: it says the page
-                // folds away and the wall beside it stays.
+                // with a chevron (Lucide's panel-right-close, after the mark
+                // Spotify closes its side panel with) rather than a ✕: it says
+                // the page folds away and the wall beside it stays. The chevron
+                // points right, the way the page slides out.
                 Box(
                     Modifier.statusBarsPadding().padding(start = Spacing.s12, top = Spacing.s12, end = Spacing.s12)
                         .align(if (inPane) Alignment.TopEnd else Alignment.TopStart),
                 ) {
                     IconCircleButton(
-                        icon = painterResource(if (inPane) LucideR.drawable.lucide_ic_panel_right_open else R.drawable.rg_ic_back),
+                        icon = painterResource(if (inPane) LucideR.drawable.lucide_ic_panel_right_close else R.drawable.rg_ic_back),
                         contentDescription = if (inPane) "Close panel" else "Back",
                         onClick = onBack,
                         onMedia = true, size = 44.dp, iconSize = 20.dp,
