@@ -791,11 +791,12 @@ share tree needs, so the tree F3 built had never once appeared on the Fold.
   If the reflow pushed it off the bottom, the wall brings it back into view.
   In Browse the tree steps aside, exactly as F6 intended.
 - **Tap another tile:** the page swaps to it in place, with no slide.
-- **Close it:** the ✕ on the page, system back, or the ringed tile tapped a
-  second time, all three alike. The page slides away while the wall
-  dissolves, and the wall comes back across the full width once its pictures
-  are drawn (`WallAt`, 2026-10-03). Back is not predictive here: a swipe
-  closes the page when it is let go, the same close as the ✕.
+- **Close it:** the close-panel button on the page, system back, or the
+  ringed tile tapped a second time, all three alike. The page slides away
+  while the wall dissolves, and the wall comes back across the full width
+  once its pictures are drawn (`WallAt`, 2026-10-03). Back is not predictive
+  here: a swipe closes the page when it is let go, the same close as the
+  button.
 - **Walk elsewhere from the wall** (a collection, a folder): the page closes
   first. A collection's back arrow leaves the wall, page and all, and
   cross-fades as leaving a collection always does.
@@ -837,8 +838,8 @@ went straight to Home. The new scene's back pops only the page.
 
 - Title Detail learns that it is beside a wall from `LocalBesideWall`, which
   the scene provides, not from the back stack. A closed page is already off
-  the stack while it slides out. A page that read the stack turned its ✕ into
-  a back arrow on the way out.
+  the stack while it slides out. A page that read the stack turned its close
+  button into a back arrow on the way out.
 - The page's half has an opaque ground. During a pop the full-width wall is
   already drawn underneath it.
 
