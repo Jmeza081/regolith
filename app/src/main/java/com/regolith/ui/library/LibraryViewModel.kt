@@ -289,7 +289,9 @@ class LibraryViewModel @AssistedInject constructor(
                         name = folder.name,
                         fileCount = beneath.size,
                         resolutionLabel = VideoInfo.resolutionLabelFor(beneath.mapNotNull { it.width }.maxOrNull(), beneath.mapNotNull { it.height }.maxOrNull()),
-                        artwork = ArtworkRequest(ArtworkOwner.Folder(folder.id), ArtworkKind.POSTER),
+                        // On the first screen these are the top-level folders, the
+                        // only posters that move (AnimatedPoster): a GIF plays here.
+                        artwork = ArtworkRequest(ArtworkOwner.Folder(folder.id), ArtworkKind.POSTER, animated = folderId == null),
                         addedAtMs = beneath.maxOfOrNull { it.addedAtMs } ?: 0,
                         sizeBytes = beneath.sumOf { it.sizeBytes },
                         durationMs = beneath.mapNotNull { it.durationMs }.takeIf { it.isNotEmpty() }?.sum(),

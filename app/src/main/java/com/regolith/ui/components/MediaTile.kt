@@ -1,5 +1,6 @@
 package com.regolith.ui.components
 
+import android.animation.ValueAnimator
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +71,10 @@ import com.regolith.ui.theme.scaledDp
  * look while it is pulled off the share, and the unmatched look (a dark
  * gradient with the filename set inside) when nothing was found. Used by
  * [MediaTile], [ResumeCard], list-row thumbnails and Title Detail.
+ *
+ * An [ArtworkRequest.animated] request plays a folder's moving poster
+ * (a GIF), unless the phone's "Remove animations" is on: then it is the
+ * still one, like everywhere else.
  */
 @Composable
 fun ArtworkImage(
@@ -87,8 +92,11 @@ fun ArtworkImage(
     val pending = LocalPendingArtwork.current
     val mark = remember { PendingMark() }
     if (pending != null) DisposableEffect(pending) { onDispose { mark.done(pending) } }
+    // Settings › Accessibility › Remove animations turns off every animator
+    // in the app; a moving poster is one more thing it should hold still.
+    val model = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
     SubcomposeAsyncImage(
-        model = artwork,
+        model = model,
         contentDescription = null,
         modifier = modifier,
         loading = { ReadingArt() },

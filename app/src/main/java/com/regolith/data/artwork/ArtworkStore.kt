@@ -3,6 +3,7 @@ package com.regolith.data.artwork
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -22,7 +23,9 @@ import javax.inject.Singleton
  *
  * Every image is stored at exactly its kind's size, centre-cropped, so a
  * tile never scales at draw time and a 40 MB poster.jpg on the share costs
- * 40 KB on the phone.
+ * 40 KB on the phone. The one exception is a top-level folder's GIF, kept
+ * as it came beside the still poster made from it so that it can move
+ * ([saveAnimated]).
  */
 @Singleton
 class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
@@ -42,6 +45,38 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
         }
 
     fun fileFor(relPath: String): File = File(root, relPath)
+
+    /** `folder/12/poster.gif`: where [owner]'s moving poster is kept, beside its still `poster.jpg`. */
+    fun animatedRelPathFor(owner: ArtworkOwner.Folder): String = "${owner.typeName}/${owner.id}/${AnimatedPoster.NAME}"
+
+    /** [owner]'s moving poster, or null when it has none: only a top-level folder whose picture is a GIF does. */
+    fun animatedFile(owner: ArtworkOwner): File? =
+        (owner as? ArtworkOwner.Folder)?.let { fileFor(animatedRelPathFor(it)) }?.takeIf { it.exists() }
+
+    /**
+     * Keep [bytes], a GIF, as [owner]'s moving poster: unchanged, since
+     * cropping or scaling it would mean decoding and encoding every frame.
+     * The still poster beside it is made from its first frame as usual, for
+     * everywhere the poster does not move. At most 8 MB, the most a folder
+     * picture may be ([com.regolith.domain.artwork.ArtworkCandidates.MAX_IMAGE_BYTES]).
+     */
+    fun saveAnimated(bytes: ByteArray, owner: ArtworkOwner.Folder): Boolean {
+        val file = fileFor(animatedRelPathFor(owner))
+        file.parentFile?.mkdirs()
+        val tmp = File(file.path + ".tmp")
+        return try {
+            tmp.writeBytes(bytes)
+            tmp.renameTo(file)
+        } catch (e: Exception) {
+            tmp.delete()
+            false
+        }
+    }
+
+    /** Forget [owner]'s moving poster: its picture is no longer a GIF, or no longer one that may move. */
+    fun deleteAnimated(owner: ArtworkOwner.Folder) {
+        fileFor(animatedRelPathFor(owner)).delete()
+    }
 
     /** Decode [bytes] (a sidecar or embedded cover) at roughly the target size, then crop and save. */
     fun saveEncoded(bytes: ByteArray, owner: ArtworkOwner, kind: ArtworkKind): Boolean {

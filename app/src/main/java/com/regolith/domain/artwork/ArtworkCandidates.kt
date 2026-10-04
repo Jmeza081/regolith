@@ -11,8 +11,14 @@ import com.regolith.domain.smb.SmbEntry
  * need the video itself and are not decided here.
  */
 object ArtworkCandidates {
-    /** Formats the design accepts, matched case-insensitively. */
-    val imageExtensions = listOf("jpg", "jpeg", "png", "webp")
+    /**
+     * Formats the design accepts, matched case-insensitively, plus GIF.
+     *
+     * A GIF is a folder picture like any other, shown as its first frame.
+     * Only a top-level folder's poster moves ([AnimatedPoster]). It comes
+     * last, so a `poster.jpg` beside a `poster.gif` still wins, as before.
+     */
+    val imageExtensions = listOf("jpg", "jpeg", "png", "webp", "gif")
 
     /** Sidecar stems, most to least specific. */
     val sidecarStems = listOf("poster", "folder", "cover", "thumb")

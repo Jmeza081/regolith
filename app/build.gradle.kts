@@ -174,6 +174,8 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.lucide.icons)
     implementation(libs.coil.compose)
+    // Plays a top-level folder's GIF poster (AnimatedPoster); Coil alone shows a GIF's first frame.
+    implementation(libs.coil.gif)
 
     // Tests
     testImplementation(libs.junit)

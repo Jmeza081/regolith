@@ -607,7 +607,7 @@ class BrowseViewModel @AssistedInject constructor(
         val where = destination ?: return
         viewModelScope.launch {
             val art = try {
-                posters.folderArtwork(id)
+                posters.folderArtwork(id, uri)
             } catch (e: SmbFailure) {
                 _uiState.update { it.copy(fileOpMessage = FileOpMessage("Couldn't reach ${where.serverName}", failed = true)) }
                 return@launch
@@ -623,6 +623,7 @@ class BrowseViewModel @AssistedInject constructor(
                     pickedUri = uri,
                     existing = art.existing.map { it.name to it.sizeBytes },
                     keptNames = art.keptNames,
+                    pickedName = art.picked.fileName,
                 )
                 _uiState.update { it.copy(posterQuestion = question) }
             }
@@ -648,6 +649,8 @@ class BrowseViewModel @AssistedInject constructor(
         val server = destination?.serverName ?: "the server"
         val message = when (posters.uploadFolderPoster(id, uri, existing)) {
             FolderPosterOutcome.SAVED -> FileOpMessage("Poster set for $folderName")
+            FolderPosterOutcome.SAVED_STILL_TOO_BIG -> FileOpMessage("Poster set for $folderName as a still: that GIF is over 8 MB")
+            FolderPosterOutcome.SAVED_STILL_NESTED -> FileOpMessage("Poster set for $folderName as a still: only top-level folder posters move")
             FolderPosterOutcome.UNREADABLE -> FileOpMessage("Couldn't read that picture", failed = true)
             FolderPosterOutcome.READ_ONLY -> FileOpMessage("$server is read-only, so the poster can't be saved there", failed = true)
             FolderPosterOutcome.UNREACHABLE -> FileOpMessage("Couldn't reach $server", failed = true)

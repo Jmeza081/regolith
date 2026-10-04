@@ -16,8 +16,10 @@ object FolderPoster {
     /**
      * What the uploaded picture is called: `poster.jpg`, the first name
      * Regolith looks for in a folder ([ArtworkCandidates.sidecarStems]) and
-     * one every media server reads. Always a JPEG whatever was picked: a
-     * phone photo is often HEIF, which none of them reads as a poster.
+     * one every media server reads. A JPEG whatever was picked, because a
+     * phone photo is often HEIF and none of them reads that as a poster.
+     * The one exception is a GIF that can move ([AnimatedPoster]), which
+     * goes up unchanged as `poster.gif` ([PickedPoster]).
      */
     val NAME: String = ArtworkKind.POSTER.fileName
 
@@ -50,11 +52,11 @@ object FolderPoster {
      * New names for the [existing] pictures when they are kept: the app's own
      * "keep both" numbering ([UploadNames.keepBoth]), so `folder.jpg` becomes
      * `folder (1).jpg`, which no player takes for artwork. Never a name in
-     * [taken] (the folder's listing), the new poster's own, or one already
-     * given to another picture here.
+     * [taken] (the folder's listing), the new poster's own ([name]), or one
+     * already given to another picture here.
      */
-    fun keptNames(existing: List<String>, taken: Collection<String>): Map<String, String> {
-        val used = taken.toMutableSet().apply { add(NAME) }
+    fun keptNames(existing: List<String>, taken: Collection<String>, name: String = NAME): Map<String, String> {
+        val used = taken.toMutableSet().apply { add(name) }
         return existing.associateWith { name -> UploadNames.keepBoth(name, used + name).also { used += it } }
     }
 
@@ -79,6 +81,12 @@ enum class ExistingArtwork {
 /** How uploading a folder poster went. */
 enum class FolderPosterOutcome {
     SAVED,
+
+    /** Saved, but a GIF went up as a still `poster.jpg`: it is over 8 MB ([PickedPoster.STILL_TOO_BIG]). */
+    SAVED_STILL_TOO_BIG,
+
+    /** Saved, but a GIF went up as a still `poster.jpg`: posters below the top level do not move ([PickedPoster.STILL_NESTED]). */
+    SAVED_STILL_NESTED,
 
     /** The picture could not be read or decoded on the phone; nothing was sent. */
     UNREADABLE,

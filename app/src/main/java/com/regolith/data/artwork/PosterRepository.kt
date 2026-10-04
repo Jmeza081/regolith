@@ -3,6 +3,7 @@ package com.regolith.data.artwork
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.net.toUri
 import com.regolith.data.db.FolderDao
@@ -10,11 +11,14 @@ import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.smb.writeReplacing
+import com.regolith.domain.artwork.AnimatedPoster
+import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.CropRect
 import com.regolith.domain.artwork.ExistingArtwork
 import com.regolith.domain.artwork.FolderPoster
 import com.regolith.domain.artwork.FolderPosterOutcome
+import com.regolith.domain.artwork.PickedPoster
 import com.regolith.domain.artwork.PosterFraming
 import com.regolith.domain.artwork.PosterSaveOutcome
 import com.regolith.domain.artwork.PosterTarget
@@ -117,21 +121,29 @@ class PosterRepository @Inject constructor(
      * ([FolderPoster.existing]) and what keeping them would rename them to
      * ([FolderPoster.keptNames], worked out against the whole listing).
      */
-    data class FolderArtwork(val folderName: String, val existing: List<SmbEntry>, val keptNames: Map<String, String>)
+    data class FolderArtwork(
+        val folderName: String,
+        val existing: List<SmbEntry>,
+        val keptNames: Map<String, String>,
+        /** What the picked picture goes up as: `poster.gif` when it is a GIF that can move, otherwise `poster.jpg`. */
+        val picked: PickedPoster,
+    )
 
     /**
-     * Where [folderId] stands for a poster: one listing of it, so the
-     * question about the pictures already there can be asked before anything
-     * is sent. Null when there is no share behind the folder to write to
-     * (the phone's own videos, the demo library).
+     * Where [folderId] stands for the picture at [uri] as its poster: one
+     * listing of it, so the question about the pictures already there can be
+     * asked before anything is sent. Null when there is no share behind the
+     * folder to write to (the phone's own videos, the demo library).
      *
      * @throws SmbFailure when the folder cannot be listed.
      */
-    suspend fun folderArtwork(folderId: Long): FolderArtwork? {
+    suspend fun folderArtwork(folderId: Long, uri: String): FolderArtwork? {
         val loc = locateFolder(folderId) ?: return null
+        val picked = withContext(Dispatchers.IO) { pickedPoster(uri, loc.folderRelPath) }
         val entries = gateway.list(loc.host, loc.creds, loc.share, loc.folderRelPath)
         val existing = FolderPoster.existing(entries)
-        return FolderArtwork(loc.folderName, existing, FolderPoster.keptNames(existing.map { it.name }, entries.map { it.name }))
+        val kept = FolderPoster.keptNames(existing.map { it.name }, entries.map { it.name }, picked.fileName)
+        return FolderArtwork(loc.folderName, existing, kept, picked)
     }
 
     /**
@@ -144,15 +156,24 @@ class PosterRepository @Inject constructor(
      * decoder turns a photo the right way up (a phone stores it sideways
      * with a note to rotate it, which most players ignore), reads the HEIF
      * that phones shoot, and the result is sized to [FolderPoster.MAX_LONG_SIDE].
+     *
+     * A GIF for a top-level folder is the exception. It goes up unchanged as
+     * `poster.gif` and moves on the Library ([AnimatedPoster]), since saving
+     * it again would keep only its first frame.
      */
     suspend fun uploadFolderPoster(folderId: Long, uri: String, existing: ExistingArtwork): FolderPosterOutcome {
         val loc = locateFolder(folderId) ?: return FolderPosterOutcome.FAILED
-        val bytes = withContext(Dispatchers.IO) { readPoster(uri) } ?: return FolderPosterOutcome.UNREADABLE
+        val (picked, bytes) = withContext(Dispatchers.IO) { readPicked(uri, pickedPoster(uri, loc.folderRelPath)) }
+            ?: return FolderPosterOutcome.UNREADABLE
         return try {
-            val done = folderPosters.write(loc.host, loc.creds, loc.share, loc.folderRelPath, bytes, existing)
+            val done = folderPosters.write(loc.host, loc.creds, loc.share, loc.folderRelPath, bytes, existing, picked.fileName)
             artwork.adoptFolderPoster(folderId, bytes)
-            Log.i(TAG, "poster uploaded to ${loc.folderRelPath.ifEmpty { "/" }}: ${bytes.size / 1024} KB, renamed ${done.renamed}, deleted ${done.deleted}")
-            FolderPosterOutcome.SAVED
+            Log.i(TAG, "poster uploaded to ${loc.folderRelPath.ifEmpty { "/" }} as ${picked.fileName}: ${bytes.size / 1024} KB, renamed ${done.renamed}, deleted ${done.deleted}")
+            when (picked) {
+                PickedPoster.STILL_TOO_BIG -> FolderPosterOutcome.SAVED_STILL_TOO_BIG
+                PickedPoster.STILL_NESTED -> FolderPosterOutcome.SAVED_STILL_NESTED
+                PickedPoster.STILL, PickedPoster.ANIMATED -> FolderPosterOutcome.SAVED
+            }
         } catch (e: SmbFailure.Forbidden) {
             FolderPosterOutcome.READ_ONLY
         } catch (e: SmbFailure.AuthFailed) {
@@ -163,6 +184,47 @@ class PosterRepository @Inject constructor(
             Log.w(TAG, "poster for ${loc.folderRelPath} not written: $e")
             FolderPosterOutcome.FAILED
         }
+    }
+
+    /** What the picture at [uri] goes up as, for the folder at [folderRelPath] ([AnimatedPoster.forPicked]). Blocking. */
+    private fun pickedPoster(uri: String, folderRelPath: String): PickedPoster {
+        val resolver = context.contentResolver
+        val u = uri.toUri()
+        val type = runCatching { resolver.getType(u) }.getOrNull()
+        val size = runCatching {
+            resolver.query(u, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+                if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+            }
+        }.getOrNull()
+        return AnimatedPoster.forPicked(type, size, folderRelPath)
+    }
+
+    /**
+     * The bytes to send for the picture at [uri], with what they turned out
+     * to be: a GIF as it is when [picked] says it can move, otherwise poster
+     * JPEG bytes. A GIF that proves bigger than the phone said, or not a GIF
+     * at all, goes up as a still after all. Null when it cannot be read. Blocking.
+     */
+    private fun readPicked(uri: String, picked: PickedPoster): Pair<PickedPoster, ByteArray>? {
+        if (picked != PickedPoster.ANIMATED) return readPoster(uri)?.let { picked to it }
+        val limit = ArtworkCandidates.MAX_IMAGE_BYTES
+        val raw = readUpTo(uri, limit + 1) ?: return null
+        return when {
+            raw.size > limit -> readPoster(uri)?.let { PickedPoster.STILL_TOO_BIG to it }
+            !AnimatedPoster.isGif(raw) -> readPoster(uri)?.let { PickedPoster.STILL to it }
+            else -> PickedPoster.ANIMATED to raw
+        }
+    }
+
+    /** At most [max] bytes of the picture at [uri], as they are, or null when it cannot be read. Blocking. */
+    private fun readUpTo(uri: String, max: Long): ByteArray? = try {
+        context.contentResolver.openInputStream(uri.toUri())?.use { it.readNBytes(max.toInt()) }
+    } catch (e: IOException) {
+        Log.w(TAG, "picked picture not readable: $e")
+        null
+    } catch (e: SecurityException) {
+        Log.w(TAG, "picked picture not readable: $e")
+        null
     }
 
     /** The picked picture as poster JPEG bytes, or null when it cannot be read. Blocking. */

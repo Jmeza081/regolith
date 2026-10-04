@@ -2,6 +2,7 @@ package com.regolith.di
 
 import android.content.Context
 import coil3.ImageLoader
+import coil3.gif.AnimatedImageDecoder
 import coil3.request.CachePolicy
 import coil3.request.crossfade
 import com.regolith.data.artwork.ArtworkFetcher
@@ -52,6 +53,11 @@ abstract class ArtworkModule {
          * cache, and our fetcher registered for [com.regolith.domain.artwork.ArtworkRequest].
          * Uploads add one more model, [com.regolith.domain.transfer.UploadThumb]:
          * the phone's own thumbnail of a file on its way to a share.
+         *
+         * The animated decoder plays a GIF instead of drawing its first frame.
+         * Only a top-level folder's moving poster reaches Coil as a GIF
+         * ([com.regolith.domain.artwork.AnimatedPoster]): every other picture
+         * here is a JPEG, or a bitmap the phone made, so nothing else moves.
          */
         @Provides
         @Singleton
@@ -67,6 +73,7 @@ abstract class ArtworkModule {
                 add(fetcherFactory)
                 add(uploadThumbKeyer)
                 add(uploadThumbs)
+                add(AnimatedImageDecoder.Factory())
             }
             .diskCache(null)
             .diskCachePolicy(CachePolicy.DISABLED)

@@ -39,6 +39,14 @@ class ArtworkCandidatesTest {
         )
     }
 
+    @Test fun `a gif is a folder picture too, ranked after the other formats of its stem`() {
+        val films = listOf(dir("Arrival (2016)"), file("poster.gif"), file("folder.jpg"))
+        assertEquals(listOf("poster.gif" to ArtworkSource.SIDECAR, "folder.jpg" to ArtworkSource.SIDECAR), names(ArtworkCandidates.forFolder(films)))
+        val both = listOf(file("POSTER.GIF"), file("poster.jpg"))
+        assertEquals(listOf("poster.jpg", "POSTER.GIF"), ArtworkCandidates.forFolder(both).map { it.name })
+        assertTrue(ArtworkCandidates.isSidecarName("poster.gif"))
+    }
+
     @Test fun `images over 8 MB are skipped`() {
         val folder = listOf(file("Film.mkv"), file("poster.jpg", size = ArtworkCandidates.MAX_IMAGE_BYTES + 1), file("cover.jpg"))
         assertEquals(listOf("cover.jpg" to ArtworkSource.SIDECAR), names(ArtworkCandidates.forFile("Film.mkv", folder)))

@@ -8,6 +8,8 @@ import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
+import com.regolith.domain.artwork.AnimatedPoster
+import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
@@ -30,10 +32,13 @@ class ArtworkFetcher(
     override suspend fun fetch(): FetchResult {
         val row = repository.resolve(request) ?: throw ArtworkUnavailable(request, transient = true)
         if (row.source == ArtworkSource.PLACEHOLDER.name) throw ArtworkUnavailable(request, transient = false)
-        val file = repository.fileFor(row)
+        // A moving poster where one was asked for and the folder has one
+        // ([AnimatedPoster]): its GIF, which the animated decoder plays.
+        val animated = if (request.animated && request.kind == ArtworkKind.POSTER) repository.animatedFileFor(request.owner) else null
+        val file = animated ?: repository.fileFor(row)
         return SourceFetchResult(
             source = ImageSource(file.toOkioPath(), FileSystem.SYSTEM),
-            mimeType = "image/jpeg",
+            mimeType = if (animated != null) AnimatedPoster.MIME_TYPE else "image/jpeg",
             dataSource = DataSource.DISK,
         )
     }
@@ -46,7 +51,7 @@ class ArtworkFetcher(
 /** Memory-cache key. Without a keyer Coil would not cache a custom model at all. */
 class ArtworkKeyer @Inject constructor() : Keyer<ArtworkRequest> {
     override fun key(data: ArtworkRequest, options: Options): String =
-        "${ownerPrefix(data.owner)}${data.owner.variant}:${data.kind.name.lowercase()}"
+        "${ownerPrefix(data.owner)}${data.owner.variant}:${data.kind.name.lowercase()}${if (data.animated) ":animated" else ""}"
 
     companion object {
         /**

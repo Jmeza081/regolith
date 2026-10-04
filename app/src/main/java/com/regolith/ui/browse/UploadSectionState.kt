@@ -120,7 +120,9 @@ data class UploadQuestion(
  * way, where they stop counting as its artwork. Asked before anything is sent.
  *
  * [current] is the folder's picture as the app shows it now, [picked] the
- * new one, so the choice is between two things you can see.
+ * new one, so the choice is between two things you can see. [pickedName] is
+ * what the new one is called on the share: `poster.gif` for a GIF that
+ * moves, otherwise `poster.jpg`.
  */
 data class PosterQuestion(
     val folderName: String,
@@ -128,6 +130,7 @@ data class PosterQuestion(
     val current: ArtworkRequest,
     val picked: UploadThumb,
     val existing: List<ExistingPicture>,
+    val pickedName: String = FolderPoster.NAME,
 ) {
     private val one: Boolean get() = existing.size == 1
 
@@ -147,7 +150,7 @@ data class PosterQuestion(
         get() = if (one) "${existing.single().name} is deleted from $serverName" else "They're deleted from $serverName"
 
     /** What the new picture is called on the share. */
-    val pickedNote: String get() = "Saved as ${FolderPoster.NAME}"
+    val pickedNote: String get() = "Saved as $pickedName"
 }
 
 /** A picture already acting as the folder's artwork: its name, its size, and what renaming it would call it. */
@@ -161,12 +164,14 @@ fun posterQuestion(
     pickedUri: String,
     existing: List<Pair<String, Long>>,
     keptNames: Map<String, String>,
+    pickedName: String = FolderPoster.NAME,
 ): PosterQuestion = PosterQuestion(
     folderName = folderName,
     serverName = serverName,
     current = ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.POSTER),
     picked = UploadThumb(pickedUri),
     existing = existing.map { (name, size) -> ExistingPicture(name, formatBytes(size), keptNames[name] ?: name) },
+    pickedName = pickedName,
 )
 
 /**
