@@ -106,6 +106,11 @@ the Move button stays at the foot of the sheet, and a folder with more than ten
 subfolders gets an A–Z rail down the edge: slide a thumb down it to jump from
 letter to letter.
 
+Because a folder moves and deletes whole, Move and Delete refuse when you have
+picked a folder and then taken something back out of it. Moving or deleting the
+folder would take that too, so the app says so and asks you to open the folder
+and pick what to move or delete. Download leaves the un-picked part out by itself.
+
 ### Takes a batch offline
 
 The same toolbar queues downloads. Picking a folder takes everything inside it,

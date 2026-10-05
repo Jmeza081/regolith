@@ -285,6 +285,7 @@ class BrowseViewModel @AssistedInject constructor(
     fun startDelete() {
         val targets = picked() ?: return
         viewModelScope.launch {
+            if (refusedForLeftOut("delete")) return@launch
             val names = mutableListOf<String>()
             var videos = 0
             var bytes = 0L
@@ -322,6 +323,7 @@ class BrowseViewModel @AssistedInject constructor(
         val target = _uiState.value.confirmingDelete ?: return
         _uiState.update { it.copy(confirmingDelete = null) }
         viewModelScope.launch {
+            if (refusedForLeftOut("delete")) return@launch
             val result = fileOps.delete(target.targets)
             selection.cancel()
             report(result, verb = "delete", past = "Deleted")
@@ -333,8 +335,24 @@ class BrowseViewModel @AssistedInject constructor(
         val targets = picked() ?: return
         val here = folderId ?: return
         viewModelScope.launch {
+            if (refusedForLeftOut("move")) return@launch
             _uiState.update { it.copy(moveSheet = sheetFor(here, chosenId = here, targets = targets)) }
         }
+    }
+
+    /**
+     * True, with the message already up, when [verb] must not start: a
+     * picked folder has something taken back out of it, and moving or
+     * deleting the folder would take that too. The owner's call was to
+     * refuse and say why rather than act on more than was picked; Download
+     * honours the exclusions file by file, so it never asks.
+     */
+    private suspend fun refusedForLeftOut(verb: String): Boolean {
+        val folders = selection.foldersWithExclusions()
+        if (folders.isEmpty()) return false
+        val names = folders.mapNotNull { library.folder(it.folderId)?.name }
+        _uiState.update { it.copy(fileOpMessage = FileOpMessage(FileOpMessages.forLeftOut(verb, names), failed = true)) }
+        return true
     }
 
     /** Walk into a folder. Walking in also chooses it — that is what walking in means here. */
@@ -410,6 +428,7 @@ class BrowseViewModel @AssistedInject constructor(
         val from = folderId ?: return
         _uiState.update { it.copy(moveSheet = null) }
         viewModelScope.launch {
+            if (refusedForLeftOut("move")) return@launch
             val result = fileOps.move(targets, sheet.chosenFolderId)
             selection.cancel()
             report(

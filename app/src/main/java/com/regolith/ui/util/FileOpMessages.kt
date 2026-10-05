@@ -31,6 +31,22 @@ object FileOpMessages {
     }
 
     /**
+     * Why a move or delete will not start: something was taken back out of
+     * a picked folder, and moving or deleting the folder would take it too.
+     * [verb] is the infinitive ("move", "delete"); [folderNames] are the
+     * folders concerned, named when there is just one.
+     */
+    fun forLeftOut(verb: String, folderNames: List<String>): String {
+        val name = folderNames.singleOrNull()
+        val capital = verb.replaceFirstChar { it.uppercase() }
+        return if (name != null) {
+            "You un-picked something inside “$name”, so $capital would take it too. Open “$name” and pick what to $verb."
+        } else {
+            "You un-picked something inside folders you picked, so $capital would take it too. Open them and pick what to $verb."
+        }
+    }
+
+    /**
      * A finished batch, in a line. [pastTense] is "Moved" or "Deleted".
      *
      * A partial result leads with how far it got, because that is the fact

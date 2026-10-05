@@ -10,6 +10,7 @@ import com.regolith.domain.transfer.Selection
 import com.regolith.domain.transfer.StorageCheck
 import com.regolith.domain.transfer.coveredByAncestor
 import com.regolith.domain.transfer.exclusionsUnder
+import com.regolith.domain.transfer.foldersWithExclusions
 import com.regolith.domain.transfer.pathCoveredBy
 import com.regolith.domain.transfer.tally
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -245,6 +246,13 @@ class SelectionPresenter @Inject constructor(
             shortfall = if (hasRoom) 0 else StorageCheck.shortfall(storage.freeBytes, byteCount, 0),
         )
     }
+
+    /**
+     * The picked folders that have something taken back out of them, which
+     * Move and Delete refuse to act on ([foldersWithExclusions]). Empty when
+     * nothing is being picked.
+     */
+    fun foldersWithExclusions(): List<FolderPick> = selection.snapshot()?.foldersWithExclusions().orEmpty()
 
     /** Is this row inside one of the picks, rather than a pick itself? */
     fun isCovered(shareId: Long, relPath: String): Boolean =
