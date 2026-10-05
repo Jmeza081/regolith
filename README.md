@@ -210,7 +210,8 @@ few part-watched, and a folder of vertical phone clips for Shorts — and copies
 bundled test clips onto the device. Everything
 plays, scrubs and shows real frame-grab posters with no network at all, which is
 what makes the app reviewable on a train. **Remove** deletes it; nothing else is
-touched.
+touched. Nothing in it can be moved, renamed or deleted: there is no share
+behind it, so those verbs stay grey and the pill says why.
 
 The section is behind `BuildConfig.DEMO_LIBRARY`, true in both build types today
 because the side-load (`assembleRelease`) build is the one that gets tested on a

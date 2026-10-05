@@ -10,8 +10,8 @@ Progress, in the build order at the end:
 - Done: 2, companions travel with their video (`Companions`).
 - Done: 3, every folder is a collection.
 - Done: 4, the listing half. Browse lists every file. Picking those files
-  (the third `FileOpTarget` kind) waits for step 5, which moves the verbs
-  out of Browse.
+  (the third `FileOpTarget` kind) comes after the Library has the verbs.
+- Done: 5, the verbs moved out of Browse into `FileActions`, with tests.
 
 The owner browses through the Library, but renaming, moving, deleting,
 downloading and setting posters all live in Browse. Finding the same video

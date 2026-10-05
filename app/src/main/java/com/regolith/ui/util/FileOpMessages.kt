@@ -77,6 +77,75 @@ object FileOpMessages {
     }
 
     /**
+     * The delete dialog's three lines, kept together because they have to
+     * agree, for every screen that picks things ([FileActions]).
+     *
+     * A folder is the case worth being careful with: the server's delete is
+     * recursive and takes everything, not only the videos the counts are
+     * made of (subtitles, artwork, files in folders never opened here), so
+     * the body says what Regolith can count AND admits to what it cannot.
+     * The counts come from rows already on the device, which is why the
+     * dialog opens instantly instead of behind a network walk.
+     */
+    fun deleteTitle(target: DeleteTarget): String = when {
+        target.folderCount == 0 -> if (target.targets.size == 1) "Delete this video?" else "Delete ${target.targets.size} videos?"
+        target.targets.size == 1 -> "Delete this folder?"
+        else -> "Delete ${target.targets.size} items?"
+    }
+
+    fun deleteConfirmLabel(target: DeleteTarget): String = when {
+        target.folderCount == 0 -> if (target.targets.size == 1) "Delete video" else "Delete ${target.targets.size} videos"
+        target.targets.size == 1 -> "Delete folder"
+        else -> "Delete ${target.targets.size} items"
+    }
+
+    fun deleteBody(target: DeleteTarget): String {
+        val forever = "This can't be undone"
+        val insideFolders = "A folder takes everything inside it, not just its videos"
+        val alsoGone = "the chapters you wrote and where you left off go with"
+        return when {
+            // Videos only: the same words as a video's own page.
+            target.folderCount == 0 -> forDeletingVideos(target.names, target.sizeLabel, target.companionCount)
+            // One folder, named, with what is known to be inside it.
+            target.targets.size == 1 -> {
+                val holds = if (target.videoCount == 0) "no videos in it" else "${videos(target.videoCount)} · ${target.sizeLabel}"
+                "${target.names.first()} and everything inside it leaves the share for good — $holds. " +
+                    "$insideFolders. $forever, and $alsoGone them."
+            }
+            else -> {
+                val folders = if (target.folderCount == 1) "1 folder" else "${target.folderCount} folders"
+                val files = target.targets.size - target.folderCount
+                val picked = if (files == 0) folders else "$folders and ${videos(files)}"
+                val along = when (target.companionCount) {
+                    0 -> ""
+                    1 -> " So does the file that shares a picked video's name."
+                    else -> " So do the ${target.companionCount} files that share the picked videos' names."
+                }
+                "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all.$along " +
+                    "$insideFolders. $forever."
+            }
+        }
+    }
+
+    /** "1 video" / "9 videos": the delete dialog counts videos, not files on disk. */
+    private fun videos(n: Int): String = if (n == 1) "1 video" else "$n videos"
+
+    /**
+     * The line under the rename field. A folder moves as one; a video keeps
+     * its extension ([ext], outside the field where it cannot be typed away),
+     * and its [companions] are renamed to match it.
+     */
+    fun forRenameNote(isFolder: Boolean, ext: String, companions: Int): String {
+        if (isFolder) return "Everything inside keeps its place — the folder moves as one."
+        val follows = if (ext.isEmpty()) "Chapters and your place follow the new name" else "Keeps .$ext — chapters and your place follow the new name"
+        return when (companions) {
+            0 -> "$follows."
+            1 -> "$follows, and the file that shares its name is renamed to match."
+            else -> "$follows, and the $companions files that share its name are renamed to match."
+        }
+    }
+
+    /**
      * A finished batch, in a line. [pastTense] is "Moved" or "Deleted".
      *
      * A partial result leads with how far it got, because that is the fact

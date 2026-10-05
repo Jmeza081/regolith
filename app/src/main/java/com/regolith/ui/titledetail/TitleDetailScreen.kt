@@ -300,18 +300,14 @@ private fun TitleDetailContent(
                         onConfirm = onRename,
                         onCancel = onDismissFileOp,
                         testTag = "detail_rename",
-                        note = if (ext.isEmpty()) {
-                            "Chapters and your place follow the new name."
-                        } else {
-                            "Keeps .$ext — chapters and your place follow the new name."
-                        },
+                        note = FileOpMessages.forRenameNote(isFolder = false, ext = ext, companions = state.companions),
                         maxLength = FileNames.MAX_BASE,
                     )
                 }
                 if (state.confirmingDelete) {
                     ConfirmDialog(
                         title = "Delete this video?",
-                        body = FileOpMessages.forDeletingVideos(listOf(state.fileName), state.sizeLabel, state.deleteCompanions),
+                        body = FileOpMessages.forDeletingVideos(listOf(state.fileName), state.sizeLabel, state.companions),
                         confirmLabel = "Delete from share",
                         keepLabel = "Keep it",
                         onConfirm = onConfirmDelete,

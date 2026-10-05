@@ -61,7 +61,7 @@ class LibraryRepository @Inject constructor(
     private val recentSearchDao: RecentSearchDao,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
     private val chapterSync: com.regolith.data.media.ChapterSyncRepository,
-) {
+) : FolderLookup {
     /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
     data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
 
@@ -121,7 +121,7 @@ class LibraryRepository @Inject constructor(
     fun observeFileCountInShares(shareIds: List<Long>): Flow<Int> = mediaFileDao.observeCountInShares(shareIds)
 
     /** The root folder row of a share, created on first use. */
-    suspend fun rootFolder(shareId: Long): FolderEntity {
+    override suspend fun rootFolder(shareId: Long): FolderEntity {
         val share = checkNotNull(shareDao.byId(shareId)) { "share $shareId" }
         return folderDao.upsert(
             FolderEntity(shareId = shareId, parentId = null, relPath = "", name = share.name, fileCount = 0, byteCount = 0, lastListedAtMs = null),
@@ -398,7 +398,7 @@ class LibraryRepository @Inject constructor(
      * download uses once the subtree has been listed; [listSubtree] is what
      * lists it first when it has not.
      */
-    suspend fun filesUnder(folderId: Long): List<MediaFileEntity> =
+    override suspend fun filesUnder(folderId: Long): List<MediaFileEntity> =
         descendants(folderId).map { it.id }.chunked(FILES_CHUNK).flatMap { mediaFileDao.inFolders(it) }
 
     /** Folders in the subtree that have never been listed off the share, so their counts mean nothing. */
@@ -488,7 +488,7 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
+    override suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
 
     /**
      * How many companion files ([Companions]) go with [fileIds] when they go
@@ -496,7 +496,7 @@ class LibraryRepository @Inject constructor(
      * folder recorded, so a delete dialog can say so without a trip to the
      * share.
      */
-    suspend fun companionCount(fileIds: Collection<Long>): Int =
+    override suspend fun companionCount(fileIds: Collection<Long>): Int =
         mediaFileDao.byIds(fileIds.toList()).groupBy { it.folderId }.entries.sumOf { (folderId, going) ->
             val names = mediaFileDao.inFolder(folderId).map { it.name } + shareFileDao.inFolder(folderId).map { it.name }
             Companions.goingWith(going.map { it.name }, names).size
@@ -504,7 +504,7 @@ class LibraryRepository @Inject constructor(
 
     fun observeFile(fileId: Long): Flow<MediaFileEntity?> = mediaFileDao.observe(fileId)
 
-    suspend fun folder(folderId: Long): FolderEntity? = folderDao.byId(folderId)
+    override suspend fun folder(folderId: Long): FolderEntity? = folderDao.byId(folderId)
 
     suspend fun filesInFolder(folderId: Long): List<MediaFileEntity> = mediaFileDao.inFolder(folderId)
 
@@ -514,7 +514,7 @@ class LibraryRepository @Inject constructor(
      * is chosen from what has already been seen, and the move itself is what
      * talks to the server.
      */
-    suspend fun subfolders(folderId: Long): List<FolderEntity> =
+    override suspend fun subfolders(folderId: Long): List<FolderEntity> =
         folderDao.children(folderId).sortedBy { it.name.lowercase() }
 
     /** Remember what the container probe found, so Title Detail and the chips never probe twice. */
@@ -536,7 +536,7 @@ class LibraryRepository @Inject constructor(
     }
 
     /** "TOWER · media": the server and share a file lives on, for the player's meta line. */
-    suspend fun shareLabel(shareId: Long): String {
+    override suspend fun shareLabel(shareId: Long): String {
         val share = shareDao.byId(shareId) ?: return ""
         val server = serverDao.byId(share.serverId) ?: return share.name
         return "${server.name} · ${share.name}"

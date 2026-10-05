@@ -16,8 +16,11 @@ import com.regolith.domain.fileops.FileOpError
 import com.regolith.domain.fileops.FileOpFailure
 import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.fileops.FileOpTarget
+import com.regolith.domain.fileops.ReadOnlySource
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.Companions
+import com.regolith.domain.media.DemoSource
+import com.regolith.domain.media.DeviceSource
 import com.regolith.domain.media.LocalSource
 import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
@@ -408,6 +411,23 @@ class FileOpsRepository @Inject constructor(
             Log.w(TAG, "could not create $relPath", e)
             FileOpResult.failed(target, name, e.toError())
         }
+    }
+
+    // ── what can be changed ────────────────────────────────────────────
+
+    /**
+     * Why nothing on [shareIds] can be changed from here, or null when all of
+     * them can: the demo library and the phone's own videos have no share to
+     * write to ([ctxFor] says the same per item, after the fact).
+     */
+    suspend fun readOnly(shareIds: Collection<Long>): ReadOnlySource? {
+        for (id in shareIds) {
+            val share = shareDao.byId(id) ?: continue
+            val host = serverDao.byId(share.serverId)?.host ?: continue
+            if (DemoSource.isDemo(host)) return ReadOnlySource.DEMO
+            if (DeviceSource.isDevice(host)) return ReadOnlySource.PHONE
+        }
+        return null
     }
 
     // ── plumbing ───────────────────────────────────────────────────────

@@ -21,11 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import kotlinx.coroutines.delay
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +52,6 @@ import com.regolith.ui.components.TopBar
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
-import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatOtherFileCount
 import com.regolith.ui.util.formatFileCount
@@ -63,7 +59,6 @@ import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.components.MediaTile
-import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.artwork.ArtworkKind
@@ -73,17 +68,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.regolith.ui.components.SecondaryButton
-import com.regolith.ui.components.ConfirmDialog
-import com.regolith.ui.components.MoveToSheet
-import com.regolith.ui.components.PromptDialog
-import com.regolith.ui.components.LocalAppSnackbar
-import com.regolith.ui.components.MessageKind
-import com.regolith.ui.components.showMessage
-import com.regolith.ui.components.LocalSelectionChrome
-import com.regolith.ui.components.SelectionChromeState
-import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.util.SelectionUiState
 import com.regolith.ui.components.TopBarAction
+import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.FileSelectionChrome
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -527,101 +515,18 @@ private fun BrowseContent(
         }
     }
 
-        // Over the list rather than in it, so the count stays put while the
-        // list scrolls under it. Sits above the nav pill on a phone and at
-        // the foot of the pane on a wide window, from the same insets.
-        // The nav pill becomes this selection's toolbar (SelectionChrome):
-        // the screen keeps the behaviour — the dialogs, the repository, the
-        // undo — and lends the chrome its buttons. Cancel is drawn by the
-        // pill, in the cell where Home sits when it is a nav.
-        val selectionChrome = LocalSelectionChrome.current
-        DisposableEffect(selection, state.canManage, state.canRename) {
-            val live = selection
-            if (live == null) {
-                selectionChrome.clear()
-            } else {
-                selectionChrome.show(
-                    SelectionChromeState(
-                        verbs = listOf(
-                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "browse_select_download", enabled = live.canDownload),
-                            SelectionVerb("Move", R.drawable.rg_ic_folder_go, viewModel::startMove, "browse_select_move", enabled = state.canManage),
-                            SelectionVerb("Rename", R.drawable.rg_ic_rename, viewModel::startRename, "browse_select_rename", enabled = state.canRename),
-                            SelectionVerb("Delete", R.drawable.rg_ic_trash, viewModel::startDelete, "browse_select_delete", enabled = state.canManage, destructive = true),
-                        ),
-                        onCancel = viewModel::cancelSelection,
-                        summary = live.summary,
-                        // The hint explains a GREY verb, so it outranks the
-                        // selection's own qualifier when both apply.
-                        detail = state.selectionHint ?: live.detail,
-                    ),
-                )
-            }
-            onDispose { selectionChrome.clear() }
-        }
-
-        state.renaming?.let { target ->
-            // A folder has no extension to protect, so the whole name is
-            // the field; a video keeps its suffix outside it, where it
-            // cannot be typed away.
-            val ext = if (target.isFolder) "" else target.name.substringAfterLast('.', "")
-            PromptDialog(
-                title = if (target.isFolder) "Rename folder" else "Rename video",
-                label = "Name",
-                initialValue = if (target.isFolder) target.name else FileNames.baseOf(target.name),
-                confirmLabel = "Rename",
-                onConfirm = viewModel::rename,
-                onCancel = viewModel::cancelRename,
-                testTag = "browse_rename",
-                note = when {
-                    target.isFolder -> "Everything inside keeps its place — the folder moves as one."
-                    ext.isEmpty() -> "Chapters and your place follow the new name."
-                    else -> "Keeps .$ext — chapters and your place follow the new name."
-                },
-                maxLength = FileNames.MAX_BASE,
-            )
-        }
-
-        state.confirmingDelete?.let { target ->
-            ConfirmDialog(
-                title = deleteTitle(target),
-                body = deleteBody(target),
-                confirmLabel = deleteConfirmLabel(target),
-                keepLabel = if (target.targets.size == 1) "Keep it" else "Keep them",
-                onConfirm = viewModel::confirmDelete,
-                onKeep = viewModel::cancelDelete,
-                testTag = "browse_delete",
-            )
-        }
-
-        state.moveSheet?.let { sheet ->
-            MoveToSheet(
-                state = sheet,
-                onUp = viewModel::moveUp,
-                onOpen = viewModel::moveWalk,
-                onChoose = viewModel::moveChoose,
-                onNewFolder = viewModel::startNewFolder,
-                onConfirm = viewModel::confirmMove,
-                onDismiss = viewModel::dismissMove,
-            )
-        }
-
-        // Over the sheet rather than instead of it: the folder is being made
-        // as an answer to "where?", so the picker stays open behind and comes
-        // back with the new folder already chosen.
-        if (state.newFolderIn != null) {
-            PromptDialog(
-                title = "New folder",
-                label = "Name",
-                initialValue = "",
-                placeholder = "Season 02",
-                confirmLabel = "Create",
-                onConfirm = viewModel::createFolder,
-                onCancel = viewModel::cancelNewFolder,
-                testTag = "browse_new_folder",
-                note = "Made on the share, inside ${state.moveSheet?.breadcrumb?.substringAfterLast(" / ") ?: "this folder"}.",
-                maxLength = FileNames.MAX_BASE,
-            )
-        }
+        // The nav pill becomes this selection's toolbar, and the dialogs, the
+        // move sheet and the messages are drawn by the shared host: the same
+        // four verbs behave the same way here and in the Library.
+        FileSelectionChrome(
+            selection = selection,
+            actions = viewModel.fileActions,
+            here = state.currentFolderId,
+            tagPrefix = "browse",
+            onDownload = viewModel::downloadSelection,
+            onCancel = viewModel::cancelSelection,
+        )
+        FileActionsHost(viewModel.fileActions, tagPrefix = "browse")
 
         // ── Uploads (P16) ──────────────────────────────────────────────
         // The two system pickers. `rememberLauncherForActivityResult` is the
@@ -666,79 +571,6 @@ private fun BrowseContent(
         }
         state.posterQuestion?.let { question ->
             PosterQuestionSheet(question, onAnswer = viewModel::answerPosterQuestion, onDismiss = viewModel::dismissPosterQuestion)
-        }
-
-        // One host for the whole app, drawn by the chrome above the pill.
-        val snackbar = LocalAppSnackbar.current
-        LaunchedEffect(state.fileOpMessage) {
-            val message = state.fileOpMessage ?: return@LaunchedEffect
-            // A failure stays up longer (showMessage's default for FAILED),
-            // and the ring around its icon shows the longer life running down.
-            val result = snackbar.showMessage(
-                message.text,
-                kind = if (message.failed) MessageKind.FAILED else MessageKind.DONE,
-                actionLabel = if (message.undo != null) "Undo" else null,
-            )
-            if (result == SnackbarResult.ActionPerformed) viewModel.undoMove() else viewModel.clearFileOpMessage()
-        }
-    }
-}
-
-/**
- * The delete dialog's three lines, kept together because they have to agree.
- *
- * A folder is the case worth being careful with: the server's delete is
- * recursive and takes everything, not only the videos the counts are made
- * of — subtitles, artwork, files in folders never opened here — so the body
- * says what Regolith can count AND admits to what it cannot. The counts come
- * from rows already on the device, which is why the dialog opens instantly
- * instead of behind a network walk.
- */
-private fun deleteTitle(target: DeleteTarget): String = when {
-    target.folderCount == 0 -> if (target.targets.size == 1) "Delete this video?" else "Delete ${target.targets.size} videos?"
-    target.targets.size == 1 -> "Delete this folder?"
-    else -> "Delete ${target.targets.size} items?"
-}
-
-private fun deleteConfirmLabel(target: DeleteTarget): String = when {
-    target.folderCount == 0 -> if (target.targets.size == 1) "Delete video" else "Delete ${target.targets.size} videos"
-    target.targets.size == 1 -> "Delete folder"
-    else -> "Delete ${target.targets.size} items"
-}
-
-/** "1 video" / "9 videos" — the delete dialog counts films, not files on disk. */
-private fun videos(n: Int): String = if (n == 1) "1 video" else "$n videos"
-
-private fun deleteBody(target: DeleteTarget): String {
-    val forever = "This can't be undone"
-    val insideFolders = "A folder takes everything inside it, not just its videos"
-    val alsoGone = "the chapters you wrote and where you left off go with"
-    return when {
-        // Files only: the shape this dialog had before folders existed, and
-        // the same words as a video's own page.
-        target.folderCount == 0 ->
-            FileOpMessages.forDeletingVideos(target.names, target.sizeLabel, target.companionCount)
-        // One folder, named, with what is known to be inside it.
-        target.targets.size == 1 -> {
-            val holds = if (target.videoCount == 0) {
-                "no videos in it"
-            } else {
-                "${videos(target.videoCount)} · ${target.sizeLabel}"
-            }
-            "${target.names.first()} and everything inside it leaves the share for good — $holds. " +
-                "$insideFolders. $forever, and $alsoGone them."
-        }
-        else -> {
-            val folders = if (target.folderCount == 1) "1 folder" else "${target.folderCount} folders"
-            val files = target.targets.size - target.folderCount
-            val picked = if (files == 0) folders else "$folders and ${videos(files)}"
-            val along = when (target.companionCount) {
-                0 -> ""
-                1 -> " So does the file that shares a picked video's name."
-                else -> " So do the ${target.companionCount} files that share the picked videos' names."
-            }
-            "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all.$along " +
-                "$insideFolders. $forever."
         }
     }
 }

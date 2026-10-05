@@ -34,8 +34,8 @@ data class TitleDetailUiState(
     val sizeLabel: String = "",
     val renaming: Boolean = false,
     val confirmingDelete: Boolean = false,
-    /** The files that go with this one when it is deleted (`Companions`), for the dialog to say so. */
-    val deleteCompanions: Int = 0,
+    /** The files renamed and deleted along with this one (`Companions`), for the dialogs to say so. */
+    val companions: Int = 0,
     /** Why the last rename or delete did not happen. */
     val fileOpError: String? = null,
     /** The file is gone from the share; the screen has nothing left to show. */

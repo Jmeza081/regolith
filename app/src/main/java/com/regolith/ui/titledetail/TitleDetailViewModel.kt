@@ -116,13 +116,20 @@ class TitleDetailViewModel @AssistedInject constructor(
     // rather than throwing: the share refusing is an ordinary thing that
     // the screen has a sentence for.
 
-    fun startRename() = _uiState.update { it.copy(renaming = true, fileOpError = null) }
+    // Both dialogs count the files that go with this one, from the last
+    // listing of its folder, so they open at once.
+
+    fun startRename() {
+        viewModelScope.launch {
+            val companions = library.companionCount(listOf(fileId))
+            _uiState.update { it.copy(renaming = true, companions = companions, fileOpError = null) }
+        }
+    }
 
     fun startDelete() {
         viewModelScope.launch {
-            // From the last listing of its folder, so the dialog opens at once.
             val companions = library.companionCount(listOf(fileId))
-            _uiState.update { it.copy(confirmingDelete = true, deleteCompanions = companions, fileOpError = null) }
+            _uiState.update { it.copy(confirmingDelete = true, companions = companions, fileOpError = null) }
         }
     }
 

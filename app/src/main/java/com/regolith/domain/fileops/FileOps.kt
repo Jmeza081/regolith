@@ -37,6 +37,18 @@ enum class FileOpError {
 }
 
 /**
+ * Why nothing on a source can be changed from the app. Asked up front, so a
+ * verb that cannot work is grey before it is tapped rather than failing after.
+ */
+enum class ReadOnlySource {
+    /** The demo library: a pretend NAS made of files inside the app. */
+    DEMO,
+
+    /** The phone's own videos, which the system owns, not a share. */
+    PHONE,
+}
+
+/**
  * One thing an operation is about: a file, or a folder and everything under it.
  *
  * Why not a bare id. Folders and files are different tables and both number
