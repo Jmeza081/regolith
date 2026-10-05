@@ -317,6 +317,7 @@ class BrowseViewModel @AssistedInject constructor(
                         sizeLabel = formatBytes(bytes),
                         videoCount = videos,
                         folderCount = folders,
+                        companionCount = library.companionCount(targets.filterNot { t -> t.isFolder }.map { t -> t.id }),
                     ),
                 )
             }

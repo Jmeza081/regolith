@@ -389,6 +389,22 @@ interface ShareFileDao {
     @Query("DELETE FROM share_files WHERE id = :id")
     suspend fun delete(id: Long)
 
+    @Query("DELETE FROM share_files WHERE shareId = :shareId AND relPath = :relPath")
+    suspend fun deleteByPath(shareId: Long, relPath: String)
+
+    /**
+     * A file the app just moved or renamed on the share: its row follows,
+     * keeping its id. A row already at the new path is stale, since the
+     * share had just said the name was free, so it goes. No row to move is
+     * fine: the folder was never listed, and its next listing finds the file.
+     */
+    @Transaction
+    suspend fun relocate(shareId: Long, fromPath: String, toPath: String, toName: String, toFolderId: Long) {
+        val row = byPath(shareId, fromPath) ?: return
+        byPath(shareId, toPath)?.let { if (it.id != row.id) delete(it.id) }
+        update(row.copy(relPath = toPath, name = toName, folderId = toFolderId))
+    }
+
     @Query("DELETE FROM share_files WHERE folderId = :folderId AND relPath NOT IN (:seenPaths)")
     suspend fun deleteInFolderNotIn(folderId: Long, seenPaths: List<String>)
 

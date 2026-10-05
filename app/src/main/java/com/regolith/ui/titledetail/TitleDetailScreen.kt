@@ -62,6 +62,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.designSp
+import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDate
 import com.regolith.ui.util.formatRemaining
@@ -310,8 +311,7 @@ private fun TitleDetailContent(
                 if (state.confirmingDelete) {
                     ConfirmDialog(
                         title = "Delete this video?",
-                        body = "${state.fileName} leaves the share for good — ${state.sizeLabel}. This can't be undone, " +
-                            "and the chapters you wrote and where you left off go with it.",
+                        body = FileOpMessages.forDeletingVideos(listOf(state.fileName), state.sizeLabel, state.deleteCompanions),
                         confirmLabel = "Delete from share",
                         keepLabel = "Keep it",
                         onConfirm = onConfirmDelete,

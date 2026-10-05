@@ -7,6 +7,7 @@ answered every open question the same day (last sections).
 Progress, in the build order at the end:
 
 - Done: 1, the leaky-pick fix (also on its own branch, `fix/leaky-pick`).
+- Done: 2, companions travel with their video (`Companions`).
 - Done: 3, every folder is a collection.
 - Done: 4, the listing half. Browse lists every file. Picking those files
   (the third `FileOpTarget` kind) waits for step 5, which moves the verbs

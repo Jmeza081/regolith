@@ -25,6 +25,14 @@ enum class FileOpError {
     /** A folder was aimed at itself, at its own subtree, or at another share. */
     BAD_DESTINATION,
 
+    /**
+     * The video's name was free, but one of its companion files (its
+     * subtitles, chapters, picture) would land on a name already taken
+     * there. Nothing was touched: a companion is never left behind, and
+     * nothing is ever overwritten. [FileOpFailure.detail] is the name.
+     */
+    COMPANION_TAKEN,
+
     OTHER,
 }
 
@@ -44,8 +52,12 @@ data class FileOpTarget(val id: Long, val isFolder: Boolean) {
     }
 }
 
-/** One item that did not make it, with enough to name it in a message. */
-data class FileOpFailure(val target: FileOpTarget, val name: String, val error: FileOpError)
+/**
+ * One item that did not make it, with enough to name it in a message.
+ * [detail] is the other name involved, when there is one: for
+ * [FileOpError.COMPANION_TAKEN], the name a companion would have taken.
+ */
+data class FileOpFailure(val target: FileOpTarget, val name: String, val error: FileOpError, val detail: String? = null)
 
 /**
  * The outcome of one rename, move or delete batch.

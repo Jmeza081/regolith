@@ -118,7 +118,13 @@ class TitleDetailViewModel @AssistedInject constructor(
 
     fun startRename() = _uiState.update { it.copy(renaming = true, fileOpError = null) }
 
-    fun startDelete() = _uiState.update { it.copy(confirmingDelete = true, fileOpError = null) }
+    fun startDelete() {
+        viewModelScope.launch {
+            // From the last listing of its folder, so the dialog opens at once.
+            val companions = library.companionCount(listOf(fileId))
+            _uiState.update { it.copy(confirmingDelete = true, deleteCompanions = companions, fileOpError = null) }
+        }
+    }
 
     fun dismissFileOp() = _uiState.update { it.copy(renaming = false, confirmingDelete = false) }
 

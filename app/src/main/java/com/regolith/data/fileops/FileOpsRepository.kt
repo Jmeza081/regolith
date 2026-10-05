@@ -7,6 +7,7 @@ import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.ShareFileDao
 import com.regolith.data.db.SubtreeDao
 import com.regolith.data.db.TransferDao
 import com.regolith.data.transfer.DownloadStore
@@ -16,7 +17,7 @@ import com.regolith.domain.fileops.FileOpFailure
 import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.library.TitleParser
-import com.regolith.domain.media.ChapterSidecar
+import com.regolith.domain.media.Companions
 import com.regolith.domain.media.LocalSource
 import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
@@ -48,6 +49,13 @@ import javax.inject.Singleton
  * and its downloaded copy. A delete is the one case that takes rows away,
  * and its cascades are what the confirm dialog promises.
  *
+ * **A video brings its companions.** The files beside it that share its
+ * base name ([Companions]: its subtitles, chapters, own picture, `.nfo`)
+ * are renamed, moved and deleted with it. Finding them costs the listing
+ * each verb already takes. A companion that would land on a taken name
+ * stops its video before anything is sent; one that fails after its video
+ * went is logged and left, never reported as the video failing.
+ *
  * **Folders are included, and cost more than files do.** On the wire a
  * folder is no harder — the server renames a directory and its whole
  * subtree comes along in one operation. The work is local: `relPath` is
@@ -69,6 +77,7 @@ class FileOpsRepository @Inject constructor(
     private val transfers: TransferDao,
     private val downloads: DownloadStore,
     private val subtrees: SubtreeDao,
+    private val shareFiles: ShareFileDao,
 ) {
     private companion object {
         const val TAG = "Regolith/FileOps"
@@ -98,6 +107,10 @@ class FileOpsRepository @Inject constructor(
      * dialog rather than a server error — and even if that listing is
      * stale, the rename itself is non-replacing, so the worst case is a
      * refusal, never a file quietly destroyed.
+     *
+     * The companions are renamed to match: `beach.en.srt` follows
+     * `beach.mp4` to `sunset.en.srt`, and `beach.jpg` stays the video's own
+     * picture as `sunset.jpg`.
      */
     private suspend fun renameFile(target: FileOpTarget, newBaseName: String): FileOpResult {
         val file = mediaFileDao.byId(target.id) ?: return FileOpResult.failed(target, "", FileOpError.NOT_FOUND)
@@ -111,13 +124,21 @@ class FileOpsRepository @Inject constructor(
         val to = join(parent, newName)
         return try {
             // One listing answers both questions: is the new name free, and
-            // does this film have a chapter file sitting beside it.
-            val here = namesIn(ctx, parent)
+            // which files go with this video.
+            val listing = listNames(ctx, parent)
+            val here = listing.map { it.lowercase() }.toSet()
             if (newName.lowercase() in here) {
                 return FileOpResult.failed(target, file.name, FileOpError.NAME_TAKEN)
             }
+            val companions = Companions.of(file.name, listing).map { it to Companions.renamed(it, file.name, newName) }
+            val clash = companions.firstOrNull { (_, renamed) -> renamed.lowercase() in here }
+            if (clash != null) {
+                return FileOpResult(failures = listOf(FileOpFailure(target, file.name, FileOpError.COMPANION_TAKEN, detail = clash.second)))
+            }
             gateway.rename(ctx.host, ctx.creds, ctx.share, file.relPath, to)
-            if (hasSidecar(file.name, here)) followSidecar(ctx, file.name, file.relPath, newName, to)
+            for ((old, renamed) in companions) {
+                follow(ctx, file.shareId, join(parent, old), join(parent, renamed), renamed, file.folderId)
+            }
             mediaFileDao.update(reparsed(file.copy(relPath = to, name = newName)))
             FileOpResult(done = listOf(target))
         } catch (e: SmbFailure) {
@@ -164,7 +185,8 @@ class FileOpsRepository @Inject constructor(
      * Folders and files mix freely, because each item is its own operation
      * either way. A folder aimed at itself or at its own subtree is refused
      * before anything is sent: the server would either error or, worse,
-     * succeed at something nobody meant.
+     * succeed at something nobody meant. A video takes its companions, whose
+     * names must be free at the destination too.
      */
     suspend fun move(targets: Collection<FileOpTarget>, destFolderId: Long): FileOpResult {
         val dest = folderDao.byId(destFolderId)
@@ -185,15 +207,12 @@ class FileOpsRepository @Inject constructor(
         }
         var dropped = false
 
-        // Most films have no chapter file. Asking the folder once beats a
-        // speculative rename per film to find out — a round trip each.
-        val sourceNames = mutableMapOf<String, Set<String>>()
-        suspend fun namesInSource(dir: String): Set<String> {
-            sourceNames[dir]?.let { return it }
-            val names = runCatching { namesIn(ctx, dir) }.getOrDefault(emptySet())
-            sourceNames[dir] = names
-            return names
-        }
+        // Each folder a video leaves is listed once, for the companions, and
+        // kept in step as videos go: one moved earlier in the batch no longer
+        // shares its companions with one moved later.
+        val sourceNames = mutableMapOf<String, MutableList<String>>()
+        suspend fun namesInSource(dir: String): MutableList<String> =
+            sourceNames.getOrPut(dir) { runCatching { listNames(ctx, dir) }.getOrDefault(emptyList()).toMutableList() }
 
         for (item in items) {
             if (dropped) {
@@ -215,15 +234,22 @@ class FileOpsRepository @Inject constructor(
                 continue
             }
             val to = join(dest.relPath, item.name)
+            val from = item.relPath.substringBeforeLast('/', "")
+            val companions = item.file?.let { Companions.of(it.name, namesInSource(from)) }.orEmpty()
+            val clash = companions.firstOrNull { it.lowercase() in taken }
+            if (clash != null) {
+                failures += FileOpFailure(item.target, item.name, FileOpError.COMPANION_TAKEN, detail = clash)
+                continue
+            }
             try {
                 gateway.rename(ctx.host, ctx.creds, ctx.share, item.relPath, to)
                 if (item.folder != null) {
                     relocate(item.folder, to, item.name, destFolderId)
                 } else {
                     val row = checkNotNull(item.file)
-                    if (hasSidecar(row.name, namesInSource(row.relPath.substringBeforeLast('/', "")))) {
-                        followSidecar(ctx, row.name, row.relPath, row.name, to)
-                    }
+                    for (c in companions) follow(ctx, row.shareId, join(from, c), join(dest.relPath, c), c, destFolderId)
+                    namesInSource(from).apply { remove(row.name); removeAll(companions) }
+                    taken += companions.map { it.lowercase() }
                     touched += row.folderId
                     mediaFileDao.update(row.copy(folderId = destFolderId, relPath = to))
                 }
@@ -247,9 +273,9 @@ class FileOpsRepository @Inject constructor(
     // ── delete ─────────────────────────────────────────────────────────
 
     /**
-     * Delete [targets] from the share for good, along with each file's
-     * chapter sidecar and any copy kept on this device — the rows are
-     * going, so a copy left behind would be bytes nothing can reach.
+     * Delete [targets] from the share for good, along with each video's
+     * companions and any copy kept on this device — the rows are going, so
+     * a copy left behind would be bytes nothing can reach.
      *
      * A FOLDER takes everything under it, including files the app has never
      * listed. That is the server's own recursive delete and there is no
@@ -269,6 +295,9 @@ class FileOpsRepository @Inject constructor(
         val goneFolders = mutableListOf<Long>()
         val touched = mutableSetOf<Long>()
         var dropped = false
+        // As in a move: each folder a video goes from is listed once, for the
+        // companions, and kept in step as videos go.
+        val listings = mutableMapOf<Pair<Long, String>, MutableList<String>>()
 
         for (item in items) {
             if (dropped) {
@@ -296,10 +325,21 @@ class FileOpsRepository @Inject constructor(
                     item.folder.parentId?.let { touched += it }
                 } else {
                     val row = checkNotNull(item.file)
-                    gateway.delete(ctx.host, ctx.creds, ctx.share, row.relPath)
-                    sidecarPathFor(row.name, row.relPath)?.let { side ->
-                        runCatching { gateway.delete(ctx.host, ctx.creds, ctx.share, side) }
+                    val dir = row.relPath.substringBeforeLast('/', "")
+                    val names = listings.getOrPut(row.shareId to dir) {
+                        runCatching { listNames(ctx, dir) }.getOrDefault(emptyList()).toMutableList()
                     }
+                    val companions = Companions.of(row.name, names)
+                    gateway.delete(ctx.host, ctx.creds, ctx.share, row.relPath)
+                    // Best effort, as in a move: the video is gone either way.
+                    for (c in companions) {
+                        val path = join(dir, c)
+                        runCatching { gateway.delete(ctx.host, ctx.creds, ctx.share, path) }
+                            .onSuccess { shareFiles.deleteByPath(row.shareId, path) }
+                            .onFailure { Log.i(TAG, "$c stayed behind (${it.message})") }
+                    }
+                    names.remove(row.name)
+                    names.removeAll(companions)
                     forgetDownloads(listOf(row.id))
                     goneFiles += row.id
                     touched += row.folderId
@@ -458,29 +498,24 @@ class FileOpsRepository @Inject constructor(
         return ShareCtx(credentials.hostFor(server.id), credentials.credentialsFor(server.id), share.name)
     }
 
+    /** Everything in a folder on the share, by name, as the share spells it. */
+    private suspend fun listNames(ctx: ShareCtx, relPath: String): List<String> =
+        gateway.list(ctx.host, ctx.creds, ctx.share, relPath).map { it.name }
+
+    /** The same, lowercased, for asking whether a name is taken: names on a share ignore case. */
     private suspend fun namesIn(ctx: ShareCtx, relPath: String): Set<String> =
-        gateway.list(ctx.host, ctx.creds, ctx.share, relPath).map { it.name.lowercase() }.toSet()
+        listNames(ctx, relPath).map { it.lowercase() }.toSet()
 
     /**
-     * The chapter file follows its film. Best effort on purpose: most films
-     * have no sidecar, and a film that moved without its chapters is a far
-     * smaller problem than a move reported as failed after it succeeded.
+     * A companion follows its video, on the share and in its Browse row.
+     * Best effort on purpose: the video has already gone, and a video that
+     * moved without its subtitles is a far smaller problem than a move
+     * reported as failed after it succeeded.
      */
-    private suspend fun followSidecar(ctx: ShareCtx, oldName: String, oldRel: String, newName: String, newRel: String) {
-        val from = sidecarPathFor(oldName, oldRel) ?: return
-        val to = sidecarPathFor(newName, newRel) ?: return
-        if (from == to) return
-        runCatching { gateway.rename(ctx.host, ctx.creds, ctx.share, from, to) }
-            .onFailure { Log.i(TAG, "no chapter file followed $oldName (${it.message})") }
-    }
-
-    /** Is there a chapter file beside this film, according to a folder listing? */
-    private fun hasSidecar(videoName: String, names: Set<String>): Boolean =
-        ChapterSidecar.sidecarNameFor(videoName)?.lowercase()?.let { it in names } == true
-
-    private fun sidecarPathFor(videoName: String, videoRelPath: String): String? {
-        val name = ChapterSidecar.sidecarNameFor(videoName) ?: return null
-        return join(videoRelPath.substringBeforeLast('/', ""), name)
+    private suspend fun follow(ctx: ShareCtx, shareId: Long, fromRel: String, toRel: String, toName: String, toFolderId: Long) {
+        runCatching { gateway.rename(ctx.host, ctx.creds, ctx.share, fromRel, toRel) }
+            .onSuccess { shareFiles.relocate(shareId, fromRel, toRel, toName, toFolderId) }
+            .onFailure { Log.i(TAG, "${fromRel.substringAfterLast('/')} stayed behind (${it.message})") }
     }
 
     /**

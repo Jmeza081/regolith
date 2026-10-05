@@ -55,6 +55,7 @@ import com.regolith.ui.components.TopBar
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
+import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatOtherFileCount
 import com.regolith.ui.util.formatFileCount
@@ -713,11 +714,10 @@ private fun deleteBody(target: DeleteTarget): String {
     val insideFolders = "A folder takes everything inside it, not just its videos"
     val alsoGone = "the chapters you wrote and where you left off go with"
     return when {
-        // Files only: the shape this dialog had before folders existed.
-        target.folderCount == 0 && target.targets.size == 1 ->
-            "${target.names.first()} leaves the share for good — ${target.sizeLabel}. $forever, and $alsoGone it."
+        // Files only: the shape this dialog had before folders existed, and
+        // the same words as a video's own page.
         target.folderCount == 0 ->
-            "${target.sizeLabel} leaves the share for good. $forever, and $alsoGone them."
+            FileOpMessages.forDeletingVideos(target.names, target.sizeLabel, target.companionCount)
         // One folder, named, with what is known to be inside it.
         target.targets.size == 1 -> {
             val holds = if (target.videoCount == 0) {
@@ -732,7 +732,12 @@ private fun deleteBody(target: DeleteTarget): String {
             val folders = if (target.folderCount == 1) "1 folder" else "${target.folderCount} folders"
             val files = target.targets.size - target.folderCount
             val picked = if (files == 0) folders else "$folders and ${videos(files)}"
-            "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all. " +
+            val along = when (target.companionCount) {
+                0 -> ""
+                1 -> " So does the file that shares a picked video's name."
+                else -> " So do the ${target.companionCount} files that share the picked videos' names."
+            }
+            "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all.$along " +
                 "$insideFolders. $forever."
         }
     }

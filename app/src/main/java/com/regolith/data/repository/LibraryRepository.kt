@@ -16,6 +16,7 @@ import com.regolith.data.db.ShareRootDao
 import com.regolith.domain.library.FolderClassifier
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.TitleParser
+import com.regolith.domain.media.Companions
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.media.MediaInfo
@@ -488,6 +489,18 @@ class LibraryRepository @Inject constructor(
     }
 
     suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
+
+    /**
+     * How many companion files ([Companions]) go with [fileIds] when they go
+     * together ([Companions.goingWith]), from what the last listing of each
+     * folder recorded, so a delete dialog can say so without a trip to the
+     * share.
+     */
+    suspend fun companionCount(fileIds: Collection<Long>): Int =
+        mediaFileDao.byIds(fileIds.toList()).groupBy { it.folderId }.entries.sumOf { (folderId, going) ->
+            val names = mediaFileDao.inFolder(folderId).map { it.name } + shareFileDao.inFolder(folderId).map { it.name }
+            Companions.goingWith(going.map { it.name }, names).size
+        }
 
     fun observeFile(fileId: Long): Flow<MediaFileEntity?> = mediaFileDao.observe(fileId)
 

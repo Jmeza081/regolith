@@ -27,6 +27,8 @@ object FileOpMessages {
         // the destination is not somewhere this item can be.
         FileOpError.BAD_DESTINATION -> "${failure.name} can't go there. A folder can't move inside itself, " +
             "and nothing moves between shares."
+        FileOpError.COMPANION_TAKEN -> "Couldn't $verb ${failure.name}: ${failure.detail ?: "a file"} is already there, " +
+            "and a file that goes with it needs that name."
         FileOpError.OTHER -> "Couldn't $verb ${failure.name}."
     }
 
@@ -43,6 +45,34 @@ object FileOpMessages {
             "You un-picked something inside “$name”, so $capital would take it too. Open “$name” and pick what to $verb."
         } else {
             "You un-picked something inside folders you picked, so $capital would take it too. Open them and pick what to $verb."
+        }
+    }
+
+    /**
+     * The delete dialog's body when only videos are going: one by its
+     * [names], or several by their size. [companions] is how many files go
+     * with them (`Companions`: their subtitles, chapters, own pictures), said
+     * because nothing in the list shows them going. Shared by Browse and a
+     * video's own page, so one delete is never described two ways.
+     */
+    fun forDeletingVideos(names: List<String>, sizeLabel: String, companions: Int): String {
+        val forever = "This can't be undone"
+        val alsoGone = "the chapters you wrote and where you left off go with"
+        val name = names.singleOrNull()
+        return if (name != null) {
+            val subject = when (companions) {
+                0 -> "$name leaves"
+                1 -> "$name and the file that shares its name leave"
+                else -> "$name and the $companions files that share its name leave"
+            }
+            "$subject the share for good — $sizeLabel. $forever, and $alsoGone it."
+        } else {
+            val along = when (companions) {
+                0 -> ""
+                1 -> ", with the file that shares a video's name"
+                else -> ", with the $companions files that share the videos' names"
+            }
+            "$sizeLabel leaves the share for good$along. $forever, and $alsoGone them."
         }
     }
 

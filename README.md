@@ -99,6 +99,12 @@ copied — so it is instant, and a share that drops halfway leaves every video
 either where it was or where it was going, never half-moved. That is measured
 rather than assumed, by a probe suite run against a real Samba server.
 
+A video's own files travel with it. Everything beside it that shares its name
+(`beach.en.srt`, `beach.chapters.txt` and `beach.jpg` beside `beach.mp4`) is
+renamed to match, moved and deleted along with it, and the delete dialog counts
+them. If one of those names is already taken where the video is going, nothing
+happens and the app says which name. A folder's own poster stays with the folder.
+
 Folders move and rename the same way, whole: the server does a directory and
 everything under it in that same single operation. Deleting is permanent and asks
 first, naming the size and saying that the chapters you wrote go with it — and for

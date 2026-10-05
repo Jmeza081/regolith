@@ -163,6 +163,8 @@ data class DeleteTarget(
     val sizeLabel: String,
     val videoCount: Int,
     val folderCount: Int,
+    /** The files going with the picked videos (`Companions`), which the list never shows going. */
+    val companionCount: Int = 0,
 )
 
 /**
