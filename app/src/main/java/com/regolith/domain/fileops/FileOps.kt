@@ -49,17 +49,35 @@ enum class ReadOnlySource {
 }
 
 /**
- * One thing an operation is about: a file, or a folder and everything under it.
+ * One thing an operation is about: a video, a folder and everything under
+ * it, or a file that is not a video.
  *
- * Why not a bare id. Folders and files are different tables and both number
- * from 1, so in a batch holding some of each a `Long` says nothing about
- * what it points at. The flag travels WITH the id for the same reason a
- * foreign key names its table.
+ * Why not a bare id. Each kind is its own table (`media_files`, `folders`,
+ * `share_files`) and each numbers from 1, so in a batch holding several
+ * kinds a `Long` says nothing about what it points at. The kind travels WITH
+ * the id for the same reason a foreign key names its table.
  */
-data class FileOpTarget(val id: Long, val isFolder: Boolean) {
+data class FileOpTarget(val id: Long, val kind: Kind) {
+    enum class Kind {
+        /** A video, a row in `media_files`. */
+        FILE,
+        FOLDER,
+
+        /** A file that is not a video, a row in `share_files` (Browse lists every file). */
+        OTHER,
+    }
+
+    val isFolder: Boolean get() = kind == Kind.FOLDER
+
+    /** A video: the only kind with chapters, progress and companions. */
+    val isVideo: Boolean get() = kind == Kind.FILE
+
+    val isOther: Boolean get() = kind == Kind.OTHER
+
     companion object {
-        fun file(id: Long) = FileOpTarget(id, isFolder = false)
-        fun folder(id: Long) = FileOpTarget(id, isFolder = true)
+        fun file(id: Long) = FileOpTarget(id, Kind.FILE)
+        fun folder(id: Long) = FileOpTarget(id, Kind.FOLDER)
+        fun other(id: Long) = FileOpTarget(id, Kind.OTHER)
         fun files(ids: Collection<Long>): List<FileOpTarget> = ids.map(::file)
     }
 }
@@ -88,8 +106,8 @@ data class FileOpResult(
     /** The share dropped mid-batch, so the remainder was never attempted. */
     val dropped: Boolean get() = failures.any { it.error == FileOpError.UNREACHABLE }
 
-    /** The ids of the files that made it, for callers that only ever pass files. */
-    val doneFileIds: List<Long> get() = done.filterNot { it.isFolder }.map { it.id }
+    /** The ids of the videos that made it, for callers that only ever pass videos. */
+    val doneFileIds: List<Long> get() = done.filter { it.isVideo }.map { it.id }
 
     companion object {
         fun failed(target: FileOpTarget, name: String, error: FileOpError) =

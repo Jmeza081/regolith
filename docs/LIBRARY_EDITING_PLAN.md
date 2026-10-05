@@ -9,8 +9,8 @@ Progress, in the build order at the end:
 - Done: 1, the leaky-pick fix (also on its own branch, `fix/leaky-pick`).
 - Done: 2, companions travel with their video (`Companions`).
 - Done: 3, every folder is a collection.
-- Done: 4, the listing half. Browse lists every file. Picking those files
-  (the third `FileOpTarget` kind) comes after the Library has the verbs.
+- Done: 4. Browse lists every file, and each can be picked, moved, renamed
+  and deleted on its own (never downloaded).
 - Done: 5, the verbs moved out of Browse into `FileActions`, with tests.
 - Done: 6, the Library (and Search) offer the same four verbs.
 - Done: 7, a collection's wall adds videos and sets its poster.
@@ -223,10 +223,10 @@ Browse can show every file without any extra trip to the server.
 - **Rows.** Browse lists them after the folder's videos, by their real names
   and sizes, each with an icon for its kind: picture, subtitles, chapters,
   info, other.
-- **Actions.** They take the same selection actions as any file: rename,
-  move, delete, download. `FileOpTarget` gains a third kind for them. A
-  companion picked on its own moves alone; a video picked moves with its
-  companions.
+- **Actions.** They take the same selection actions as a video: rename,
+  move and delete. `FileOpTarget` gains a third kind for them. A companion
+  picked on its own moves alone; a video picked moves with its companions.
+  As built, they never download: the download queue keeps videos to play.
 - **Tapping one.** Tapping a picture could open a preview (a poster is the
   obvious case). Tapping anything else does nothing for now.
 - **The Library is unchanged.** It never lists these files.

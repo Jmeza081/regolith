@@ -85,7 +85,7 @@ class ArtworkRepository @Inject constructor(
      * Only needed when a picture is replaced under a tile already drawn.
      */
     private val imageLoader: dagger.Lazy<ImageLoader>,
-) : MomentFrames {
+) : MomentFrames, FolderPictures {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Two extractions at a time: enough to fill a grid, not enough to starve the player. */
@@ -317,7 +317,7 @@ class ArtworkRepository @Inject constructor(
      * image beside it is not a reason to make them again — it would be the
      * same frame, every listing.
      */
-    suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
+    override suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
         if (entries.any { !it.isDirectory && MediaFileTypes.isVideo(it.name) }) forgetFolderPlaceholders(folderId)
         val folder = folderDao.byId(folderId) ?: return
         // The freshest listing there is. The resolver's own copy would

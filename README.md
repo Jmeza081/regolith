@@ -121,8 +121,11 @@ letter to letter.
 Browse shows a folder the way a file manager would. After its folders and
 videos come all its other files, by their real names and sizes: the poster,
 subtitles, chapters, an `.nfo`, anything else. The Library leaves those out
-and puts them to use instead. For now they are only listed; picking works on
-videos and folders.
+and puts them to use instead. Hold one to pick it, and it moves, renames and
+deletes like a video, but on its own: a subtitles file picked by itself leaves
+its video where it is. They never download, since what Download keeps on the
+phone is videos to play. Moving, renaming or deleting a folder's poster this
+way changes the folder's tile at once.
 
 Because a folder moves and deletes whole, Move and Delete refuse when you have
 picked a folder and then taken something back out of it. Moving or deleting the

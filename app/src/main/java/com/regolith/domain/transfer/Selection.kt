@@ -44,6 +44,20 @@ data class FilePick(
 )
 
 /**
+ * One file that is not a video, picked directly: a poster, subtitles, an
+ * `.nfo` (Browse lists every file, `OtherFiles`). It can be moved, renamed
+ * and deleted like a video. It is never downloaded: the download queue keeps
+ * videos to play away from the share, and these are not that.
+ */
+data class OtherPick(
+    val otherId: Long,
+    val shareId: Long,
+    /** The relPath of the folder holding it, as for [FilePick]. */
+    val folderRelPath: String,
+    val sizeBytes: Long = 0,
+)
+
+/**
  * What has been picked. An instance of this is one selection session.
  *
  * A folder pick is additive — everything beneath it comes — and the two
@@ -59,11 +73,15 @@ data class Selection(
     val excludedFiles: Set<FilePick> = emptySet(),
     /** Subfolders a picked folder would bring that the user took back out, subtree and all. */
     val excludedFolders: Set<FolderPick> = emptySet(),
+    /** Files that are not videos, picked directly ([OtherPick]). */
+    val others: Set<OtherPick> = emptySet(),
+    /** Files that are not videos that a picked folder would take, taken back out. */
+    val excludedOthers: Set<OtherPick> = emptySet(),
 ) {
-    val isEmpty: Boolean get() = folders.isEmpty() && files.isEmpty()
+    val isEmpty: Boolean get() = folders.isEmpty() && files.isEmpty() && others.isEmpty()
 
     /** What the contextual bar counts: picks, not the files they expand to. Exclusions are not picks. */
-    val itemCount: Int get() = folders.size + files.size
+    val itemCount: Int get() = folders.size + files.size + others.size
 
     /** Picked folder paths per share, for the covering tests below. */
     internal fun folderPathsIn(shareId: Long): Set<String> =
@@ -109,9 +127,12 @@ fun Selection.toggleFolder(pick: FolderPick): Selection {
     // picking it twice or doing nothing. "This folder, minus that one."
     if (coversFolder(pick.shareId, pick.relPath)) return copy(excludedFolders = excludedFolders + pick)
     val prefix = "${pick.relPath}/"
+    fun inside(shareId: Long, folderRelPath: String) =
+        shareId == pick.shareId && (folderRelPath == pick.relPath || folderRelPath.startsWith(prefix))
     return copy(
         folders = folders.filterNot { it.shareId == pick.shareId && it.relPath.startsWith(prefix) }.toSet() + pick,
-        files = files.filterNot { it.shareId == pick.shareId && (it.folderRelPath == pick.relPath || it.folderRelPath.startsWith(prefix)) }.toSet(),
+        files = files.filterNot { inside(it.shareId, it.folderRelPath) }.toSet(),
+        others = others.filterNot { inside(it.shareId, it.folderRelPath) }.toSet(),
     ).dropExclusionsUnder(pick.shareId, pick.relPath)
 }
 
@@ -130,6 +151,24 @@ fun Selection.toggleFile(pick: FilePick): Selection {
     if (excluded != null) return copy(excludedFiles = excludedFiles - excluded)
     if (coversFileIn(pick.shareId, pick.folderRelPath)) return copy(excludedFiles = excludedFiles + pick)
     return copy(files = files + pick)
+}
+
+/** Add or remove a pick of a file that is not a video, by the same rules as [toggleFile]. */
+fun Selection.toggleOther(pick: OtherPick): Selection {
+    val mine = others.firstOrNull { it.otherId == pick.otherId }
+    if (mine != null) return copy(others = others - mine)
+    val excluded = excludedOthers.firstOrNull { it.otherId == pick.otherId }
+    if (excluded != null) return copy(excludedOthers = excludedOthers - excluded)
+    if (coversFileIn(pick.shareId, pick.folderRelPath)) return copy(excludedOthers = excludedOthers + pick)
+    return copy(others = others + pick)
+}
+
+/** "Select all" for a file that is not a video: in, whatever it was. Never excludes. */
+fun Selection.includeOther(pick: OtherPick): Selection = when {
+    others.any { it.otherId == pick.otherId } -> this
+    excludedOthers.any { it.otherId == pick.otherId } -> copy(excludedOthers = excludedOthers.filterNot { it.otherId == pick.otherId }.toSet())
+    coversFileIn(pick.shareId, pick.folderRelPath) -> this
+    else -> copy(others = others + pick)
 }
 
 /**
@@ -158,6 +197,7 @@ private fun Selection.dropExclusionsUnder(shareId: Long, relPath: String): Selec
     return copy(
         excludedFiles = excludedFiles.filterNot { it.shareId == shareId && (it.folderRelPath == relPath || it.folderRelPath.startsWith(prefix)) }.toSet(),
         excludedFolders = excludedFolders.filterNot { it.shareId == shareId && (it.relPath == relPath || it.relPath.startsWith(prefix)) }.toSet(),
+        excludedOthers = excludedOthers.filterNot { it.shareId == shareId && (it.folderRelPath == relPath || it.folderRelPath.startsWith(prefix)) }.toSet(),
     )
 }
 
@@ -215,7 +255,7 @@ data class SelectionTally(
     val alreadyKept: Int = 0,
     /** Picked folders whose contents are unknown until the download walks them. */
     val unlistedFolders: Int = 0,
-    /** Files and subfolders taken back out of a picked folder. */
+    /** Files (of any kind) and subfolders taken back out of a picked folder. */
     val leftOut: Int = 0,
 ) {
     val estimated: Boolean get() = unlistedFolders > 0
@@ -260,16 +300,22 @@ fun Selection.tally(doneFileIds: Set<Long> = emptySet()): SelectionTally {
         byteCount = bytes.coerceAtLeast(0),
         alreadyKept = files.count { it.fileId in doneFileIds },
         unlistedFolders = unlisted,
-        leftOut = excludedFiles.size + excludedFolders.size,
+        leftOut = excludedFiles.size + excludedFolders.size + excludedOthers.size,
     )
 }
 
 /**
- * What one folder pick leaves out, resolved for the download job: the file
- * ids to skip and the subfolder paths the walk should not enter.
+ * What one folder pick leaves out: the video ids to skip and the subfolder
+ * paths the download walk should not enter, and the files that are not
+ * videos ([otherIds]), which only Move and Delete care about, since a
+ * download never takes them.
  */
-data class FolderExclusions(val fileIds: Set<Long> = emptySet(), val paths: Set<String> = emptySet()) {
-    val isEmpty: Boolean get() = fileIds.isEmpty() && paths.isEmpty()
+data class FolderExclusions(
+    val fileIds: Set<Long> = emptySet(),
+    val paths: Set<String> = emptySet(),
+    val otherIds: Set<Long> = emptySet(),
+) {
+    val isEmpty: Boolean get() = fileIds.isEmpty() && paths.isEmpty() && otherIds.isEmpty()
 }
 
 /**
@@ -290,5 +336,6 @@ fun Selection.exclusionsUnder(pick: FolderPick): FolderExclusions {
     return FolderExclusions(
         fileIds = excludedFiles.filter { inside(it.shareId, it.folderRelPath) }.map { it.fileId }.toSet(),
         paths = excludedFolders.filter { inside(it.shareId, it.relPath) }.map { it.relPath }.toSet(),
+        otherIds = excludedOthers.filter { inside(it.shareId, it.folderRelPath) }.map { it.otherId }.toSet(),
     )
 }

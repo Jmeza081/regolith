@@ -53,6 +53,7 @@ class FileActionsTest {
     private var rootId = 0L
     private var filmsId = 0L
     private var archiveId = 0L
+    private val picturesChecked = mutableListOf<Long>()
 
     @Before
     fun setUp() = runTest {
@@ -75,6 +76,7 @@ class FileActionsTest {
             DownloadStore(ApplicationProvider.getApplicationContext()),
             db.subtreeDao(),
             db.shareFileDao(),
+            { folderId, _ -> picturesChecked += folderId },
         )
     }
 
@@ -276,6 +278,7 @@ class FileActionsTest {
     private class DaoLookup(private val db: RegolithDatabase) : FolderLookup {
         override suspend fun folder(folderId: Long) = db.folderDao().byId(folderId)
         override suspend fun file(fileId: Long) = db.mediaFileDao().byId(fileId)
+        override suspend fun other(otherId: Long) = db.shareFileDao().byId(otherId)
         override suspend fun filesUnder(folderId: Long): List<MediaFileEntity> {
             val out = mutableListOf<MediaFileEntity>()
             var frontier = listOf(folderId)

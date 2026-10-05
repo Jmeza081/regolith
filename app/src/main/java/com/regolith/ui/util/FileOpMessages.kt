@@ -87,42 +87,72 @@ object FileOpMessages {
      * The counts come from rows already on the device, which is why the
      * dialog opens instantly instead of behind a network walk.
      */
-    fun deleteTitle(target: DeleteTarget): String = when {
-        target.folderCount == 0 -> if (target.targets.size == 1) "Delete this video?" else "Delete ${target.targets.size} videos?"
-        target.targets.size == 1 -> "Delete this folder?"
-        else -> "Delete ${target.targets.size} items?"
+    fun deleteTitle(target: DeleteTarget): String {
+        val n = target.targets.size
+        return when (kindOf(target)) {
+            Picked.VIDEOS -> if (n == 1) "Delete this video?" else "Delete $n videos?"
+            Picked.FILES -> if (n == 1) "Delete this file?" else "Delete $n files?"
+            Picked.FOLDER -> "Delete this folder?"
+            Picked.MIXED -> "Delete $n items?"
+        }
     }
 
-    fun deleteConfirmLabel(target: DeleteTarget): String = when {
-        target.folderCount == 0 -> if (target.targets.size == 1) "Delete video" else "Delete ${target.targets.size} videos"
-        target.targets.size == 1 -> "Delete folder"
-        else -> "Delete ${target.targets.size} items"
+    fun deleteConfirmLabel(target: DeleteTarget): String {
+        val n = target.targets.size
+        return when (kindOf(target)) {
+            Picked.VIDEOS -> if (n == 1) "Delete video" else "Delete $n videos"
+            Picked.FILES -> if (n == 1) "Delete file" else "Delete $n files"
+            Picked.FOLDER -> "Delete folder"
+            Picked.MIXED -> "Delete $n items"
+        }
+    }
+
+    /** What a delete is of, for its three lines. */
+    private enum class Picked { VIDEOS, FILES, FOLDER, MIXED }
+
+    private fun kindOf(target: DeleteTarget): Picked {
+        val videos = target.targets.size - target.folderCount - target.otherCount
+        return when {
+            target.folderCount == 0 && target.otherCount == 0 -> Picked.VIDEOS
+            target.folderCount == 0 && videos == 0 -> Picked.FILES
+            target.folderCount == 1 && target.targets.size == 1 -> Picked.FOLDER
+            else -> Picked.MIXED
+        }
     }
 
     fun deleteBody(target: DeleteTarget): String {
         val forever = "This can't be undone"
         val insideFolders = "A folder takes everything inside it, not just its videos"
         val alsoGone = "the chapters you wrote and where you left off go with"
-        return when {
+        return when (kindOf(target)) {
             // Videos only: the same words as a video's own page.
-            target.folderCount == 0 -> forDeletingVideos(target.names, target.sizeLabel, target.companionCount)
+            Picked.VIDEOS -> forDeletingVideos(target.names, target.sizeLabel, target.companionCount)
+            // A poster, subtitles: nothing hangs off them in the app.
+            Picked.FILES -> {
+                val name = target.names.singleOrNull()
+                if (name != null) "$name leaves the share for good — ${target.sizeLabel}. $forever."
+                else "${target.sizeLabel} leaves the share for good. $forever."
+            }
             // One folder, named, with what is known to be inside it.
-            target.targets.size == 1 -> {
+            Picked.FOLDER -> {
                 val holds = if (target.videoCount == 0) "no videos in it" else "${videos(target.videoCount)} · ${target.sizeLabel}"
                 "${target.names.first()} and everything inside it leaves the share for good — $holds. " +
                     "$insideFolders. $forever, and $alsoGone them."
             }
-            else -> {
-                val folders = if (target.folderCount == 1) "1 folder" else "${target.folderCount} folders"
-                val files = target.targets.size - target.folderCount
-                val picked = if (files == 0) folders else "$folders and ${videos(files)}"
+            Picked.MIXED -> {
+                val videoPicks = target.targets.size - target.folderCount - target.otherCount
+                val picked = listOfNotNull(
+                    target.folderCount.takeIf { it > 0 }?.let { if (it == 1) "1 folder" else "$it folders" },
+                    videoPicks.takeIf { it > 0 }?.let { videos(it) },
+                    target.otherCount.takeIf { it > 0 }?.let { if (it == 1) "1 other file" else "$it other files" },
+                ).let { parts -> if (parts.size == 1) parts.first() else parts.dropLast(1).joinToString(", ") + " and " + parts.last() }
                 val along = when (target.companionCount) {
                     0 -> ""
                     1 -> " So does the file that shares a picked video's name."
                     else -> " So do the ${target.companionCount} files that share the picked videos' names."
                 }
-                "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all.$along " +
-                    "$insideFolders. $forever."
+                val inside = if (target.folderCount > 0) " $insideFolders." else ""
+                "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all.$along$inside $forever."
             }
         }
     }
@@ -133,10 +163,12 @@ object FileOpMessages {
     /**
      * The line under the rename field. A folder moves as one; a video keeps
      * its extension ([ext], outside the field where it cannot be typed away),
-     * and its [companions] are renamed to match it.
+     * and its [companions] are renamed to match it; another file keeps its
+     * extension and nothing else follows it.
      */
-    fun forRenameNote(isFolder: Boolean, ext: String, companions: Int): String {
-        if (isFolder) return "Everything inside keeps its place — the folder moves as one."
+    fun forRenameNote(kind: FileOpTarget.Kind, ext: String, companions: Int): String {
+        if (kind == FileOpTarget.Kind.FOLDER) return "Everything inside keeps its place — the folder moves as one."
+        if (kind == FileOpTarget.Kind.OTHER) return if (ext.isEmpty()) "Only this file is renamed." else "Keeps .$ext. Only this file is renamed."
         val follows = if (ext.isEmpty()) "Chapters and your place follow the new name" else "Keeps .$ext — chapters and your place follow the new name"
         return when (companions) {
             0 -> "$follows."
@@ -174,10 +206,12 @@ object FileOpMessages {
      */
     fun subjectFor(targets: Collection<FileOpTarget>): String {
         val folders = targets.count { it.isFolder }
-        val files = targets.size - folders
-        return when {
-            folders == 0 -> if (files == 1) "1 video" else "$files videos"
-            files == 0 -> if (folders == 1) "1 folder" else "$folders folders"
+        val videos = targets.count { it.isVideo }
+        val others = targets.count { it.isOther }
+        return when (targets.size) {
+            videos -> if (videos == 1) "1 video" else "$videos videos"
+            folders -> if (folders == 1) "1 folder" else "$folders folders"
+            others -> if (others == 1) "1 file" else "$others files"
             else -> "${targets.size} items"
         }
     }

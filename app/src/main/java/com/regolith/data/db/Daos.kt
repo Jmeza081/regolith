@@ -374,6 +374,9 @@ interface ShareFileDao {
     @Query("SELECT * FROM share_files WHERE shareId = :shareId AND relPath = :relPath")
     suspend fun byPath(shareId: Long, relPath: String): ShareFileEntity?
 
+    @Query("SELECT * FROM share_files WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<Long>): List<ShareFileEntity>
+
     @Query("SELECT * FROM share_files WHERE folderId = :folderId ORDER BY name COLLATE NOCASE")
     fun observeInFolder(folderId: Long): Flow<List<ShareFileEntity>>
 

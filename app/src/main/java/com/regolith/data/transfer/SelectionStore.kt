@@ -2,11 +2,14 @@ package com.regolith.data.transfer
 
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.domain.transfer.OtherPick
 import com.regolith.domain.transfer.Selection
 import com.regolith.domain.transfer.includeFile
 import com.regolith.domain.transfer.includeFolder
+import com.regolith.domain.transfer.includeOther
 import com.regolith.domain.transfer.toggleFile
 import com.regolith.domain.transfer.toggleFolder
+import com.regolith.domain.transfer.toggleOther
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,18 +70,24 @@ class SelectionStore @Inject constructor() {
         _state.update { (it ?: Selection()).toggleFile(pick) }
     }
 
+    /** Pick or unpick a file that is not a video, as [toggleFile]. */
+    fun toggleOther(pick: OtherPick) {
+        _state.update { (it ?: Selection()).toggleOther(pick) }
+    }
+
     /**
      * "Select all" on one screen: add everything visible, leaving picks made
      * elsewhere alone. Folders go in first so a file inside one of them is
      * dropped as covered rather than counted twice.
      */
-    fun addAll(folders: List<FolderPick>, files: List<FilePick>) {
+    fun addAll(folders: List<FolderPick>, files: List<FilePick>, others: List<OtherPick> = emptyList()) {
         _state.update { current ->
             // include*, not toggle*: on a screen full of rows that a picked
             // folder already covers, toggling would take them all OUT.
             var next = current ?: Selection()
             folders.forEach { next = next.includeFolder(it) }
             files.forEach { next = next.includeFile(it) }
+            others.forEach { next = next.includeOther(it) }
             next
         }
     }

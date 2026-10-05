@@ -67,10 +67,37 @@ class DeleteMessageTest {
     fun `the rename note says the files that share a video's name follow it`() {
         assertEquals(
             "Keeps .mp4 — chapters and your place follow the new name, and the 3 files that share its name are renamed to match.",
-            FileOpMessages.forRenameNote(isFolder = false, ext = "mp4", companions = 3),
+            FileOpMessages.forRenameNote(FileOpTarget.Kind.FILE, ext = "mp4", companions = 3),
         )
-        assertEquals("Keeps .mp4 — chapters and your place follow the new name.", FileOpMessages.forRenameNote(isFolder = false, ext = "mp4", companions = 0))
-        assertEquals("Everything inside keeps its place — the folder moves as one.", FileOpMessages.forRenameNote(isFolder = true, ext = "", companions = 0))
+        assertEquals("Keeps .mp4 — chapters and your place follow the new name.", FileOpMessages.forRenameNote(FileOpTarget.Kind.FILE, ext = "mp4", companions = 0))
+        assertEquals("Everything inside keeps its place — the folder moves as one.", FileOpMessages.forRenameNote(FileOpTarget.Kind.FOLDER, ext = "", companions = 0))
+        assertEquals("Keeps .srt. Only this file is renamed.", FileOpMessages.forRenameNote(FileOpTarget.Kind.OTHER, ext = "srt", companions = 0))
+    }
+
+    @Test
+    fun `files that are not videos are called files, with nothing hanging off them`() {
+        val poster = DeleteTarget(
+            targets = listOf(FileOpTarget.other(1)), names = listOf("poster.jpg"), sizeLabel = "473 KB",
+            videoCount = 0, folderCount = 0, otherCount = 1,
+        )
+        assertEquals("Delete this file?", FileOpMessages.deleteTitle(poster))
+        assertEquals("Delete file", FileOpMessages.deleteConfirmLabel(poster))
+        assertEquals("poster.jpg leaves the share for good — 473 KB. This can't be undone.", FileOpMessages.deleteBody(poster))
+        assertEquals("1 file", FileOpMessages.subjectFor(poster.targets))
+    }
+
+    @Test
+    fun `a video and another file together are items, without the folder's warning`() {
+        val mixed = DeleteTarget(
+            targets = listOf(FileOpTarget.file(1), FileOpTarget.other(2)), names = listOf("beach.mp4", "notes.txt"), sizeLabel = "1.2 GB",
+            videoCount = 1, folderCount = 0, otherCount = 1,
+        )
+        assertEquals("Delete 2 items?", FileOpMessages.deleteTitle(mixed))
+        assertEquals(
+            "1 video and 1 other file leave the share for good — 1 video · 1.2 GB in all. This can't be undone.",
+            FileOpMessages.deleteBody(mixed),
+        )
+        assertEquals("2 items", FileOpMessages.subjectFor(mixed.targets))
     }
 
     @Test

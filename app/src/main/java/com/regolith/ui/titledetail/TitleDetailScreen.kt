@@ -41,6 +41,7 @@ import com.regolith.R
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.domain.fileops.FileNames
+import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.PromptDialog
@@ -300,7 +301,7 @@ private fun TitleDetailContent(
                         onConfirm = onRename,
                         onCancel = onDismissFileOp,
                         testTag = "detail_rename",
-                        note = FileOpMessages.forRenameNote(isFolder = false, ext = ext, companions = state.companions),
+                        note = FileOpMessages.forRenameNote(FileOpTarget.Kind.FILE, ext = ext, companions = state.companions),
                         maxLength = FileNames.MAX_BASE,
                     )
                 }

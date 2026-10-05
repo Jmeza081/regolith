@@ -12,6 +12,7 @@ import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.domain.transfer.OtherPick
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.ui.util.FileActions
@@ -206,9 +207,7 @@ class BrowseViewModel @AssistedInject constructor(
             is BrowseRow.FileRow -> selection.toggleFile(row.toPick())
             // A selection lives inside one share, so the root's share rows are not pickable.
             is BrowseRow.ShareRow -> Unit
-            // Not yet: picking the files that are not videos is the next step
-            // of the Library editing plan (LIBRARY_EDITING_PLAN.md).
-            is BrowseRow.OtherRow -> Unit
+            is BrowseRow.OtherRow -> selection.toggleOther(row.toPick())
         }
     }
 
@@ -219,6 +218,7 @@ class BrowseViewModel @AssistedInject constructor(
         selection.addAll(
             folders = rows.filterIsInstance<BrowseRow.FolderRow>().map { it.toPick() },
             files = rows.filterIsInstance<BrowseRow.FileRow>().map { it.toPick() },
+            others = rows.filterIsInstance<BrowseRow.OtherRow>().map { it.toPick() },
         )
     }
 
@@ -236,6 +236,9 @@ class BrowseViewModel @AssistedInject constructor(
 
     private fun BrowseRow.FileRow.toPick() =
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
+
+    private fun BrowseRow.OtherRow.toPick() =
+        OtherPick(otherId = otherId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
 
     private fun BrowseItem.toRow(revisions: Map<ArtworkOwner, Int>): BrowseRow = when (this) {
         is BrowseItem.Folder -> BrowseRow.FolderRow(

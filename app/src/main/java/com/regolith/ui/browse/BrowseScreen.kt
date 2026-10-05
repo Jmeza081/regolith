@@ -427,7 +427,7 @@ private fun BrowseContent(
                 if (others.isNotEmpty()) {
                     item(key = "browse_others") {
                         Section(formatOtherFileCount(others.size), dimmed = offline != null) {
-                            others.forEach { row -> OtherFileRow(row) }
+                            others.forEach { row -> OtherFileRow(row, selection, viewModel) }
                         }
                     }
                 }
@@ -512,7 +512,7 @@ private fun BrowseContent(
                 if (others.isNotEmpty()) {
                     item(key = "browse_others", span = { GridItemSpan(maxLineSpan) }) {
                         Section(formatOtherFileCount(others.size), dimmed = offline != null) {
-                            others.forEach { row -> OtherFileRow(row) }
+                            others.forEach { row -> OtherFileRow(row, selection, viewModel) }
                         }
                     }
                 }
@@ -618,18 +618,28 @@ private const val FLASH_FADE_MS = 500
 
 /**
  * One file that is not a video, by its real name, its kind and its size.
- * Nothing opens from here yet: picking these, and moving, renaming or
- * deleting them, is the next step of the Library editing plan.
+ * Picked like a video (hold, then tap), and moved, renamed or deleted on
+ * its own: a companion picked by itself goes alone. Tapping it otherwise
+ * opens nothing, since the app has nothing to show it in.
  */
 @Composable
-private fun OtherFileRow(row: BrowseRow.OtherRow) {
+private fun OtherFileRow(row: BrowseRow.OtherRow, selection: SelectionUiState?, viewModel: BrowseViewModel) {
+    // As for a video: picked itself, or inside a picked folder and not
+    // taken back out.
+    val coming = selection?.pickedOthers?.contains(row.otherId) == true ||
+        (selection?.coversFile(row.shareId, row.folderRelPath) == true && !selection.excludedOthers.contains(row.otherId))
     ListRow(
         title = row.name,
         meta = "${row.kind.label} · ${formatBytes(row.sizeBytes)}",
         leading = RowLeading.IconBox(iconFor(row.kind)),
-        trailing = RowTrailing.None,
+        trailing = if (coming) RowTrailing.Checked else RowTrailing.None,
         compact = true,
-        onClick = {},
+        onClick = if (selection != null) {
+            { viewModel.toggleSelection(row) }
+        } else {
+            {}
+        },
+        onLongClick = { viewModel.beginSelection(row) },
         testTag = row.testTag,
     )
 }

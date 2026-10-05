@@ -319,4 +319,33 @@ class SelectionExclusionTest {
         val sel = Selection().toggleFolder(folder(5, "Films")).toggleFile(file(20, "Films")).toggleFile(file(20, "Films"))
         assertTrue(sel.foldersWithExclusions().isEmpty())
     }
+
+    // ── files that are not videos ──────────────────────────────────────
+
+    private fun other(id: Long, folderPath: String, share: Long = 1, bytes: Long = 0) =
+        OtherPick(otherId = id, shareId = share, folderRelPath = folderPath, sizeBytes = bytes)
+
+    @Test
+    fun `a poster is picked and unpicked like a video, and counts as an item`() {
+        val picked = Selection().toggleOther(other(1, "Films"))
+        assertEquals(1, picked.itemCount)
+        assertTrue(picked.toggleOther(other(1, "Films")).isEmpty)
+    }
+
+    @Test
+    fun `picking a folder drops the files picked inside it`() {
+        val sel = Selection().toggleOther(other(1, "Films/Arrival (2016)")).toggleFolder(folder(10, "Films"))
+        assertTrue(sel.others.isEmpty())
+        assertEquals(1, sel.itemCount)
+    }
+
+    @Test
+    fun `a poster taken back out of a picked folder holds Move and Delete back`() {
+        val films = folder(10, "Films")
+        val sel = Selection().toggleFolder(films).toggleOther(other(1, "Films"))
+        assertEquals(setOf(other(1, "Films")), sel.excludedOthers)
+        assertEquals(listOf(films), sel.foldersWithExclusions())
+        assertEquals(setOf(1L), sel.exclusionsUnder(films).otherIds)
+        assertTrue("downloads never take it, so they skip nothing for it", sel.exclusionsUnder(films).fileIds.isEmpty())
+    }
 }

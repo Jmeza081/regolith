@@ -62,14 +62,16 @@ class FileActions @AssistedInject constructor(
 
     private suspend fun verbsFor(sel: Selection?): FileVerbs {
         if (sel == null) return FileVerbs()
-        val shares = (sel.folders.map { it.shareId } + sel.files.map { it.shareId }).toSet()
+        val shares = (sel.folders.map { it.shareId } + sel.files.map { it.shareId } + sel.others.map { it.shareId }).toSet()
         return FileVerbs.of(itemCount = sel.itemCount, shares = shares.size, readOnly = fileOps.readOnly(shares))
     }
 
     /** What is picked, as the repository wants it: ids that say what they point at. */
     private fun picked(): List<FileOpTarget>? {
         val sel = selection.snapshot() ?: return null
-        val targets = sel.folders.map { FileOpTarget.folder(it.folderId) } + sel.files.map { FileOpTarget.file(it.fileId) }
+        val targets = sel.folders.map { FileOpTarget.folder(it.folderId) } +
+            sel.files.map { FileOpTarget.file(it.fileId) } +
+            sel.others.map { FileOpTarget.other(it.otherId) }
         return targets.takeIf { it.isNotEmpty() }
     }
 
@@ -79,8 +81,8 @@ class FileActions @AssistedInject constructor(
         if (!_state.value.verbs.canRename) return
         val target = picked()?.singleOrNull() ?: return
         scope.launch {
-            val name = if (target.isFolder) lookup.folder(target.id)?.name else lookup.file(target.id)?.name
-            val companions = if (target.isFolder) 0 else lookup.companionCount(listOf(target.id))
+            val name = nameOf(target)
+            val companions = if (target.isVideo) lookup.companionCount(listOf(target.id)) else 0
             _state.update { it.copy(renaming = RenameTarget(target, name ?: return@launch, companions)) }
         }
     }
@@ -113,22 +115,32 @@ class FileActions @AssistedInject constructor(
             var videos = 0
             var bytes = 0L
             var folders = 0
+            var others = 0
             for (target in targets) {
-                if (target.isFolder) {
-                    val folder = lookup.folder(target.id) ?: continue
-                    folders++
-                    names += folder.name
-                    val inside = lookup.filesUnder(target.id)
-                    videos += inside.size
-                    bytes += inside.sumOf { it.sizeBytes }
-                } else {
-                    val file = lookup.file(target.id) ?: continue
-                    names += file.name
-                    videos++
-                    bytes += file.sizeBytes
+                when (target.kind) {
+                    FileOpTarget.Kind.FOLDER -> {
+                        val folder = lookup.folder(target.id) ?: continue
+                        folders++
+                        names += folder.name
+                        val inside = lookup.filesUnder(target.id)
+                        videos += inside.size
+                        bytes += inside.sumOf { it.sizeBytes }
+                    }
+                    FileOpTarget.Kind.FILE -> {
+                        val file = lookup.file(target.id) ?: continue
+                        names += file.name
+                        videos++
+                        bytes += file.sizeBytes
+                    }
+                    FileOpTarget.Kind.OTHER -> {
+                        val other = lookup.other(target.id) ?: continue
+                        names += other.name
+                        others++
+                        bytes += other.sizeBytes
+                    }
                 }
             }
-            val companions = lookup.companionCount(targets.filterNot { it.isFolder }.map { it.id })
+            val companions = lookup.companionCount(targets.filter { it.isVideo }.map { it.id })
             _state.update {
                 it.copy(
                     confirmingDelete = DeleteTarget(
@@ -138,6 +150,7 @@ class FileActions @AssistedInject constructor(
                         videoCount = videos,
                         folderCount = folders,
                         companionCount = companions,
+                        otherCount = others,
                     ),
                 )
             }
@@ -304,16 +317,30 @@ class FileActions @AssistedInject constructor(
     }
 
     private suspend fun originsOf(targets: List<FileOpTarget>): Map<FileOpTarget, Long> = targets.mapNotNull { target ->
-        val origin = if (target.isFolder) lookup.folder(target.id)?.parentId else lookup.file(target.id)?.folderId
+        val origin = when (target.kind) {
+            FileOpTarget.Kind.FOLDER -> lookup.folder(target.id)?.parentId
+            FileOpTarget.Kind.FILE -> lookup.file(target.id)?.folderId
+            FileOpTarget.Kind.OTHER -> lookup.other(target.id)?.folderId
+        }
         origin?.let { target to it }
     }.toMap()
 
     /** The one share every pick is on, or null when they span several. */
     private suspend fun shareOf(targets: List<FileOpTarget>): Long? {
         val shares = targets.mapNotNull { target ->
-            if (target.isFolder) lookup.folder(target.id)?.shareId else lookup.file(target.id)?.shareId
+            when (target.kind) {
+                FileOpTarget.Kind.FOLDER -> lookup.folder(target.id)?.shareId
+                FileOpTarget.Kind.FILE -> lookup.file(target.id)?.shareId
+                FileOpTarget.Kind.OTHER -> lookup.other(target.id)?.shareId
+            }
         }.toSet()
         return shares.singleOrNull()
+    }
+
+    private suspend fun nameOf(target: FileOpTarget): String? = when (target.kind) {
+        FileOpTarget.Kind.FOLDER -> lookup.folder(target.id)?.name
+        FileOpTarget.Kind.FILE -> lookup.file(target.id)?.name
+        FileOpTarget.Kind.OTHER -> lookup.other(target.id)?.name
     }
 
     /**
@@ -422,7 +449,7 @@ data class FileVerbs(
     }
 }
 
-/** The one thing a rename is about: a file, or a folder. [companions] are renamed along with a video. */
+/** The one thing a rename is about: a video, a folder or another file. [companions] are renamed along with a video. */
 data class RenameTarget(val target: FileOpTarget, val name: String, val companions: Int = 0) {
     val isFolder: Boolean get() = target.isFolder
 }
@@ -443,6 +470,8 @@ data class DeleteTarget(
     val folderCount: Int,
     /** The files going with the picked videos (`Companions`), which the list never shows going. */
     val companionCount: Int = 0,
+    /** Files that are not videos, picked in their own right. */
+    val otherCount: Int = 0,
 )
 
 /**

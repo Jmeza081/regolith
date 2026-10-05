@@ -2,6 +2,7 @@ package com.regolith.data.repository
 
 import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileEntity
+import com.regolith.data.db.ShareFileEntity
 
 /**
  * The folder and file reads a screen's file actions need
@@ -17,6 +18,9 @@ interface FolderLookup {
     suspend fun folder(folderId: Long): FolderEntity?
 
     suspend fun file(fileId: Long): MediaFileEntity?
+
+    /** A file that is not a video, as Browse lists it. */
+    suspend fun other(otherId: Long): ShareFileEntity?
 
     /** Every present video in the subtree of [folderId]. */
     suspend fun filesUnder(folderId: Long): List<MediaFileEntity>

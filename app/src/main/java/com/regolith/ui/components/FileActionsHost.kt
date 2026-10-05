@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.domain.fileops.FileNames
+import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.SelectionUiState
@@ -36,14 +37,18 @@ fun FileActionsHost(actions: FileActions, tagPrefix: String) {
         // typed away.
         val ext = if (target.isFolder) "" else target.name.substringAfterLast('.', "")
         PromptDialog(
-            title = if (target.isFolder) "Rename folder" else "Rename video",
+            title = when (target.target.kind) {
+                FileOpTarget.Kind.FOLDER -> "Rename folder"
+                FileOpTarget.Kind.FILE -> "Rename video"
+                FileOpTarget.Kind.OTHER -> "Rename file"
+            },
             label = "Name",
             initialValue = if (target.isFolder) target.name else FileNames.baseOf(target.name),
             confirmLabel = "Rename",
             onConfirm = actions::rename,
             onCancel = actions::cancelRename,
             testTag = "${tagPrefix}_rename",
-            note = FileOpMessages.forRenameNote(target.isFolder, ext, target.companions),
+            note = FileOpMessages.forRenameNote(target.target.kind, ext, target.companions),
             maxLength = FileNames.MAX_BASE,
         )
     }

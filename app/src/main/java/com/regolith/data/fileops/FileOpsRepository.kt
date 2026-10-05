@@ -1,6 +1,7 @@
 package com.regolith.data.fileops
 
 import android.util.Log
+import com.regolith.data.artwork.FolderPictures
 import com.regolith.data.db.FolderDao
 import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileDao
@@ -8,6 +9,7 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareFileDao
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.db.SubtreeDao
 import com.regolith.data.db.TransferDao
 import com.regolith.data.transfer.DownloadStore
@@ -17,6 +19,7 @@ import com.regolith.domain.fileops.FileOpFailure
 import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.fileops.ReadOnlySource
+import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.Companions
 import com.regolith.domain.media.DemoSource
@@ -52,6 +55,11 @@ import javax.inject.Singleton
  * and its downloaded copy. A delete is the one case that takes rows away,
  * and its cascades are what the confirm dialog promises.
  *
+ * **A file that is not a video goes alone** (Browse lists every file, and
+ * these can be picked too): no companions, no chapters, no progress. When
+ * it is a picture, the folder is listed again afterwards, so a poster that
+ * was renamed, moved or deleted leaves its tile straight away.
+ *
  * **A video brings its companions.** The files beside it that share its
  * base name ([Companions]: its subtitles, chapters, own picture, `.nfo`)
  * are renamed, moved and deleted with it. Finding them costs the listing
@@ -81,6 +89,7 @@ class FileOpsRepository @Inject constructor(
     private val downloads: DownloadStore,
     private val subtrees: SubtreeDao,
     private val shareFiles: ShareFileDao,
+    private val pictures: FolderPictures,
 ) {
     private companion object {
         const val TAG = "Regolith/FileOps"
@@ -102,8 +111,11 @@ class FileOpsRepository @Inject constructor(
      * Give [target] a new name: a file keeps its extension, a folder is
      * called exactly what was typed.
      */
-    suspend fun rename(target: FileOpTarget, newBaseName: String): FileOpResult =
-        if (target.isFolder) renameFolder(target, newBaseName) else renameFile(target, newBaseName)
+    suspend fun rename(target: FileOpTarget, newBaseName: String): FileOpResult = when (target.kind) {
+        FileOpTarget.Kind.FOLDER -> renameFolder(target, newBaseName)
+        FileOpTarget.Kind.FILE -> renameFile(target, newBaseName)
+        FileOpTarget.Kind.OTHER -> renameOther(target, newBaseName)
+    }
 
     /**
      * The destination is listed first so a clash is a sentence in the
@@ -147,6 +159,33 @@ class FileOpsRepository @Inject constructor(
         } catch (e: SmbFailure) {
             Log.w(TAG, "rename of ${file.name} failed", e)
             FileOpResult.failed(target, file.name, e.toError())
+        }
+    }
+
+    /**
+     * A file that is not a video keeps its extension, as a video does (the
+     * share's own spelling of it), and takes nothing with it.
+     */
+    private suspend fun renameOther(target: FileOpTarget, newBaseName: String): FileOpResult {
+        val row = shareFiles.byId(target.id) ?: return FileOpResult.failed(target, "", FileOpError.NOT_FOUND)
+        val base = FileNames.cleanBase(newBaseName)
+            ?: return FileOpResult.failed(target, row.name, FileOpError.BAD_NAME)
+        val newName = FileNames.withExtension(base, row.name.substringAfterLast('.', ""))
+        if (newName == row.name) return FileOpResult(done = listOf(target))
+        val ctx = ctxFor(row.shareId) ?: return FileOpResult.failed(target, row.name, FileOpError.FORBIDDEN)
+        val parent = row.relPath.substringBeforeLast('/', "")
+        val to = join(parent, newName)
+        return try {
+            if (newName.lowercase() in namesIn(ctx, parent)) {
+                return FileOpResult.failed(target, row.name, FileOpError.NAME_TAKEN)
+            }
+            gateway.rename(ctx.host, ctx.creds, ctx.share, row.relPath, to)
+            shareFiles.relocate(row.shareId, row.relPath, to, newName, row.folderId)
+            if (ArtworkCandidates.isImage(row.name)) recheckPictures(ctx, listOf(row.folderId))
+            FileOpResult(done = listOf(target))
+        } catch (e: SmbFailure) {
+            Log.w(TAG, "rename of ${row.name} failed", e)
+            FileOpResult.failed(target, row.name, e.toError())
         }
     }
 
@@ -216,10 +255,19 @@ class FileOpsRepository @Inject constructor(
         val sourceNames = mutableMapOf<String, MutableList<String>>()
         suspend fun namesInSource(dir: String): MutableList<String> =
             sourceNames.getOrPut(dir) { runCatching { listNames(ctx, dir) }.getOrDefault(emptyList()).toMutableList() }
+        // Companions already moved with their video, so one also picked in
+        // its own right is done rather than "not on the share any more".
+        val followed = mutableSetOf<String>()
+        // Folders whose pictures changed: listed again at the end.
+        val pictureFolders = mutableSetOf<Long>()
 
         for (item in items) {
             if (dropped) {
                 failures += FileOpFailure(item.target, item.name, FileOpError.UNREACHABLE)
+                continue
+            }
+            if (item.other != null && item.relPath.lowercase() in followed) {
+                done += item.target
                 continue
             }
             val refusal = refuseMove(item, dest)
@@ -246,15 +294,23 @@ class FileOpsRepository @Inject constructor(
             }
             try {
                 gateway.rename(ctx.host, ctx.creds, ctx.share, item.relPath, to)
-                if (item.folder != null) {
-                    relocate(item.folder, to, item.name, destFolderId)
-                } else {
-                    val row = checkNotNull(item.file)
-                    for (c in companions) follow(ctx, row.shareId, join(from, c), join(dest.relPath, c), c, destFolderId)
-                    namesInSource(from).apply { remove(row.name); removeAll(companions) }
-                    taken += companions.map { it.lowercase() }
-                    touched += row.folderId
-                    mediaFileDao.update(row.copy(folderId = destFolderId, relPath = to))
+                when {
+                    item.folder != null -> relocate(item.folder, to, item.name, destFolderId)
+                    item.file != null -> {
+                        val row = item.file
+                        for (c in companions) follow(ctx, row.shareId, join(from, c), join(dest.relPath, c), c, destFolderId)
+                        namesInSource(from).apply { remove(row.name); removeAll(companions) }
+                        taken += companions.map { it.lowercase() }
+                        followed += companions.map { join(from, it).lowercase() }
+                        touched += row.folderId
+                        mediaFileDao.update(row.copy(folderId = destFolderId, relPath = to))
+                    }
+                    else -> {
+                        val other = checkNotNull(item.other)
+                        shareFiles.relocate(other.shareId, other.relPath, to, other.name, destFolderId)
+                        namesInSource(from).remove(other.name)
+                        if (ArtworkCandidates.isImage(other.name)) pictureFolders += listOf(other.folderId, destFolderId)
+                    }
                 }
                 taken += item.name.lowercase()
                 done += item.target
@@ -270,6 +326,7 @@ class FileOpsRepository @Inject constructor(
             }
         }
         recount(touched)
+        recheckPictures(ctx, pictureFolders)
         return FileOpResult(done, failures)
     }
 
@@ -301,10 +358,18 @@ class FileOpsRepository @Inject constructor(
         // As in a move: each folder a video goes from is listed once, for the
         // companions, and kept in step as videos go.
         val listings = mutableMapOf<Pair<Long, String>, MutableList<String>>()
+        // Companions already deleted with their video, as in a move.
+        val followed = mutableSetOf<Pair<Long, String>>()
+        // Folders whose pictures changed, with the share to list them on.
+        val pictureFolders = mutableSetOf<Pair<ShareCtx, Long>>()
 
         for (item in items) {
             if (dropped) {
                 failures += FileOpFailure(item.target, item.name, FileOpError.UNREACHABLE)
+                continue
+            }
+            if (item.other != null && (item.shareId to item.relPath.lowercase()) in followed) {
+                done += item.target
                 continue
             }
             val ctx = ctxFor(item.shareId)
@@ -326,6 +391,12 @@ class FileOpsRepository @Inject constructor(
                     goneFolders += subtree
                     subtrees.dropRootsUnder(item.shareId, item.relPath, "${item.relPath}/", item.relPath.length + 1)
                     item.folder.parentId?.let { touched += it }
+                } else if (item.other != null) {
+                    val other = item.other
+                    gateway.delete(ctx.host, ctx.creds, ctx.share, other.relPath)
+                    shareFiles.delete(other.id)
+                    listings[other.shareId to other.relPath.substringBeforeLast('/', "")]?.remove(other.name)
+                    if (ArtworkCandidates.isImage(other.name)) pictureFolders += ctx to other.folderId
                 } else {
                     val row = checkNotNull(item.file)
                     val dir = row.relPath.substringBeforeLast('/', "")
@@ -343,6 +414,7 @@ class FileOpsRepository @Inject constructor(
                     }
                     names.remove(row.name)
                     names.removeAll(companions)
+                    followed += companions.map { row.shareId to join(dir, it).lowercase() }
                     forgetDownloads(listOf(row.id))
                     goneFiles += row.id
                     touched += row.folderId
@@ -364,6 +436,7 @@ class FileOpsRepository @Inject constructor(
         // why the whole subtree is in the list.
         goneFolders.chunked(ID_CHUNK).forEach { folderDao.deleteByIds(it) }
         recount(touched - goneFolders.toSet())
+        for ((ctx, folders) in pictureFolders.groupBy({ it.first }, { it.second })) recheckPictures(ctx, folders)
         return FileOpResult(done, failures)
     }
 
@@ -445,20 +518,23 @@ class FileOpsRepository @Inject constructor(
         val relPath: String,
         val folder: FolderEntity? = null,
         val file: MediaFileEntity? = null,
+        val other: ShareFileEntity? = null,
     )
 
     /** Read the rows for a batch, dropping ids nothing answers to. */
     private suspend fun itemsFor(targets: Collection<FileOpTarget>): List<MoveItem> {
-        val files = mediaFileDao.byIds(targets.filterNot { it.isFolder }.map { it.id })
-            .associateBy { it.id }
+        val files = mediaFileDao.byIds(targets.filter { it.isVideo }.map { it.id }).associateBy { it.id }
+        val others = shareFiles.byIds(targets.filter { it.isOther }.map { it.id }).associateBy { it.id }
         return targets.mapNotNull { target ->
-            if (target.isFolder) {
-                folderDao.byId(target.id)?.let {
+            when (target.kind) {
+                FileOpTarget.Kind.FOLDER -> folderDao.byId(target.id)?.let {
                     MoveItem(target, it.name, it.shareId, it.parentId, it.relPath, folder = it)
                 }
-            } else {
-                files[target.id]?.let {
+                FileOpTarget.Kind.FILE -> files[target.id]?.let {
                     MoveItem(target, it.name, it.shareId, it.folderId, it.relPath, file = it)
+                }
+                FileOpTarget.Kind.OTHER -> others[target.id]?.let {
+                    MoveItem(target, it.name, it.shareId, it.folderId, it.relPath, other = it)
                 }
             }
         }
@@ -525,6 +601,21 @@ class FileOpsRepository @Inject constructor(
     /** The same, lowercased, for asking whether a name is taken: names on a share ignore case. */
     private suspend fun namesIn(ctx: ShareCtx, relPath: String): Set<String> =
         listNames(ctx, relPath).map { it.lowercase() }.toSet()
+
+    /**
+     * A picture changed on the share in [folderIds]: list each again and let
+     * the artwork cache compare ([FolderPictures]), so a poster renamed,
+     * moved or deleted here leaves its tile now rather than at the next
+     * scan. Best effort: the operation itself has already succeeded.
+     */
+    private suspend fun recheckPictures(ctx: ShareCtx, folderIds: Collection<Long>) {
+        for (id in folderIds.toSet()) {
+            val folder = folderDao.byId(id) ?: continue
+            runCatching { gateway.list(ctx.host, ctx.creds, ctx.share, folder.relPath) }
+                .onSuccess { pictures.onFolderListed(id, it) }
+                .onFailure { Log.i(TAG, "could not look at ${folder.name}'s pictures again (${it.message})") }
+        }
+    }
 
     /**
      * A companion follows its video, on the share and in its Browse row.

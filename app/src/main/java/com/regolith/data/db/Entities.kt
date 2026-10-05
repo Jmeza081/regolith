@@ -175,9 +175,9 @@ data class FolderEntity(
 /**
  * A file in a folder on the share that is not a video (schema v16): the
  * folder's poster, a film's subtitles or chapters, an `.nfo`, anything else.
- * Browse lists these, the way a file manager would; nothing else in the app
- * reads them, and every other screen keeps assuming a media file is a
- * video. Filled from the same folder listing that finds the videos, so
+ * Browse lists these, the way a file manager would, and picks them to move,
+ * rename or delete; no other screen shows them, and every other screen keeps
+ * assuming a media file is a video. Filled from the same folder listing that finds the videos, so
  * keeping them costs no extra trip to the share. A file that vanished from
  * the listing is deleted, not marked missing: there is no progress to keep.
  */

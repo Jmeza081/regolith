@@ -490,6 +490,8 @@ class LibraryRepository @Inject constructor(
 
     override suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
 
+    override suspend fun other(otherId: Long): ShareFileEntity? = shareFileDao.byId(otherId)
+
     /**
      * How many companion files ([Companions]) go with [fileIds] when they go
      * together ([Companions.goingWith]), from what the last listing of each
