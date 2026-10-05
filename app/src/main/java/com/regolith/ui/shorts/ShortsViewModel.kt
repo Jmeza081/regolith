@@ -218,7 +218,7 @@ class ShortsViewModel @Inject constructor(
     fun seekTo(positionMs: Long) = pool.seekTo(positionMs)
 
     /**
-     * "Poster saved to …", for when the poster editor was opened from the
+     * "Poster set for …", for when the poster editor was opened from the
      * panel and comes back here rather than to the player.
      */
     val posterMessages: Flow<String> = posters.saved

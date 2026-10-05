@@ -65,7 +65,7 @@ class PosterRepository @Inject constructor(
     private val folderPosters: FolderPosterWriter,
 ) {
     /**
-     * "Poster saved to …" lines for the player, which is where the editor
+     * "Poster set for …" lines for the player, which is where the editor
      * returns to. A buffered channel rather than a shared flow so the line
      * waits for the player to come back on screen instead of being dropped
      * while nobody is listening.
@@ -76,8 +76,7 @@ class PosterRepository @Inject constructor(
     /** Where a poster for [fileId] would go, or null when it has nowhere to go. Database only. */
     suspend fun target(fileId: Long): PosterTarget? {
         val loc = locate(fileId) ?: return null
-        val others = mediaFileDao.inFolder(loc.file.folderId).count { it.id != fileId }
-        return PosterTarget(folderName = loc.folderName, sharedWithFolder = others > 0)
+        return PosterTarget(folderName = loc.folderName)
     }
 
     /**
@@ -101,7 +100,7 @@ class PosterRepository @Inject constructor(
             gateway.writeReplacing(loc.host, loc.creds, loc.share, path, bytes)
             // Also redraws every tile already showing the old picture.
             artwork.adoptPoster(fileId, bytes)
-            _saved.trySend("Poster saved to ${loc.folderName}")
+            _saved.trySend("Poster set for ${loc.folderName}")
             PosterSaveOutcome.SAVED
         } catch (e: SmbFailure.Forbidden) {
             PosterSaveOutcome.READ_ONLY

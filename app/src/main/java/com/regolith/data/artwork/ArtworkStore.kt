@@ -180,11 +180,14 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
         const val JPEG_QUALITY = 85
 
         /**
-         * Bump when a change makes existing generated images wrong.
+         * Bump when a change makes existing images wrong, and say in
+         * `ArtworkRepository.ensureGeneration` what each step throws away.
          * 2: the frame grab moved from 10% of the runtime to the midpoint,
          *    and folders without a sidecar gained a mosaic.
+         * 3: a folder's own picture stopped applying to its only video, so
+         *    films' pictures taken from one go (nothing generated does).
          */
-        const val GENERATION = 2
+        const val GENERATION = 3
         const val GENERATION_FILE = ".generation"
 
         fun sampleSize(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Int {

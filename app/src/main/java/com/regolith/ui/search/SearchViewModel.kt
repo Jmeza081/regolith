@@ -10,7 +10,6 @@ import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
-import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.playback.ChapterFacet
@@ -259,12 +258,11 @@ class SearchViewModel @Inject constructor(
         }
         if (f == SearchFilter.ALL) {
             for (folder in folders) {
-                val kind = folder.kind?.let { runCatching { FolderKind.valueOf(it) }.getOrNull() }
                 hits += SearchHit.Folder(
                     folderId = folder.id,
                     browsable = true,
                     primary = folder.name,
-                    meta = listOfNotNull(if (kind == FolderKind.TITLE) "title" else "folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
+                    meta = listOfNotNull("folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
                     shareId = folder.shareId,
                     relPath = folder.relPath,
                     fileCount = folder.fileCount,

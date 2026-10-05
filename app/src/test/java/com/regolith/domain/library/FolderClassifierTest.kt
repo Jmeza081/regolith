@@ -16,12 +16,17 @@ class FolderClassifierTest {
         assertEquals(FolderKind.COLLECTION, kind("Films", dirs = listOf("Arrival (2016)"), files = listOf("poster.jpg", "Hard.Boiled.1992.mp4")))
     }
 
-    @Test fun `Arrival (2016) is a title`() {
-        assertEquals(FolderKind.TITLE, kind("Arrival (2016)", files = listOf("Arrival.2016.2160p.mkv", "poster.jpg", "Arrival.2016.2160p.jpg")))
+    @Test fun `Arrival (2016) holding one film is a collection of one`() {
+        assertEquals(FolderKind.COLLECTION, kind("Arrival (2016)", files = listOf("Arrival.2016.2160p.mkv", "poster.jpg", "Arrival.2016.2160p.jpg")))
     }
 
-    @Test fun `a folder with one video and no year is still a title`() {
-        assertEquals(FolderKind.TITLE, kind("The Thing", files = listOf("The.Thing.1982.mkv", "The.Thing.1982.srt")))
+    @Test fun `a folder with one video and no year is a collection too`() {
+        assertEquals(FolderKind.COLLECTION, kind("The Thing", files = listOf("The.Thing.1982.mkv", "The.Thing.1982.srt")))
+    }
+
+    @Test fun `a dated folder of clips is a collection, not one title`() {
+        assertEquals(FolderKind.COLLECTION, kind("Hawaii 2019", files = listOf("beach.mp4", "luau.mp4", "volcano.mp4")))
+        assertEquals(FolderKind.COLLECTION, kind("Wedding (2021)", files = listOf("ceremony.mp4", "first dance.mp4")))
     }
 
     @Test fun `Home videos with many loose files is a collection`() {

@@ -681,6 +681,17 @@ interface ArtworkDao {
     suspend fun deleteGenerated()
 
     /**
+     * Films' pictures taken from their folder's own picture (a `poster.jpg`
+     * beside a lone film). None are made any more: a folder's pictures are
+     * the folder's alone (ArtworkStore.GENERATION 3).
+     */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'SIDECAR'")
+    suspend fun filePicturesFromFolders(): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE ownerType = 'file' AND source = 'SIDECAR'")
+    suspend fun deleteFilePicturesFromFolders()
+
+    /**
      * Drops a folder's placeholder so the next request tries again. A folder
      * scanned before its videos were copied in has nothing to make a mosaic
      * from; this is how the scan that finds them undoes that.

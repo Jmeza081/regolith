@@ -65,22 +65,19 @@ object ArtworkCandidates {
         isImage(name) && name.substringBeforeLast('.').lowercase() in sidecarStems
 
     /**
-     * Candidates for a video, given the entries of the folder it is in.
+     * Candidates for a video, given the entries of the folder it is in: its
+     * basename image (`beach.jpg` beside `beach.mp4`), and nothing else.
      *
-     * A sidecar (`poster.jpg` beside the file) only applies when the folder
-     * is a title folder, i.e. this is the only video in it. In a folder of
-     * many loose files the sidecar is the collection's poster, not this
-     * file's: the design shows `Films/Hard.Boiled.1992.mp4` getting a frame
-     * grab even though `Films/poster.jpg` exists. A basename image always
-     * applies.
+     * A folder's own pictures (`poster.jpg`, `folder.jpg`…) belong to the
+     * folder, never to a video in it, not even its only video (the owner's
+     * model, 2026-10-05). A collection of one may gain videos later, and a
+     * video's picture shouldn't change the day a second one arrives. With no
+     * basename image, a video's picture comes from the video itself (the
+     * embedded cover, else a frame), like every other video's.
      */
     fun forFile(fileName: String, siblings: List<SmbEntry>): List<Candidate> {
         val images = siblings.filter { !it.isDirectory && isImage(it.name) && it.sizeBytes <= MAX_IMAGE_BYTES }
-        val videosInFolder = siblings.count { !it.isDirectory && MediaFileTypes.isVideo(it.name) }
         val out = mutableListOf<Candidate>()
-        if (videosInFolder <= 1) {
-            out += sidecars(images)
-        }
         val stem = fileName.substringBeforeLast('.')
         for (ext in imageExtensions) {
             images.firstOrNull { it.name.equals("$stem.$ext", ignoreCase = true) }?.let { out += Candidate(it.name, ArtworkSource.BASENAME) }

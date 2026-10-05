@@ -37,7 +37,9 @@ service that gets told what your files are.
 ### Plays straight off the share
 
 Point it at a share, pick the folders you actually want (`Films/` and `Series/`,
-not `Backups/`), and it reads the shape of what's there. Playback is a custom
+not `Backups/`), and it reads the shape of what's there. Every folder of videos
+is a collection in the Library, with its own poster, even one that holds a
+single video, since you may add more later. Playback is a custom
 Media3 data source reading SMB directly, so a file starts without being copied
 first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
@@ -78,8 +80,9 @@ Don't like the frame a folder picked? "Make a poster from this frame", at the
 foot of the player's Playback settings, opens an editor on the frame you paused
 at: scrub, type a time or step a frame at a time, then drag and pinch the picture
 behind a 2:3 box and save. It is written as `poster.jpg` in the film's folder on
-the share, asking first if one is already there, and every tile picks it up at
-once.
+the share, asking first if one is already there, and becomes that folder's
+poster: every folder is a collection, and its poster is the collection's, even
+when it holds a single film. Every tile showing it picks it up at once.
 
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an

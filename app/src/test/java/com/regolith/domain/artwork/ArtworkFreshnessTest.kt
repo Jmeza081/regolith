@@ -87,11 +87,20 @@ class ArtworkFreshnessTest {
     }
 
     @Test
-    fun `a folder's poster_jpg is a film's only when the film is alone there`() {
+    fun `a folder's poster_jpg is never a film's, even when the film is alone there`() {
+        // A folder of one is still a collection; its poster is the folder's.
         val alone = listOf(video("Arrival.2016.mkv"), image("poster.jpg"))
         val shared = listOf(video("Arrival.2016.mkv"), video("Heat.1995.mkv"), image("poster.jpg"))
-        assertTrue(fileStamp("Arrival.2016.mkv", alone).startsWith("poster.jpg"))
+        assertEquals(NO_IMAGES, fileStamp("Arrival.2016.mkv", alone))
         assertEquals(NO_IMAGES, fileStamp("Arrival.2016.mkv", shared))
+    }
+
+    @Test
+    fun `a film that took its folder's poster before is made again from the film itself`() {
+        // Its picture was stamped with poster.jpg when that applied to a lone
+        // film; the listing now says it has no picture of its own.
+        val alone = listOf(video("Arrival.2016.mkv"), image("poster.jpg"))
+        assertTrue(ArtworkFreshness.isStale("poster.jpg\t100000\t1000000", fileStamp("Arrival.2016.mkv", alone), ArtworkSource.SIDECAR))
     }
 
     // ── Rows from before stamps ─────────────────────────────────────────

@@ -242,20 +242,6 @@ private fun TitleDetailContent(
                 state.probeError?.let {
                     Text(it, style = TextStyles.meta, color = colors.metadata, modifier = Modifier.testTag("detail_probe_error"))
                 }
-                if (state.siblings.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("In this collection", muted = true)
-                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                            state.siblings.forEach { s ->
-                                com.regolith.ui.components.MediaTile(
-                                    artwork = s.artwork, kind = com.regolith.domain.artwork.ArtworkKind.THUMB, title = s.name, meta = s.meta,
-                                    chip = s.resolutionLabel.ifEmpty { null }, onClick = { onPlay(s.fileId) }, testTag = "detail_sibling_${s.fileId}",
-                                    modifier = Modifier.weight(1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                                )
-                            }
-                        }
-                    }
-                }
                 // The file itself, at the foot of the screen (P12): the two
                 // things that change it ON THE SHARE, each behind a dialog.
                 // A phone video has no share: it can be hidden from Regolith

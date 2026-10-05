@@ -56,9 +56,11 @@ import com.regolith.ui.util.SelectionPresenter
  * folder's children.
  *
  * What becomes a tile:
- *  - a TITLE folder    -> one Title tile for its largest video (its poster.jpg applies to that file)
- *  - a loose video     -> a Title tile (matched if the name carried a year or episode)
- *  - any other folder  -> a Collection tile, counting the files beneath it
+ *  - a folder          -> a Collection tile, counting the files beneath it,
+ *                         however few: even one video's folder is a collection
+ *                         you open (the owner's model, 2026-10-05)
+ *  - a video directly in the folder shown -> a Title tile (matched if the name
+ *                         carried a year or episode)
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel(assistedFactory = LibraryViewModel.Factory::class)
@@ -277,35 +279,29 @@ class LibraryViewModel @AssistedInject constructor(
         for (parent in parents) {
             for (folder in byParent[parent.id].orEmpty()) {
                 val kind = folder.kind?.let { runCatching { FolderKind.valueOf(it) }.getOrNull() }
-                val direct = byFolder[folder.id].orEmpty()
-                if (kind == FolderKind.TITLE && direct.isNotEmpty()) {
-                    val main = direct.maxBy { it.sizeBytes }
-                    tiles += titleTile(main, progressById[main.id], ParsedName(folder.titleParsed ?: folder.name, folder.year))
-                } else {
-                    val beneath = filesUnder(folder)
-                    if (beneath.isEmpty() && kind != FolderKind.COLLECTION && kind != FolderKind.SHOW) continue
-                    tiles += LibraryTile.Collection(
-                        folderId = folder.id,
-                        name = folder.name,
-                        fileCount = beneath.size,
-                        resolutionLabel = VideoInfo.resolutionLabelFor(beneath.mapNotNull { it.width }.maxOrNull(), beneath.mapNotNull { it.height }.maxOrNull()),
-                        // On the first screen these are the top-level folders, the
-                        // only posters that move (AnimatedPoster): a GIF plays here.
-                        artwork = ArtworkRequest(ArtworkOwner.Folder(folder.id), ArtworkKind.POSTER, animated = folderId == null),
-                        addedAtMs = beneath.maxOfOrNull { it.addedAtMs } ?: 0,
-                        sizeBytes = beneath.sumOf { it.sizeBytes },
-                        durationMs = beneath.mapNotNull { it.durationMs }.takeIf { it.isNotEmpty() }?.sum(),
-                        height = beneath.mapNotNull { it.height }.maxOrNull(),
-                        shareId = folder.shareId,
-                        relPath = folder.relPath,
-                        directFileCount = folder.fileCount,
-                        directByteCount = folder.byteCount,
-                        listed = folder.lastListedAtMs != null,
-                    )
-                }
+                val beneath = filesUnder(folder)
+                if (beneath.isEmpty() && kind != FolderKind.COLLECTION && kind != FolderKind.SHOW) continue
+                tiles += LibraryTile.Collection(
+                    folderId = folder.id,
+                    name = folder.name,
+                    fileCount = beneath.size,
+                    resolutionLabel = VideoInfo.resolutionLabelFor(beneath.mapNotNull { it.width }.maxOrNull(), beneath.mapNotNull { it.height }.maxOrNull()),
+                    // On the first screen these are the top-level folders, the
+                    // only posters that move (AnimatedPoster): a GIF plays here.
+                    artwork = ArtworkRequest(ArtworkOwner.Folder(folder.id), ArtworkKind.POSTER, animated = folderId == null),
+                    addedAtMs = beneath.maxOfOrNull { it.addedAtMs } ?: 0,
+                    sizeBytes = beneath.sumOf { it.sizeBytes },
+                    durationMs = beneath.mapNotNull { it.durationMs }.takeIf { it.isNotEmpty() }?.sum(),
+                    height = beneath.mapNotNull { it.height }.maxOrNull(),
+                    shareId = folder.shareId,
+                    relPath = folder.relPath,
+                    directFileCount = folder.fileCount,
+                    directByteCount = folder.byteCount,
+                    listed = folder.lastListedAtMs != null,
+                )
             }
             for (file in byFolder[parent.id].orEmpty()) {
-                tiles += titleTile(file, progressById[file.id], null)
+                tiles += titleTile(file, progressById[file.id])
             }
         }
 
@@ -314,7 +310,7 @@ class LibraryViewModel @AssistedInject constructor(
         val serverNames = servers.filter { s -> shares.any { it.serverId == s.id } }.map { it.name }
         val parentTitle = if (folderId != null) parents.firstOrNull()?.name ?: "" else "Library"
         val meta = if (folderId != null) {
-            "${tiles.size} titles"
+            if (tiles.size == 1) "1 title" else "${tiles.size} titles"
         } else {
             (serverNames + shares.map { it.name }.distinct()).joinToString(" · ") + " · " + "%,d".format(fileCount) + " files"
         }
@@ -378,8 +374,8 @@ class LibraryViewModel @AssistedInject constructor(
     private fun LibraryTile.Title.toPick() =
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
 
-    private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, folderName: ParsedName?): LibraryTile.Title {
-        val parsed = folderName ?: ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
+    private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?): LibraryTile.Title {
+        val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
         val matched = parsed.matched
         val duration = progress?.durationMs?.takeIf { it > 0 } ?: file.durationMs
         return LibraryTile.Title(

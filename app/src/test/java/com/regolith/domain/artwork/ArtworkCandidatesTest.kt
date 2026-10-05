@@ -12,12 +12,15 @@ class ArtworkCandidatesTest {
 
     private fun names(list: List<ArtworkCandidates.Candidate>) = list.map { it.name to it.source }
 
-    @Test fun `title folder - sidecar first, then basename image`() {
+    @Test fun `a video alone in its folder takes its basename image, never the folder's poster`() {
+        // The folder is a collection of one: poster.jpg is the collection's.
         val folder = listOf(file("Arrival.2016.2160p.mkv"), file("poster.jpg"), file("Arrival.2016.2160p.jpg"))
         assertEquals(
-            listOf("poster.jpg" to ArtworkSource.SIDECAR, "Arrival.2016.2160p.jpg" to ArtworkSource.BASENAME),
+            listOf("Arrival.2016.2160p.jpg" to ArtworkSource.BASENAME),
             names(ArtworkCandidates.forFile("Arrival.2016.2160p.mkv", folder)),
         )
+        val bare = listOf(file("Arrival.2016.2160p.mkv"), file("poster.jpg"))
+        assertTrue("nothing of its own: a frame from the video", ArtworkCandidates.forFile("Arrival.2016.2160p.mkv", bare).isEmpty())
     }
 
     @Test fun `loose file in a collection folder ignores the collection poster`() {
@@ -35,7 +38,7 @@ class ArtworkCandidatesTest {
         val folder = listOf(file("Film.mkv"), file("Cover.PNG"), file("thumb.webp"), file("FOLDER.jpeg"))
         assertEquals(
             listOf("FOLDER.jpeg" to ArtworkSource.SIDECAR, "Cover.PNG" to ArtworkSource.SIDECAR, "thumb.webp" to ArtworkSource.SIDECAR),
-            names(ArtworkCandidates.forFile("Film.mkv", folder)),
+            names(ArtworkCandidates.forFolder(folder)),
         )
     }
 
@@ -49,7 +52,9 @@ class ArtworkCandidatesTest {
 
     @Test fun `images over 8 MB are skipped`() {
         val folder = listOf(file("Film.mkv"), file("poster.jpg", size = ArtworkCandidates.MAX_IMAGE_BYTES + 1), file("cover.jpg"))
-        assertEquals(listOf("cover.jpg" to ArtworkSource.SIDECAR), names(ArtworkCandidates.forFile("Film.mkv", folder)))
+        assertEquals(listOf("cover.jpg" to ArtworkSource.SIDECAR), names(ArtworkCandidates.forFolder(folder)))
+        val big = listOf(file("Film.mkv"), file("Film.jpg", size = ArtworkCandidates.MAX_IMAGE_BYTES + 1))
+        assertTrue(ArtworkCandidates.forFile("Film.mkv", big).isEmpty())
     }
 
     @Test fun `non-image files never qualify`() {

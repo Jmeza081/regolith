@@ -64,7 +64,7 @@ object ArtworkFreshness {
     /**
      * The owners whose pictures a listing of [folderId] shows to be out of
      * date: the folder itself (its sidecars) and the films directly in it
-     * (their title-folder sidecar or basename image), each against its own
+     * (their basename image), each against its own
      * candidates in [listing]. [cached] holds every picture of the folder and
      * of [files]; an owner with none is not in the answer, since there is
      * nothing to throw away.
