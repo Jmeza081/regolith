@@ -1,8 +1,9 @@
 # Editing from the Library — investigation
 
-Status: being built (branch `feature/library-browse-parity`). Revised twice
-on 2026-10-05 after the owner's corrections (first section), then the owner
-answered every open question the same day (last sections).
+Status: built on branch `feature/library-browse-parity`, waiting for the
+owner's test and say-so to merge. Revised twice on 2026-10-05 after the
+owner's corrections (first section), then the owner answered every open
+question the same day (last sections).
 
 Progress, in the build order at the end:
 
