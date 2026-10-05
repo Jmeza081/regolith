@@ -64,13 +64,17 @@ import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.util.SelectionUiState
 import com.regolith.ui.components.TopBarAction
 import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.UploadActionsHost
+import com.regolith.ui.components.UploadSection
+import com.regolith.ui.components.UploadSectionView
+import com.regolith.ui.components.UploadSource
+import com.regolith.ui.util.UploadActionsState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import com.regolith.ui.components.FileSelectionChrome
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -172,6 +176,8 @@ private fun BrowseContent(
     var playAllOpen by remember { mutableStateOf(false) }
     val selection = state.selection
     val selecting = selection != null
+    val uploadActions = viewModel.uploadActions
+    val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
 
     // No BackHandler here on purpose. Back walks UP a folder and the
     // selection comes with it — picking things that are not on one screen is
@@ -206,8 +212,8 @@ private fun BrowseContent(
                 actions = listOfNotNull(
                     // Upload into this folder (P16), only where a share is behind it:
                     // not at the Browse root, not in Phone storage, not in the demo.
-                    TopBarAction(R.drawable.rg_ic_upload, "Upload to this folder", "browse_upload_button", viewModel::openUploadSheet)
-                        .takeIf { state.canUpload },
+                    TopBarAction(R.drawable.rg_ic_upload, "Upload to this folder", "browse_upload_button") { uploadActions?.openSheet() }
+                        .takeIf { uploads.canUpload },
                     viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode),
                 ),
             )
@@ -263,16 +269,16 @@ private fun BrowseContent(
                 Text("Nothing playable in this folder.", style = TextStyles.body, color = colors.body)
                 // An empty folder on a share is where uploading is most
                 // likely wanted, and the top-bar glyph is easy to miss.
-                if (state.canUpload) {
+                if (uploads.canUpload) {
                     Spacer(Modifier.height(Spacing.s12))
-                    SecondaryButton(text = "Upload from this phone", onClick = viewModel::openUploadSheet, testTag = "browse_empty_upload_button", compact = true)
+                    SecondaryButton(text = "Upload from this phone", onClick = { uploadActions?.openSheet() }, testTag = "browse_empty_upload_button", compact = true)
                 }
             }
         }
         // Files on their way are what this folder is about to hold: no "nothing here" above them.
-        val showEmpty = state.loaded && state.rows.isEmpty() && offline == null && state.uploads == null
+        val showEmpty = state.loaded && state.rows.isEmpty() && offline == null && uploads.section == null
         val uploadSection = @Composable { section: UploadSection ->
-            UploadSectionView(section, viewModel::onUploadAction, viewModel::retryUpload, viewModel::removeUpload)
+            UploadSectionView(section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) })
         }
 
         /*
@@ -292,7 +298,7 @@ private fun BrowseContent(
             val id = highlightFileId ?: return@LaunchedEffect
             val index = files.indexOfFirst { it.fileId == id }
             if (index < 0) return@LaunchedEffect
-            val lead = (if (offline != null) 1 else 0) + (if (state.uploads != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
+            val lead = (if (offline != null) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
             runCatching {
                 if (state.viewMode == ViewMode.GRID) {
                     // + the folders eyebrow and every folder tile, + the files eyebrow.
@@ -340,7 +346,7 @@ private fun BrowseContent(
             ) {
                 if (offline != null) item { offlineCard() }
                 // At the top: the files on their way are what the user just did.
-                state.uploads?.let { section -> item(key = "browse_uploads") { uploadSection(section) } }
+                uploads.section?.let { section -> item(key = "browse_uploads") { uploadSection(section) } }
                 item { shareSection() }
                 if (folders.isNotEmpty()) {
                     item {
@@ -442,7 +448,7 @@ private fun BrowseContent(
                 if (offline != null) item(span = { GridItemSpan(maxLineSpan) }) { offlineCard() }
                 // Rows even among tiles: a file on its way has a status line to
                 // read, and no poster yet to show.
-                state.uploads?.let { section ->
+                uploads.section?.let { section ->
                     item(key = "browse_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) }
                 }
                 if (shares.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { shareSection() }
@@ -528,49 +534,16 @@ private fun BrowseContent(
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "browse")
 
-        // ── Uploads (P16) ──────────────────────────────────────────────
-        // The two system pickers. `rememberLauncherForActivityResult` is the
-        // Compose spelling of registerForActivityResult: the result comes
-        // back to this spot in the composition, even if the Activity was
-        // recreated while the picker was open. Neither needs a permission —
-        // the pickers are the system's, and they hand back only what was chosen.
-        val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
-            viewModel.onPicked(uris.map { it.toString() })
-        }
-        val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-            viewModel.onPicked(uris.map { it.toString() })
-        }
-        // One picture, to be the folder's poster (P19): images only, and one.
-        val posterPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null) viewModel.onPosterPicked(uri.toString())
-        }
-        if (state.uploadSheet) {
-            UploadSourceSheet(
-                folderName = state.title,
-                detail = listOfNotNull(state.breadcrumb, state.uploadServer?.let { "on $it" }).joinToString(" · ").ifEmpty { null },
-                onPhotos = {
-                    viewModel.dismissUploadSheet()
-                    onSendingAway()
-                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                },
-                onFiles = {
-                    viewModel.dismissUploadSheet()
-                    onSendingAway()
-                    filePicker.launch(arrayOf("*/*"))
-                },
-                onPoster = {
-                    viewModel.dismissUploadSheet()
-                    onSendingAway()
-                    posterPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                onDismiss = viewModel::dismissUploadSheet,
+        // Files from the phone into this folder (P16) and its poster (P19).
+        uploadActions?.let { actions ->
+            UploadActionsHost(
+                actions = actions,
+                title = "Upload to ${state.title}",
+                detail = listOfNotNull(state.breadcrumb, uploads.serverName?.let { "on $it" }).joinToString(" · ").ifEmpty { null },
+                sources = listOf(UploadSource.GALLERY, UploadSource.FILES, UploadSource.POSTER),
+                posterNoun = "folder",
+                onSendingAway = onSendingAway,
             )
-        }
-        state.uploadQuestion?.let { question ->
-            UploadQuestionSheet(question, onAnswer = viewModel::answerUploadQuestion, onDismiss = viewModel::dismissUploadQuestion)
-        }
-        state.posterQuestion?.let { question ->
-            PosterQuestionSheet(question, onAnswer = viewModel::answerPosterQuestion, onDismiss = viewModel::dismissPosterQuestion)
         }
     }
 }
@@ -635,6 +608,9 @@ private fun NoSourceContent(onAddServer: () -> Unit) {
         }
     }
 }
+
+/** What a screen with no folder (the Browse root) reads in place of its uploads. */
+private val NoUploads: StateFlow<UploadActionsState> = MutableStateFlow(UploadActionsState())
 
 /** Long enough to find with your eye, short enough not to look stuck. */
 private const val FLASH_HOLD_MS = 1_200L

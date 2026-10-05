@@ -540,6 +540,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     // Only inside a collection: on the root, "all" would
                                     // mean every file on every share.
                                     onPlayAll = if (key.folderId != null) ::playAll else null,
+                                    onSendingAway = appViewModel::sendingAway,
                                 )
                             }
                         }

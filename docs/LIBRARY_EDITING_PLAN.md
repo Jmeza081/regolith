@@ -13,6 +13,7 @@ Progress, in the build order at the end:
   (the third `FileOpTarget` kind) comes after the Library has the verbs.
 - Done: 5, the verbs moved out of Browse into `FileActions`, with tests.
 - Done: 6, the Library (and Search) offer the same four verbs.
+- Done: 7, a collection's wall adds videos and sets its poster.
 
 The owner browses through the Library, but renaming, moving, deleting,
 downloading and setting posters all live in Browse. Finding the same video

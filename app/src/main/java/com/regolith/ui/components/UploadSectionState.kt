@@ -1,4 +1,4 @@
-package com.regolith.ui.browse
+package com.regolith.ui.components
 
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner

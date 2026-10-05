@@ -7,6 +7,7 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.prefs.AppPreferences
+import com.regolith.data.artwork.ArtworkRepository
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.PhoneLibrary
 import com.regolith.domain.media.DeviceSource
@@ -48,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
 import com.regolith.ui.util.FileActions
+import com.regolith.ui.util.UploadActions
 import com.regolith.ui.util.SelectionPresenter
 
 /**
@@ -75,7 +77,9 @@ class LibraryViewModel @AssistedInject constructor(
     private val transfers: TransferRepository,
     private val selection: SelectionPresenter,
     private val phone: PhoneLibrary,
+    private val artwork: ArtworkRepository,
     fileActionsFactory: FileActions.Factory,
+    uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -96,11 +100,32 @@ class LibraryViewModel @AssistedInject constructor(
      */
     val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
 
+    /**
+     * Add videos to this collection and set its poster, as Browse uploads
+     * into a folder. Null on the first wall, which is no folder.
+     */
+    val uploadActions: UploadActions? = folderId?.let { uploadActionsFactory.create(viewModelScope, it, fileActions) }
+
+    /**
+     * How many times each owner's picture has been replaced while this wall
+     * was alive: the [ArtworkRequest.revision] its tile asks with, so a new
+     * poster shows without leaving the wall. Only owners that changed are in it.
+     */
+    private val artworkRevisions = MutableStateFlow<Map<ArtworkOwner, Int>>(emptyMap())
+
     init {
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted, order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
+        // A poster set from a collection's wall, or one replaced on the share
+        // and noticed by a listing: the tile has drawn the old picture
+        // already, and a picture only loads again when its request changes.
+        viewModelScope.launch {
+            artwork.replaced.collect { owners ->
+                artworkRevisions.update { current -> current + owners.associateWith { (current[it] ?: 0) + 1 } }
+            }
+        }
         // The collection this wall IS was deleted, reachable because a pick
         // survives walking into the thing that was picked. Nothing below can
         // be drawn, so the wall asks to be popped, as Browse's folders do.
@@ -127,7 +152,7 @@ class LibraryViewModel @AssistedInject constructor(
             val progress = files.flatMapLatest { fs -> library.observeProgress(fs.map { it.id }) }
             val scanState = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
 
-            combine(shares, servers, parents, children, files, progress, scanState) { values ->
+            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val shareList = values[0] as List<com.regolith.domain.model.Share>
                 @Suppress("UNCHECKED_CAST")
@@ -142,7 +167,9 @@ class LibraryViewModel @AssistedInject constructor(
                 val progressList = values[5] as List<PlaybackProgressEntity>
                 @Suppress("UNCHECKED_CAST")
                 val runs = values[6] as List<ScanRunEntity>
-                build(shareList, serverList, parentList, childList, fileList, progressList, runs)
+                @Suppress("UNCHECKED_CAST")
+                val revisions = values[7] as Map<ArtworkOwner, Int>
+                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions)
             }.collect { state ->
                 unsorted = state.tiles
                 // Onto the live state, never the other way: see withWall.
@@ -278,6 +305,7 @@ class LibraryViewModel @AssistedInject constructor(
         allFiles: List<MediaFileEntity>,
         progress: List<PlaybackProgressEntity>,
         runs: List<ScanRunEntity>,
+        revisions: Map<ArtworkOwner, Int>,
     ): LibraryUiState {
         val byFolder = allFiles.groupBy { it.folderId }
         val byParent = children.filter { it.parentId != null }.groupBy { it.parentId }
@@ -308,7 +336,10 @@ class LibraryViewModel @AssistedInject constructor(
                     resolutionLabel = VideoInfo.resolutionLabelFor(beneath.mapNotNull { it.width }.maxOrNull(), beneath.mapNotNull { it.height }.maxOrNull()),
                     // On the first screen these are the top-level folders, the
                     // only posters that move (AnimatedPoster): a GIF plays here.
-                    artwork = ArtworkRequest(ArtworkOwner.Folder(folder.id), ArtworkKind.POSTER, animated = folderId == null),
+                    artwork = ArtworkRequest(
+                        ArtworkOwner.Folder(folder.id), ArtworkKind.POSTER,
+                        revision = revisions[ArtworkOwner.Folder(folder.id)] ?: 0, animated = folderId == null,
+                    ),
                     addedAtMs = beneath.maxOfOrNull { it.addedAtMs } ?: 0,
                     sizeBytes = beneath.sumOf { it.sizeBytes },
                     durationMs = beneath.mapNotNull { it.durationMs }.takeIf { it.isNotEmpty() }?.sum(),
@@ -321,7 +352,7 @@ class LibraryViewModel @AssistedInject constructor(
                 )
             }
             for (file in byFolder[parent.id].orEmpty()) {
-                tiles += titleTile(file, progressById[file.id])
+                tiles += titleTile(file, progressById[file.id], revisions[ArtworkOwner.File(file.id)] ?: 0)
             }
         }
 
@@ -394,7 +425,7 @@ class LibraryViewModel @AssistedInject constructor(
     private fun LibraryTile.Title.toPick() =
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
 
-    private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?): LibraryTile.Title {
+    private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, artworkRevision: Int): LibraryTile.Title {
         val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
         val matched = parsed.matched
         val duration = progress?.durationMs?.takeIf { it > 0 } ?: file.durationMs
@@ -407,7 +438,7 @@ class LibraryViewModel @AssistedInject constructor(
             fileName = file.name,
             progress = progress?.takeIf { it.positionMs > 0 && it.durationMs > 0 && !it.completed }?.let { it.positionMs.toFloat() / it.durationMs },
             meta = duration?.let { formatDurationShort(it) } ?: formatBytes(file.sizeBytes),
-            artwork = ArtworkRequest(ArtworkOwner.File(file.id), ArtworkKind.POSTER),
+            artwork = ArtworkRequest(ArtworkOwner.File(file.id), ArtworkKind.POSTER, revision = artworkRevision),
             addedAtMs = file.addedAtMs,
             sizeBytes = file.sizeBytes,
             durationMs = duration,

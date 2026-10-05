@@ -63,6 +63,10 @@ import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.UploadActionsHost
+import com.regolith.ui.components.UploadSectionView
+import com.regolith.ui.components.UploadSource
+import com.regolith.ui.util.UploadActionsState
 import com.regolith.ui.components.FileSelectionChrome
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
@@ -162,8 +166,17 @@ fun LibraryScreen(
      * null because Title Detail is a pushed screen, not a pane.
      */
     selectedFileId: Long? = null,
+    /**
+     * Called just before a picker opens (adding videos or a poster to a
+     * collection). The picker is another app's screen, so Regolith goes to
+     * the background; this tells the app lock the trip back is one it sent
+     * the user on.
+     */
+    onSendingAway: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val uploadActions = viewModel.uploadActions
+    val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
     var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
     var playAllOpen by remember { mutableStateOf(false) }
@@ -273,9 +286,13 @@ fun LibraryScreen(
                 onBack = onBack,
                 subtitle = subtitle,
                 subtitleMuted = tab == LibraryTab.ON_DEVICE || unreachable.isNotEmpty(),
-                actions = listOf(
+                actions = listOfNotNull(
                     TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
                     TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                    // Videos and a poster into the collection on screen, only
+                    // where a share is behind it: not the first wall, not the demo.
+                    TopBarAction(R.drawable.rg_ic_upload, "Add to this collection", "library_upload_button") { uploadActions?.openSheet() }
+                        .takeIf { uploads.canUpload && tab == LibraryTab.NETWORK },
                     // One button, two lists: it toggles whichever tab you are on.
                     if (tab == LibraryTab.ON_DEVICE) {
                         viewModeAction(state.device.viewMode, "library_view_mode_button", viewModel::toggleDeviceViewMode)
@@ -405,7 +422,9 @@ fun LibraryScreen(
         // the container differs, so the decisions are made once, here.
         val showUnreachable = unreachable.isNotEmpty() && onBack == null
         val showSkeletons = !state.loaded || (state.tiles.isEmpty() && state.scanning)
-        val showEmpty = state.loaded && state.tiles.isEmpty() && !state.scanning
+        // Files on their way are what this collection is about to hold: no
+        // "nothing here" above them.
+        val showEmpty = state.loaded && state.tiles.isEmpty() && !state.scanning && uploads.section == null
         val showScanLine = state.scanning && state.tiles.isNotEmpty()
         val unreachableBlock = @Composable {
             OutOfReach(
@@ -432,7 +451,13 @@ fun LibraryScreen(
         // gets one look, and a tapped tile left out of view is brought up to
         // the top, level with the page's art. Rows need none of this: a row
         // is the same height at any width, so it stays where it was.
-        val leadingItems = (if (showUnreachable) 1 else 0) + (if (showScanLine) 1 else 0)
+        val leadingItems = (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (showScanLine) 1 else 0)
+        val uploadSection = @Composable { section: com.regolith.ui.components.UploadSection ->
+            UploadSectionView(
+                section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) },
+                modifier = Modifier.padding(bottom = Spacing.s8), tagPrefix = "library",
+            )
+        }
         LaunchedEffect(selectedFileId) {
             val id = selectedFileId ?: return@LaunchedEffect
             if (state.viewMode != ViewMode.GRID) return@LaunchedEffect
@@ -461,6 +486,8 @@ fun LibraryScreen(
                 // Only the Network tab is affected by a share going away (design:
                 // "the message lives there rather than over files that play fine").
                 if (showUnreachable) item(span = { GridItemSpan(maxLineSpan) }) { unreachableBlock() }
+                // At the top: the videos on their way are what the user just did.
+                uploads.section?.let { section -> item(key = "library_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) } }
                 if (showSkeletons) {
                     items(9) { SkeletonTile() }
                     return@LazyVerticalGrid
@@ -493,6 +520,7 @@ fun LibraryScreen(
                 ),
             ) {
                 if (showUnreachable) item { unreachableBlock() }
+                uploads.section?.let { section -> item(key = "library_uploads") { uploadSection(section) } }
                 if (showSkeletons) {
                     items(6) { SkeletonRow() }
                     return@LazyColumn
@@ -549,8 +577,23 @@ fun LibraryScreen(
             onCancel = viewModel::cancelSelection,
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "library")
+        // Videos and a poster into this collection, the same flows Browse uses
+        // for a folder; only the choices differ, since the wall shows videos.
+        uploadActions?.let { actions ->
+            UploadActionsHost(
+                actions = actions,
+                title = "Add to ${state.title}",
+                detail = uploads.serverName?.let { "On $it" },
+                sources = listOf(UploadSource.GALLERY_VIDEOS, UploadSource.VIDEO_FILES, UploadSource.POSTER),
+                posterNoun = "collection",
+                onSendingAway = onSendingAway,
+            )
+        }
     }
 }
+
+/** What the first wall, which is no folder, reads in place of its uploads. */
+private val NoUploads: kotlinx.coroutines.flow.StateFlow<UploadActionsState> = kotlinx.coroutines.flow.MutableStateFlow(UploadActionsState())
 
 /** Is this the title the detail pane is showing? Collections are never selected: they open a wall, not a detail. */
 private fun LibraryTile.isSelected(selectedFileId: Long?): Boolean =

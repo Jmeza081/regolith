@@ -152,6 +152,10 @@ line above the nav pill follows the batch from anywhere else in the app. A
 video that lands is a video in the library at once; a photo or any other file
 lands among the folder's other files in Browse.
 
+A collection in the Library takes new videos the same way. **Add to this
+collection** in its top bar offers videos from the gallery or the file picker,
+and a poster for its tile, and the uploads show at the top of its wall.
+
 It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
 sleeps, the batch waits and carries on by itself from the bytes already sent —
 a 600 MB video is never sent twice. A full share, a read-only folder, a
@@ -161,8 +165,8 @@ that is already taken is asked about once for the whole pick — keep both, skip
 or replace — except the same file sent twice, which is simply skipped.
 Nothing half-written ever sits on the share under a real name.
 
-**Folder poster**, the third choice under Upload, makes one picture the
-folder's own poster. It is saved as `poster.jpg` — the first name Regolith looks
+**Folder poster**, the third choice under Upload (**Collection poster** on a
+Library collection), makes one picture the folder's own poster. It is saved as `poster.jpg` — the first name Regolith looks
 for, and one every media server reads — the right way up and as a JPEG,
 whatever the phone took it as, and every tile showing the folder changes at
 once. If the folder already has a picture of its own (a `folder.jpg`, a

@@ -3,14 +3,10 @@ package com.regolith.ui.browse
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.artwork.ArtworkRepository
-import com.regolith.data.artwork.PosterRepository
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
-import com.regolith.data.transfer.UploadRepository
 import com.regolith.domain.artwork.ArtworkOwner
-import com.regolith.domain.artwork.ExistingArtwork
-import com.regolith.domain.artwork.FolderPosterOutcome
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.model.BrowseItem
@@ -18,9 +14,8 @@ import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
-import com.regolith.domain.transfer.ConflictPolicy
-import com.regolith.domain.transfer.UploadNames
 import com.regolith.ui.util.FileActions
+import com.regolith.ui.util.UploadActions
 import com.regolith.ui.util.SelectionPresenter
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -50,10 +45,9 @@ class BrowseViewModel @AssistedInject constructor(
     private val sources: SourceRepository,
     private val prefs: AppPreferences,
     private val selection: SelectionPresenter,
-    private val uploads: UploadRepository,
     private val artwork: ArtworkRepository,
-    private val posters: PosterRepository,
     fileActionsFactory: FileActions.Factory,
+    uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -69,6 +63,12 @@ class BrowseViewModel @AssistedInject constructor(
      * line: shared with the Library, drawn by `FileActionsHost`.
      */
     val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
+
+    /**
+     * Upload into this folder and set its poster, shared with a Library
+     * collection's wall. Null at the Browse root, where there is no folder.
+     */
+    val uploadActions: UploadActions? = folderId?.let { uploadActionsFactory.create(viewModelScope, it, fileActions) }
 
     /**
      * How many times each owner's picture has been replaced while this
@@ -164,7 +164,6 @@ class BrowseViewModel @AssistedInject constructor(
             }
         }
         refresh()
-        observeUploads(id)
     }
 
     /** Re-list this folder from the share. */
@@ -231,186 +230,6 @@ class BrowseViewModel @AssistedInject constructor(
     }
 
     // Rename, move and delete live in [fileActions], shared with the Library.
-
-    // ── Uploads (P16) ──────────────────────────────────────────────────
-    //
-    // The queue itself is app-scoped (UploadRepository and its worker); this
-    // ViewModel only asks where the files would go, shows the rows for THIS
-    // folder, and holds a pick while its one question is on screen.
-
-    /** Where uploads from here go, once known: null for a folder with no share behind it. */
-    private var destination: UploadRepository.Destination? = null
-
-    /** A pick waiting for its question to be answered. Not UI state: nothing draws it. */
-    private var pendingPick: UploadRepository.Prepared? = null
-
-    private fun observeUploads(id: Long) {
-        viewModelScope.launch {
-            val where = uploads.destinationOf(id) ?: return@launch
-            destination = where
-            _uiState.update { it.copy(canUpload = true, uploadServer = where.serverName) }
-            uploads.observeFolder(id).collect { items ->
-                _uiState.update { it.copy(uploads = uploadSection(items, where.serverName, where.folderName)) }
-            }
-        }
-    }
-
-    fun openUploadSheet() = _uiState.update { it.copy(uploadSheet = true) }
-
-    fun dismissUploadSheet() = _uiState.update { it.copy(uploadSheet = false) }
-
-    /**
-     * The picker came back with [uris]. Picking IS the confirm — there is no
-     * review step — unless a name is taken by a different file, which is the
-     * one thing worth stopping to ask about.
-     */
-    fun onPicked(uris: List<String>) {
-        val id = folderId ?: return
-        if (uris.isEmpty()) return
-        viewModelScope.launch {
-            val prepared = uploads.prepare(id, uris) ?: return@launch
-            if (prepared.files.isEmpty()) {
-                fileActions.say("Couldn't read what you picked", failed = true)
-                return@launch
-            }
-            if (prepared.needsAnswer) {
-                pendingPick = prepared
-                _uiState.update { it.copy(uploadQuestion = questionFor(prepared)) }
-            } else {
-                queue(prepared, ConflictPolicy.KEEP_BOTH)
-            }
-        }
-    }
-
-    fun answerUploadQuestion(policy: ConflictPolicy) {
-        val prepared = pendingPick ?: return
-        pendingPick = null
-        _uiState.update { it.copy(uploadQuestion = null) }
-        viewModelScope.launch { queue(prepared, policy) }
-    }
-
-    /** Backed out of the question: nothing is sent, and the access taken for the pick goes back. */
-    fun dismissUploadQuestion() {
-        pendingPick = null
-        _uiState.update { it.copy(uploadQuestion = null) }
-        viewModelScope.launch { uploads.discard() }
-    }
-
-    private suspend fun queue(prepared: UploadRepository.Prepared, policy: ConflictPolicy) {
-        uploads.enqueue(prepared.destination.folderId, prepared.files, policy)
-        if (prepared.unreadable > 0) {
-            val n = prepared.unreadable
-            fileActions.say(if (n == 1) "1 couldn't be read and was left out" else "$n couldn't be read and were left out", failed = true)
-        }
-    }
-
-    private fun questionFor(prepared: UploadRepository.Prepared) = UploadQuestion(
-        folderName = prepared.destination.folderName,
-        serverName = prepared.destination.serverName,
-        picked = prepared.files.size,
-        clashes = prepared.clashes.map { clash ->
-            uploadClash(
-                name = clash.file.name,
-                uri = clash.file.uri,
-                sameFile = clash.sameFile,
-                existingSize = clash.existingSize,
-                // The first free number is only known when the file goes; this
-                // is what it will almost always be.
-                keptName = UploadNames.keepBoth(clash.file.name, setOf(clash.file.name)),
-            )
-        },
-    )
-
-    // ── Folder poster (P19) ────────────────────────────────────────────
-    //
-    // One picture, written straight from here the way the poster editor
-    // writes its poster.jpg — a few hundred KB, not a job for the upload
-    // queue. The folder's tiles then redraw through artwork.replaced.
-
-    /** A poster picked for a folder with pictures of its own, while its question is up. Not UI state. */
-    private var pendingPoster: String? = null
-
-    /**
-     * The photo picker came back with [uri] to be this folder's poster. It
-     * goes straight up, unless the folder has a picture of its own already:
-     * then the one question first, replace it or rename it out of the way.
-     */
-    fun onPosterPicked(uri: String) {
-        val id = folderId ?: return
-        val where = destination ?: return
-        viewModelScope.launch {
-            val art = try {
-                posters.folderArtwork(id, uri)
-            } catch (e: SmbFailure) {
-                fileActions.say("Couldn't reach ${where.serverName}", failed = true)
-                return@launch
-            } ?: return@launch
-            if (art.existing.isEmpty()) {
-                uploadPoster(id, uri, ExistingArtwork.KEEP)
-            } else {
-                pendingPoster = uri
-                val question = posterQuestion(
-                    folderId = id,
-                    folderName = art.folderName,
-                    serverName = where.serverName,
-                    pickedUri = uri,
-                    existing = art.existing.map { it.name to it.sizeBytes },
-                    keptNames = art.keptNames,
-                    pickedName = art.picked.fileName,
-                )
-                _uiState.update { it.copy(posterQuestion = question) }
-            }
-        }
-    }
-
-    fun answerPosterQuestion(choice: ExistingArtwork) {
-        val id = folderId ?: return
-        val uri = pendingPoster ?: return
-        pendingPoster = null
-        _uiState.update { it.copy(posterQuestion = null) }
-        viewModelScope.launch { uploadPoster(id, uri, choice) }
-    }
-
-    /** Backed out of the question: nothing is sent and nothing on the share changes. */
-    fun dismissPosterQuestion() {
-        pendingPoster = null
-        _uiState.update { it.copy(posterQuestion = null) }
-    }
-
-    private suspend fun uploadPoster(id: Long, uri: String, existing: ExistingArtwork) {
-        val folderName = destination?.folderName ?: "this folder"
-        val server = destination?.serverName ?: "the server"
-        when (posters.uploadFolderPoster(id, uri, existing)) {
-            FolderPosterOutcome.SAVED -> fileActions.say("Poster set for $folderName")
-            FolderPosterOutcome.SAVED_STILL_TOO_BIG -> fileActions.say("Poster set for $folderName as a still: that GIF is over 8 MB")
-            FolderPosterOutcome.SAVED_STILL_NESTED -> fileActions.say("Poster set for $folderName as a still: only top-level folder posters move")
-            FolderPosterOutcome.UNREADABLE -> fileActions.say("Couldn't read that picture", failed = true)
-            FolderPosterOutcome.READ_ONLY -> fileActions.say("$server is read-only, so the poster can't be saved there", failed = true)
-            FolderPosterOutcome.UNREACHABLE -> fileActions.say("Couldn't reach $server", failed = true)
-            FolderPosterOutcome.FAILED -> fileActions.say("The poster couldn't be saved. Try again", failed = true)
-        }
-    }
-
-    fun onUploadAction(action: UploadSectionAction) {
-        val id = folderId ?: return
-        viewModelScope.launch {
-            when (action) {
-                UploadSectionAction.CANCEL_ALL -> uploads.cancelAll(id)
-                UploadSectionAction.TRY_NOW -> uploads.tryNow()
-                UploadSectionAction.RETRY_ALL -> uploads.retryAll(id)
-                UploadSectionAction.CLEAR -> uploads.clearFinished(id)
-            }
-        }
-    }
-
-    fun retryUpload(uploadId: Long) {
-        viewModelScope.launch { uploads.retry(uploadId) }
-    }
-
-    /** The row's ✕: cancels a file still on its way, removes one that finished badly. */
-    fun removeUpload(uploadId: Long) {
-        viewModelScope.launch { uploads.cancel(uploadId) }
-    }
 
     private fun BrowseRow.FolderRow.toPick() =
         FolderPick(folderId = folderId, shareId = shareId, relPath = relPath, fileCount = fileCount, byteCount = byteCount, listed = listed)
