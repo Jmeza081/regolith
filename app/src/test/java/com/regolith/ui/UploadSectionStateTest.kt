@@ -87,7 +87,7 @@ class UploadSectionStateTest {
         assertEquals(UploadSectionAction.CLEAR, s.action)
         assertTrue(s.rows.isEmpty())
         assertEquals("2 uploaded", s.summary!!.title)
-        assertEquals("The photos are on TOWER in this folder. Browse lists videos only.", s.note)
+        assertEquals("The photos are below, with this folder's other files.", s.note)
     }
 
     @Test

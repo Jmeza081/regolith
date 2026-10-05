@@ -87,3 +87,6 @@ fun formatFileCount(count: Int): String = "$count file" + (if (count == 1) "" el
 
 /** "1 folder", "2 folders". */
 fun formatFolderCount(count: Int): String = "$count folder" + (if (count == 1) "" else "s")
+
+/** "1 other file", "3 other files": what Browse lists after a folder's videos. */
+fun formatOtherFileCount(count: Int): String = "$count other file" + (if (count == 1) "" else "s")

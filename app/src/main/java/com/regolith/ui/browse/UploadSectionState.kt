@@ -26,7 +26,7 @@ data class UploadSection(
     val rows: List<UploadRow>,
     /** Everything went: one line instead of a row per file. */
     val summary: UploadSummary?,
-    /** "The photos are on TOWER in this folder. Browse lists videos only." */
+    /** "The photos are below, with this folder's other files." */
     val note: String?,
 )
 
@@ -217,7 +217,7 @@ fun uploadSection(items: List<UploadItem>, server: String, folder: String): Uplo
         } else {
             null
         },
-        note = if (collapsed) UploadWording.notListedNote(items, server) else null,
+        note = if (collapsed) UploadWording.otherFilesNote(items) else null,
     )
 }
 

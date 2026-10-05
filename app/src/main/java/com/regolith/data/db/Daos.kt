@@ -322,6 +322,7 @@ interface SubtreeDao {
         val cut = oldPrefix.length
         rewriteFolderPaths(shareId, oldPrefix, newPrefix, cut, cut + 1)
         rewriteFilePaths(shareId, oldPrefix, newPrefix, cut, cut + 1)
+        rewriteOtherFilePaths(shareId, oldPrefix, newPrefix, cut, cut + 1)
         rewriteRootPaths(shareId, oldPath, newPath, oldPrefix, newPrefix, cut, cut + 1)
     }
 
@@ -340,6 +341,13 @@ interface SubtreeDao {
     )
     suspend fun rewriteFilePaths(shareId: Long, oldPrefix: String, newPrefix: String, cut: Int, from: Int)
 
+    /** The same for the files that are not videos ([ShareFileEntity]), so Browse keeps listing them. */
+    @Query(
+        "UPDATE share_files SET relPath = :newPrefix || substr(relPath, :from) " +
+            "WHERE shareId = :shareId AND substr(relPath, 1, :cut) = :oldPrefix",
+    )
+    suspend fun rewriteOtherFilePaths(shareId: Long, oldPrefix: String, newPrefix: String, cut: Int, from: Int)
+
     /**
      * A chosen root that WAS the folder, or sat inside it, follows it.
      * Otherwise narrowing a library to `Films/Kids` and then moving that
@@ -355,6 +363,59 @@ interface SubtreeDao {
     /** A deleted folder takes its chosen-root rows with it; nothing points at it any more. */
     @Query("DELETE FROM share_roots WHERE shareId = :shareId AND (relPath = :path OR substr(relPath, 1, :cut) = :prefix)")
     suspend fun dropRootsUnder(shareId: Long, path: String, prefix: String, cut: Int)
+}
+
+/** The files in a folder that are not videos ([ShareFileEntity]). */
+@Dao
+interface ShareFileDao {
+    @Query("SELECT * FROM share_files WHERE id = :id")
+    suspend fun byId(id: Long): ShareFileEntity?
+
+    @Query("SELECT * FROM share_files WHERE shareId = :shareId AND relPath = :relPath")
+    suspend fun byPath(shareId: Long, relPath: String): ShareFileEntity?
+
+    @Query("SELECT * FROM share_files WHERE folderId = :folderId ORDER BY name COLLATE NOCASE")
+    fun observeInFolder(folderId: Long): Flow<List<ShareFileEntity>>
+
+    @Query("SELECT * FROM share_files WHERE folderId = :folderId ORDER BY name COLLATE NOCASE")
+    suspend fun inFolder(folderId: Long): List<ShareFileEntity>
+
+    @Insert
+    suspend fun insert(file: ShareFileEntity): Long
+
+    @Update
+    suspend fun update(file: ShareFileEntity)
+
+    @Query("DELETE FROM share_files WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM share_files WHERE folderId = :folderId AND relPath NOT IN (:seenPaths)")
+    suspend fun deleteInFolderNotIn(folderId: Long, seenPaths: List<String>)
+
+    /**
+     * Make [folderId]'s rows say what one listing of it said: [files] kept
+     * (a row already there keeps its id), everything else in the folder
+     * gone. In one transaction, so Browse never draws half a refresh.
+     *
+     * A row that has not changed is not written at all. Most listings find
+     * nothing new, and a write, even of the same values, wakes every screen
+     * watching the table.
+     */
+    @Transaction
+    suspend fun replaceInFolder(folderId: Long, files: List<ShareFileEntity>) {
+        deleteInFolderNotIn(folderId, files.map { it.relPath })
+        val known = inFolder(folderId).associateBy { it.relPath }
+        for (f in files) {
+            // The path is what is unique across the share, so a miss is
+            // checked there too: an insert that collided would fail the
+            // whole listing.
+            val existing = known[f.relPath] ?: byPath(f.shareId, f.relPath)
+            when {
+                existing == null -> insert(f)
+                existing != f.copy(id = existing.id) -> update(f.copy(id = existing.id))
+            }
+        }
+    }
 }
 
 @Dao

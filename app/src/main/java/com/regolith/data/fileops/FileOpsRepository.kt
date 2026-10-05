@@ -53,9 +53,10 @@ import javax.inject.Singleton
  * subtree comes along in one operation. The work is local: `relPath` is
  * denormalised onto every row underneath, so a folder move rewrites a
  * subtree of the mirror ([SubtreeDao]). A folder DELETE is the one verb
- * with real teeth: the server's recursive delete takes files the app never
- * listed — subtitles, artwork, other formats — which is why it has its own
- * gateway call and its own sentence in the confirm dialog.
+ * with real teeth: the server's recursive delete takes every file beneath,
+ * including ones the app has never listed — in folders never opened here —
+ * which is why it has its own gateway call and its own sentence in the
+ * confirm dialog.
  */
 @Singleton
 class FileOpsRepository @Inject constructor(
@@ -250,7 +251,7 @@ class FileOpsRepository @Inject constructor(
      * chapter sidecar and any copy kept on this device — the rows are
      * going, so a copy left behind would be bytes nothing can reach.
      *
-     * A FOLDER takes everything under it, including files the app never
+     * A FOLDER takes everything under it, including files the app has never
      * listed. That is the server's own recursive delete and there is no
      * finer instrument; the confirm dialog is the only gate.
      *

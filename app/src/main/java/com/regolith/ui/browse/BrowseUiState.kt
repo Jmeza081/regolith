@@ -3,6 +3,7 @@ package com.regolith.ui.browse
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.MoveSheetState
@@ -55,6 +56,22 @@ sealed interface BrowseRow {
         /** 0..1 watched, for the bar along the bottom of a tile; null when never started. */
         val fraction: Float?
             get() = if (progressMs != null && durationMs != null && durationMs > 0) (progressMs.toFloat() / durationMs).coerceIn(0f, 1f) else null
+    }
+
+    /**
+     * A file that is not a video: the folder's poster, subtitles, chapters,
+     * an `.nfo`. Listed so Browse shows everything a folder holds, as a file
+     * manager would ([OtherFiles]).
+     */
+    data class OtherRow(
+        val otherId: Long,
+        val name: String,
+        val kind: OtherFiles.Kind,
+        val sizeBytes: Long,
+        val shareId: Long = 0,
+        val folderRelPath: String = "",
+    ) : BrowseRow {
+        override val testTag get() = "browse_other_$otherId"
     }
 }
 

@@ -13,6 +13,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ExistingArtwork
 import com.regolith.domain.artwork.FolderPosterOutcome
 import com.regolith.domain.media.MediaFileTypes
+import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
@@ -218,6 +219,9 @@ class BrowseViewModel @AssistedInject constructor(
             is BrowseRow.FileRow -> selection.toggleFile(row.toPick())
             // A selection lives inside one share, so the root's share rows are not pickable.
             is BrowseRow.ShareRow -> Unit
+            // Not yet: picking the files that are not videos is the next step
+            // of the Library editing plan (LIBRARY_EDITING_PLAN.md).
+            is BrowseRow.OtherRow -> Unit
         }
     }
 
@@ -721,6 +725,10 @@ class BrowseViewModel @AssistedInject constructor(
             shareId = shareId,
             folderRelPath = folderRelPath,
             artworkRevision = revisions[ArtworkOwner.File(id)] ?: 0,
+        )
+        is BrowseItem.Other -> BrowseRow.OtherRow(
+            otherId = id, name = name, kind = OtherFiles.kindOf(name), sizeBytes = sizeBytes,
+            shareId = shareId, folderRelPath = folderRelPath,
         )
     }
 }

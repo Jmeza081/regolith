@@ -10,11 +10,14 @@ import com.regolith.data.db.RecentSearchDao
 import com.regolith.data.db.RecentSearchEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.ShareFileDao
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.db.ShareRootDao
 import com.regolith.domain.library.FolderClassifier
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.MediaFileTypes
+import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.model.rootsCover
@@ -52,6 +55,7 @@ class LibraryRepository @Inject constructor(
     private val shareRootDao: ShareRootDao,
     private val folderDao: FolderDao,
     private val mediaFileDao: MediaFileDao,
+    private val shareFileDao: ShareFileDao,
     private val progressDao: PlaybackProgressDao,
     private val recentSearchDao: RecentSearchDao,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
@@ -62,7 +66,10 @@ class LibraryRepository @Inject constructor(
 
     fun observeFolder(folderId: Long): Flow<FolderEntity?> = folderDao.observe(folderId)
 
-    /** Live contents of one folder: subfolders first, then files with their progress. */
+    /**
+     * Live contents of one folder: subfolders first, then videos with their
+     * progress, then every other file it holds.
+     */
     fun observeContents(folderId: Long): Flow<List<BrowseItem>> {
         val folders = folderDao.observeChildren(folderId)
         val files = mediaFileDao.observeInFolder(folderId)
@@ -90,13 +97,19 @@ class LibraryRepository @Inject constructor(
                 }
             }
         }
-        return combine(folders, filesWithProgress) { dirs, fs ->
+        val others = shareFileDao.observeInFolder(folderId)
+        return combine(folders, filesWithProgress, others) { dirs, fs, os ->
             dirs.map {
                 BrowseItem.Folder(
                     id = it.id, name = it.name, fileCount = it.fileCount, byteCount = it.byteCount,
                     shareId = it.shareId, relPath = it.relPath, listed = it.lastListedAtMs != null,
                 )
-            } + fs
+            } + fs + os.map {
+                BrowseItem.Other(
+                    id = it.id, name = it.name, sizeBytes = it.sizeBytes, modifiedAtMs = it.modifiedAtMs,
+                    shareId = it.shareId, folderRelPath = it.relPath.substringBeforeLast('/', ""),
+                )
+            }
         }
     }
 
@@ -146,6 +159,8 @@ class LibraryRepository @Inject constructor(
         val dirPaths = mutableListOf<String>()
         val subfolders = mutableListOf<FolderEntity>()
         val filePaths = mutableListOf<String>()
+        // Everything else the folder holds, for Browse (OtherFiles).
+        val others = mutableListOf<ShareFileEntity>()
         var fileCount = 0
         var byteCount = 0L
         for (e in entries) {
@@ -184,8 +199,14 @@ class LibraryRepository @Inject constructor(
                         episode = parsed.episode,
                     ),
                 )
+            } else if (OtherFiles.isListed(e.name)) {
+                others += ShareFileEntity(
+                    shareId = share.id, folderId = folder.id, relPath = relPath, name = e.name,
+                    sizeBytes = e.sizeBytes, modifiedAtMs = e.modifiedAtMs,
+                )
             }
         }
+        shareFileDao.replaceInFolder(folder.id, others)
         // A poster.jpg dropped into the folder since the last scan beats the
         // mosaic the app stitched for it; this is the rescan that notices.
         artwork.onFolderListed(folder.id, entries)

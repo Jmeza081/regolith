@@ -110,8 +110,8 @@ interface SmbGateway {
      * Delete a directory **and everything inside it**, however deep.
      *
      * Separate from [delete] because the difference is not a detail: this
-     * one takes files the app never listed — subtitles, artwork, other
-     * formats — and there is no undo. Only ever call it behind a confirm
+     * one takes everything beneath, files the app has never listed
+     * included, and there is no undo. Only ever call it behind a confirm
      * dialog that says so.
      *
      * [relPath] must name a folder inside the share; the share root itself

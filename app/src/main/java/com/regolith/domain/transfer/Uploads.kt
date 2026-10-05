@@ -284,11 +284,11 @@ object UploadWording {
 
     /**
      * Said under the summary when something that is not a video arrived.
-     * Browse lists videos only, so an uploaded photo has nowhere to appear —
-     * and the one thing worse than that is leaving the user to wonder where
+     * It is listed at the foot of the folder, with its other files, not up
+     * here among the videos, and the user should not have to wonder where
      * it went.
      */
-    fun notListedNote(items: List<UploadItem>, server: String): String? {
+    fun otherFilesNote(items: List<UploadItem>): String? {
         val hidden = items.filter { it.uploaded && !it.isVideo }
         if (hidden.isEmpty()) return null
         val allPhotos = hidden.all { MediaFileTypes.isPhoto(it.name) }
@@ -298,7 +298,7 @@ object UploadWording {
             allPhotos -> "The photos are"
             else -> "The other files are"
         }
-        return "$what on $server in this folder. Browse lists videos only."
+        return "$what below, with this folder's other files."
     }
 
     /** The line above the nav pill, from anywhere in the app. [folder] is null when the uploads go to more than one. */

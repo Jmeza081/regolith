@@ -127,6 +127,20 @@ fun rootsCover(roots: List<String>, relPath: String): Boolean =
 sealed interface BrowseItem {
     val name: String
 
+    /**
+     * A file that is not a video: a poster, subtitles, chapters, an `.nfo`.
+     * Browse lists every file a folder holds, as a file manager would; the
+     * Library never shows these.
+     */
+    data class Other(
+        val id: Long,
+        override val name: String,
+        val sizeBytes: Long,
+        val modifiedAtMs: Long,
+        val shareId: Long = 0,
+        val folderRelPath: String = "",
+    ) : BrowseItem
+
     data class Folder(
         val id: Long,
         override val name: String,

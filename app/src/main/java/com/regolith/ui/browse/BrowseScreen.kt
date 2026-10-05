@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.CardStyle
@@ -55,6 +56,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.util.formatBytes
+import com.regolith.ui.util.formatOtherFileCount
 import com.regolith.ui.util.formatFileCount
 import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.util.formatRemaining
@@ -62,6 +64,7 @@ import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.components.MediaTile
 import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.library.ViewMode
+import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
@@ -230,6 +233,7 @@ private fun BrowseContent(
         val shares = state.rows.filterIsInstance<BrowseRow.ShareRow>()
         val folders = state.rows.filterIsInstance<BrowseRow.FolderRow>()
         val files = state.rows.filterIsInstance<BrowseRow.FileRow>()
+        val others = state.rows.filterIsInstance<BrowseRow.OtherRow>()
 
         // The folder's own CTA, above the list and only where there is
         // something to play: a folder of folders has nothing to queue.
@@ -425,6 +429,13 @@ private fun BrowseContent(
                         }
                     }
                 }
+                if (others.isNotEmpty()) {
+                    item(key = "browse_others") {
+                        Section(formatOtherFileCount(others.size), dimmed = offline != null) {
+                            others.forEach { row -> OtherFileRow(row) }
+                        }
+                    }
+                }
                 if (showEmpty) item { emptyCard() }
             }
         } else {
@@ -499,6 +510,15 @@ private fun BrowseContent(
                             checked = if (selecting) fileComing else null,
                             testTag = row.testTag,
                         )
+                    }
+                }
+                // Rows among the tiles, as uploads are: a subtitles file or an
+                // .nfo has no picture to make a tile of.
+                if (others.isNotEmpty()) {
+                    item(key = "browse_others", span = { GridItemSpan(maxLineSpan) }) {
+                        Section(formatOtherFileCount(others.size), dimmed = offline != null) {
+                            others.forEach { row -> OtherFileRow(row) }
+                        }
                     }
                 }
                 if (showEmpty) item(span = { GridItemSpan(maxLineSpan) }) { emptyCard() }
@@ -667,10 +687,11 @@ private fun BrowseContent(
  * The delete dialog's three lines, kept together because they have to agree.
  *
  * A folder is the case worth being careful with: the server's delete is
- * recursive and takes files the app never indexed — subtitles, artwork,
- * other formats — so the body says what Regolith can count AND admits to
- * what it cannot. The counts come from rows already on the device, which is
- * why the dialog opens instantly instead of behind a network walk.
+ * recursive and takes everything, not only the videos the counts are made
+ * of — subtitles, artwork, files in folders never opened here — so the body
+ * says what Regolith can count AND admits to what it cannot. The counts come
+ * from rows already on the device, which is why the dialog opens instantly
+ * instead of behind a network walk.
  */
 private fun deleteTitle(target: DeleteTarget): String = when {
     target.folderCount == 0 -> if (target.targets.size == 1) "Delete this video?" else "Delete ${target.targets.size} videos?"
@@ -689,7 +710,7 @@ private fun videos(n: Int): String = if (n == 1) "1 video" else "$n videos"
 
 private fun deleteBody(target: DeleteTarget): String {
     val forever = "This can't be undone"
-    val insideFolders = "A folder takes everything inside it, including files Regolith doesn't list"
+    val insideFolders = "A folder takes everything inside it, not just its videos"
     val alsoGone = "the chapters you wrote and where you left off go with"
     return when {
         // Files only: the shape this dialog had before folders existed.
@@ -700,7 +721,7 @@ private fun deleteBody(target: DeleteTarget): String {
         // One folder, named, with what is known to be inside it.
         target.targets.size == 1 -> {
             val holds = if (target.videoCount == 0) {
-                "Regolith doesn't list anything in it"
+                "no videos in it"
             } else {
                 "${videos(target.videoCount)} · ${target.sizeLabel}"
             }
@@ -781,3 +802,29 @@ private fun NoSourceContent(onAddServer: () -> Unit) {
 /** Long enough to find with your eye, short enough not to look stuck. */
 private const val FLASH_HOLD_MS = 1_200L
 private const val FLASH_FADE_MS = 500
+
+/**
+ * One file that is not a video, by its real name, its kind and its size.
+ * Nothing opens from here yet: picking these, and moving, renaming or
+ * deleting them, is the next step of the Library editing plan.
+ */
+@Composable
+private fun OtherFileRow(row: BrowseRow.OtherRow) {
+    ListRow(
+        title = row.name,
+        meta = "${row.kind.label} · ${formatBytes(row.sizeBytes)}",
+        leading = RowLeading.IconBox(iconFor(row.kind)),
+        trailing = RowTrailing.None,
+        compact = true,
+        onClick = {},
+        testTag = row.testTag,
+    )
+}
+
+private fun iconFor(kind: OtherFiles.Kind): Int = when (kind) {
+    OtherFiles.Kind.PICTURE -> LucideR.drawable.lucide_ic_image
+    OtherFiles.Kind.SUBTITLES -> LucideR.drawable.lucide_ic_captions
+    OtherFiles.Kind.CHAPTERS -> LucideR.drawable.lucide_ic_list_ordered
+    OtherFiles.Kind.INFO -> LucideR.drawable.lucide_ic_file_text
+    OtherFiles.Kind.OTHER -> LucideR.drawable.lucide_ic_file
+}

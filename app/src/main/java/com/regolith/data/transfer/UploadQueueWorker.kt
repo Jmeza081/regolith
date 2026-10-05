@@ -27,7 +27,6 @@ import com.regolith.data.db.ShareDao
 import com.regolith.data.db.UploadDao
 import com.regolith.data.db.UploadEntity
 import com.regolith.data.repository.LibraryRepository
-import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.transfer.QueueProgress
 import com.regolith.domain.transfer.UploadCause
@@ -74,9 +73,10 @@ class UploadQueueWorker @AssistedInject constructor(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         // The batches this run sent from, for the "needs you" at the end.
         val touched = HashSet<Long>()
-        // Folders that received an image: listed once at the end of the run,
-        // not per file, since thirty photos into one folder need one look.
-        val pictures = HashSet<Long>()
+        // Folders that received anything but a video: listed once at the end
+        // of the run, not per file, since thirty photos into one folder need
+        // one look.
+        val listAtEnd = HashSet<Long>()
         try {
             notify(force = true)
             while (true) {
@@ -86,10 +86,8 @@ class UploadQueueWorker @AssistedInject constructor(
                 current = next
                 when (val outcome = runner.send(next) { row -> current = row; notify() }) {
                     UploadRunner.Outcome.Paused -> return@withContext Result.retry()
-                    is UploadRunner.Outcome.Done -> when {
-                        MediaFileTypes.isVideo(outcome.name) -> listAgain(outcome.folderId)
-                        ArtworkCandidates.isImage(outcome.name) -> pictures += outcome.folderId
-                    }
+                    is UploadRunner.Outcome.Done ->
+                        if (MediaFileTypes.isVideo(outcome.name)) listAgain(outcome.folderId) else listAtEnd += outcome.folderId
                     else -> Unit
                 }
                 notify(force = true)
@@ -98,9 +96,10 @@ class UploadQueueWorker @AssistedInject constructor(
             if (stopReason == WorkInfo.STOP_REASON_CANCELLED_BY_APP) withContext(NonCancellable) { stopAll() }
             throw e
         }
-        // The listing is what checks a folder's pictures against the share, so
-        // a folder.jpg that just replaced the old one shows on the next draw.
-        pictures.forEach { listAgain(it) }
+        // The listing is what puts the files in Browse, among the folder's
+        // other files, and what checks its pictures against the share, so a
+        // folder.jpg that just replaced the old one shows on the next draw.
+        listAtEnd.forEach { listAgain(it) }
         leaveAttention(touched)
         // A row picked between the last file and here would otherwise sit
         // QUEUED, because KEEP drops an enqueue while this job still runs.
@@ -128,9 +127,10 @@ class UploadQueueWorker @AssistedInject constructor(
     /**
      * A video that landed is a video the library does not know about yet.
      * One listing of its folder makes it a row like any other — in Browse,
-     * in Library, in Search — without waiting for the next scan. An image is
-     * listed for its pictures: the listing is where a folder.jpg that changed
-     * is noticed ([com.regolith.data.artwork.ArtworkRepository.onFolderListed]).
+     * in Library, in Search — without waiting for the next scan. Any other
+     * file is listed to appear in Browse with the folder's other files, and
+     * an image for its pictures too: the listing is where a folder.jpg that
+     * changed is noticed ([com.regolith.data.artwork.ArtworkRepository.onFolderListed]).
      * Best effort: the next visit to the folder lists it anyway.
      */
     private suspend fun listAgain(folderId: Long) {

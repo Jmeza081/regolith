@@ -102,12 +102,18 @@ rather than assumed, by a probe suite run against a real Samba server.
 Folders move and rename the same way, whole: the server does a directory and
 everything under it in that same single operation. Deleting is permanent and asks
 first, naming the size and saying that the chapters you wrote go with it — and for
-a folder, that everything inside goes too, including files Regolith never listed.
+a folder, that everything inside goes too, not just its videos.
 When the folder you want to move something into doesn't exist yet, the move sheet
 makes it for you and drops the files straight in. However long the folder list,
 the Move button stays at the foot of the sheet, and a folder with more than ten
 subfolders gets an A–Z rail down the edge: slide a thumb down it to jump from
 letter to letter.
+
+Browse shows a folder the way a file manager would. After its folders and
+videos come all its other files, by their real names and sizes: the poster,
+subtitles, chapters, an `.nfo`, anything else. The Library leaves those out
+and puts them to use instead. For now they are only listed; picking works on
+videos and folders.
 
 Because a folder moves and deletes whole, Move and Delete refuse when you have
 picked a folder and then taken something back out of it. Moving or deleting the
@@ -134,8 +140,8 @@ picker, or any other file through the system's file picker — no permission
 asked either way. Picking is the whole confirmation. The files appear at the
 top of the folder with their own thumbnails, each saying where it stands, and a
 line above the nav pill follows the batch from anywhere else in the app. A
-video that lands is a video in the library at once; a photo is on the share
-beside it, and the folder says so, since Browse lists videos.
+video that lands is a video in the library at once; a photo or any other file
+lands among the folder's other files in Browse.
 
 It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
 sleeps, the batch waits and carries on by itself from the bytes already sent —

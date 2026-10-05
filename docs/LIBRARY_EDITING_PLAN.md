@@ -1,8 +1,16 @@
 # Editing from the Library — investigation
 
-Status: planned, decisions made (branch `feature/library-browse-parity`).
-Revised twice on 2026-10-05 after the owner's corrections (first section),
-then the owner answered every open question the same day (last sections).
+Status: being built (branch `feature/library-browse-parity`). Revised twice
+on 2026-10-05 after the owner's corrections (first section), then the owner
+answered every open question the same day (last sections).
+
+Progress, in the build order at the end:
+
+- Done: 1, the leaky-pick fix (also on its own branch, `fix/leaky-pick`).
+- Done: 3, every folder is a collection.
+- Done: 4, the listing half. Browse lists every file. Picking those files
+  (the third `FileOpTarget` kind) waits for step 5, which moves the verbs
+  out of Browse.
 
 The owner browses through the Library, but renaming, moving, deleting,
 downloading and setting posters all live in Browse. Finding the same video
