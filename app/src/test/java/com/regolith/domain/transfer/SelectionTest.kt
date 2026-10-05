@@ -282,4 +282,41 @@ class SelectionExclusionTest {
         val sel = Selection().toggleFolder(folder(1, "Series"))
         assertTrue(sel.exclusionsUnder(folder(1, "Series")).isEmpty)
     }
+
+    // ── what Move and Delete refuse ────────────────────────────────────
+
+    @Test
+    fun `a picked folder with a video taken back out is one Move and Delete refuse`() {
+        // Pick Films, open it, un-pick Heat: deleting Films would take Heat too.
+        val sel = Selection().toggleFolder(folder(5, "Films")).toggleFile(file(20, "Films"))
+        assertEquals(listOf(5L), sel.foldersWithExclusions().map { it.folderId })
+    }
+
+    @Test
+    fun `a subfolder taken back out counts too, however deep`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).toggleFolder(folder(2, "Series/Severance/Season 1"))
+        assertEquals(listOf(1L), sel.foldersWithExclusions().map { it.folderId })
+    }
+
+    @Test
+    fun `only the folders with something left out are named`() {
+        val sel = Selection()
+            .toggleFolder(folder(1, "Series"))
+            .toggleFolder(folder(5, "Films"))
+            .toggleFile(file(20, "Films"))
+            .toggleFile(file(30, "Home Videos"))
+        assertEquals(listOf(5L), sel.foldersWithExclusions().map { it.folderId })
+    }
+
+    @Test
+    fun `whole folders and loose files go ahead`() {
+        val sel = Selection().toggleFolder(folder(1, "Series")).toggleFile(file(30, "Home Videos"))
+        assertTrue(sel.foldersWithExclusions().isEmpty())
+    }
+
+    @Test
+    fun `picking a video back in lets the move go ahead again`() {
+        val sel = Selection().toggleFolder(folder(5, "Films")).toggleFile(file(20, "Films")).toggleFile(file(20, "Films"))
+        assertTrue(sel.foldersWithExclusions().isEmpty())
+    }
 }

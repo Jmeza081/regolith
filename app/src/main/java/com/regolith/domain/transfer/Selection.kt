@@ -272,6 +272,17 @@ data class FolderExclusions(val fileIds: Set<Long> = emptySet(), val paths: Set<
     val isEmpty: Boolean get() = fileIds.isEmpty() && paths.isEmpty()
 }
 
+/**
+ * The picked folders with something taken back out of them.
+ *
+ * Moving or deleting a folder takes all of it — the share renames or
+ * removes the folder in one go — so what was taken back out would go too.
+ * Move and Delete therefore refuse while there are any, rather than act on
+ * more than was picked (the owner's call, 2026-10-05). Download works file
+ * by file and leaves the exclusions out itself ([exclusionsUnder]).
+ */
+fun Selection.foldersWithExclusions(): List<FolderPick> = folders.filter { !exclusionsUnder(it).isEmpty }
+
 /** The exclusions sitting inside [pick] — its own, not another pick's. */
 fun Selection.exclusionsUnder(pick: FolderPick): FolderExclusions {
     val prefix = "${pick.relPath}/"
