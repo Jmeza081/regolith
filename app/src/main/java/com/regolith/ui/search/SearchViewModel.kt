@@ -35,6 +35,7 @@ import javax.inject.Inject
 import com.regolith.ui.util.formatFileCount
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.SelectionPresenter
 import com.regolith.ui.util.SelectionUiState
 
@@ -148,7 +149,11 @@ class SearchViewModel @Inject constructor(
     private val selection: SelectionPresenter,
     userChapters: UserChapterRepository,
     private val prefs: AppPreferences,
+    fileActionsFactory: FileActions.Factory,
 ) : ViewModel() {
+
+    /** Rename, move and delete for the picks, the same as Browse's and the Library's. */
+    val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
 
     private val query = MutableStateFlow("")
     private val filter = MutableStateFlow(SearchFilter.ALL)

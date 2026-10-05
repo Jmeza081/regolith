@@ -31,7 +31,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,9 +59,8 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ViewMode
 import com.regolith.ui.components.LocalNavPillInsets
-import com.regolith.ui.components.LocalSelectionChrome
-import com.regolith.ui.components.SelectionChromeState
-import com.regolith.ui.components.SelectionVerb
+import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.FileSelectionChrome
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.FilterChip
@@ -338,28 +336,18 @@ fun SearchScreen(
         }
     }
 
-        // The pill becomes this selection's toolbar (SelectionChrome). This
-        // screen only knows how to download a pick, so that is the one verb
-        // it lends; Cancel is drawn by the pill itself.
-        val selectionChrome = LocalSelectionChrome.current
-        DisposableEffect(selection) {
-            val live = selection
-            if (live == null) {
-                selectionChrome.clear()
-            } else {
-                selectionChrome.show(
-                    SelectionChromeState(
-                        verbs = listOf(
-                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "search_select_download", enabled = live.canDownload),
-                        ),
-                        onCancel = viewModel::cancelSelection,
-                        summary = live.summary,
-                        detail = live.detail,
-                    ),
-                )
-            }
-            onDispose { selectionChrome.clear() }
-        }
+        // The pill becomes this selection's toolbar with the same four verbs
+        // as Browse and the Library. Results come from anywhere, so the move
+        // sheet opens on the picks' own share.
+        FileSelectionChrome(
+            selection = selection,
+            actions = viewModel.fileActions,
+            here = null,
+            tagPrefix = "search",
+            onDownload = viewModel::downloadSelection,
+            onCancel = viewModel::cancelSelection,
+        )
+        FileActionsHost(viewModel.fileActions, tagPrefix = "search")
         if (momentSheet) {
             MomentFilterSheet(
                 facets = state.facets,

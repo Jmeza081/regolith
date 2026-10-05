@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.SelectionPresenter
 
 /**
@@ -65,7 +66,8 @@ import com.regolith.ui.util.SelectionPresenter
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel(assistedFactory = LibraryViewModel.Factory::class)
 class LibraryViewModel @AssistedInject constructor(
-    @Assisted private val folderId: Long?,
+    /** The collection this wall is, or null for the Library's first wall. */
+    @Assisted val folderId: Long?,
     private val library: LibraryRepository,
     private val sources: SourceRepository,
     private val scans: ScanRepository,
@@ -73,6 +75,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val transfers: TransferRepository,
     private val selection: SelectionPresenter,
     private val phone: PhoneLibrary,
+    fileActionsFactory: FileActions.Factory,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -87,11 +90,28 @@ class LibraryViewModel @AssistedInject constructor(
 
     private var unsorted: List<LibraryTile> = emptyList()
 
+    /**
+     * Rename, move and delete for the picks, the same as Browse's: a
+     * collection is its folder, a video is the video and its companions.
+     */
+    val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
+
     init {
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted, order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
+        // The collection this wall IS was deleted, reachable because a pick
+        // survives walking into the thing that was picked. Nothing below can
+        // be drawn, so the wall asks to be popped, as Browse's folders do.
+        if (folderId != null) {
+            viewModelScope.launch {
+                var seen = false
+                library.observeFolder(folderId).collect { folder ->
+                    if (folder != null) seen = true else if (seen) _uiState.update { it.copy(gone = true) }
+                }
+            }
+        }
         viewModelScope.launch {
             // The wall behind the "Network" tab, so an adopted copy shows on
             // the "On this device" tab only rather than on both.

@@ -80,8 +80,14 @@ data class LibraryUiState(
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
     val viewMode: ViewMode = ViewMode.GRID,
-    /** Non-null while a multi-selection is running (the contextual bar is up). */
+    /**
+     * Non-null while a multi-selection is running (the contextual bar is up).
+     * Renaming, moving and deleting the picks is `LibraryViewModel.fileActions`,
+     * with state of its own.
+     */
     val selection: SelectionUiState? = null,
+    /** The collection this wall was showing has been deleted; the screen should pop. */
+    val gone: Boolean = false,
     val loaded: Boolean = false,
     /** No enabled share anywhere. */
     val noSource: Boolean = false,

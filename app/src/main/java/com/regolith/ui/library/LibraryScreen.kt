@@ -62,6 +62,8 @@ import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
+import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.FileSelectionChrome
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
@@ -181,6 +183,11 @@ fun LibraryScreen(
 
     val selection = state.selection
     val selecting = selection != null
+
+    // Deleting the collection you are standing in leaves nothing to draw, so
+    // the wall leaves with it, as Browse's folders do. Only a success can
+    // pop it; a failure leaves the wall, and its message, where they were.
+    LaunchedEffect(state.gone) { if (state.gone) onBack?.invoke() }
 
     // Each selection belongs to one tab, and the two mean opposite things —
     // download these, delete these. Switching tabs ends whichever one you
@@ -529,28 +536,19 @@ fun LibraryScreen(
         SortSheet(order = state.order, onSelect = viewModel::pickSort, onDismiss = { viewModel.openSortSheet(false) })
     }
 
-        // The pill becomes this selection's toolbar (SelectionChrome). This
-        // screen only knows how to download a pick, so that is the one verb
-        // it lends; Cancel is drawn by the pill itself.
-        val selectionChrome = LocalSelectionChrome.current
-        DisposableEffect(selection) {
-            val live = selection
-            if (live == null) {
-                selectionChrome.clear()
-            } else {
-                selectionChrome.show(
-                    SelectionChromeState(
-                        verbs = listOf(
-                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "library_select_download", enabled = live.canDownload),
-                        ),
-                        onCancel = viewModel::cancelSelection,
-                        summary = live.summary,
-                        detail = live.detail,
-                    ),
-                )
-            }
-            onDispose { selectionChrome.clear() }
-        }
+        // The pill becomes this selection's toolbar with Browse's four verbs:
+        // a collection is moved, renamed and deleted as its folder, a video as
+        // itself and the files that share its name. The dialogs, the move
+        // sheet and the messages are the shared host's.
+        FileSelectionChrome(
+            selection = selection,
+            actions = viewModel.fileActions,
+            here = viewModel.folderId,
+            tagPrefix = "library",
+            onDownload = viewModel::downloadSelection,
+            onCancel = viewModel::cancelSelection,
+        )
+        FileActionsHost(viewModel.fileActions, tagPrefix = "library")
     }
 }
 
