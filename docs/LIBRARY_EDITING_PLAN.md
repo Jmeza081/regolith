@@ -12,7 +12,8 @@ Progress, in the build order at the end:
 - Done: 4. Browse lists every file, and each can be picked, moved, renamed
   and deleted on its own (never downloaded).
 - Done: 5, the verbs moved out of Browse into `FileActions`, with tests.
-- Done: 6, the Library (and Search) offer the same four verbs.
+- Done: 6, the Library offers the same four verbs (Search's picks are acted
+  on from the Library's or Browse's pill, as its downloads always were).
 - Done: 7, a collection's wall adds videos and sets its poster.
 
 The owner browses through the Library, but renaming, moving, deleting,

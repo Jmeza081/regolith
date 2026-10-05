@@ -92,11 +92,13 @@ uploaded from the phone is noticed as soon as the upload lands.
 
 ### Manages the files, not just the library
 
-Hold any video, collection or folder — in the Library, Browse or Search — to start
-picking, and the floating nav pill stops being a nav and becomes that selection's
-toolbar: Download, Move, Rename, Delete. The same four work the same way on every
-screen. In the Library a collection is moved, renamed and deleted as its folder,
-and a video as itself and the files beside it that share its name.
+Hold any video, collection or folder in the Library or Browse to start picking,
+and the floating nav pill stops being a nav and becomes that selection's toolbar:
+Download, Move, Rename, Delete. The same four work the same way on both. In the
+Library a collection is moved, renamed and deleted as its folder, and a video as
+itself and the files beside it that share its name. Search adds to the same
+picks; it has no pill of its own, so they are acted on back in the Library or
+Browse.
 A move is a **single rename on the server** — one metadata operation, nothing
 copied — so it is instant, and a share that drops halfway leaves every video
 either where it was or where it was going, never half-moved. That is measured
