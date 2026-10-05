@@ -1,8 +1,8 @@
 # Editing from the Library — investigation
 
-Status: investigation only (branch `feature/library-browse-parity`).
-Nothing below is built yet. Revised twice on 2026-10-05 after the owner's
-corrections; see the first section.
+Status: planned, decisions made (branch `feature/library-browse-parity`).
+Revised twice on 2026-10-05 after the owner's corrections (first section),
+then the owner answered every open question the same day (last sections).
 
 The owner browses through the Library, but renaming, moving, deleting,
 downloading and setting posters all live in Browse. Finding the same video
@@ -28,6 +28,12 @@ Read here as: a folder without a poster is a collection too. It shows the
 mosaic made from its videos until it gets one, exactly as today. Tying the
 Library's structure to whether a poster exists would make it reshuffle the
 moment one is added.
+
+**Browse shows every file; the Library parses.** Also the owner's rule. In
+their words, Browse should be "for viewing everything inside a folder as a
+file system would": the poster image, subtitles, chapters, everything.
+"A collection simply parses that information out", but keeps the editing
+tools.
 
 ## What the app does today, against that model
 
@@ -74,10 +80,10 @@ moment one is added.
    - Search stops labelling folders "title".
    - The demo library's film folders become collections.
    - The cost: one more tap to reach a film that sits in its own folder.
-2. **Posters belong to collections.** A video's tile shows its own picture
-   (`Arrival.jpg`) or a frame from it, never its folder's poster, even when
-   it is the folder's only video. Its picture then never changes because a
-   second video arrived.
+2. **Posters belong to collections.** A video's tile is made the way every
+   other video's is (its own picture if it has one, otherwise a frame from
+   it), never from its folder's poster, even when it is the folder's only
+   video. Its picture then never changes because a second video arrived.
    - The visible cost: a film alone in its folder shows a frame, not the
      film poster, in Continue watching, search and its own page, unless it
      has its own picture.
@@ -177,21 +183,62 @@ videos to existing collections.
    - Verify on the wide AVD against the Samba test share, with companion
      files in place.
 
-## Decisions to make first
+## Decisions (made by the owner, 2026-10-05)
 
-Already decided by the owner: every folder that holds videos is a
-collection, whatever its name and however many videos it holds.
+Also decided by the owner: every folder that holds videos is a collection,
+whatever its name and however many videos it holds, and Browse shows every
+file.
 
-1. A video's **companions go with it** when it is moved, renamed or deleted,
-   in Browse and the Library (recommended).
-2. A video's tile shows **its own picture or a frame**, never its folder's
-   poster, even when it is the folder's only video (recommended).
-3. The player's poster editor **sets the collection's poster**, and says so
-   (recommended), rather than setting that video's own picture.
-4. The exclusions fix: **refuse** (recommended, simple and safe), or expand
-   the folder into what is still picked.
-5. Whether **Add videos** belongs on a collection's screen in the Library,
-   or stays a Browse job.
+1. **Yes:** a video's companions go with it when it is moved, renamed or
+   deleted, in Browse and the Library.
+2. **Yes:** a video's tile never uses its folder's poster. It is made like
+   any other video's, which in practice is a frame from it.
+3. **Yes:** the player's poster editor sets the collection's poster, and says
+   so.
+4. **Yes, refuse:** the leaky-pick fix refuses Move and Delete while a picked
+   folder has something un-picked inside it, and says why.
+5. **Yes:** Add videos goes on a collection's own screen in the Library.
+
+## Browse shows every file (new)
+
+Today `LibraryRepository.refreshFolder` lists a folder on the share and
+keeps only its subfolders and videos. The listing already holds every other
+file; it is handed to the artwork and chapter checks and then dropped. So
+Browse can show every file without any extra trip to the server.
+
+- **Record the other files too.** Keep them in their own table, filled from
+  the same listing, not as `media_files`. Every other screen assumes a
+  media file is a video: the Library, Home, Search, Shorts, downloads.
+- **Rows.** Browse lists them after the folder's videos, by their real names
+  and sizes, each with an icon for its kind: picture, subtitles, chapters,
+  info, other.
+- **Actions.** They take the same selection actions as any file: rename,
+  move, delete, download. `FileOpTarget` gains a third kind for them. A
+  companion picked on its own moves alone; a video picked moves with its
+  companions.
+- **Tapping one.** Tapping a picture could open a preview (a poster is the
+  obvious case). Tapping anything else does nothing for now.
+- **The Library is unchanged.** It never lists these files.
+- **The demo library and the phone's own videos** have no share listing, so
+  they show only videos, as today.
+- **A fix that comes with it.** Upload › Files already accepts any file, and
+  that file has been invisible after upload until now.
+
+## Build order and test builds
+
+1. **The leaky-pick fix**, on its own small branch, released as a patch.
+2. **Companions travel with their video.**
+3. **Every folder is a collection,** with the lone-video picture change and
+   the poster editor's wording.
+4. **Browse shows every file.** This brings a test build for the owner: the
+   Library looks different (film folders open as collections), and so does
+   Browse.
+5. **Extract `FileActions` from Browse.**
+6. **Give the Library the verbs.**
+7. **Collection extras:** the folder poster and Add videos, from a
+   collection's screen. This brings a test build, then the merge.
+8. **Docs and checking** throughout. The ARCHITECTURE decision row for the
+   container model lands with step 3.
 
 ## Noticed on the way
 
