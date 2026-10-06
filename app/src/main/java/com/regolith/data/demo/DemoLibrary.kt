@@ -273,8 +273,8 @@ class DemoLibrary @Inject constructor(
         /**
          * The shape of a share people actually have: a couple of collections,
          * folders of one film beside loose files, a show with seasons, and a folder
-         * of camera files whose names parse into nothing — that last one is
-         * the "No match" tile, which is the case most worth looking at.
+         * of camera files whose names parse into nothing, which the Library
+         * shows by those names, as it does anyone's own clips.
          */
         val CONTENT = listOf(
             Collection(

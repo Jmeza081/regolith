@@ -16,6 +16,8 @@ Progress, in the build order at the end:
 - Done: 6, the Library offers the same four verbs (Search's picks are acted
   on from the Library's or Browse's pill, as its downloads always were).
 - Done: 7, a collection's wall adds videos and sets its poster.
+- Done after the plan (2026-10-06): a video whose name parses into nothing
+  is shown by that name instead of "No match".
 
 The owner browses through the Library, but renaming, moving, deleting,
 downloading and setting posters all live in Browse. Finding the same video

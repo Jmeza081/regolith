@@ -43,19 +43,19 @@ sealed interface LibraryTile {
         override val testTag get() = "library_collection_$folderId"
     }
 
-    /** A title (matched or not): opens Title Detail. */
+    /** A video: opens Title Detail. */
     data class Title(
         val fileId: Long,
+        /** The parsed title when the name has a year or an episode ("Arrival (2016)"), else the file's own name without its extension. */
         override val name: String,
         /** "4K", "1080p"; empty until the file has been opened. */
         val resolutionLabel: String,
-        val matched: Boolean,
         val unwatched: Boolean,
-        /** The raw filename, drawn inside the art when unmatched. */
+        /** The raw filename, drawn inside the art when there is no picture to show. */
         val fileName: String,
         /** 0..1 watched, or null when never started. */
         val progress: Float?,
-        /** "1h 56m", or "11m 04s" for an unmatched file. */
+        /** "1h 56m", "11m 04s": the runtime, or the size before the file has been probed. */
         val meta: String,
         override val artwork: ArtworkRequest,
         override val addedAtMs: Long,

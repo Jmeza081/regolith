@@ -12,7 +12,11 @@ data class ParsedName(
     val season: Int? = null,
     val episode: Int? = null,
 ) {
-    /** True when the name carried a year or an episode number; false is the design's "No match". */
+    /**
+     * True when the name carried a year or an episode number, so [display]
+     * is worth showing. False for most home videos, which are then shown by
+     * their own file name.
+     */
     val matched: Boolean get() = year != null || episode != null
 
     /** "Arrival (2016)", "Severance S1E1", or the bare title. */

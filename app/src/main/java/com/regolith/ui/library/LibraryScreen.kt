@@ -687,7 +687,6 @@ private fun TileView(
                 // The unwatched dot shares the pick marker's corner, so it
                 // stands down while selecting rather than sitting under it.
                 unwatched = tile.unwatched && !selecting,
-                matched = tile.matched,
                 fallbackLabel = tile.fileName,
                 progress = tile.progress,
                 dimmed = dimmed,
@@ -763,7 +762,7 @@ private fun TileRow(
             val coming = selection?.pickedFiles?.contains(tile.fileId) == true ||
                 (selection?.coversFile(tile.shareId, tile.folderRelPath) == true && selection.excludedFiles.contains(tile.fileId).not())
             ListRow(
-                title = if (tile.matched) tile.name else tile.fileName,
+                title = tile.name,
                 meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
                 leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.fileName),
                 trailing = if (coming) RowTrailing.Checked else RowTrailing.None,

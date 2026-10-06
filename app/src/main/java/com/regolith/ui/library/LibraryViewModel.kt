@@ -62,8 +62,8 @@ import com.regolith.ui.util.SelectionPresenter
  *  - a folder          -> a Collection tile, counting the files beneath it,
  *                         however few: even one video's folder is a collection
  *                         you open (the owner's model, 2026-10-05)
- *  - a video directly in the folder shown -> a Title tile (matched if the name
- *                         carried a year or episode)
+ *  - a video directly in the folder shown -> a Title tile, named by the title
+ *                         parsed from it, or by its own name when nothing parses
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel(assistedFactory = LibraryViewModel.Factory::class)
@@ -427,13 +427,14 @@ class LibraryViewModel @AssistedInject constructor(
 
     private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, artworkRevision: Int): LibraryTile.Title {
         val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
-        val matched = parsed.matched
         val duration = progress?.durationMs?.takeIf { it > 0 } ?: file.durationMs
         return LibraryTile.Title(
             fileId = file.id,
-            name = if (matched) parsed.display else file.name.substringBeforeLast('.'),
+            // A home video's name is the one its owner gave it: "Birthday
+            // cake", "GH010423". Only a name that parsed into a title (a year,
+            // an episode) wears the cleaned-up version.
+            name = if (parsed.matched) parsed.display else file.name.substringBeforeLast('.'),
             resolutionLabel = VideoInfo.resolutionLabelFor(file.width, file.height),
-            matched = matched,
             unwatched = progress == null || (progress.positionMs == 0L && !progress.completed),
             fileName = file.name,
             progress = progress?.takeIf { it.positionMs > 0 && it.durationMs > 0 && !it.completed }?.let { it.positionMs.toFloat() / it.durationMs },
