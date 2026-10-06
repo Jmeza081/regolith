@@ -97,7 +97,8 @@ opened the player directly).
 On a wide window:
 
 - **Nothing open** (`[…, Library]`): the wall has the whole window beside the
-  rail, five tiles across the inner display.
+  rail, five to seven posters across the inner display (Settings › Display ›
+  Posters per row).
 - **A title open** (`[…, Library, TitleDetail]`): its page slides in from the
   end edge and takes half the window; the wall reflows into the other half
   and rings the open tile. The split is even and does not move.

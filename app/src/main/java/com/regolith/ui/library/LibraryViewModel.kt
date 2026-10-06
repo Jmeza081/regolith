@@ -116,6 +116,7 @@ class LibraryViewModel @AssistedInject constructor(
     init {
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted, order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
+        viewModelScope.launch { prefs.postersPerRow.collect { perRow -> _uiState.update { it.copy(postersPerRow = perRow) } } }
         viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }
         // A poster set from a collection's wall, or one replaced on the share

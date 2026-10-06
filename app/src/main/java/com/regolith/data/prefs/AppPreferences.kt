@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.regolith.domain.display.NavHideAfter
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.SortDirection
@@ -47,6 +48,7 @@ class AppPreferences @Inject constructor(
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val navHideAfter = stringPreferencesKey("nav_hide_after")
+        val postersPerRow = stringPreferencesKey("posters_per_row")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
@@ -229,6 +231,16 @@ class AppPreferences @Inject constructor(
 
     suspend fun setNavHideAfter(after: NavHideAfter) {
         store.edit { it[Keys.navHideAfter] = after.name }
+    }
+
+    /**
+     * Settings › Display › Posters per row: how many across the Library's
+     * walls on the inner display. Read by the walls through LibraryViewModel.
+     */
+    val postersPerRow: Flow<PostersPerRow> = store.data.map { PostersPerRow.of(it[Keys.postersPerRow]) }
+
+    suspend fun setPostersPerRow(perRow: PostersPerRow) {
+        store.edit { it[Keys.postersPerRow] = perRow.name }
     }
 
     /**

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -508,6 +509,19 @@ val CHROME_MESSAGE_MAX_WIDTH: Dp = 520.dp
  * root and read by every page.
  */
 val LocalNavPillInsets = staticCompositionLocalOf { PaddingValues(bottom = NAV_PILL_CLEARANCE) }
+
+/**
+ * How much of the window's width the nav rail takes from the start edge on a
+ * wide window, as it is right now (it animates as the rail comes and goes);
+ * 0 on a phone. The tab screens are already laid out inside it. It is here
+ * for a screen that sizes things against the whole window rather than its
+ * own box: the Library's walls, whose posters keep their size while a
+ * title's page takes half the window. Provided once by the nav graph.
+ *
+ * Dynamic rather than static, unlike the other chrome values: it changes on
+ * every frame of the rail's slide, and only the walls read it.
+ */
+val LocalNavRailInset = compositionLocalOf { 0.dp }
 
 /**
  * Whether the nav pill is showing — and therefore whether a screen's OWN

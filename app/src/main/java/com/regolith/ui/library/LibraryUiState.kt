@@ -1,5 +1,6 @@
 package com.regolith.ui.library
 
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.ViewMode
@@ -80,6 +81,8 @@ data class LibraryUiState(
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
     val viewMode: ViewMode = ViewMode.GRID,
+    /** Settings › Display › Posters per row: how many across a wall on the inner display. */
+    val postersPerRow: PostersPerRow = PostersPerRow.DEFAULT,
     /**
      * Non-null while a multi-selection is running (the contextual bar is up).
      * Renaming, moving and deleting the picks is `LibraryViewModel.fileActions`,

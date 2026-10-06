@@ -81,6 +81,7 @@ import com.regolith.ui.poster.PosterEditorScreen
 import com.regolith.ui.poster.PosterEditorViewModel
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
+import com.regolith.ui.components.LocalNavRailInset
 import com.regolith.ui.components.NavChromeHold
 import androidx.compose.material3.SnackbarHostState
 import com.regolith.ui.components.SelectionChrome
@@ -447,6 +448,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     CompositionLocalProvider(
         LocalWindowShape provides windowShape,
         LocalNavPillInsets provides pillInsets,
+        LocalNavRailInset provides railInset,
         // The same answer the pill acts on, published for screens that float
         // their own chrome. One timer, so nothing can drift out of step.
         LocalNavChromeVisible provides navVisible,
