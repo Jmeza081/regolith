@@ -60,6 +60,9 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ViewMode
+import com.regolith.ui.components.EmptyAction
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.FileActionsHost
 import com.regolith.ui.components.FileSelectionChrome
@@ -200,10 +203,10 @@ fun SearchScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s18),
         ) {
-            // The filter chips leave with the results: with no matches the empty card sits under the field (design frame 24).
-            // A point of interest that narrowed to nothing is the exception —
-            // the chips have to stay or there is no way to turn one off.
-            if (!(state.searched && state.hits.isEmpty()) || state.poi != null) item {
+            // The filter chips leave with the results: with no matches the empty state sits under the field (design frame 24).
+            // A filter or a point of interest that narrowed to nothing is the
+            // exception — the chips have to stay or there is no way to turn one off.
+            if (!(state.searched && state.hits.isEmpty()) || state.poi != null || state.filter != SearchFilter.ALL) item {
                 // One row, the moment chip in it like any other: five chips
                 // do not fit a 411dp portrait, so the row scrolls. It opens a
                 // sheet rather than toggling, because the names are the
@@ -299,13 +302,24 @@ fun SearchScreen(
             }
             if (state.searched && state.hits.isEmpty() && state.moments.isEmpty()) {
                 item {
-                    Column(
-                        Modifier.fillMaxWidth().background(colors.surface, RoundedCornerShape(18.dp)).border(1.dp, colors.hairline, RoundedCornerShape(18.dp)).padding(Spacing.s18).testTag("search_empty_card"),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.s12),
-                    ) {
-                        Text("No file or folder matches that.", style = TextStyles.rowLabelMedium.copy(lineHeight = 21.designSp()), color = colors.ink)
-                        Text("Search reads filenames as they are on the share, so spelling counts. Try fewer words, or drop the year.", style = TextStyles.settingMeta.copy(lineHeight = 18.designSp()), color = colors.body)
-                    }
+                    // Narrowed to nothing: the way out is the filter, not the words.
+                    val narrowed = state.filter != SearchFilter.ALL || state.poi != null
+                    EmptyState(
+                        title = if (narrowed) "No matches with this filter" else "No matches for “${state.query.trim()}”",
+                        body = if (narrowed) {
+                            "Turn the filter off to search everything again."
+                        } else {
+                            "Search reads filenames as they are on the share, so spelling counts. Try fewer words, or drop the year."
+                        },
+                        ghost = if (state.viewMode == ViewMode.GRID) Ghost.Frames(rows = 1) else Ghost.Rows(count = 3),
+                        modifier = Modifier.padding(top = Spacing.s8),
+                        link = if (narrowed) {
+                            EmptyAction("Show all", { viewModel.setFilter(SearchFilter.ALL); viewModel.setPoi(null) }, "search_show_all_button")
+                        } else {
+                            EmptyAction("Clear the search", { viewModel.setQuery("") }, "search_clear_search_button")
+                        },
+                        testTag = "search_empty_card",
+                    )
                 }
             }
             state.scanningPath?.let { path ->

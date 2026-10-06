@@ -15,6 +15,7 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ParsedName
+import com.regolith.domain.media.DeviceSource
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.ui.util.formatWhen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -79,6 +80,7 @@ class HomeViewModel @Inject constructor(
             downloadsBytes = ready.sumOf { it.totalBytes },
             loaded = true,
             serverNames = servers.map { it.name },
+            hasNetworkSource = servers.any { !DeviceSource.isDevice(it.host.host) },
             resume = resumeItems,
             newlyAdded = newestFiles.map { f ->
                 val parsed = ParsedName(f.titleParsed ?: f.name.substringBeforeLast('.'), f.year, f.season, f.episode)

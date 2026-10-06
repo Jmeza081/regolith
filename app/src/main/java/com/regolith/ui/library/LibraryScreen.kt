@@ -46,12 +46,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,11 +72,12 @@ import com.regolith.ui.components.UploadSource
 import com.regolith.ui.util.UploadActionsState
 import com.regolith.ui.components.FileSelectionChrome
 import com.regolith.ui.components.ArtworkImage
-import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyAction
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.EyebrowAction
-import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.ThumbCells
 import com.regolith.ui.components.PlayAllButton
@@ -455,7 +454,7 @@ fun LibraryScreen(
             NoSource(onAddServer)
             return
         }
-        val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, onScan = viewModel::scanAll) }
+        val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, rows = state.viewMode != ViewMode.GRID, onScan = viewModel::scanAll) }
 
         // A page opening beside the wall reflows it — five across become two
         // on the inner display — and a keyed grid keeps its FIRST visible
@@ -523,7 +522,7 @@ fun LibraryScreen(
                     item(key = "library_profile_tabs", span = { GridItemSpan(maxLineSpan) }) { profileTabs(profile) }
                     if (showMoments) {
                         if (moments.isEmpty()) {
-                            item(key = "library_moments_empty", span = { GridItemSpan(maxLineSpan) }) { NoMoments() }
+                            item(key = "library_moments_empty", span = { GridItemSpan(maxLineSpan) }) { NoMoments(rows = false) }
                         } else {
                             items(moments, key = { it.testTag }) { moment -> MomentTile(moment, onPlayAt) }
                         }
@@ -571,7 +570,7 @@ fun LibraryScreen(
                     item(key = "library_profile_tabs") { profileTabs(profile) }
                     if (showMoments) {
                         if (moments.isEmpty()) {
-                            item(key = "library_moments_empty") { NoMoments() }
+                            item(key = "library_moments_empty") { NoMoments(rows = true) }
                         } else {
                             itemsIndexed(moments, key = { _, moment -> moment.testTag }) { index, moment ->
                                 if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
@@ -925,22 +924,20 @@ private fun RemoveCopiesDialog(count: Int, onConfirm: () -> Unit, onKeep: () -> 
     }
 }
 
-/** "Nothing here" / "Not scanned yet": the same card in either layout. */
+/**
+ * "Nothing here yet" / "Nothing scanned yet", over the outline of the wall
+ * it stands in for: posters, or poster rows when the wall is in [rows] mode.
+ */
 @Composable
-private fun EmptyWall(scannedOnce: Boolean, onScan: () -> Unit) {
-    val colors = RegolithTheme.colors
-    SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("library_empty_card")) {
-        DisplayText(if (scannedOnce) "Nothing here" else "Not scanned yet", style = TextStyles.dialogTitle)
-        Spacer(Modifier.height(Spacing.s8))
-        Text(
-            if (scannedOnce) "The scan found nothing playable here." else "Regolith reads the share once to know what is on it. Nothing is copied off it.",
-            style = TextStyles.body, color = colors.body,
-        )
-        if (!scannedOnce) {
-            Spacer(Modifier.height(Spacing.s18))
-            PrimaryButton(text = "Scan now", onClick = onScan, testTag = "library_scan_button", modifier = Modifier.fillMaxWidth())
-        }
-    }
+private fun EmptyWall(scannedOnce: Boolean, rows: Boolean, onScan: () -> Unit) {
+    EmptyState(
+        title = if (scannedOnce) "Nothing here yet" else "Nothing scanned yet",
+        body = if (scannedOnce) "The scan found nothing Regolith can play here." else "Regolith reads the share once to know what is on it. Nothing is copied off it.",
+        ghost = if (rows) Ghost.PosterRows(count = 4) else Ghost.Posters(rows = 2),
+        action = if (scannedOnce) null else EmptyAction("Scan now", onScan, "library_scan_button"),
+        modifier = Modifier.padding(top = Spacing.s12),
+        testTag = "library_empty_card",
+    )
 }
 
 /** "Still reading the share": the wall fills in behind it as the scan walks. */
@@ -1083,40 +1080,18 @@ private fun OutOfReach(
     }
 }
 
+/** Network with no server yet: where the wall will be, and the one way to fill it. */
 @Composable
 private fun NoSource(onAddServer: () -> Unit) {
-    val colors = RegolithTheme.colors
-    // Design "Media · first run": the dashed card at 20dp corners, centred in the space above the pill.
-    Box(Modifier.fillMaxSize().padding(start = Spacing.s18, end = Spacing.s18, bottom = LocalNavPillInsets.current.calculateBottomPadding()), contentAlignment = Alignment.Center) {
-        Column(
-            Modifier.fillMaxWidth().background(Color(0xFF050505), RoundedCornerShape(20.dp))
-                .dashedBorder(colors.raised, RoundedCornerShape(20.dp))
-                .padding(horizontal = Spacing.s18, vertical = Spacing.s30)
-                .testTag("library_empty_card"),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.s18),
-        ) {
-            Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.body, modifier = Modifier.size(18.scaledDp()))
-            DisplayText("No source server", style = TextStyles.dialogTitle, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            Text(
-                "Point Regolith at an SMB share and it lists what's on it — films, recordings, anything it can play.",
-                style = TextStyles.body, color = colors.metadata, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-            PrimaryButton(text = "Add source server", onClick = onAddServer, testTag = "library_add_server_button", modifier = Modifier.fillMaxWidth())
-        }
-    }
+    EmptyState(
+        title = "Your posters will line up here",
+        body = "Add the SMB share your videos live on, and Regolith lists everything on it: films, recordings, anything it can play.",
+        ghost = Ghost.Posters(rows = 2),
+        action = EmptyAction("Add source server", onAddServer, "library_add_server_button"),
+        modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = Spacing.s12),
+        testTag = "library_empty_card",
+    )
 }
-
-/** A 1dp dashed hairline, the only dashed border in the system ("nothing here yet"). */
-private fun Modifier.dashedBorder(color: Color, shape: RoundedCornerShape): Modifier = this.then(
-    Modifier.drawBehind {
-        drawRoundRect(
-            color = color,
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(20.dp.toPx()),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
-        )
-    },
-)
 
 /**
  * "On this device" (design: "On device · transfers"): files that play
@@ -1237,29 +1212,15 @@ private fun DeviceTab(
         val showPhone = filter == DeviceFilter.All
         if (state.noDownloads && (filter == DeviceFilter.Downloads || (state.phoneCount == 0 && state.phoneAccess != PhoneAccess.NONE))) {
             item {
-                // The one empty state in the app that gets a drawing. It is
-                // also the only one that is a normal resting state rather
-                // than a fault: a share you have never scanned wants the
-                // scan button, an empty folder wants one quiet line, and
-                // this one wants to say "there is nothing wrong here".
-                SurfaceCard(
-                    style = CardStyle.Empty,
-                    contentPadding = PaddingValues(horizontal = Spacing.s18, vertical = Spacing.s30),
-                    modifier = Modifier.fillMaxWidth().testTag("library_device_empty"),
-                ) {
-                    OrbitArt(Modifier.align(Alignment.CenterHorizontally))
-                    Spacer(Modifier.height(Spacing.s18))
-                    DisplayText(
-                        "Nothing in orbit", style = TextStyles.dialogTitle, textAlign = TextAlign.Center,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    )
-                    Spacer(Modifier.height(Spacing.s8))
-                    Text(
-                        "Open a title and choose \"Keep on this device\" — it lives here and plays with the share offline.",
-                        style = TextStyles.body, color = colors.body, textAlign = TextAlign.Center,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    )
-                }
+                // A normal resting state rather than a fault, so no button:
+                // nothing is wrong, and keeping a copy starts on a title's page.
+                EmptyState(
+                    title = "Nothing kept on this phone yet",
+                    body = "Open a title and choose “Keep on this device”. It lives here and plays with the share out of reach.",
+                    ghost = if (state.viewMode == ViewMode.GRID) Ghost.Posters(rows = 2) else Ghost.Rows(count = 4),
+                    modifier = Modifier.padding(top = Spacing.s12),
+                    testTag = "library_device_empty",
+                )
             }
             if (!showPhone) return@LazyColumn
         }
@@ -1330,7 +1291,7 @@ private fun DeviceTab(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     Eyebrow("Phone storage", muted = true)
-                    PhoneAccessCard(asked = askedPhone, onAsk = onAskPhone, onOpenSettings = onOpenAppSettings)
+                    PhoneAccessPrompt(asked = askedPhone, onAsk = onAskPhone, onOpenSettings = onOpenAppSettings)
                 }
             }
             return@LazyColumn
@@ -1402,30 +1363,25 @@ private fun PhoneFolderStrip(folder: PhoneFolder, onOpen: () -> Unit, onOpenTitl
 
 /**
  * Phone storage before anyone has said yes: what it is, that nothing moves,
- * and the one red button on the page. After a refusal the system will not
- * show its sheet again, so the button becomes the way to Android's settings.
+ * and the one red button on the page, over the outline of the folder rows
+ * it will become. After a refusal the system will not show its sheet again,
+ * so the button becomes the way to Android's settings.
  */
 @Composable
-private fun PhoneAccessCard(asked: Boolean, onAsk: () -> Unit, onOpenSettings: () -> Unit) {
-    val colors = RegolithTheme.colors
-    SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("device_phone_access_card"), contentPadding = PaddingValues(Spacing.s18)) {
-        DisplayText("Play the videos already on this phone", style = TextStyles.dialogTitle)
-        Spacer(Modifier.height(Spacing.s8))
-        Text(
-            "Camera, Movies, Download and the rest, listed here beside your downloads. Nothing is moved, copied or uploaded.",
-            style = TextStyles.body, color = colors.body,
-        )
-        Spacer(Modifier.height(Spacing.s18))
-        if (asked) {
-            PrimaryButton(text = "Open Android settings", onClick = onOpenSettings, testTag = "device_phone_settings_button", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(Spacing.s8))
-            Text("Allow Photos and videos there, then come back.", style = TextStyles.meta, color = colors.metadata)
+private fun PhoneAccessPrompt(asked: Boolean, onAsk: () -> Unit, onOpenSettings: () -> Unit) {
+    EmptyState(
+        title = "Play the videos already on this phone",
+        body = "Camera, Movies, Download and the rest, listed here beside your downloads. Nothing is moved, copied or uploaded.",
+        ghost = Ghost.Folders(count = 3),
+        compact = true,
+        action = if (asked) {
+            EmptyAction("Open Android settings", onOpenSettings, "device_phone_settings_button")
         } else {
-            PrimaryButton(text = "Show phone videos", onClick = onAsk, testTag = "device_phone_allow_button", modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(Spacing.s8))
-            Text("Android asks next. \"Select videos\" works too — you will see only the ones you pick.", style = TextStyles.meta, color = colors.metadata)
-        }
-    }
+            EmptyAction("Show phone videos", onAsk, "device_phone_allow_button")
+        },
+        note = if (asked) "Allow Photos and videos there, then come back." else "Android asks next. “Select videos” works too: you will see only the ones you pick.",
+        testTag = "device_phone_access_card",
+    )
 }
 
 /** "Select videos" was chosen: say so, because new videos will not appear on their own. */

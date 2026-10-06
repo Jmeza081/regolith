@@ -16,9 +16,10 @@ import com.regolith.R
 /*
  * Two faces (design section 01, "Type & nav"):
  *  - Michroma: the app's own voice, and only that -- wordmark, screen
- *    titles, dialog and empty-state titles. Never a label, never content.
- *    Uppercase only. Drawn with a 0.55px stroke for weight by
- *    [com.regolith.ui.components.DisplayText].
+ *    titles, dialog titles. Never a label, never content, never an empty
+ *    state (those are a sentence in Space Grotesk; see
+ *    [com.regolith.ui.components.EmptyState]). Uppercase only. Drawn with
+ *    a 0.55px stroke for weight by [com.regolith.ui.components.DisplayText].
  *  - Space Grotesk: everything else, including every section eyebrow and
  *    every row. One eyebrow style app-wide; Settings used to have its own
  *    Michroma one, which put the display face on wayfinding and made the
@@ -98,8 +99,6 @@ object TextStyles {
     // --- Michroma
     /** Screen title in the top bar: `400 15px/1.3`. */
     val screenTitle = michroma(15, 19.5f)
-    /** Centred empty-state title ("NO SOURCE SERVER"): `400 17px/1.4`. */
-    val emptyTitle = michroma(17, 23.8f)
     /** Title Detail's title over the art: `400 19px/24px`, `-.01em`. */
     val detailTitle = michroma(19, 24f, -0.01f)
     /** Portrait player title and the wordmark: `400 21px/1.3`. */
@@ -150,6 +149,14 @@ object TextStyles {
     // --- Space Grotesk, reading
     /** Subtitle under a screen title: `400 12px/1`. */
     val subtitle = sg(FontWeight.Normal, 12, 12f)
+    /**
+     * An empty state's heading ("Your posters will line up here"):
+     * `600 17px/24px`. The text face, sentence case: an empty state is a
+     * sentence about the screen, not a second title for it.
+     */
+    val emptyHeading = sg(FontWeight.SemiBold, 17, 24f)
+    /** The same heading inside a page that has a header of its own (a collection's Moments): `600 16px/22px`. */
+    val emptyHeadingSmall = sg(FontWeight.SemiBold, 16, 22f)
     /** Row label, 15px semibold (design's type specimen). */
     val rowLabel = sg(FontWeight.SemiBold, 15, 19f)
     /**

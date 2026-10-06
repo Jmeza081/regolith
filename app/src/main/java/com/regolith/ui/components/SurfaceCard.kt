@@ -15,11 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -33,8 +29,6 @@ import com.regolith.ui.theme.TextStyles
 enum class CardStyle {
     /** #0F0F0F fill with a #1F1F1F hairline. The default. */
     Filled,
-    /** Dashed #2E2E2E hairline on #050505. Reserved for "nothing here yet". */
-    Empty,
     /** 8% red tint with a red hairline. Error messages, never a full fill. */
     Error,
     /** #141414 with a #2E2E2E hairline: a notice such as "Couldn't reach media". */
@@ -61,13 +55,6 @@ fun SurfaceCard(
         CardStyle.Selected -> modifier.background(colors.surface, CardShape).border(1.5.dp, colors.ink, CardShape)
         CardStyle.Notice -> modifier.background(colors.noticeBg, CardShape).border(1.dp, colors.raised, CardShape)
         CardStyle.Error -> modifier.background(colors.accentTint, CardShape).border(1.dp, colors.accent.copy(alpha = 0.4f), CardShape)
-        CardStyle.Empty -> modifier.background(Color(0xFF050505), CardShape).drawBehind {
-            drawRoundRect(
-                color = colors.raised,
-                cornerRadius = CornerRadius(14.dp.toPx()),
-                style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))),
-            )
-        }
     }
     Column(modifier = base.padding(contentPadding), content = content)
 }
