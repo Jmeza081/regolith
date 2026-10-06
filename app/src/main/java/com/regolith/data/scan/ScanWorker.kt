@@ -1,5 +1,6 @@
 package com.regolith.data.scan
 
+import com.regolith.data.spoof.SpoofMode
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -48,6 +49,7 @@ class ScanWorker @AssistedInject constructor(
     private val artwork: ArtworkPrefetcher,
     private val addresses: com.regolith.data.repository.ServerAddressResolver,
     private val chapterSync: com.regolith.data.media.ChapterSyncScheduler,
+    private val spoof: SpoofMode,
 ) : CoroutineWorker(context, params) {
 
     /**
@@ -186,7 +188,8 @@ class ScanWorker @AssistedInject constructor(
         val title = if (p.shareName.isEmpty()) "Reading the share" else "Reading ${p.shareName}"
         val text = when {
             p.files == 0 && p.folders == 0 -> "Regolith keeps the list on this device. Nothing is copied off the share."
-            else -> listOf("%,d files".format(p.files), "/" + p.path.ifEmpty { "…" }).joinToString(" · ")
+            // The folder being read, made up in spoof mode like every other path on screen.
+            else -> listOf("%,d files".format(p.files), "/" + p.path.ifEmpty { "…" }.let { path -> spoof.current?.path(path) ?: path }).joinToString(" · ")
         }
         val notification = NotificationCompat.Builder(applicationContext, RegolithNotifications.CHANNEL_SCAN)
             .setSmallIcon(R.drawable.ic_notification)

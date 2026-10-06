@@ -1,5 +1,6 @@
 package com.regolith.ui.home
 
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.repository.LibraryRepository
@@ -25,9 +26,10 @@ data class ContinueWatchingUiState(
 @HiltViewModel
 class ContinueWatchingViewModel @Inject constructor(
     library: LibraryRepository,
+    spoof: SpoofMode,
 ) : ViewModel() {
 
-    val uiState: StateFlow<ContinueWatchingUiState> = library.observeResume(ALL_LIMIT)
+    val uiState: StateFlow<ContinueWatchingUiState> = library.observeResume(ALL_LIMIT, spoof)
         .map { ContinueWatchingUiState(items = it, loaded = true) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContinueWatchingUiState())
 

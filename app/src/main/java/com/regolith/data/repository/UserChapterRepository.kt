@@ -98,6 +98,14 @@ class UserChapterRepository @Inject constructor(
     fun occurrences(title: String, limit: Int): Flow<List<ChapterMatch>> =
         dao.occurrencesOf(title, limit).map { rows -> rows.map { it.toMatch() } }
 
+    /**
+     * The named marks on the videos directly in [folderId], for a collection
+     * profile's Moments tab: the points of interest Search finds, gathered by
+     * where they are rather than by what they are called.
+     */
+    fun observeNamedInFolder(folderId: Long): Flow<List<ChapterMatch>> =
+        dao.observeNamedInFolder(folderId).map { rows -> rows.map { it.toMatch() } }
+
     /** Prefix search over chapter names, the same words-to-MATCH rule as the file search. */
     fun search(query: String, limit: Int): Flow<List<ChapterMatch>> {
         val match = LibraryRepository.ftsMatch(query) ?: return flowOf(emptyList())

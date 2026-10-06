@@ -44,6 +44,22 @@ class TitleParserTest {
         assertTrue(p("Arrival.2016.mkv").matched)
     }
 
+    @Test fun `a year with words after it is part of the name`() {
+        // Home videos: the year is in the name, and what follows it is what
+        // tells the videos apart.
+        val day1 = p("Hawaii 2019 - day 1.mp4")
+        assertNull(day1.year)
+        assertFalse(day1.matched)
+        assertEquals(ParsedName("Hawaii 2019 day 2"), p("Hawaii 2019 - day 2.mp4"))
+        assertFalse(p("Christmas 2019 (2).mp4").matched)
+        // At the end, it is still the year.
+        assertEquals(ParsedName("Christmas", 2019), p("Christmas 2019.mp4"))
+    }
+
+    @Test fun `of two years the release year is the one release noise follows`() {
+        assertEquals(ParsedName("Blade Runner 2049", 2017), p("Blade.Runner.2049.2017.1080p.mkv"))
+    }
+
     @Test fun `a leading year is part of the title`() {
         assertEquals(ParsedName("2001 A Space Odyssey", 1968), p("2001.A.Space.Odyssey.1968.mkv"))
     }

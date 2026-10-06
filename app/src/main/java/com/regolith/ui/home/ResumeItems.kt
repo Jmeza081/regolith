@@ -1,5 +1,7 @@
 package com.regolith.ui.home
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.artwork.ArtworkKind
@@ -25,8 +27,8 @@ import kotlinx.coroutines.flow.map
  * started, and progress is what says how far.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-fun LibraryRepository.observeResume(limit: Int): Flow<List<ResumeItem>> =
-    observeContinueWatching(limit).flatMapLatest { files ->
+fun LibraryRepository.observeResume(limit: Int, spoof: SpoofMode): Flow<List<ResumeItem>> =
+    observeContinueWatching(limit).spoofed(spoof) { files(it) }.flatMapLatest { files ->
         observeProgress(files.map { it.id }).map { progress ->
             val byId: Map<Long, PlaybackProgressEntity> = progress.associateBy { it.fileId }
             files.mapNotNull { f ->

@@ -1,5 +1,10 @@
 package com.regolith.ui.components
 
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.regolith.data.spoof.Spoof
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.foundation.lazy.grid.GridCells
 import android.animation.ValueAnimator
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -67,6 +72,16 @@ import com.regolith.ui.theme.TileShape
 import com.regolith.ui.theme.scaledDp
 
 /**
+ * Spoof mode for the pictures: non-null while Settings › Demo › Spoof mode
+ * is on, and then [ArtworkImage] and [ArtworkLight] draw a stock photo
+ * ([com.regolith.data.spoof.SpoofImage]) in place of every picture of the
+ * library. Provided once, at the root of the app. A composition local
+ * rather than a check in the fetcher because switching it has to change
+ * what is already on screen: a new model is what makes Coil load again.
+ */
+val LocalSpoof = staticCompositionLocalOf<Spoof?> { null }
+
+/**
  * Art at any size: the image when there is one, the design's "reading"
  * look while it is pulled off the share, and, when there is no picture at
  * all, a dark gradient with the filename set inside. Used by
@@ -94,7 +109,9 @@ fun ArtworkImage(
     if (pending != null) DisposableEffect(pending) { onDispose { mark.done(pending) } }
     // Settings › Accessibility › Remove animations turns off every animator
     // in the app; a moving poster is one more thing it should hold still.
-    val model = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
+    val still = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
+    // Spoof mode: a stock photo in its place, picked by the owner's id.
+    val model: Any = LocalSpoof.current?.image(still) ?: still
     SubcomposeAsyncImage(
         model = model,
         contentDescription = null,
@@ -390,5 +407,27 @@ private fun NoPictureArt(label: String, modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(Spacing.s8),
             )
         }
+    }
+}
+
+/**
+ * The narrowest a 16:9 [MediaTile] gets before a grid of them drops a
+ * column: Search's results, and the moments on a collection's profile.
+ */
+val ThumbTileMin = 160.dp
+
+/** How many 16:9 tiles go across [width]: as many as fit at [ThumbTileMin], never fewer than two or more than four. */
+fun thumbColumns(width: Dp): Int = (width / ThumbTileMin).toInt().coerceIn(2, 4)
+
+/**
+ * [thumbColumns] as a lazy grid's column rule, the cells sharing the width
+ * evenly as [GridCells.Fixed] does. Web analogy: a CSS grid's
+ * `repeat(auto-fill, minmax(160px, 1fr))`, capped at four tracks.
+ */
+object ThumbCells : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = thumbColumns(availableSize.toDp())
+        val usable = availableSize - spacing * (count - 1)
+        return List(count) { usable / count + if (it < usable % count) 1 else 0 }
     }
 }

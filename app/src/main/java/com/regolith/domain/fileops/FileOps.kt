@@ -46,6 +46,13 @@ enum class ReadOnlySource {
 
     /** The phone's own videos, which the system owns, not a share. */
     PHONE,
+
+    /**
+     * Spoof mode is on (Settings › Demo): every name on screen is made up,
+     * so nothing is changed until it is off, and a made-up name can never be
+     * written back to a share.
+     */
+    SPOOF,
 }
 
 /**

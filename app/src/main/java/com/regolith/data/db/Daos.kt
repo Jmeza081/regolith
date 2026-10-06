@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
+import com.regolith.domain.library.TitleParser
 import kotlinx.coroutines.flow.Flow
 
 /*
@@ -220,6 +221,23 @@ interface FolderDao {
 
     @Update
     suspend fun update(folder: FolderEntity)
+
+    @Query("SELECT * FROM folders")
+    suspend fun all(): List<FolderEntity>
+
+    /** As `MediaFileDao.reparseNames`, for folder names ([TitleParser.parseFolderName]). */
+    @Transaction
+    suspend fun reparseNames(): Int {
+        var changed = 0
+        for (folder in all()) {
+            val parsed = TitleParser.parseFolderName(folder.name)
+            if (parsed.title != folder.titleParsed || parsed.year != folder.year) {
+                update(folder.copy(titleParsed = parsed.title, year = parsed.year))
+                changed++
+            }
+        }
+        return changed
+    }
 
     @Query("DELETE FROM folders WHERE parentId = :parentId AND relPath NOT IN (:keepPaths)")
     suspend fun deleteChildrenNotIn(parentId: Long, keepPaths: List<String>)
@@ -591,13 +609,38 @@ interface MediaFileDao {
             modifiedAtMs = file.modifiedAtMs,
             missing = false,
             lastSeenAtMs = file.lastSeenAtMs,
-            titleParsed = file.titleParsed ?: existing.titleParsed,
-            year = file.year ?: existing.year,
-            season = file.season ?: existing.season,
-            episode = file.episode ?: existing.episode,
+            // Both callers parse the name afresh, so the parse is the truth:
+            // a name that no longer reads as having a year has none, rather
+            // than keeping the one an older parser found.
+            titleParsed = file.titleParsed,
+            year = file.year,
+            season = file.season,
+            episode = file.episode,
         )
         update(merged)
         return merged
+    }
+
+    @Query("SELECT * FROM media_files")
+    suspend fun all(): List<MediaFileEntity>
+
+    /**
+     * Run [TitleParser] over every row's name again, writing only the rows
+     * whose parse changed, and say how many. For a parser change
+     * ([TitleParser.VERSION]): a listing re-parses its own folder, but a
+     * library has folders nobody lists again until the next scan.
+     */
+    @Transaction
+    suspend fun reparseNames(): Int {
+        var changed = 0
+        for (file in all()) {
+            val parsed = TitleParser.parseVideoName(file.name)
+            if (parsed.title != file.titleParsed || parsed.year != file.year || parsed.season != file.season || parsed.episode != file.episode) {
+                update(file.copy(titleParsed = parsed.title, year = parsed.year, season = parsed.season, episode = parsed.episode))
+                changed++
+            }
+        }
+        return changed
     }
 
     @Query("SELECT * FROM media_files WHERE folderId IN (:folderIds) AND missing = 0 ORDER BY name COLLATE NOCASE")
@@ -1159,6 +1202,23 @@ interface UserChapterDao {
             "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
     )
     fun occurrencesOf(title: String, limit: Int): Flow<List<UserChapterHitRow>>
+
+    /**
+     * The named marks on the videos directly in one folder: a collection
+     * profile's Moments tab. Same shape as [search]. An unnamed mark is
+     * arithmetic ("Part 3") rather than a place someone marked, so it stays
+     * out here as it does in Search. In name order, then time; the screen
+     * puts the videos back in the wall's own order.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE media_files.folderId = :folderId AND media_files.missing = 0 " +
+            "AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +
+            "ORDER BY media_files.name, user_chapters.startMs",
+    )
+    fun observeNamedInFolder(folderId: Long): Flow<List<UserChapterHitRow>>
 }
 
 @Dao

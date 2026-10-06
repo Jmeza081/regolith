@@ -1,5 +1,7 @@
 package com.regolith.player
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import android.content.Context
 import android.util.Log
 import androidx.media3.common.C
@@ -199,6 +201,7 @@ class PlaybackSession @Inject constructor(
     private val local: LocalMedia,
     private val chapterSource: ChapterRepository,
     private val userChapters: UserChapterRepository,
+    private val spoof: SpoofMode,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(PlaybackState())
@@ -355,7 +358,7 @@ class PlaybackSession @Inject constructor(
             val uri = resolver.playableUriFor(fileId)
             _state.update {
                 it.copy(
-                    title = file?.name?.substringBeforeLast('.') ?: "",
+                    title = file?.let { shownName(it) } ?: "",
                     sourceLabel = if (resolver.isLocal(uri)) "On this device" else file?.let { f -> sourceLabelFor(f) } ?: "",
                     fileSizeBytes = file?.sizeBytes ?: 0,
                     next = view.next,
@@ -477,7 +480,15 @@ class PlaybackSession @Inject constructor(
         )
     }
 
-    private fun MediaFileEntity.toNextItem() = NextItem(id, name.substringBeforeLast('.'), sizeBytes, durationMs)
+    private fun MediaFileEntity.toNextItem() = NextItem(id, shownName(this), sizeBytes, durationMs)
+
+    /**
+     * What the player calls [file]: its file name without the extension, or
+     * with spoof mode on the made-up one. Read once per load, like the rest
+     * of the header; the real name is what the player still opens.
+     */
+    private fun shownName(file: MediaFileEntity): String =
+        (spoof.current?.fileName(file.name) ?: file.name).substringBeforeLast('.')
 
     /**
      * The repeat button, cycled from the player. [RepeatMode.ONE] is handed
@@ -536,7 +547,9 @@ class PlaybackSession @Inject constructor(
         val item = MediaItem.Builder()
             .setUri(currentUri ?: resolver.uriFor(checkNotNull(fileId) { "no file and no uri" }))
             .setMediaId(fileId?.toString() ?: EXTERNAL_MEDIA_ID)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.name ?: _state.value.title).build())
+            // The lock screen and the notification shade show this title, so
+            // spoof mode makes it up there too.
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.let { shownName(it) } ?: _state.value.title).build())
             .build()
         val p = current()
         p.repeatMode = if (_state.value.repeat == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
@@ -668,7 +681,9 @@ class PlaybackSession @Inject constructor(
     private fun followUserChapters(fileId: Long) {
         userChapterJob?.cancel()
         userChapterJob = scope.launch {
-            combine(userChapters.observe(fileId), userChapters.observeSync(fileId)) { marks, sync -> marks to sync }.collect { (marks, sync) ->
+            // Named chapters are the owner's own words: spoof mode makes them up
+            // here, and keeps the editor shut so a made-up name is never saved.
+            combine(userChapters.observe(fileId).spoofed(spoof) { chapters(it) }, userChapters.observeSync(fileId)) { marks, sync -> marks to sync }.collect { (marks, sync) ->
                 if (_state.value.fileId == fileId) _state.update { it.copy(userChapters = marks, chapterSync = sync.state, chapterSyncNote = sync.note) }
             }
         }

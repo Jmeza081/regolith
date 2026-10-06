@@ -1,5 +1,8 @@
 package com.regolith.ui.search
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
+import com.regolith.data.spoof.Spoof
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.db.FolderEntity
@@ -149,6 +152,7 @@ class SearchViewModel @Inject constructor(
     private val selection: SelectionPresenter,
     userChapters: UserChapterRepository,
     private val prefs: AppPreferences,
+    private val spoof: SpoofMode,
     fileActionsFactory: FileActions.Factory,
 ) : ViewModel() {
 
@@ -162,7 +166,11 @@ class SearchViewModel @Inject constructor(
     // The names themselves: free of the share, since the sidecar import put
     // every chapter name in the table when the folder was listed. Every one
     // of them, including those on a single film — see the DAO.
-    private val facets = userChapters.facets(FACETS_LIMIT)
+    //
+    // Spoof mode offers none: a chip is a real chapter name, and the films it
+    // finds are looked up by that name, so a made-up label could not find
+    // anything. The query still reaches chapter names, made up on the way out.
+    private val facets = combine(userChapters.facets(FACETS_LIMIT), spoof.state) { list, spoofed -> if (spoofed == null) list else emptyList() }
 
     /**
      * A point of interest narrows to the films carrying it, which is why it
@@ -182,7 +190,7 @@ class SearchViewModel @Inject constructor(
             q.isBlank() -> flowOf(Triple(emptyList<MediaFileEntity>(), emptyList<FolderEntity>(), false))
             else -> combine(library.searchFiles(q, LIMIT), library.searchFolders(q, LIMIT)) { files, folders -> Triple(files, folders, true) }
         }
-    }
+    }.spoofed(spoof) { (fs, ds, searched) -> Triple(files(fs), folders(ds), searched) }
     private val progress = results.flatMapLatest { (files, _, _) -> library.observeProgress(files.map { it.id }) }
     // Chapter names: every occurrence of the chip's name when one is on,
     // otherwise whatever the query matches, through the same MATCH rule.
@@ -192,13 +200,13 @@ class SearchViewModel @Inject constructor(
             q.isBlank() -> flowOf(emptyList())
             else -> userChapters.search(q, MOMENTS_LIMIT)
         }
-    }
+    }.spoofed(spoof) { matches(it) }
     private val running = sources.observeEnabledShares().flatMapLatest { list ->
         if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id })
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode,
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode, spoof.state,
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -220,6 +228,9 @@ class SearchViewModel @Inject constructor(
         val facetList = values[8] as List<ChapterFacet>
         val chip = values[9] as String?
         val mode = values[10] as ViewMode
+        // Paths shown as text are made up part by part; the real ones stay on the hits for picking.
+        val spoofed = values[11] as Spoof?
+        fun shownDir(relPath: String): String = relPath.substringBeforeLast('/', "").let { spoofed?.path(it) ?: it }
 
         val hits = mutableListOf<SearchHit>()
         for (file in files) {
@@ -254,7 +265,7 @@ class SearchViewModel @Inject constructor(
                 hits += SearchHit.File(
                     fileId = file.id,
                     primary = file.name,
-                    meta = listOfNotNull(res, formatBytes(file.sizeBytes), "/" + file.relPath.substringBeforeLast('/', "")).joinToString(" · "),
+                    meta = listOfNotNull(res, formatBytes(file.sizeBytes), "/" + shownDir(file.relPath)).joinToString(" · "),
                     shareId = file.shareId,
                     relPath = file.relPath.substringBeforeLast('/', ""),
                     sizeBytes = file.sizeBytes,
@@ -296,11 +307,13 @@ class SearchViewModel @Inject constructor(
             query = q,
             filter = f,
             facets = facetList,
-            poi = chip,
+            poi = chip.takeIf { spoofed == null },
             hits = hits,
             moments = moments,
-            recent = recent,
-            scanningPath = runs.firstOrNull { it.status == ScanRunEntity.RUNNING }?.let { "/" + it.currentPath.ifEmpty { "…" } },
+            // Earlier searches are the owner's own words about the library:
+            // spoof mode keeps them out of sight, and keeps no new ones.
+            recent = if (spoofed == null) recent else emptyList(),
+            scanningPath = runs.firstOrNull { it.status == ScanRunEntity.RUNNING }?.let { "/" + it.currentPath.ifEmpty { "…" }.let { p -> spoofed?.path(p) ?: p } },
             searched = searched,
             selection = sel,
             viewMode = mode,
@@ -327,7 +340,7 @@ class SearchViewModel @Inject constructor(
 
     /** Called when the user commits a query (opens a hit or hits enter). */
     fun remember(text: String = query.value) {
-        if (text.isBlank()) return
+        if (text.isBlank() || spoof.current != null) return
         viewModelScope.launch { library.rememberSearch(text) }
     }
 

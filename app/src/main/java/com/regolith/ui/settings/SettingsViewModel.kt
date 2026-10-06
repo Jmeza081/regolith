@@ -1,5 +1,6 @@
 package com.regolith.ui.settings
 
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import coil3.ImageLoader
@@ -63,6 +64,7 @@ class SettingsViewModel @Inject constructor(
     private val biometrics: BiometricGate,
     private val deviceLibrary: DeviceLibrary,
     private val phone: PhoneLibrary,
+    spoof: SpoofMode,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -128,6 +130,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
         viewModelScope.launch { prefs.postersPerRow.collect { v -> _uiState.update { it.copy(postersPerRow = v) } } }
         viewModelScope.launch { prefs.shortsLength.collect { v -> _uiState.update { it.copy(shortsLength = v) } } }
+        viewModelScope.launch { spoof.state.collect { s -> _uiState.update { it.copy(spoofMode = s != null) } } }
         viewModelScope.launch {
             demo.installed.collect { installed ->
                 val bytes = withContext(Dispatchers.IO) { demo.usedBytes() }
@@ -308,6 +311,13 @@ class SettingsViewModel @Inject constructor(
             _uiState.update { it.copy(demoWorking = false, demoBytes = withContext(Dispatchers.IO) { demo.usedBytes() }) }
         }
     }
+
+    /**
+     * Settings › Demo › Spoof mode. Only the phone's display changes: the
+     * names and pictures every screen shows, and that the library can't be
+     * changed while it is on. Nothing is written to a share either way.
+     */
+    fun setSpoofMode(enabled: Boolean) = viewModelScope.launch { prefs.setSpoofMode(enabled) }.let { }
 
     /** Settings › Media › Clear: forget every cached image and re-read on demand. */
     fun clearArtwork() {

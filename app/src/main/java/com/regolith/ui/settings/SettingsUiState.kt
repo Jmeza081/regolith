@@ -97,6 +97,8 @@ data class SettingsUiState(
     val demoWorking: Boolean = false,
     /** What the demo's clips occupy on the device. */
     val demoBytes: Long = 0,
+    /** Settings › Demo › Spoof mode: made-up names and stock photos in place of the library's own. */
+    val spoofMode: Boolean = false,
 )
 
 /** "Write to media on TOWER": one enabled share and whether chapter files go to it. */

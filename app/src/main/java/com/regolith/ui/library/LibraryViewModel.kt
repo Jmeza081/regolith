@@ -1,5 +1,7 @@
 package com.regolith.ui.library
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.db.FolderEntity
@@ -13,6 +15,7 @@ import com.regolith.data.repository.PhoneLibrary
 import com.regolith.domain.media.DeviceSource
 import com.regolith.domain.media.PhonePaths
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
@@ -25,6 +28,8 @@ import kotlinx.coroutines.withContext
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.artwork.AnimatedPoster
+import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
@@ -78,6 +83,8 @@ class LibraryViewModel @AssistedInject constructor(
     private val selection: SelectionPresenter,
     private val phone: PhoneLibrary,
     private val artwork: ArtworkRepository,
+    private val chapters: UserChapterRepository,
+    private val spoof: SpoofMode,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -143,17 +150,22 @@ class LibraryViewModel @AssistedInject constructor(
             // the "On this device" tab only rather than on both.
             val shares = sources.observeNetworkShares()
             val servers = sources.observeServers()
+            // Every row is passed through spoof mode before a name is taken
+            // from it; ids and paths stay real, so walking and picking work.
             val parents: kotlinx.coroutines.flow.Flow<List<FolderEntity>> = if (folderId == null) {
                 shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else library.observeRoots(list.map { it.id }) }
             } else {
                 library.observeFolder(folderId).flatMapLatest { f -> flowOf(listOfNotNull(f)) }
-            }
-            val children = parents.flatMapLatest { ps -> library.observeFoldersInShares(ps.map { it.shareId }.distinct()) }
-            val files = parents.flatMapLatest { ps -> library.observeFilesInShares(ps.map { it.shareId }.distinct()) }
+            }.spoofed(spoof) { folders(it) }
+            val children = parents.flatMapLatest { ps -> library.observeFoldersInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { folders(it) }
+            val files = parents.flatMapLatest { ps -> library.observeFilesInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { files(it) }
             val progress = files.flatMapLatest { fs -> library.observeProgress(fs.map { it.id }) }
             val scanState = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
+            // The named chapters in this collection's videos, for its profile's
+            // Moments tab. The first wall is no collection and has none.
+            val marks = if (folderId == null) flowOf(emptyList()) else chapters.observeNamedInFolder(folderId).spoofed(spoof) { matches(it) }
 
-            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions) { values ->
+            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val shareList = values[0] as List<com.regolith.domain.model.Share>
                 @Suppress("UNCHECKED_CAST")
@@ -170,7 +182,9 @@ class LibraryViewModel @AssistedInject constructor(
                 val runs = values[6] as List<ScanRunEntity>
                 @Suppress("UNCHECKED_CAST")
                 val revisions = values[7] as Map<ArtworkOwner, Int>
-                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions)
+                @Suppress("UNCHECKED_CAST")
+                val markList = values[8] as List<ChapterMatch>
+                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList)
             }.collect { state ->
                 unsorted = state.tiles
                 // Onto the live state, never the other way: see withWall.
@@ -179,7 +193,7 @@ class LibraryViewModel @AssistedInject constructor(
         }
         viewModelScope.launch {
             val rows = transfers.observeAll()
-            val files = rows.flatMapLatest { rs -> library.observeFilesByIds(rs.map { it.fileId }) }
+            val files = rows.flatMapLatest { rs -> library.observeFilesByIds(rs.map { it.fileId }) }.spoofed(spoof) { files(it) }
             val progress = rows.flatMapLatest { rs -> library.observeProgress(rs.map { it.fileId }) }
             val servers = sources.observeServers()
             combine(rows, files, progress, servers) { rs, fs, ps, sv -> listOf(rs, fs, ps, sv) }.collect { values ->
@@ -196,9 +210,10 @@ class LibraryViewModel @AssistedInject constructor(
             // Phone storage beside the downloads. Its own collector: MediaStore
             // and the transfer queue change on different clocks, and neither
             // should rebuild the other's half of the page.
-            val files = phone.observeFiles()
+            val files = phone.observeFiles().spoofed(spoof) { files(it) }
             val progress = files.flatMapLatest { fs -> library.observeProgress(fs.map { it.id }) }
-            combine(phone.access, phone.observeFolders(), files, progress) { access, folders, fs, ps ->
+            val folders = phone.observeFolders().spoofed(spoof) { folders(it) }
+            combine(phone.access, folders, files, progress, spoof.state) { access, folders, fs, ps, spoofed ->
                 val progressById = ps.associateBy { it.fileId }
                 val byFolder = fs.groupBy { it.folderId }
                 // Newest video first inside a folder, and the folder with the
@@ -211,7 +226,8 @@ class LibraryViewModel @AssistedInject constructor(
                         folderId = folder.id,
                         relPath = folder.relPath,
                         name = folder.name,
-                        path = PhonePaths.display(folder.relPath),
+                        // The path as text is made up too; the real one stays on relPath.
+                        path = spoofed?.phonePath(folder.relPath) ?: PhonePaths.display(folder.relPath),
                         videos = videos.map { phoneRow(it, progressById[it.id]) },
                     )
                 }.sortedByDescending { it.first }.map { it.second }
@@ -307,6 +323,7 @@ class LibraryViewModel @AssistedInject constructor(
         progress: List<PlaybackProgressEntity>,
         runs: List<ScanRunEntity>,
         revisions: Map<ArtworkOwner, Int>,
+        marks: List<ChapterMatch> = emptyList(),
     ): LibraryUiState {
         val byFolder = allFiles.groupBy { it.folderId }
         val byParent = children.filter { it.parentId != null }.groupBy { it.parentId }
@@ -366,10 +383,36 @@ class LibraryViewModel @AssistedInject constructor(
         } else {
             (serverNames + shares.map { it.name }.distinct()).joinToString(" · ") + " · " + "%,d".format(fileCount) + " files"
         }
+        val wall = tiles.withUniqueTitles()
+        // Only this collection's own page can be a profile: the first wall is
+        // every share's root, which is no collection at all.
+        val profile = parents.takeIf { folderId != null }?.firstOrNull()?.let { here ->
+            val parent = children.firstOrNull { it.id == here.parentId }
+            collectionProfile(
+                tiles = wall,
+                // A share's root folder has no name of its own worth showing,
+                // so a collection at the top of a share names the share.
+                parentName = when {
+                    parent == null -> null
+                    parent.relPath.isEmpty() -> shares.firstOrNull { it.id == here.shareId }?.name
+                    else -> parent.name
+                },
+                poster = ArtworkRequest(
+                    ArtworkOwner.Folder(here.id), ArtworkKind.POSTER,
+                    revision = revisions[ArtworkOwner.Folder(here.id)] ?: 0,
+                    // One poster on a page of its own: it moves wherever it
+                    // would move on the first wall (AnimatedPoster).
+                    animated = AnimatedPoster.allowedFor(here.relPath),
+                ),
+                completed = progress.filter { it.completed }.mapTo(HashSet()) { it.fileId },
+                marks = marks,
+            )
+        }
         return LibraryUiState(
             title = parentTitle,
             meta = meta.takeIf { shares.isNotEmpty() },
-            tiles = tiles,
+            tiles = wall,
+            profile = profile,
             loaded = true,
             noSource = shares.isEmpty(),
             scanning = runs.any { it.status == ScanRunEntity.RUNNING },

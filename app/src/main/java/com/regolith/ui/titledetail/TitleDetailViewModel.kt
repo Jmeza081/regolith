@@ -1,5 +1,7 @@
 package com.regolith.ui.titledetail
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
@@ -48,6 +50,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val transfers: TransferRepository,
     private val fileOps: FileOpsRepository,
     private val phone: PhoneLibrary,
+    private val spoof: SpoofMode,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -67,12 +70,17 @@ class TitleDetailViewModel @AssistedInject constructor(
             }
         }
         viewModelScope.launch {
-            library.observeFile(fileId).collect { file ->
+            // The name through spoof mode; the path below is shown as text,
+            // so it is made up part by part from the real one.
+            library.observeFile(fileId).spoofed(spoof) { it?.let(::file) }.collect { file ->
                 if (file == null) return@collect
                 val progress = playback.progress(fileId)?.takeUnless { it.completed }
                 val share = library.shareLabel(file.shareId).substringAfter(" · ")
                 val isPhone = phone.isPhoneFile(fileId)
-                val folderPath = file.relPath.substringBeforeLast('/', "")
+                val realFolder = file.relPath.substringBeforeLast('/', "")
+                val spoofed = spoof.current
+                val folderPath = spoofed?.path(realFolder) ?: realFolder
+                val phoneFolderShown = spoofed?.phonePath(realFolder) ?: PhonePaths.display(realFolder)
                 _uiState.update {
                     it.copy(
                         loaded = true,
@@ -86,12 +94,13 @@ class TitleDetailViewModel @AssistedInject constructor(
                         // A phone video's path is where it sits on the phone —
                         // "DCIM/Camera/" — not the absolute path it is keyed by.
                         path = if (isPhone) {
-                            PhonePaths.display(folderPath) + "/"
+                            "$phoneFolderShown/"
                         } else {
                             "/$share/" + folderPath.let { p -> if (p.isEmpty()) "" else "$p/" }
                         },
                         phone = isPhone,
-                        phoneFolder = if (isPhone) PhonePaths.display(folderPath).substringAfterLast('/') else "",
+                        spoofed = spoof.current != null,
+                        phoneFolder = if (isPhone) phoneFolderShown.substringAfterLast('/') else "",
                         videoLine = if (file.probedAtMs != null) infoOf(file).videoLine else null,
                         audioLine = if (file.probedAtMs != null) infoOf(file).audioLine else null,
                         modifiedAtMs = file.modifiedAtMs,
@@ -120,6 +129,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     // listing of its folder, so they open at once.
 
     fun startRename() {
+        if (spoof.current != null) return
         viewModelScope.launch {
             val companions = library.companionCount(listOf(fileId))
             _uiState.update { it.copy(renaming = true, companions = companions, fileOpError = null) }
@@ -127,6 +137,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     }
 
     fun startDelete() {
+        if (spoof.current != null) return
         viewModelScope.launch {
             val companions = library.companionCount(listOf(fileId))
             _uiState.update { it.copy(confirmingDelete = true, companions = companions, fileOpError = null) }

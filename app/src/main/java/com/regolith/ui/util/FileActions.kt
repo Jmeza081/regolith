@@ -435,6 +435,7 @@ data class FileVerbs(
             itemCount == 0 -> FileVerbs()
             readOnly == ReadOnlySource.DEMO -> FileVerbs(hint = "The demo library can't be changed")
             readOnly == ReadOnlySource.PHONE -> FileVerbs(hint = "Videos on this phone can't be changed here")
+            readOnly == ReadOnlySource.SPOOF -> FileVerbs(hint = "Nothing can be changed while spoof mode is on")
             else -> FileVerbs(
                 canMove = shares == 1,
                 canRename = itemCount == 1,

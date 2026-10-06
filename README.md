@@ -45,6 +45,17 @@ first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
 of the next clips are fetched in the background while you are elsewhere in the app.
 
+### Collections with a page of their own
+
+Open a collection that holds only videos and it opens as its own page rather
+than a plain wall. Its poster lights the top of the page, the way the player
+lights the room around a film. Under it: how many videos it holds, how long they
+run, how much space they take and how many you have watched, then Play all,
+Shuffle, and two tabs. **Videos** is the wall you know. **Moments** lists every
+chapter you have named in those videos, each with the frame at its time, and
+plays from there. A collection with collections inside stays a wall: only the
+last one down a branch gets a page.
+
 ### Lights the room around the picture
 
 A film rarely fills the screen exactly, and the bars around it carry its own
@@ -157,8 +168,9 @@ video that lands is a video in the library at once; a photo or any other file
 lands among the folder's other files in Browse.
 
 A collection in the Library takes new videos the same way. **Add to this
-collection** in its top bar offers videos from the gallery or the file picker,
-and a poster for its tile, and the uploads show at the top of its wall.
+collection**, in its top bar or beside Play all on a collection's own page,
+offers videos from the gallery or the file picker, and a poster for its tile,
+and the uploads show at the top of its wall.
 
 It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
 sleeps, the batch waits and carries on by itself from the bytes already sent —
@@ -226,6 +238,20 @@ plays, scrubs and shows real frame-grab posters with no network at all, which is
 what makes the app reviewable on a train. **Remove** deletes it; nothing else is
 touched. Nothing in it can be moved, renamed or deleted: there is no share
 behind it, so those verbs stay grey and the pill says why.
+
+## Show it without showing your library
+
+**Settings › Demo › Spoof mode** makes up every name and picture the app shows
+from your own library, for a demo, a screen recording or a screenshot. Videos,
+folders, paths and the chapters you named get believable made-up titles
+("Quiet Lantern (2016)", keeping the year and "S01E02"), and every poster,
+thumbnail and backdrop is a low-resolution stock photo from Unsplash, through
+Lorem Picsum. Each video keeps the same stand-ins every time, so it still reads
+as one library. Only the phone's display changes: the share is never touched,
+the lock-screen title and the download notification are made up too, and
+nothing can be moved, renamed, deleted or uploaded until it is switched off.
+The photos are the one thing it fetches from the internet, picked by a random
+number that says nothing about the file.
 
 The section is behind `BuildConfig.DEMO_LIBRARY`, true in both build types today
 because the side-load (`assembleRelease`) build is the one that gets tested on a

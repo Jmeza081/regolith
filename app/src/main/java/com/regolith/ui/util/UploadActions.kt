@@ -1,5 +1,6 @@
 package com.regolith.ui.util
 
+import com.regolith.data.spoof.SpoofMode
 import com.regolith.data.artwork.PosterRepository
 import com.regolith.data.transfer.UploadRepository
 import com.regolith.domain.artwork.ExistingArtwork
@@ -45,6 +46,7 @@ class UploadActions @AssistedInject constructor(
     @Assisted private val messages: FileActions,
     private val uploads: UploadRepository,
     private val posters: PosterRepository,
+    private val spoof: SpoofMode,
 ) {
     @AssistedFactory
     interface Factory {
@@ -67,10 +69,17 @@ class UploadActions @AssistedInject constructor(
         scope.launch {
             val where = uploads.destinationOf(folderId) ?: return@launch
             destination = where
-            _state.update { it.copy(canUpload = true, serverName = where.serverName, folderName = where.folderName) }
+            _state.update { it.copy(canUpload = spoof.current == null, serverName = where.serverName, folderName = where.folderName) }
             uploads.observeFolder(folderId).collect { items ->
                 _state.update { it.copy(section = uploadSection(items, where.serverName, where.folderName)) }
             }
+        }
+    }
+
+    // Nothing goes up while spoof mode is on: the library can't be changed then.
+    init {
+        scope.launch {
+            spoof.state.collect { spoofed -> _state.update { it.copy(canUpload = destination != null && spoofed == null) } }
         }
     }
 

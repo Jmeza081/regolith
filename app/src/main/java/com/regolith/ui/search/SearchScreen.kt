@@ -67,6 +67,7 @@ import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.FilterChip
 import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.thumbColumns
 import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.util.formatClock
@@ -557,15 +558,15 @@ private fun ResultsLabel(text: String, tag: String, showToggle: Boolean, mode: V
 }
 
 /**
- * Results as tiles: as many columns as fit at [GRID_TILE_MIN] each, two on
- * a phone and more on a wide window. Plain rows of tiles rather than a lazy
- * grid, because the groups already sit inside Search's scrolling list, and
- * a lazy grid cannot scroll inside another list.
+ * Results as tiles: [thumbColumns] across, two on a phone and more on a
+ * wide window. Plain rows of tiles rather than a lazy grid, because the
+ * groups already sit inside Search's scrolling list, and a lazy grid cannot
+ * scroll inside another list.
  */
 @Composable
 private fun HitGrid(hits: List<SearchHit>, tile: @Composable (SearchHit, Modifier) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = (maxWidth / GRID_TILE_MIN).toInt().coerceIn(2, 4)
+        val columns = thumbColumns(maxWidth)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
             hits.chunked(columns).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
@@ -645,9 +646,6 @@ private fun HitTile(
         }
     }
 }
-
-/** The narrowest a result tile gets before the grid drops a column. */
-private val GRID_TILE_MIN = 160.dp
 
 /** The matched run in red: the first case-insensitive occurrence of each query word. */
 private fun highlight(text: String, query: String, accent: Color): AnnotatedString {

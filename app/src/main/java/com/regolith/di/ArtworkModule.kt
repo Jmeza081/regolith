@@ -2,6 +2,8 @@ package com.regolith.di
 
 import android.content.Context
 import coil3.ImageLoader
+import com.regolith.data.spoof.SpoofImageFetcher
+import com.regolith.data.spoof.SpoofImageKeyer
 import coil3.gif.AnimatedImageDecoder
 import coil3.request.CachePolicy
 import coil3.request.crossfade
@@ -70,12 +72,18 @@ abstract class ArtworkModule {
             keyer: ArtworkKeyer,
             uploadThumbs: UploadThumbFetcher.Factory,
             uploadThumbKeyer: UploadThumbKeyer,
+            spoofImages: SpoofImageFetcher.Factory,
+            spoofImageKeyer: SpoofImageKeyer,
         ): ImageLoader = ImageLoader.Builder(context)
             .components {
                 add(keyer)
                 add(fetcherFactory)
                 add(uploadThumbKeyer)
                 add(uploadThumbs)
+                // Spoof mode's stand-in photos (SpoofImage), the one model that
+                // comes off the internet rather than the artwork directory.
+                add(spoofImageKeyer)
+                add(spoofImages)
                 add(AnimatedImageDecoder.Factory())
             }
             .diskCache(null)
