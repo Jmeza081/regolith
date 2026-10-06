@@ -41,6 +41,7 @@ import com.regolith.R
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.domain.fileops.FileNames
+import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.PromptDialog
@@ -62,6 +63,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.theme.designSp
+import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDate
 import com.regolith.ui.util.formatRemaining
@@ -242,20 +244,6 @@ private fun TitleDetailContent(
                 state.probeError?.let {
                     Text(it, style = TextStyles.meta, color = colors.metadata, modifier = Modifier.testTag("detail_probe_error"))
                 }
-                if (state.siblings.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("In this collection", muted = true)
-                        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                            state.siblings.forEach { s ->
-                                com.regolith.ui.components.MediaTile(
-                                    artwork = s.artwork, kind = com.regolith.domain.artwork.ArtworkKind.THUMB, title = s.name, meta = s.meta,
-                                    chip = s.resolutionLabel.ifEmpty { null }, onClick = { onPlay(s.fileId) }, testTag = "detail_sibling_${s.fileId}",
-                                    modifier = Modifier.weight(1f), shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                                )
-                            }
-                        }
-                    }
-                }
                 // The file itself, at the foot of the screen (P12): the two
                 // things that change it ON THE SHARE, each behind a dialog.
                 // A phone video has no share: it can be hidden from Regolith
@@ -313,19 +301,14 @@ private fun TitleDetailContent(
                         onConfirm = onRename,
                         onCancel = onDismissFileOp,
                         testTag = "detail_rename",
-                        note = if (ext.isEmpty()) {
-                            "Chapters and your place follow the new name."
-                        } else {
-                            "Keeps .$ext — chapters and your place follow the new name."
-                        },
+                        note = FileOpMessages.forRenameNote(FileOpTarget.Kind.FILE, ext = ext, companions = state.companions),
                         maxLength = FileNames.MAX_BASE,
                     )
                 }
                 if (state.confirmingDelete) {
                     ConfirmDialog(
                         title = "Delete this video?",
-                        body = "${state.fileName} leaves the share for good — ${state.sizeLabel}. This can't be undone, " +
-                            "and the chapters you wrote and where you left off go with it.",
+                        body = FileOpMessages.forDeletingVideos(listOf(state.fileName), state.sizeLabel, state.companions),
                         confirmLabel = "Delete from share",
                         keepLabel = "Keep it",
                         onConfirm = onConfirmDelete,

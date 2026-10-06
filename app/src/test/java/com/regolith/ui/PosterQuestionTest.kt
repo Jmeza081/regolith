@@ -2,7 +2,7 @@ package com.regolith.ui
 
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
-import com.regolith.ui.browse.posterQuestion
+import com.regolith.ui.components.posterQuestion
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

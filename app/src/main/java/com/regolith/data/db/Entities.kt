@@ -172,6 +172,34 @@ data class FolderEntity(
     val year: Int? = null,
 )
 
+/**
+ * A file in a folder on the share that is not a video (schema v16): the
+ * folder's poster, a film's subtitles or chapters, an `.nfo`, anything else.
+ * Browse lists these, the way a file manager would, and picks them to move,
+ * rename or delete; no other screen shows them, and every other screen keeps
+ * assuming a media file is a video. Filled from the same folder listing that finds the videos, so
+ * keeping them costs no extra trip to the share. A file that vanished from
+ * the listing is deleted, not marked missing: there is no progress to keep.
+ */
+@Entity(
+    tableName = "share_files",
+    foreignKeys = [
+        ForeignKey(ShareEntity::class, ["id"], ["shareId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(FolderEntity::class, ["id"], ["folderId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index(value = ["shareId", "relPath"], unique = true), Index("folderId")],
+)
+data class ShareFileEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val shareId: Long,
+    val folderId: Long,
+    /** `/`-separated, no leading slash. */
+    val relPath: String,
+    val name: String,
+    val sizeBytes: Long,
+    val modifiedAtMs: Long,
+)
+
 @Entity(
     tableName = "media_files",
     foreignKeys = [

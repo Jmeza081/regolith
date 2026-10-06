@@ -181,14 +181,14 @@ class UploadsTest {
     @Test
     fun `a photo that arrived is not left to vanish`() {
         assertEquals(
-            "The photos are on TOWER in this folder. Browse lists videos only.",
-            UploadWording.notListedNote(listOf(item(name = "a.jpg", status = UploadStatus.DONE), item(name = "b.jpg", status = UploadStatus.DONE)), "TOWER"),
+            "The photos are below, with this folder's other files.",
+            UploadWording.otherFilesNote(listOf(item(name = "a.jpg", status = UploadStatus.DONE), item(name = "b.jpg", status = UploadStatus.DONE))),
         )
         assertEquals(
-            "The file is on TOWER in this folder. Browse lists videos only.",
-            UploadWording.notListedNote(listOf(item(name = "notes.pdf", status = UploadStatus.DONE)), "TOWER"),
+            "The file is below, with this folder's other files.",
+            UploadWording.otherFilesNote(listOf(item(name = "notes.pdf", status = UploadStatus.DONE))),
         )
-        assertNull("a video is listed, so there is nothing to explain", UploadWording.notListedNote(listOf(item(name = "c.mp4", status = UploadStatus.DONE)), "TOWER"))
+        assertNull("a video is among the videos, so there is nothing to explain", UploadWording.otherFilesNote(listOf(item(name = "c.mp4", status = UploadStatus.DONE))))
     }
 
     // ── The tier, the notification and the message ────────────────────

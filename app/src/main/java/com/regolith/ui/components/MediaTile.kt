@@ -68,8 +68,8 @@ import com.regolith.ui.theme.scaledDp
 
 /**
  * Art at any size: the image when there is one, the design's "reading"
- * look while it is pulled off the share, and the unmatched look (a dark
- * gradient with the filename set inside) when nothing was found. Used by
+ * look while it is pulled off the share, and, when there is no picture at
+ * all, a dark gradient with the filename set inside. Used by
  * [MediaTile], [ResumeCard], list-row thumbnails and Title Detail.
  *
  * An [ArtworkRequest.animated] request plays a folder's moving poster
@@ -84,7 +84,7 @@ fun ArtworkImage(
     contentScale: ContentScale = ContentScale.Crop,
 ) {
     if (artwork == null) {
-        UnmatchedArt(fallbackLabel, modifier)
+        NoPictureArt(fallbackLabel, modifier)
         return
     }
     // Counted while it is on its way, when a layout above is waiting to
@@ -100,7 +100,7 @@ fun ArtworkImage(
         contentDescription = null,
         modifier = modifier,
         loading = { ReadingArt() },
-        error = { UnmatchedArt(fallbackLabel, Modifier.fillMaxSize()) },
+        error = { NoPictureArt(fallbackLabel, Modifier.fillMaxSize()) },
         success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
         onLoading = pending?.let { p -> { _ -> mark.start(p) } },
         onSuccess = pending?.let { p -> { _ -> mark.done(p) } },
@@ -163,8 +163,11 @@ private class PendingMark {
  * the unwatched dot top-right (7dp), the chip bottom-left
  * (6dp in, 8dp up) and a 3dp progress bar along the bottom edge.
  *
- * An unmatched title draws its filename inside the art and "No match" in
- * grey where the name goes. [dimmed] is the out-of-reach state (45%).
+ * A video always wears a name: a title parsed from it ("Arrival (2016)"),
+ * or its own file name when nothing parses, as with most home videos. The
+ * design's grey "No match" in its place belonged to a film library, and a
+ * folder of clips is not one (the owner's model, 2026-10-05). [dimmed] is
+ * the out-of-reach state (45%).
  */
 @Composable
 fun MediaTile(
@@ -187,8 +190,6 @@ fun MediaTile(
     dimmed: Boolean = false,
     /** 0..1 watched fraction; draws the 3dp bar along the bottom edge. */
     progress: Float? = null,
-    /** False draws "No match" in #6E6E6E for the name and the filename inside the art. */
-    matched: Boolean = true,
     fallbackLabel: String = title,
     shape: Shape = TileShape,
     /** Wide window only: this is the title open in the detail pane beside the wall. */
@@ -272,11 +273,7 @@ fun MediaTile(
             }
         }
         Spacer(Modifier.height(Spacing.s4))
-        Text(
-            if (matched) title else "No match",
-            style = TextStyles.tileName, color = if (matched) colors.ink else colors.metadata,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        Text(title, style = TextStyles.tileName, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (meta != null) {
             Text(meta, style = TextStyles.tileMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -380,9 +377,9 @@ private fun ReadingArt() {
     }
 }
 
-/** The unmatched look: a warm dark gradient with a blurred highlight and the filename set at 700 11/13 in the middle. */
+/** No picture to show: a warm dark gradient with a blurred highlight and the filename set at 700 11/13 in the middle. */
 @Composable
-private fun UnmatchedArt(label: String, modifier: Modifier = Modifier) {
+private fun NoPictureArt(label: String, modifier: Modifier = Modifier) {
     Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF3A3A22), Color(0xFF14140A)))), contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x33FFFFFF), Color.Transparent), radius = 300f)))
         if (label.isNotEmpty()) {

@@ -10,7 +10,6 @@ import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
-import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.playback.ChapterFacet
@@ -36,6 +35,7 @@ import javax.inject.Inject
 import com.regolith.ui.util.formatFileCount
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.SelectionPresenter
 import com.regolith.ui.util.SelectionUiState
 
@@ -149,7 +149,11 @@ class SearchViewModel @Inject constructor(
     private val selection: SelectionPresenter,
     userChapters: UserChapterRepository,
     private val prefs: AppPreferences,
+    fileActionsFactory: FileActions.Factory,
 ) : ViewModel() {
+
+    /** Rename, move and delete for the picks, the same as Browse's and the Library's. */
+    val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
 
     private val query = MutableStateFlow("")
     private val filter = MutableStateFlow(SearchFilter.ALL)
@@ -259,12 +263,11 @@ class SearchViewModel @Inject constructor(
         }
         if (f == SearchFilter.ALL) {
             for (folder in folders) {
-                val kind = folder.kind?.let { runCatching { FolderKind.valueOf(it) }.getOrNull() }
                 hits += SearchHit.Folder(
                     folderId = folder.id,
                     browsable = true,
                     primary = folder.name,
-                    meta = listOfNotNull(if (kind == FolderKind.TITLE) "title" else "folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
+                    meta = listOfNotNull("folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
                     shareId = folder.shareId,
                     relPath = folder.relPath,
                     fileCount = folder.fileCount,

@@ -6,10 +6,12 @@ import com.regolith.data.transfer.SelectionStore
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.domain.transfer.OtherPick
 import com.regolith.domain.transfer.Selection
 import com.regolith.domain.transfer.StorageCheck
 import com.regolith.domain.transfer.coveredByAncestor
 import com.regolith.domain.transfer.exclusionsUnder
+import com.regolith.domain.transfer.foldersWithExclusions
 import com.regolith.domain.transfer.pathCoveredBy
 import com.regolith.domain.transfer.tally
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,6 +42,12 @@ data class SelectionUiState(
     val pickedFileFolders: Map<Long, List<String>> = emptyMap(),
     /** Files taken back out of a picked folder: drawn unchecked, tap to put back. */
     val excludedFiles: Set<Long> = emptySet(),
+    /** Files that are not videos, picked in their own right (Browse lists them). */
+    val pickedOthers: Set<Long> = emptySet(),
+    /** Files that are not videos, taken back out of a picked folder. */
+    val excludedOthers: Set<Long> = emptySet(),
+    /** What the picked files that are not videos weigh, for the summary. */
+    val otherBytes: Long = 0,
     /** Subfolders taken back out, subtree and all. */
     val excludedFolders: Set<Long> = emptySet(),
     /** Excluded subfolder paths per share, so [coversFile] can stop at them. */
@@ -63,15 +71,28 @@ data class SelectionUiState(
     /** Bytes that would have to be freed first, when it cannot fit. */
     val shortfall: Long = 0,
 ) {
-    /** "42 videos · 4.3 GB", or "Counting…" while a folder is still unknown. */
+    /**
+     * "42 videos · 4.3 GB", or "Counting…" while a folder is still unknown.
+     * Files that are not videos are counted after the videos ("· 2 other
+     * files"), or alone with their size when nothing else is picked.
+     */
     val summary: String
-        get() = when {
-            itemCount == 0 -> "Nothing picked"
-            estimated && fileCount == 0 -> "Counting…"
-            else -> {
-                val videos = if (fileCount == 1) "1 video" else "$fileCount videos"
-                val prefix = if (estimated) "At least " else ""
-                "$prefix$videos · ${formatBytes(byteCount)}"
+        get() {
+            val others = pickedOthers.size
+            val othersPart = when (others) {
+                0 -> null
+                1 -> "1 other file"
+                else -> "$others other files"
+            }
+            return when {
+                itemCount == 0 -> "Nothing picked"
+                itemCount == others -> "$othersPart · ${formatBytes(otherBytes)}"
+                estimated && fileCount == 0 -> "Counting…"
+                else -> {
+                    val videos = if (fileCount == 1) "1 video" else "$fileCount videos"
+                    val prefix = if (estimated) "At least " else ""
+                    listOfNotNull("$prefix$videos · ${formatBytes(byteCount)}", othersPart).joinToString(" · ")
+                }
             }
         }
 
@@ -86,12 +107,17 @@ data class SelectionUiState(
                 }
                 if (alreadyKept > 0) add("$alreadyKept already here")
                 if (leftOut > 0) add(if (leftOut == 1) "1 left out" else "$leftOut left out")
+                // Download keeps videos to play; a poster or subtitles stay on the share.
+                if (pickedOthers.isNotEmpty() && canDownload) add("Only the videos download")
             }
             return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         }
 
-    /** Download only goes red when tapping it would actually do something. */
-    val canDownload: Boolean get() = itemCount > 0 && hasRoom
+    /**
+     * Download only goes red when tapping it would actually do something:
+     * a pick of nothing but files that are not videos has nothing to download.
+     */
+    val canDownload: Boolean get() = itemCount > pickedOthers.size && hasRoom
 
     /**
      * How many picks sit strictly below [relPath].
@@ -227,12 +253,18 @@ class SelectionPresenter @Inject constructor(
             coveredFolders = covered,
             pickedFiles = sel.files.map { it.fileId }.toSet(),
             pickedPaths = sel.folders.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.relPath }.toSet() },
-            pickedFileFolders = sel.files.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.folderRelPath } },
+            // Files of either kind, so a folder signposts a poster picked inside it too.
+            pickedFileFolders = (sel.files.map { it.shareId to it.folderRelPath } + sel.others.map { it.shareId to it.folderRelPath })
+                .groupBy({ it.first }, { it.second }),
             excludedFiles = sel.excludedFiles.map { it.fileId }.toSet(),
+            pickedOthers = sel.others.map { it.otherId }.toSet(),
+            excludedOthers = sel.excludedOthers.map { it.otherId }.toSet(),
+            otherBytes = sel.others.sumOf { it.sizeBytes },
             excludedFolders = sel.excludedFolders.map { it.folderId }.toSet(),
             excludedPaths = sel.excludedFolders.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.relPath }.toSet() },
-            leftOut = sel.excludedFiles.size + sel.excludedFolders.size,
-            excludedFileFolders = sel.excludedFiles.groupBy { it.shareId }.mapValues { (_, v) -> v.map { it.folderRelPath } },
+            leftOut = sel.excludedFiles.size + sel.excludedFolders.size + sel.excludedOthers.size,
+            excludedFileFolders = (sel.excludedFiles.map { it.shareId to it.folderRelPath } + sel.excludedOthers.map { it.shareId to it.folderRelPath })
+                .groupBy({ it.first }, { it.second }),
             itemCount = sel.itemCount,
             fileCount = fileCount,
             byteCount = byteCount,
@@ -246,6 +278,13 @@ class SelectionPresenter @Inject constructor(
         )
     }
 
+    /**
+     * The picked folders that have something taken back out of them, which
+     * Move and Delete refuse to act on ([foldersWithExclusions]). Empty when
+     * nothing is being picked.
+     */
+    fun foldersWithExclusions(): List<FolderPick> = selection.snapshot()?.foldersWithExclusions().orEmpty()
+
     /** Is this row inside one of the picks, rather than a pick itself? */
     fun isCovered(shareId: Long, relPath: String): Boolean =
         selection.snapshot()?.coveredByAncestor(shareId, relPath) == true
@@ -254,7 +293,9 @@ class SelectionPresenter @Inject constructor(
     fun cancel() = selection.clear()
     fun toggleFolder(pick: FolderPick) = selection.toggleFolder(pick)
     fun toggleFile(pick: FilePick) = selection.toggleFile(pick)
-    fun addAll(folders: List<FolderPick>, files: List<FilePick>) = selection.addAll(folders, files)
+    fun toggleOther(pick: OtherPick) = selection.toggleOther(pick)
+    fun addAll(folders: List<FolderPick>, files: List<FilePick>, others: List<OtherPick> = emptyList()) =
+        selection.addAll(folders, files, others)
 
     /**
      * Turn the picks into durable work and leave selection mode.

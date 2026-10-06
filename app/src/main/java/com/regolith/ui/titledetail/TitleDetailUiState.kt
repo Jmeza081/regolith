@@ -26,8 +26,6 @@ data class TitleDetailUiState(
     val probeError: String? = null,
     /** Null when the file is not kept on this device and nothing is in flight. */
     val transfer: TransferView? = null,
-    /** Other files in the same title folder (design: "IN THIS COLLECTION"). */
-    val siblings: List<SiblingFile> = emptyList(),
     // --- Managing the file itself (P12). The share is someone's media, so
     // every one of these is behind a dialog.
     /** The filename WITH its extension, which the dialogs name and the field edits. */
@@ -36,6 +34,8 @@ data class TitleDetailUiState(
     val sizeLabel: String = "",
     val renaming: Boolean = false,
     val confirmingDelete: Boolean = false,
+    /** The files renamed and deleted along with this one (`Companions`), for the dialogs to say so. */
+    val companions: Int = 0,
     /** Why the last rename or delete did not happen. */
     val fileOpError: String? = null,
     /** The file is gone from the share; the screen has nothing left to show. */
@@ -56,9 +56,6 @@ data class TitleDetailUiState(
      */
     val phoneDeleteRequest: android.content.IntentSender? = null,
 )
-
-/** A sibling file in a title folder: its thumb, filename, "1h 56m · 8.4 GB". */
-data class SiblingFile(val fileId: Long, val name: String, val meta: String, val resolutionLabel: String, val artwork: ArtworkRequest)
 
 /** The download's state as the detail screen shows it. */
 data class TransferView(

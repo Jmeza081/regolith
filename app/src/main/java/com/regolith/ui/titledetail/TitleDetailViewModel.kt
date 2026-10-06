@@ -102,29 +102,6 @@ class TitleDetailViewModel @AssistedInject constructor(
                 if (file.probedAtMs == null && !probed) runProbe()
             }
         }
-        viewModelScope.launch {
-            library.observeFile(fileId).collect { file ->
-                if (file == null) return@collect
-                val folder = library.folder(file.folderId)
-                val siblings = if (folder?.kind == com.regolith.domain.library.FolderKind.TITLE.name) {
-                    library.filesInFolder(file.folderId).filter { it.id != fileId }
-                } else {
-                    emptyList()
-                }
-                _uiState.update {
-                    it.copy(
-                        siblings = siblings.map { s ->
-                            SiblingFile(
-                                fileId = s.id, name = s.name,
-                                meta = listOfNotNull(s.durationMs?.let { d -> formatDurationShort(d) }, formatBytes(s.sizeBytes)).joinToString(" · "),
-                                resolutionLabel = VideoInfo.resolutionLabelFor(s.width, s.height),
-                                artwork = ArtworkRequest(ArtworkOwner.File(s.id), ArtworkKind.THUMB),
-                            )
-                        },
-                    )
-                }
-            }
-        }
     }
 
     /** "Keep on this device" and "Try again". */
@@ -139,9 +116,22 @@ class TitleDetailViewModel @AssistedInject constructor(
     // rather than throwing: the share refusing is an ordinary thing that
     // the screen has a sentence for.
 
-    fun startRename() = _uiState.update { it.copy(renaming = true, fileOpError = null) }
+    // Both dialogs count the files that go with this one, from the last
+    // listing of its folder, so they open at once.
 
-    fun startDelete() = _uiState.update { it.copy(confirmingDelete = true, fileOpError = null) }
+    fun startRename() {
+        viewModelScope.launch {
+            val companions = library.companionCount(listOf(fileId))
+            _uiState.update { it.copy(renaming = true, companions = companions, fileOpError = null) }
+        }
+    }
+
+    fun startDelete() {
+        viewModelScope.launch {
+            val companions = library.companionCount(listOf(fileId))
+            _uiState.update { it.copy(confirmingDelete = true, companions = companions, fileOpError = null) }
+        }
+    }
 
     fun dismissFileOp() = _uiState.update { it.copy(renaming = false, confirmingDelete = false) }
 

@@ -272,17 +272,17 @@ class DemoLibrary @Inject constructor(
 
         /**
          * The shape of a share people actually have: a couple of collections,
-         * title folders beside loose files, a show with seasons, and a folder
-         * of camera files whose names parse into nothing — that last one is
-         * the "No match" tile, which is the case most worth looking at.
+         * folders of one film beside loose files, a show with seasons, and a folder
+         * of camera files whose names parse into nothing, which the Library
+         * shows by those names, as it does anyone's own clips.
          */
         val CONTENT = listOf(
             Collection(
                 "Films",
                 listOf(
-                    Group("Arrival (2016)", FolderKind.TITLE, listOf("Arrival.2016.2160p.mkv"), Clip.UHD),
-                    Group("Blade Runner 2049 (2017)", FolderKind.TITLE, listOf("Blade.Runner.2049.2017.1080p.mkv"), Clip.FHD),
-                    Group("Dune (2021)", FolderKind.TITLE, listOf("Dune.2021.2160p.mkv"), Clip.UHD),
+                    Group("Arrival (2016)", FolderKind.COLLECTION, listOf("Arrival.2016.2160p.mkv"), Clip.UHD),
+                    Group("Blade Runner 2049 (2017)", FolderKind.COLLECTION, listOf("Blade.Runner.2049.2017.1080p.mkv"), Clip.FHD),
+                    Group("Dune (2021)", FolderKind.COLLECTION, listOf("Dune.2021.2160p.mkv"), Clip.UHD),
                     Group(
                         null, FolderKind.COLLECTION,
                         listOf(

@@ -1,4 +1,4 @@
-package com.regolith.ui.browse
+package com.regolith.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,43 +14,37 @@ import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
 import com.regolith.domain.artwork.ExistingArtwork
 import com.regolith.domain.transfer.ConflictPolicy
-import com.regolith.ui.components.EyebrowAction
-import com.regolith.ui.components.ListRow
-import com.regolith.ui.components.RegolithSheet
-import com.regolith.ui.components.RowAction
-import com.regolith.ui.components.RowLeading
-import com.regolith.ui.components.RowTrailing
-import com.regolith.ui.components.SheetChoice
-import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 
 /**
- * The uploads into this folder, at the top of its list: a row per file with
- * the phone's own thumbnail, where it stands, and its one or two controls —
- * or, once everything went, a single summary row.
+ * The uploads into the folder on screen, at the top of its list (Browse) or
+ * wall (a Library collection): a row per file with the phone's own
+ * thumbnail, where it stands, and its one or two controls — or, once
+ * everything went, a single summary row.
  *
- * Browse's own [Section] shape (a muted eyebrow over a card of rows), with
- * the section's action beside the eyebrow the way Library puts "Clear
- * failed" beside its own. The rows do nothing when tapped: a file on its
- * way is not in the library yet, so there is no page to open.
+ * A muted eyebrow over a card of rows, with the section's action beside the
+ * eyebrow the way Library puts "Clear failed" beside its own. The rows do
+ * nothing when tapped: a file on its way is not in the library yet, so there
+ * is no page to open. [tagPrefix] starts its test tags (`browse_uploads`).
  */
 @Composable
-internal fun UploadSectionView(
+fun UploadSectionView(
     section: UploadSection,
     onAction: (UploadSectionAction) -> Unit,
     onRetry: (Long) -> Unit,
     onRemove: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    tagPrefix: String = "browse",
 ) {
     val colors = RegolithTheme.colors
-    Column(modifier.testTag("browse_uploads"), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+    Column(modifier.testTag("${tagPrefix}_uploads"), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
         EyebrowAction(
             text = section.label,
             action = section.action.label,
             onAction = { onAction(section.action) },
-            actionTestTag = "browse_uploads_action",
+            actionTestTag = "${tagPrefix}_uploads_action",
             // Carrying on is ink; taking things away is the quieter grey.
             // Nothing here is red: the red belongs to a failure's own words.
             actionColor = when (section.action) {
@@ -67,7 +61,7 @@ internal fun UploadSectionView(
                     trailing = RowTrailing.None,
                     compact = true,
                     onClick = {},
-                    testTag = "browse_uploads_summary",
+                    testTag = "${tagPrefix}_uploads_summary",
                 )
             }
             section.rows.forEach { row ->
@@ -103,34 +97,69 @@ internal fun UploadSectionView(
             }
         }
         section.note?.let { note ->
-            Text(note, style = TextStyles.meta, color = colors.metadata, modifier = Modifier.testTag("browse_uploads_note"))
+            Text(note, style = TextStyles.meta, color = colors.metadata, modifier = Modifier.testTag("${tagPrefix}_uploads_note"))
         }
     }
 }
 
 /**
- * "Upload to Lisbon 2026": where the files come from. Two answers, because
- * the phone keeps two kinds of thing — the gallery, which Android's photo
- * picker shows best and without any permission, and everything else, which
- * only the system's file picker can reach.
+ * Where an upload's files come from. Browse offers the gallery, any file and
+ * a poster; a Library collection offers videos and a poster, since that is
+ * all its wall would show.
+ */
+enum class UploadSource {
+    /** Android's photo picker, photos and videos. */
+    GALLERY,
+
+    /** Android's photo picker, videos only. */
+    GALLERY_VIDEOS,
+
+    /** The system's file picker, anything at all. */
+    FILES,
+
+    /** The system's file picker, videos only. */
+    VIDEO_FILES,
+
+    /** One picture, to be the folder's own poster (P19). */
+    POSTER,
+}
+
+/**
+ * "Upload to Lisbon 2026": where the files come from. The gallery is what
+ * Android's photo picker shows best and without any permission; everything
+ * else only the system's file picker can reach. [posterNoun] is what the
+ * poster is for, "folder" in Browse and "collection" in the Library.
  */
 @Composable
 internal fun UploadSourceSheet(
-    folderName: String,
+    title: String,
     detail: String?,
-    onPhotos: () -> Unit,
-    onFiles: () -> Unit,
-    onPoster: () -> Unit,
+    sources: List<UploadSource>,
+    posterNoun: String,
+    onPick: (UploadSource) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    RegolithSheet(title = "Upload to $folderName", subtitle = detail, onDismiss = onDismiss, testTag = "upload_sheet") {
-        SheetChoice(LucideR.drawable.lucide_ic_images, "Photos & videos", "From your gallery", "upload_sheet_photos", onClick = onPhotos)
-        SheetChoice(LucideR.drawable.lucide_ic_file, "Files", "Downloads, documents, anything else", "upload_sheet_files", onClick = onFiles)
-        // P19: one picture, which becomes the folder's own poster.
-        SheetChoice(
-            LucideR.drawable.lucide_ic_image_up, "Folder poster", "A picture for this folder's tile, saved as poster.jpg", "upload_sheet_poster",
-            onClick = onPoster,
-        )
+    RegolithSheet(title = title, subtitle = detail, onDismiss = onDismiss, testTag = "upload_sheet") {
+        for (source in sources) {
+            when (source) {
+                UploadSource.GALLERY -> SheetChoice(
+                    LucideR.drawable.lucide_ic_images, "Photos & videos", "From your gallery", "upload_sheet_photos",
+                ) { onPick(source) }
+                UploadSource.GALLERY_VIDEOS -> SheetChoice(
+                    LucideR.drawable.lucide_ic_film, "Videos", "From your gallery", "upload_sheet_videos",
+                ) { onPick(source) }
+                UploadSource.FILES -> SheetChoice(
+                    LucideR.drawable.lucide_ic_file, "Files", "Downloads, documents, anything else", "upload_sheet_files",
+                ) { onPick(source) }
+                UploadSource.VIDEO_FILES -> SheetChoice(
+                    LucideR.drawable.lucide_ic_file_video_camera, "Video files", "Downloads and other apps", "upload_sheet_video_files",
+                ) { onPick(source) }
+                UploadSource.POSTER -> SheetChoice(
+                    LucideR.drawable.lucide_ic_image_up, "${posterNoun.replaceFirstChar { it.uppercase() }} poster",
+                    "A picture for this $posterNoun's tile, saved as poster.jpg", "upload_sheet_poster",
+                ) { onPick(source) }
+            }
+        }
     }
 }
 

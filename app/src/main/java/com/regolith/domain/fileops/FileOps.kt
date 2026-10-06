@@ -25,27 +25,69 @@ enum class FileOpError {
     /** A folder was aimed at itself, at its own subtree, or at another share. */
     BAD_DESTINATION,
 
+    /**
+     * The video's name was free, but one of its companion files (its
+     * subtitles, chapters, picture) would land on a name already taken
+     * there. Nothing was touched: a companion is never left behind, and
+     * nothing is ever overwritten. [FileOpFailure.detail] is the name.
+     */
+    COMPANION_TAKEN,
+
     OTHER,
 }
 
 /**
- * One thing an operation is about: a file, or a folder and everything under it.
- *
- * Why not a bare id. Folders and files are different tables and both number
- * from 1, so in a batch holding some of each a `Long` says nothing about
- * what it points at. The flag travels WITH the id for the same reason a
- * foreign key names its table.
+ * Why nothing on a source can be changed from the app. Asked up front, so a
+ * verb that cannot work is grey before it is tapped rather than failing after.
  */
-data class FileOpTarget(val id: Long, val isFolder: Boolean) {
+enum class ReadOnlySource {
+    /** The demo library: a pretend NAS made of files inside the app. */
+    DEMO,
+
+    /** The phone's own videos, which the system owns, not a share. */
+    PHONE,
+}
+
+/**
+ * One thing an operation is about: a video, a folder and everything under
+ * it, or a file that is not a video.
+ *
+ * Why not a bare id. Each kind is its own table (`media_files`, `folders`,
+ * `share_files`) and each numbers from 1, so in a batch holding several
+ * kinds a `Long` says nothing about what it points at. The kind travels WITH
+ * the id for the same reason a foreign key names its table.
+ */
+data class FileOpTarget(val id: Long, val kind: Kind) {
+    enum class Kind {
+        /** A video, a row in `media_files`. */
+        FILE,
+        FOLDER,
+
+        /** A file that is not a video, a row in `share_files` (Browse lists every file). */
+        OTHER,
+    }
+
+    val isFolder: Boolean get() = kind == Kind.FOLDER
+
+    /** A video: the only kind with chapters, progress and companions. */
+    val isVideo: Boolean get() = kind == Kind.FILE
+
+    val isOther: Boolean get() = kind == Kind.OTHER
+
     companion object {
-        fun file(id: Long) = FileOpTarget(id, isFolder = false)
-        fun folder(id: Long) = FileOpTarget(id, isFolder = true)
+        fun file(id: Long) = FileOpTarget(id, Kind.FILE)
+        fun folder(id: Long) = FileOpTarget(id, Kind.FOLDER)
+        fun other(id: Long) = FileOpTarget(id, Kind.OTHER)
         fun files(ids: Collection<Long>): List<FileOpTarget> = ids.map(::file)
     }
 }
 
-/** One item that did not make it, with enough to name it in a message. */
-data class FileOpFailure(val target: FileOpTarget, val name: String, val error: FileOpError)
+/**
+ * One item that did not make it, with enough to name it in a message.
+ * [detail] is the other name involved, when there is one: for
+ * [FileOpError.COMPANION_TAKEN], the name a companion would have taken.
+ */
+data class FileOpFailure(val target: FileOpTarget, val name: String, val error: FileOpError, val detail: String? = null)
 
 /**
  * The outcome of one rename, move or delete batch.
@@ -64,8 +106,8 @@ data class FileOpResult(
     /** The share dropped mid-batch, so the remainder was never attempted. */
     val dropped: Boolean get() = failures.any { it.error == FileOpError.UNREACHABLE }
 
-    /** The ids of the files that made it, for callers that only ever pass files. */
-    val doneFileIds: List<Long> get() = done.filterNot { it.isFolder }.map { it.id }
+    /** The ids of the videos that made it, for callers that only ever pass videos. */
+    val doneFileIds: List<Long> get() = done.filter { it.isVideo }.map { it.id }
 
     companion object {
         fun failed(target: FileOpTarget, name: String, error: FileOpError) =

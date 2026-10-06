@@ -85,7 +85,7 @@ class ArtworkRepository @Inject constructor(
      * Only needed when a picture is replaced under a tile already drawn.
      */
     private val imageLoader: dagger.Lazy<ImageLoader>,
-) : MomentFrames {
+) : MomentFrames, FolderPictures {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Two extractions at a time: enough to fill a grid, not enough to starve the player. */
@@ -266,10 +266,11 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * Throw away everything the app generated itself when the rules that
-     * made it have changed since (see [ArtworkStore.GENERATION]). Images
-     * found on the share — a poster.jpg, embedded cover art — are not
-     * affected, because nothing about them has changed.
+     * Throw away the pictures made under rules that have changed since (see
+     * [ArtworkStore.GENERATION]), one step per change, each dropping only
+     * what that change made wrong. A picture read off the share for its own
+     * owner — a folder's poster.jpg, a film's basename image — survives
+     * every step so far.
      *
      * Runs at most once per process, before the first resolution.
      */
@@ -278,11 +279,22 @@ class ArtworkRepository @Inject constructor(
         generationLock.withLock {
             if (generationChecked) return
             generationChecked = true
-            if (store.generation() >= ArtworkStore.GENERATION) return
-            val stale = artworkDao.generated()
-            Log.i(TAG, "artwork generation ${store.generation()} -> ${ArtworkStore.GENERATION}: dropping ${stale.size} generated rows")
-            for (row in stale) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
-            artworkDao.deleteGenerated()
+            val from = store.generation()
+            if (from >= ArtworkStore.GENERATION) return
+            // Each step throws away only what its change made wrong: re-making
+            // every frame grab is a trip to the share per video.
+            if (from < 2) {
+                val stale = artworkDao.generated()
+                Log.i(TAG, "artwork generation $from -> 2: dropping ${stale.size} generated rows")
+                for (row in stale) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteGenerated()
+            }
+            if (from < 3) {
+                val borrowed = artworkDao.filePicturesFromFolders()
+                Log.i(TAG, "artwork generation $from -> 3: dropping ${borrowed.size} films' pictures taken from their folder's")
+                for (row in borrowed) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteFilePicturesFromFolders()
+            }
             store.setGeneration(ArtworkStore.GENERATION)
         }
     }
@@ -305,7 +317,7 @@ class ArtworkRepository @Inject constructor(
      * image beside it is not a reason to make them again — it would be the
      * same frame, every listing.
      */
-    suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
+    override suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
         if (entries.any { !it.isDirectory && MediaFileTypes.isVideo(it.name) }) forgetFolderPlaceholders(folderId)
         val folder = folderDao.byId(folderId) ?: return
         // The freshest listing there is. The resolver's own copy would
@@ -373,9 +385,10 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * A poster.jpg was just written beside [fileId] (the poster editor). Use
-     * [bytes] for every owner it now belongs to, right away, instead of
-     * waiting for a scan to notice the file ([adoptInFolder]).
+     * A poster.jpg was just written into [fileId]'s folder (the poster
+     * editor): the folder's poster, made from a frame of the film. Use
+     * [bytes] for it right away, instead of waiting for a scan to notice the
+     * file ([adoptInFolder]).
      */
     suspend fun adoptPoster(fileId: Long, bytes: ByteArray) {
         val file = mediaFileDao.byId(fileId) ?: return
@@ -402,11 +415,10 @@ class ArtworkRepository @Inject constructor(
      * is itself cached for a few minutes. So the old rows and files go, the
      * new image is written in their place, and the listing is forgotten.
      *
-     * Which owners follows the source order ([ArtworkCandidates.forFile]):
-     * the folder always, and its film too when it is the only video in it —
-     * in a folder of several, poster.jpg is the collection's, not a film's.
+     * Only the folder takes it. A folder's picture is the folder's, never a
+     * video's, not even its only one ([ArtworkCandidates.forFile]).
      *
-     * The owners' pictures are dropped from the image loader's memory and
+     * The folder's pictures are dropped from the image loader's memory and
      * announced on [replaced], so every screen showing them redraws.
      */
     private suspend fun adoptInFolder(shareId: Long, folderId: Long, folderRelPath: String, bytes: ByteArray) {
@@ -419,23 +431,14 @@ class ArtworkRepository @Inject constructor(
         } catch (e: SmbFailure) {
             null
         }
-        val film = mediaFileDao.inFolder(folderId).singleOrNull()
-        val owners = buildList {
-            add(ArtworkOwner.Folder(folderId))
-            if (film != null) add(ArtworkOwner.File(film.id))
-        }
-        for (owner in owners) {
-            artworkDao.deleteOwner(owner.typeName, owner.id)
-            store.delete(owner)
-            val stamp = entries?.let {
-                val candidates = if (owner is ArtworkOwner.File && film != null) ArtworkCandidates.forFile(film.name, it) else ArtworkCandidates.forFolder(it)
-                ArtworkFreshness.stamp(candidates, it)
-            }
-            saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills, stamp)
-            if (owner is ArtworkOwner.Folder) keepAnimated(owner, folderRelPath, bytes, ArtworkKind.stills)
-        }
-        announceReplaced(owners)
-        Log.i(TAG, "poster in folder $folderId adopted by $owners")
+        val owner = ArtworkOwner.Folder(folderId)
+        artworkDao.deleteOwner(owner.typeName, owner.id)
+        store.delete(owner)
+        val stamp = entries?.let { ArtworkFreshness.stamp(ArtworkCandidates.forFolder(it), it) }
+        saveEncoded(bytes, owner, ArtworkSource.SIDECAR, ArtworkKind.stills, stamp)
+        keepAnimated(owner, folderRelPath, bytes, ArtworkKind.stills)
+        announceReplaced(listOf(owner))
+        Log.i(TAG, "poster in folder $folderId adopted")
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */

@@ -62,6 +62,12 @@ import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
+import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.UploadActionsHost
+import com.regolith.ui.components.UploadSectionView
+import com.regolith.ui.components.UploadSource
+import com.regolith.ui.util.UploadActionsState
+import com.regolith.ui.components.FileSelectionChrome
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
@@ -122,6 +128,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.ui.adaptive.LocalWindowShape
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withTimeoutOrNull
@@ -160,8 +167,17 @@ fun LibraryScreen(
      * null because Title Detail is a pushed screen, not a pane.
      */
     selectedFileId: Long? = null,
+    /**
+     * Called just before a picker opens (adding videos or a poster to a
+     * collection). The picker is another app's screen, so Regolith goes to
+     * the background; this tells the app lock the trip back is one it sent
+     * the user on.
+     */
+    onSendingAway: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val uploadActions = viewModel.uploadActions
+    val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
     var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
     var playAllOpen by remember { mutableStateOf(false) }
@@ -181,6 +197,11 @@ fun LibraryScreen(
 
     val selection = state.selection
     val selecting = selection != null
+
+    // Deleting the collection you are standing in leaves nothing to draw, so
+    // the wall leaves with it, as Browse's folders do. Only a success can
+    // pop it; a failure leaves the wall, and its message, where they were.
+    LaunchedEffect(state.gone) { if (state.gone) onBack?.invoke() }
 
     // Each selection belongs to one tab, and the two mean opposite things —
     // download these, delete these. Switching tabs ends whichever one you
@@ -266,9 +287,13 @@ fun LibraryScreen(
                 onBack = onBack,
                 subtitle = subtitle,
                 subtitleMuted = tab == LibraryTab.ON_DEVICE || unreachable.isNotEmpty(),
-                actions = listOf(
+                actions = listOfNotNull(
                     TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
                     TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                    // Videos and a poster into the collection on screen, only
+                    // where a share is behind it: not the first wall, not the demo.
+                    TopBarAction(R.drawable.rg_ic_upload, "Add to this collection", "library_upload_button") { uploadActions?.openSheet() }
+                        .takeIf { uploads.canUpload && tab == LibraryTab.NETWORK },
                     // One button, two lists: it toggles whichever tab you are on.
                     if (tab == LibraryTab.ON_DEVICE) {
                         viewModeAction(state.device.viewMode, "library_view_mode_button", viewModel::toggleDeviceViewMode)
@@ -328,6 +353,7 @@ fun LibraryScreen(
                     askedPhone = askedPhone,
                     onAskPhone = requestPhone,
                     onOpenAppSettings = openAppSettings,
+                    postersPerRow = state.postersPerRow.count,
                 )
                 val devicePicked = state.device.picked
                 if (devicePicked != null) {
@@ -398,7 +424,9 @@ fun LibraryScreen(
         // the container differs, so the decisions are made once, here.
         val showUnreachable = unreachable.isNotEmpty() && onBack == null
         val showSkeletons = !state.loaded || (state.tiles.isEmpty() && state.scanning)
-        val showEmpty = state.loaded && state.tiles.isEmpty() && !state.scanning
+        // Files on their way are what this collection is about to hold: no
+        // "nothing here" above them.
+        val showEmpty = state.loaded && state.tiles.isEmpty() && !state.scanning && uploads.section == null
         val showScanLine = state.scanning && state.tiles.isNotEmpty()
         val unreachableBlock = @Composable {
             OutOfReach(
@@ -425,7 +453,13 @@ fun LibraryScreen(
         // gets one look, and a tapped tile left out of view is brought up to
         // the top, level with the page's art. Rows need none of this: a row
         // is the same height at any width, so it stays where it was.
-        val leadingItems = (if (showUnreachable) 1 else 0) + (if (showScanLine) 1 else 0)
+        val leadingItems = (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (showScanLine) 1 else 0)
+        val uploadSection = @Composable { section: com.regolith.ui.components.UploadSection ->
+            UploadSectionView(
+                section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) },
+                modifier = Modifier.padding(bottom = Spacing.s8), tagPrefix = "library",
+            )
+        }
         LaunchedEffect(selectedFileId) {
             val id = selectedFileId ?: return@LaunchedEffect
             if (state.viewMode != ViewMode.GRID) return@LaunchedEffect
@@ -441,7 +475,8 @@ fun LibraryScreen(
 
         if (state.viewMode == ViewMode.GRID) {
             LazyVerticalGrid(
-                columns = WallCells(wide = LocalWindowShape.current.wide),
+                // Posters per row is the owner's (Settings › Display); see wallColumns.
+                columns = WallCells(LocalWindowShape.current.wide, state.postersPerRow.count, wallFullWidth()),
                 state = gridState,
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
                 contentPadding = PaddingValues(
@@ -454,6 +489,8 @@ fun LibraryScreen(
                 // Only the Network tab is affected by a share going away (design:
                 // "the message lives there rather than over files that play fine").
                 if (showUnreachable) item(span = { GridItemSpan(maxLineSpan) }) { unreachableBlock() }
+                // At the top: the videos on their way are what the user just did.
+                uploads.section?.let { section -> item(key = "library_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) } }
                 if (showSkeletons) {
                     items(9) { SkeletonTile() }
                     return@LazyVerticalGrid
@@ -486,6 +523,7 @@ fun LibraryScreen(
                 ),
             ) {
                 if (showUnreachable) item { unreachableBlock() }
+                uploads.section?.let { section -> item(key = "library_uploads") { uploadSection(section) } }
                 if (showSkeletons) {
                     items(6) { SkeletonRow() }
                     return@LazyColumn
@@ -529,61 +567,40 @@ fun LibraryScreen(
         SortSheet(order = state.order, onSelect = viewModel::pickSort, onDismiss = { viewModel.openSortSheet(false) })
     }
 
-        // The pill becomes this selection's toolbar (SelectionChrome). This
-        // screen only knows how to download a pick, so that is the one verb
-        // it lends; Cancel is drawn by the pill itself.
-        val selectionChrome = LocalSelectionChrome.current
-        DisposableEffect(selection) {
-            val live = selection
-            if (live == null) {
-                selectionChrome.clear()
-            } else {
-                selectionChrome.show(
-                    SelectionChromeState(
-                        verbs = listOf(
-                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "library_select_download", enabled = live.canDownload),
-                        ),
-                        onCancel = viewModel::cancelSelection,
-                        summary = live.summary,
-                        detail = live.detail,
-                    ),
-                )
-            }
-            onDispose { selectionChrome.clear() }
+        // The pill becomes this selection's toolbar with Browse's four verbs:
+        // a collection is moved, renamed and deleted as its folder, a video as
+        // itself and the files that share its name. The dialogs, the move
+        // sheet and the messages are the shared host's.
+        FileSelectionChrome(
+            selection = selection,
+            actions = viewModel.fileActions,
+            here = viewModel.folderId,
+            tagPrefix = "library",
+            onDownload = viewModel::downloadSelection,
+            onCancel = viewModel::cancelSelection,
+        )
+        FileActionsHost(viewModel.fileActions, tagPrefix = "library")
+        // Videos and a poster into this collection, the same flows Browse uses
+        // for a folder; only the choices differ, since the wall shows videos.
+        uploadActions?.let { actions ->
+            UploadActionsHost(
+                actions = actions,
+                title = "Add to ${state.title}",
+                detail = uploads.serverName?.let { "On $it" },
+                sources = listOf(UploadSource.GALLERY_VIDEOS, UploadSource.VIDEO_FILES, UploadSource.POSTER),
+                posterNoun = "collection",
+                onSendingAway = onSendingAway,
+            )
         }
     }
 }
 
+/** What the first wall, which is no folder, reads in place of its uploads. */
+private val NoUploads: kotlinx.coroutines.flow.StateFlow<UploadActionsState> = kotlinx.coroutines.flow.MutableStateFlow(UploadActionsState())
+
 /** Is this the title the detail pane is showing? Collections are never selected: they open a wall, not a detail. */
 private fun LibraryTile.isSelected(selectedFileId: Long?): Boolean =
     selectedFileId != null && this is LibraryTile.Title && fileId == selectedFileId
-
-/**
- * How many tiles across a wall gets — the Network wall and the On this device
- * grid alike, so the two tabs stay the same kind of page at the same size.
- *
- * A phone: three, always. A wide window gives the wall the whole width until
- * a title's page opens beside it, so there the tiles keep about a phone's
- * size and the COLUMNS come and go instead — five across the inner display,
- * two beside an open page — rather than three posters swelling to fill a
- * tablet. Never fewer than two: one column beside a page reads as a list
- * that lost its layout.
- */
-private fun wallColumns(width: Dp, wide: Boolean): Int =
-    if (!wide) PHONE_COLUMNS else maxOf(2, ((width + Spacing.s8) / (WIDE_TILE_MIN + Spacing.s8)).toInt())
-
-/** [wallColumns] as a lazy grid's column rule, the cells sharing the width evenly as [GridCells.Fixed] does. */
-private class WallCells(private val wide: Boolean) : GridCells {
-    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
-        val count = wallColumns(availableSize.toDp(), wide)
-        val usable = availableSize - spacing * (count - 1)
-        return List(count) { usable / count + if (it < usable % count) 1 else 0 }
-    }
-
-    override fun equals(other: Any?): Boolean = other is WallCells && other.wide == wide
-
-    override fun hashCode(): Int = wide.hashCode()
-}
 
 /** Is grid item [index] on screen from its top edge to its bottom one? */
 private fun LazyGridState.showsWhole(index: Int): Boolean {
@@ -646,7 +663,6 @@ private fun TileView(
                 // The unwatched dot shares the pick marker's corner, so it
                 // stands down while selecting rather than sitting under it.
                 unwatched = tile.unwatched && !selecting,
-                matched = tile.matched,
                 fallbackLabel = tile.fileName,
                 progress = tile.progress,
                 dimmed = dimmed,
@@ -722,7 +738,7 @@ private fun TileRow(
             val coming = selection?.pickedFiles?.contains(tile.fileId) == true ||
                 (selection?.coversFile(tile.shareId, tile.folderRelPath) == true && selection.excludedFiles.contains(tile.fileId).not())
             ListRow(
-                title = if (tile.matched) tile.name else tile.fileName,
+                title = tile.name,
                 meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
                 leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.fileName),
                 trailing = if (coming) RowTrailing.Checked else RowTrailing.None,
@@ -1010,6 +1026,8 @@ private fun DeviceTab(
     askedPhone: Boolean = false,
     onAskPhone: () -> Unit = {},
     onOpenAppSettings: () -> Unit = {},
+    /** Settings › Display › Posters per row, so this grid matches the Network wall. */
+    postersPerRow: Int = PostersPerRow.DEFAULT.count,
 ) {
     val colors = RegolithTheme.colors
     val picked = state.picked
@@ -1035,9 +1053,10 @@ private fun DeviceTab(
     // rows rather than a LazyVerticalGrid: this is already inside a
     // LazyColumn, which cannot give a nested lazy grid a height to work with.
     val wide = LocalWindowShape.current.wide
+    val fullWidth = wallFullWidth()
     val deviceGrid: @Composable (List<DeviceRow>) -> Unit = { rows ->
         BoxWithConstraints {
-        val columns = wallColumns(maxWidth, wide)
+        val columns = wallColumns(maxWidth, wide, postersPerRow, fullWidth)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
             rows.chunked(columns).forEach { rowOfTiles ->
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
@@ -1390,16 +1409,6 @@ private fun DeviceRowView(
         }
     }
 }
-
-/** Tiles across a wall on a phone ([wallColumns]): the design's three. */
-private const val PHONE_COLUMNS = 3
-
-/**
- * The narrowest a tile gets on a wide window ([wallColumns]): about the
- * phone's own (three across a 411dp screen are 120dp; the Fold's cover screen
- * makes them ~106), so a wall that widens gains tiles rather than growing them.
- */
-private val WIDE_TILE_MIN = 104.dp
 
 /** How long after a title opens the wall keeps checking that its tile is in view: the page's arrival, and a little. */
 private const val REVEAL_WINDOW_MS = 600L

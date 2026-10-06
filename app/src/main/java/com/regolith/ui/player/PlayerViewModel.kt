@@ -361,7 +361,7 @@ class PlayerViewModel @AssistedInject constructor(
         .mapLatest { id -> id != null && id != RegolithKey.Player.EXTERNAL && posters.target(id) != null }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    /** "Poster saved to …", once the editor has closed and this screen is back. */
+    /** "Poster set for …", once the editor has closed and this screen is back. */
     val posterMessages: Flow<String> get() = posters.saved
 
     /**

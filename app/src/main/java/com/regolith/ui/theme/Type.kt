@@ -178,7 +178,7 @@ object TextStyles {
     val tileName = sg(FontWeight.SemiBold, 12, 14f)
     /** Poster tile meta: `400 11px/1.2`. */
     val tileMeta = sg(FontWeight.Normal, 11, 13.2f)
-    /** Filename drawn inside an unmatched tile: `700 11px/13px`. */
+    /** Filename drawn inside a tile that has no picture: `700 11px/13px`. */
     val tileFilename = sg(FontWeight.Bold, 11, 13f)
     /** Fact row label on Title Detail: `400 13px/18px`. */
     val factLabel = sg(FontWeight.Normal, 13, 18f)

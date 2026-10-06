@@ -784,6 +784,8 @@ share tree needs, so the tree F3 built had never once appeared on the Fold.
 
 - **Nothing open:** the wall fills the window beside the rail. Library shows
   five posters across, about a phone's tile size (seven when held sideways).
+  Since 2026-10-06 the owner picks five, six or seven in Settings › Display
+  › Posters per row, held either way up.
   Browse gets its share tree back beside the folder list.
 - **Open a title:** its page slides in from the end edge on the push's clock
   and takes half the window. The wall reflows into the other half in one step,

@@ -10,11 +10,15 @@ import com.regolith.data.db.RecentSearchDao
 import com.regolith.data.db.RecentSearchEntity
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.ShareFileDao
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.db.ShareRootDao
 import com.regolith.domain.library.FolderClassifier
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.TitleParser
+import com.regolith.domain.media.Companions
 import com.regolith.domain.media.MediaFileTypes
+import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.model.rootsCover
@@ -52,17 +56,21 @@ class LibraryRepository @Inject constructor(
     private val shareRootDao: ShareRootDao,
     private val folderDao: FolderDao,
     private val mediaFileDao: MediaFileDao,
+    private val shareFileDao: ShareFileDao,
     private val progressDao: PlaybackProgressDao,
     private val recentSearchDao: RecentSearchDao,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
     private val chapterSync: com.regolith.data.media.ChapterSyncRepository,
-) {
+) : FolderLookup {
     /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
     data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
 
     fun observeFolder(folderId: Long): Flow<FolderEntity?> = folderDao.observe(folderId)
 
-    /** Live contents of one folder: subfolders first, then files with their progress. */
+    /**
+     * Live contents of one folder: subfolders first, then videos with their
+     * progress, then every other file it holds.
+     */
     fun observeContents(folderId: Long): Flow<List<BrowseItem>> {
         val folders = folderDao.observeChildren(folderId)
         val files = mediaFileDao.observeInFolder(folderId)
@@ -90,13 +98,19 @@ class LibraryRepository @Inject constructor(
                 }
             }
         }
-        return combine(folders, filesWithProgress) { dirs, fs ->
+        val others = shareFileDao.observeInFolder(folderId)
+        return combine(folders, filesWithProgress, others) { dirs, fs, os ->
             dirs.map {
                 BrowseItem.Folder(
                     id = it.id, name = it.name, fileCount = it.fileCount, byteCount = it.byteCount,
                     shareId = it.shareId, relPath = it.relPath, listed = it.lastListedAtMs != null,
                 )
-            } + fs
+            } + fs + os.map {
+                BrowseItem.Other(
+                    id = it.id, name = it.name, sizeBytes = it.sizeBytes, modifiedAtMs = it.modifiedAtMs,
+                    shareId = it.shareId, folderRelPath = it.relPath.substringBeforeLast('/', ""),
+                )
+            }
         }
     }
 
@@ -107,7 +121,7 @@ class LibraryRepository @Inject constructor(
     fun observeFileCountInShares(shareIds: List<Long>): Flow<Int> = mediaFileDao.observeCountInShares(shareIds)
 
     /** The root folder row of a share, created on first use. */
-    suspend fun rootFolder(shareId: Long): FolderEntity {
+    override suspend fun rootFolder(shareId: Long): FolderEntity {
         val share = checkNotNull(shareDao.byId(shareId)) { "share $shareId" }
         return folderDao.upsert(
             FolderEntity(shareId = shareId, parentId = null, relPath = "", name = share.name, fileCount = 0, byteCount = 0, lastListedAtMs = null),
@@ -146,6 +160,8 @@ class LibraryRepository @Inject constructor(
         val dirPaths = mutableListOf<String>()
         val subfolders = mutableListOf<FolderEntity>()
         val filePaths = mutableListOf<String>()
+        // Everything else the folder holds, for Browse (OtherFiles).
+        val others = mutableListOf<ShareFileEntity>()
         var fileCount = 0
         var byteCount = 0L
         for (e in entries) {
@@ -184,8 +200,14 @@ class LibraryRepository @Inject constructor(
                         episode = parsed.episode,
                     ),
                 )
+            } else if (OtherFiles.isListed(e.name)) {
+                others += ShareFileEntity(
+                    shareId = share.id, folderId = folder.id, relPath = relPath, name = e.name,
+                    sizeBytes = e.sizeBytes, modifiedAtMs = e.modifiedAtMs,
+                )
             }
         }
+        shareFileDao.replaceInFolder(folder.id, others)
         // A poster.jpg dropped into the folder since the last scan beats the
         // mosaic the app stitched for it; this is the rescan that notices.
         artwork.onFolderListed(folder.id, entries)
@@ -376,7 +398,7 @@ class LibraryRepository @Inject constructor(
      * download uses once the subtree has been listed; [listSubtree] is what
      * lists it first when it has not.
      */
-    suspend fun filesUnder(folderId: Long): List<MediaFileEntity> =
+    override suspend fun filesUnder(folderId: Long): List<MediaFileEntity> =
         descendants(folderId).map { it.id }.chunked(FILES_CHUNK).flatMap { mediaFileDao.inFolders(it) }
 
     /** Folders in the subtree that have never been listed off the share, so their counts mean nothing. */
@@ -466,11 +488,25 @@ class LibraryRepository @Inject constructor(
         }
     }
 
-    suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
+    override suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
+
+    override suspend fun other(otherId: Long): ShareFileEntity? = shareFileDao.byId(otherId)
+
+    /**
+     * How many companion files ([Companions]) go with [fileIds] when they go
+     * together ([Companions.goingWith]), from what the last listing of each
+     * folder recorded, so a delete dialog can say so without a trip to the
+     * share.
+     */
+    override suspend fun companionCount(fileIds: Collection<Long>): Int =
+        mediaFileDao.byIds(fileIds.toList()).groupBy { it.folderId }.entries.sumOf { (folderId, going) ->
+            val names = mediaFileDao.inFolder(folderId).map { it.name } + shareFileDao.inFolder(folderId).map { it.name }
+            Companions.goingWith(going.map { it.name }, names).size
+        }
 
     fun observeFile(fileId: Long): Flow<MediaFileEntity?> = mediaFileDao.observe(fileId)
 
-    suspend fun folder(folderId: Long): FolderEntity? = folderDao.byId(folderId)
+    override suspend fun folder(folderId: Long): FolderEntity? = folderDao.byId(folderId)
 
     suspend fun filesInFolder(folderId: Long): List<MediaFileEntity> = mediaFileDao.inFolder(folderId)
 
@@ -480,7 +516,7 @@ class LibraryRepository @Inject constructor(
      * is chosen from what has already been seen, and the move itself is what
      * talks to the server.
      */
-    suspend fun subfolders(folderId: Long): List<FolderEntity> =
+    override suspend fun subfolders(folderId: Long): List<FolderEntity> =
         folderDao.children(folderId).sortedBy { it.name.lowercase() }
 
     /** Remember what the container probe found, so Title Detail and the chips never probe twice. */
@@ -502,7 +538,7 @@ class LibraryRepository @Inject constructor(
     }
 
     /** "TOWER · media": the server and share a file lives on, for the player's meta line. */
-    suspend fun shareLabel(shareId: Long): String {
+    override suspend fun shareLabel(shareId: Long): String {
         val share = shareDao.byId(shareId) ?: return ""
         val server = serverDao.byId(share.serverId) ?: return share.name
         return "${server.name} · ${share.name}"

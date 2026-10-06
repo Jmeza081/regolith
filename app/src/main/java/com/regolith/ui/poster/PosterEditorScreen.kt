@@ -228,11 +228,7 @@ private fun Controls(
 
         state.target?.let { target ->
             Text(
-                if (target.sharedWithFolder) {
-                    "Saves as poster.jpg in ${target.folderName}. The folder has other videos, so this becomes the folder’s poster."
-                } else {
-                    "Saves as poster.jpg in ${target.folderName}."
-                },
+                "Becomes the poster for ${target.folderName}, saved as poster.jpg in that folder.",
                 style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.padding(top = Spacing.s8).testTag("poster_destination"),
             )
         }

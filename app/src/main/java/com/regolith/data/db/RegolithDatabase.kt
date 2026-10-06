@@ -55,8 +55,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UserChapterFtsEntity::class,
         ChapterSyncEntity::class,
         UploadEntity::class,
+        ShareFileEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -94,6 +95,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // noticed. Nullable and additive: every existing row reads as
         // "unknown", which the check treats as worth one fresh look.
         AutoMigration(from = 14, to = 15),
+        // v16: `share_files`, the files in a folder that are not videos, so
+        // Browse can list everything a folder holds. A new table and nothing
+        // else, so Room writes it alone; it fills as folders are listed.
+        AutoMigration(from = 15, to = 16),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {
@@ -102,6 +107,7 @@ abstract class RegolithDatabase : RoomDatabase() {
     abstract fun shareDao(): ShareDao
     abstract fun folderDao(): FolderDao
     abstract fun mediaFileDao(): MediaFileDao
+    abstract fun shareFileDao(): ShareFileDao
     abstract fun playbackProgressDao(): PlaybackProgressDao
     abstract fun artworkDao(): ArtworkDao
     abstract fun scanRunDao(): ScanRunDao

@@ -3,11 +3,11 @@ package com.regolith.ui
 import com.regolith.domain.transfer.UploadCause
 import com.regolith.domain.transfer.UploadItem
 import com.regolith.domain.transfer.UploadStatus
-import com.regolith.ui.browse.UploadKind
-import com.regolith.ui.browse.UploadQuestion
-import com.regolith.ui.browse.UploadSectionAction
-import com.regolith.ui.browse.uploadClash
-import com.regolith.ui.browse.uploadSection
+import com.regolith.ui.components.UploadKind
+import com.regolith.ui.components.UploadQuestion
+import com.regolith.ui.components.UploadSectionAction
+import com.regolith.ui.components.uploadClash
+import com.regolith.ui.components.uploadSection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -87,7 +87,7 @@ class UploadSectionStateTest {
         assertEquals(UploadSectionAction.CLEAR, s.action)
         assertTrue(s.rows.isEmpty())
         assertEquals("2 uploaded", s.summary!!.title)
-        assertEquals("The photos are on TOWER in this folder. Browse lists videos only.", s.note)
+        assertEquals("The photos are below, with this folder's other files.", s.note)
     }
 
     @Test

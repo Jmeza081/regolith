@@ -13,6 +13,7 @@ import com.regolith.data.security.BiometricGate
 import com.regolith.domain.security.AuthResult
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.display.NavHideAfter
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.security.LockAfter
 import com.regolith.data.repository.DeviceLibrary
@@ -125,6 +126,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
         viewModelScope.launch { prefs.navHideAfter.collect { v -> _uiState.update { it.copy(navHideAfter = v) } } }
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
+        viewModelScope.launch { prefs.postersPerRow.collect { v -> _uiState.update { it.copy(postersPerRow = v) } } }
         viewModelScope.launch { prefs.shortsLength.collect { v -> _uiState.update { it.copy(shortsLength = v) } } }
         viewModelScope.launch {
             demo.installed.collect { installed ->
@@ -283,6 +285,9 @@ class SettingsViewModel @Inject constructor(
 
     /** Settings › Display › Hide after: how long the navigation waits before it goes. */
     fun setNavHideAfter(after: NavHideAfter) = viewModelScope.launch { prefs.setNavHideAfter(after) }.let { }
+
+    /** Settings › Display › Posters per row: how many across the Library on the inner display. */
+    fun setPostersPerRow(perRow: PostersPerRow) = viewModelScope.launch { prefs.setPostersPerRow(perRow) }.let { }
 
     fun setAmbientLight(light: AmbientLight) = viewModelScope.launch { prefs.setAmbientLight(light) }.let { }
 

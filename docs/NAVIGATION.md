@@ -97,7 +97,8 @@ opened the player directly).
 On a wide window:
 
 - **Nothing open** (`[…, Library]`): the wall has the whole window beside the
-  rail, five tiles across the inner display.
+  rail, five to seven posters across the inner display (Settings › Display ›
+  Posters per row).
 - **A title open** (`[…, Library, TitleDetail]`): its page slides in from the
   end edge and takes half the window; the wall reflows into the other half
   and rings the open tile. The split is even and does not move.
@@ -119,6 +120,10 @@ window and keeps the back arrow. On a compact window nothing changes: the
 page is pushed and slides in, as it has since Phase 6.
 
 ## Pushed screens (pill hidden)
+
+One exception: while something is picked, Search brings the nav chrome up
+as the selection's toolbar (never as tabs), because that toolbar is the only
+place the selection's verbs live.
 
 | Key | Reached from | Phase |
 |---|---|---|

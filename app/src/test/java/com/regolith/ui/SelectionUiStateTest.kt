@@ -202,4 +202,16 @@ class SelectionUiStateTest {
         assertEquals("2 left out", state.detail)
         assertEquals("1 left out", state.copy(leftOut = 1).detail)
     }
+
+    @Test
+    fun `files that are not videos are counted after the videos, and do not download`() {
+        val mixed = SelectionUiState(itemCount = 2, fileCount = 1, byteCount = 2_100_000_000, pickedOthers = setOf(7), otherBytes = 473_000)
+        assertEquals("1 video · 2.1 GB · 1 other file", mixed.summary)
+        assertEquals("Only the videos download", mixed.detail)
+        assertTrue(mixed.canDownload)
+
+        val alone = SelectionUiState(itemCount = 1, pickedOthers = setOf(7), otherBytes = 473_000)
+        assertEquals("1 other file · 473 KB", alone.summary)
+        assertFalse("nothing in it could be downloaded", alone.canDownload)
+    }
 }

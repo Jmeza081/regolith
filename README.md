@@ -37,7 +37,9 @@ service that gets told what your files are.
 ### Plays straight off the share
 
 Point it at a share, pick the folders you actually want (`Films/` and `Series/`,
-not `Backups/`), and it reads the shape of what's there. Playback is a custom
+not `Backups/`), and it reads the shape of what's there. Every folder of videos
+is a collection in the Library, with its own poster, even one that holds a
+single video, since you may add more later. Playback is a custom
 Media3 data source reading SMB directly, so a file starts without being copied
 first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
@@ -78,8 +80,9 @@ Don't like the frame a folder picked? "Make a poster from this frame", at the
 foot of the player's Playback settings, opens an editor on the frame you paused
 at: scrub, type a time or step a frame at a time, then drag and pinch the picture
 behind a 2:3 box and save. It is written as `poster.jpg` in the film's folder on
-the share, asking first if one is already there, and every tile picks it up at
-once.
+the share, asking first if one is already there, and becomes that folder's
+poster: every folder is a collection, and its poster is the collection's, even
+when it holds a single film. Every tile showing it picks it up at once.
 
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an
@@ -89,22 +92,46 @@ uploaded from the phone is noticed as soon as the upload lands.
 
 ### Manages the files, not just the library
 
-Hold any video — or any folder — to start picking, and the floating nav pill stops
-being a nav and becomes that selection's toolbar: Download, Move, Rename, Delete.
+Hold any video, collection or folder (in the Library, Browse or Search) to start
+picking, and the floating nav pill stops being a nav and becomes that selection's
+toolbar: Download, Move, Rename, Delete. The same four work the same way on
+every screen; Search, which has no nav of its own, brings the toolbar up just for
+the pick. In the Library a collection is moved, renamed and deleted as its
+folder, and a video as itself and the files beside it that share its name.
 A move is a **single rename on the server** — one metadata operation, nothing
 copied — so it is instant, and a share that drops halfway leaves every video
 either where it was or where it was going, never half-moved. That is measured
 rather than assumed, by a probe suite run against a real Samba server.
 
+A video's own files travel with it. Everything beside it that shares its name
+(`beach.en.srt`, `beach.chapters.txt` and `beach.jpg` beside `beach.mp4`) is
+renamed to match, moved and deleted along with it, and the delete dialog counts
+them. If one of those names is already taken where the video is going, nothing
+happens and the app says which name. A folder's own poster stays with the folder.
+
 Folders move and rename the same way, whole: the server does a directory and
 everything under it in that same single operation. Deleting is permanent and asks
 first, naming the size and saying that the chapters you wrote go with it — and for
-a folder, that everything inside goes too, including files Regolith never listed.
+a folder, that everything inside goes too, not just its videos.
 When the folder you want to move something into doesn't exist yet, the move sheet
 makes it for you and drops the files straight in. However long the folder list,
 the Move button stays at the foot of the sheet, and a folder with more than ten
 subfolders gets an A–Z rail down the edge: slide a thumb down it to jump from
 letter to letter.
+
+Browse shows a folder the way a file manager would. After its folders and
+videos come all its other files, by their real names and sizes: the poster,
+subtitles, chapters, an `.nfo`, anything else. The Library leaves those out
+and puts them to use instead. Hold one to pick it, and it moves, renames and
+deletes like a video, but on its own: a subtitles file picked by itself leaves
+its video where it is. They never download, since what Download keeps on the
+phone is videos to play. Moving, renaming or deleting a folder's poster this
+way changes the folder's tile at once.
+
+Because a folder moves and deletes whole, Move and Delete refuse when you have
+picked a folder and then taken something back out of it. Moving or deleting the
+folder would take that too, so the app says so and asks you to open the folder
+and pick what to move or delete. Download leaves the un-picked part out by itself.
 
 ### Takes a batch offline
 
@@ -126,8 +153,12 @@ picker, or any other file through the system's file picker — no permission
 asked either way. Picking is the whole confirmation. The files appear at the
 top of the folder with their own thumbnails, each saying where it stands, and a
 line above the nav pill follows the batch from anywhere else in the app. A
-video that lands is a video in the library at once; a photo is on the share
-beside it, and the folder says so, since Browse lists videos.
+video that lands is a video in the library at once; a photo or any other file
+lands among the folder's other files in Browse.
+
+A collection in the Library takes new videos the same way. **Add to this
+collection** in its top bar offers videos from the gallery or the file picker,
+and a poster for its tile, and the uploads show at the top of its wall.
 
 It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
 sleeps, the batch waits and carries on by itself from the bytes already sent —
@@ -138,8 +169,8 @@ that is already taken is asked about once for the whole pick — keep both, skip
 or replace — except the same file sent twice, which is simply skipped.
 Nothing half-written ever sits on the share under a real name.
 
-**Folder poster**, the third choice under Upload, makes one picture the
-folder's own poster. It is saved as `poster.jpg` — the first name Regolith looks
+**Folder poster**, the third choice under Upload (**Collection poster** on a
+Library collection), makes one picture the folder's own poster. It is saved as `poster.jpg` — the first name Regolith looks
 for, and one every media server reads — the right way up and as a JPEG,
 whatever the phone took it as, and every tile showing the folder changes at
 once. If the folder already has a picture of its own (a `folder.jpg`, a
@@ -172,6 +203,9 @@ own confirmation.
 The inner display gets its own layouts: a nav rail that retracts to a spine, and
 library and browse walls that fill the screen until you open a title, whose page
 then slides in beside the wall and slides away again when you close it. The
+Library shows five, six or seven posters across it, as you pick in Settings ›
+Display › Posters per row; with a title open beside it, the posters keep their
+size and fewer fit. The
 player has two-column and flex-mode layouts. Turned sideways, Shorts plays the clip in
 one half and fills the other with its frames — tap one to jump there, pause to make
 a poster from that moment — and the clips that play next.
@@ -190,7 +224,8 @@ few part-watched, and a folder of vertical phone clips for Shorts — and copies
 bundled test clips onto the device. Everything
 plays, scrubs and shows real frame-grab posters with no network at all, which is
 what makes the app reviewable on a train. **Remove** deletes it; nothing else is
-touched.
+touched. Nothing in it can be moved, renamed or deleted: there is no share
+behind it, so those verbs stay grey and the pill says why.
 
 The section is behind `BuildConfig.DEMO_LIBRARY`, true in both build types today
 because the side-load (`assembleRelease`) build is the one that gets tested on a

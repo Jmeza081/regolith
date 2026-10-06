@@ -122,7 +122,7 @@ class DeviceUiStateTest {
 class LibraryStateMergeTest {
 
     private fun tile(id: Long) = com.regolith.ui.library.LibraryTile.Title(
-        fileId = id, name = "t$id", resolutionLabel = "", matched = true, unwatched = false, fileName = "t$id.mkv",
+        fileId = id, name = "t$id", resolutionLabel = "", unwatched = false, fileName = "t$id.mkv",
         progress = null, meta = "", artwork = com.regolith.domain.artwork.ArtworkRequest(
             com.regolith.domain.artwork.ArtworkOwner.File(id), com.regolith.domain.artwork.ArtworkKind.POSTER,
         ),

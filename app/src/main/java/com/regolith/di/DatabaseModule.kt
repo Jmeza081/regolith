@@ -12,6 +12,7 @@ import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerAddressDao
 import com.regolith.data.db.ServerDao
+import com.regolith.data.db.ShareFileDao
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareRootDao
 import com.regolith.data.db.SubtreeDao
@@ -43,6 +44,7 @@ object DatabaseModule {
     @Provides fun provideShareDao(db: RegolithDatabase): ShareDao = db.shareDao()
     @Provides fun provideFolderDao(db: RegolithDatabase): FolderDao = db.folderDao()
     @Provides fun provideMediaFileDao(db: RegolithDatabase): MediaFileDao = db.mediaFileDao()
+    @Provides fun provideShareFileDao(db: RegolithDatabase): ShareFileDao = db.shareFileDao()
     @Provides fun providePlaybackProgressDao(db: RegolithDatabase): PlaybackProgressDao = db.playbackProgressDao()
     @Provides fun provideArtworkDao(db: RegolithDatabase): ArtworkDao = db.artworkDao()
     @Provides fun provideScanRunDao(db: RegolithDatabase): ScanRunDao = db.scanRunDao()

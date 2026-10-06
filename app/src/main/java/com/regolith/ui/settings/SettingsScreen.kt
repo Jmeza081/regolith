@@ -61,6 +61,7 @@ import com.regolith.domain.playback.AmbientLight
 import com.regolith.ui.util.note
 import com.regolith.domain.security.LockAfter
 import com.regolith.domain.display.NavHideAfter
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
 import com.regolith.ui.components.SurfaceCard
@@ -364,6 +365,24 @@ fun SettingsScreen(
                             segments = AmbientLight.entries.map { Segment(it.label, "settings_ambient_light_${it.name.lowercase()}") },
                             selected = AmbientLight.entries.indexOf(state.ambientLight),
                             onSelect = { viewModel.setAmbientLight(AmbientLight.entries[it]) },
+                        )
+                    }
+                    // Shown on the cover screen too, where it changes nothing
+                    // you can see: the Fold goes between the two displays, and
+                    // a setting that vanished on one of them would read as lost.
+                    Column(
+                        Modifier.padding(vertical = Spacing.s12),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        Text("Posters per row", style = TextStyles.settingLabel, color = colors.ink)
+                        Text(
+                            "Across the Library on the inner display. Fewer makes each poster bigger; the cover screen always shows three.",
+                            style = TextStyles.settingMeta, color = colors.metadata,
+                        )
+                        SegmentedTabs(
+                            segments = PostersPerRow.entries.map { Segment(it.label, "settings_posters_per_row_${it.count}") },
+                            selected = PostersPerRow.entries.indexOf(state.postersPerRow),
+                            onSelect = { viewModel.setPostersPerRow(PostersPerRow.entries[it]) },
                         )
                     }
                 }

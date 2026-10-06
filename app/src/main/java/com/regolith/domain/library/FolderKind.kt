@@ -11,10 +11,17 @@ enum class FolderKind {
     /** The share root itself. */
     ROOT,
 
-    /** `Films/`, `Series/`: holds title folders, shows or loose files; a tile on Library. */
+    /** `Films/`, `Home Videos/`, `Arrival (2016)/`: holds videos or folders of them, however few; a tile on Library. */
     COLLECTION,
 
-    /** `Arrival (2016)/`: one title, its file(s), maybe a poster. */
+    /**
+     * No longer produced. It was `Arrival (2016)/` read as one title and
+     * shown as its largest video. Every folder that holds videos is now a
+     * [COLLECTION], even one holding a single video, because more may be
+     * added and its poster is the folder's own, not any one video's (the
+     * owner's model, 2026-10-05). Kept so rows scanned before then still
+     * parse; everything reads them as a collection.
+     */
     TITLE,
 
     /** `Severance/`: seasons or episodes inside. */
@@ -41,8 +48,9 @@ object FolderClassifier {
         if (TitleParser.seasonNumber(name) != null) return FolderKind.SEASON
         if (folders.any { TitleParser.seasonNumber(it) != null }) return FolderKind.SHOW
         if (videos.isNotEmpty() && videos.all { TitleParser.parseVideoName(it).episode != null }) return FolderKind.SHOW
-        if (videos.isNotEmpty() && folders.isEmpty() && (TitleParser.parseFolderName(name).year != null || videos.size == 1)) return FolderKind.TITLE
-        if (folders.isNotEmpty() || videos.size > 1) return FolderKind.COLLECTION
+        // A folder of videos is a collection however few it holds, even one:
+        // it is a container its owner may add to, never "the" one video.
+        if (folders.isNotEmpty() || videos.isNotEmpty()) return FolderKind.COLLECTION
         return FolderKind.PLAIN
     }
 }

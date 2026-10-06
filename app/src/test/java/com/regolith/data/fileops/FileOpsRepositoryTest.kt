@@ -8,6 +8,7 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareEntity
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.transfer.DownloadStore
 import com.regolith.domain.fileops.FileOpError
 import com.regolith.domain.fileops.FileOpTarget
@@ -43,6 +44,9 @@ class FileOpsRepositoryTest {
     private var filmsId = 0L
     private var archiveId = 0L
 
+    /** The folders whose pictures the repository asked to have checked again. */
+    private val picturesChecked = mutableListOf<Long>()
+
     @Before
     fun setUp() = runTest {
         db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java)
@@ -66,6 +70,8 @@ class FileOpsRepositoryTest {
             db.transferDao(),
             DownloadStore(ApplicationProvider.getApplicationContext()),
             db.subtreeDao(),
+            db.shareFileDao(),
+            { folderId, _ -> picturesChecked += folderId },
         )
     }
 
@@ -86,6 +92,15 @@ class FileOpsRepositoryTest {
     }
 
     private fun onShare(relPath: String) = gateway.files["media"]?.containsKey(relPath) == true
+
+    /** A file that is not a video, on the share and in Browse's rows, the way a listing would leave it. */
+    private suspend fun other(name: String, folderId: Long = filmsId, folderPath: String = "Films"): Long {
+        val relPath = if (folderPath.isEmpty()) name else "$folderPath/$name"
+        gateway.addFile("media", relPath, ByteArray(10))
+        return db.shareFileDao().insert(
+            ShareFileEntity(shareId = shareId, folderId = folderId, relPath = relPath, name = name, sizeBytes = 10, modifiedAtMs = 1),
+        )
+    }
 
     /** A folder on the share and in Room, the way a listing would leave it. */
     private suspend fun folder(name: String, parentId: Long, parentPath: String = ""): Long {
@@ -146,6 +161,47 @@ class FileOpsRepositoryTest {
     }
 
     @Test
+    fun `every companion is renamed to match, and its row keeps its id`() = runTest {
+        val id = film("beach.mp4")
+        val srt = other("beach.en.srt")
+        other("beach.jpg")
+        other("beach.nfo")
+        // Not beach's: another video's subtitles, and the folder's own poster.
+        film("sunset.mp4")
+        other("sunset.srt")
+        other("poster.jpg")
+
+        assertTrue(repo.rename(file(id), "Hawaii day one").ok)
+
+        for (name in listOf("Hawaii day one.mp4", "Hawaii day one.en.srt", "Hawaii day one.jpg", "Hawaii day one.nfo")) {
+            assertTrue("$name is not on the share", onShare("Films/$name"))
+        }
+        for (name in listOf("beach.en.srt", "beach.jpg", "beach.nfo")) assertFalse("$name was left behind", onShare("Films/$name"))
+        assertTrue(onShare("Films/sunset.srt"))
+        assertTrue(onShare("Films/poster.jpg"))
+        val row = db.shareFileDao().byId(srt)!!
+        assertEquals("Hawaii day one.en.srt", row.name)
+        assertEquals("Films/Hawaii day one.en.srt", row.relPath)
+    }
+
+    @Test
+    fun `a companion's new name already taken stops the rename before anything moves`() = runTest {
+        val id = film("beach.mp4")
+        other("beach.en.srt")
+        // Left over from something else, and it must not be overwritten.
+        other("sunset.en.srt")
+
+        val result = repo.rename(file(id), "sunset")
+
+        val failure = result.failures.single()
+        assertEquals(FileOpError.COMPANION_TAKEN, failure.error)
+        assertEquals("sunset.en.srt", failure.detail)
+        assertTrue(onShare("Films/beach.mp4"))
+        assertTrue(onShare("Films/beach.en.srt"))
+        assertEquals("beach.mp4", db.mediaFileDao().byId(id)!!.name)
+    }
+
+    @Test
     fun `a film with no chapter file renames fine`() = runTest {
         val id = film("Heat.1995.mkv")
         assertTrue(repo.rename(file(id), "Heat (1995)").ok)
@@ -176,6 +232,54 @@ class FileOpsRepositoryTest {
         assertEquals(FileOpError.NAME_TAKEN, result.failures.single().error)
         assertTrue("the file that was already there was destroyed", gateway.files["media"]!!["Archive/Sicario.2015.mkv"]!!.size == 999)
         assertTrue("the clashing file was moved anyway", onShare("Films/Sicario.2015.mkv"))
+    }
+
+    @Test
+    fun `a video's companions move with it, rows and all`() = runTest {
+        val id = film("beach.mp4")
+        val srt = other("beach.en.srt")
+        other("beach.chapters.txt")
+        other("poster.jpg")
+
+        assertTrue(repo.move(listOf(file(id)), archiveId).ok)
+
+        assertTrue(onShare("Archive/beach.mp4"))
+        assertTrue(onShare("Archive/beach.en.srt"))
+        assertTrue(onShare("Archive/beach.chapters.txt"))
+        assertTrue("the folder's poster went with a video", onShare("Films/poster.jpg"))
+        val row = db.shareFileDao().byId(srt)!!
+        assertEquals(archiveId, row.folderId)
+        assertEquals("Archive/beach.en.srt", row.relPath)
+        assertEquals(listOf("poster.jpg"), db.shareFileDao().inFolder(filmsId).map { it.name })
+    }
+
+    @Test
+    fun `a companion's name taken in the destination holds back only its video`() = runTest {
+        val beach = film("beach.mp4")
+        other("beach.en.srt")
+        val sunset = film("sunset.mp4")
+        other("beach.en.srt", folderId = archiveId, folderPath = "Archive")
+
+        val result = repo.move(listOf(file(beach), file(sunset)), archiveId)
+
+        assertEquals(listOf(file(sunset)), result.done)
+        val failure = result.failures.single()
+        assertEquals(FileOpError.COMPANION_TAKEN, failure.error)
+        assertEquals("beach.en.srt", failure.detail)
+        assertTrue("the video moved without its subtitles", onShare("Films/beach.mp4"))
+        assertTrue(onShare("Films/beach.en.srt"))
+    }
+
+    @Test
+    fun `two videos sharing a base name take their shared companions when both go`() = runTest {
+        val mp4 = film("beach.mp4")
+        val mkv = film("beach.mkv")
+        other("beach.en.srt")
+
+        assertTrue(repo.move(listOf(file(mp4), file(mkv)), archiveId).ok)
+
+        assertTrue(onShare("Archive/beach.en.srt"))
+        assertFalse(onShare("Films/beach.en.srt"))
     }
 
     @Test
@@ -233,6 +337,25 @@ class FileOpsRepositoryTest {
     }
 
     @Test
+    fun `delete takes every companion and its row, and nothing else`() = runTest {
+        val id = film("beach.mp4")
+        other("beach.en.srt")
+        other("beach.jpg")
+        val poster = other("poster.jpg")
+        film("beach.2019.mp4")
+        other("beach.2019.srt")
+
+        assertTrue(repo.delete(listOf(file(id))).ok)
+
+        assertFalse(onShare("Films/beach.en.srt"))
+        assertFalse(onShare("Films/beach.jpg"))
+        assertTrue("another video's subtitles went", onShare("Films/beach.2019.srt"))
+        assertTrue("the folder's poster went", onShare("Films/poster.jpg"))
+        assertEquals(listOf("beach.2019.srt", "poster.jpg"), db.shareFileDao().inFolder(filmsId).map { it.name })
+        assertNotNull(db.shareFileDao().byId(poster))
+    }
+
+    @Test
     fun `a read-only share fails the delete and leaves the file alone`() = runTest {
         val id = film("Heat.1995.mkv")
         gateway.readOnly = true
@@ -250,6 +373,78 @@ class FileOpsRepositoryTest {
         assertTrue(result.ok)
         for (id in ids) assertNull(db.mediaFileDao().byId(id))
         assertEquals(0, db.folderDao().byId(filmsId)!!.fileCount)
+    }
+
+    // ── files that are not videos ──────────────────────────────────────
+    //
+    // Browse lists every file, and these can be picked too. One goes alone:
+    // no companions, nothing in Room but its own row.
+
+    private fun otherTarget(id: Long) = FileOpTarget.other(id)
+
+    @Test
+    fun `a file that is not a video renames keeping its extension, and only itself`() = runTest {
+        film("beach.mp4")
+        val srt = other("beach.en.srt")
+
+        assertTrue(repo.rename(otherTarget(srt), "beach.fr").ok)
+
+        assertTrue(onShare("Films/beach.fr.srt"))
+        assertTrue("the video went with its subtitles", onShare("Films/beach.mp4"))
+        val row = db.shareFileDao().byId(srt)!!
+        assertEquals("beach.fr.srt", row.name)
+        assertEquals("Films/beach.fr.srt", row.relPath)
+        assertTrue("subtitles are no picture to check", picturesChecked.isEmpty())
+    }
+
+    @Test
+    fun `renaming a folder's poster has the folder's pictures checked again`() = runTest {
+        val poster = other("poster.jpg")
+
+        assertTrue(repo.rename(otherTarget(poster), "old poster").ok)
+
+        assertTrue(onShare("Films/old poster.jpg"))
+        assertEquals(listOf(filmsId), picturesChecked)
+    }
+
+    @Test
+    fun `a file that is not a video moves alone, row and all`() = runTest {
+        film("beach.mp4")
+        val poster = other("poster.jpg")
+
+        assertTrue(repo.move(listOf(otherTarget(poster)), archiveId).ok)
+
+        assertTrue(onShare("Archive/poster.jpg"))
+        assertTrue(onShare("Films/beach.mp4"))
+        assertEquals(archiveId, db.shareFileDao().byId(poster)!!.folderId)
+        assertEquals("both folders' pictures are looked at again", setOf(filmsId, archiveId), picturesChecked.toSet())
+    }
+
+    @Test
+    fun `a companion picked along with its video is moved once, not failed`() = runTest {
+        val beach = film("beach.mp4")
+        val srt = other("beach.en.srt")
+
+        val result = repo.move(listOf(file(beach), otherTarget(srt)), archiveId)
+
+        assertTrue(result.failures.toString(), result.ok)
+        assertEquals(2, result.done.size)
+        assertTrue(onShare("Archive/beach.en.srt"))
+    }
+
+    @Test
+    fun `deleting a file that is not a video takes it and its row, and nothing else`() = runTest {
+        film("beach.mp4")
+        val poster = other("poster.jpg")
+        val srt = other("beach.en.srt")
+
+        assertTrue(repo.delete(listOf(otherTarget(poster))).ok)
+
+        assertFalse(onShare("Films/poster.jpg"))
+        assertNull(db.shareFileDao().byId(poster))
+        assertNotNull("a sibling went with it", db.shareFileDao().byId(srt))
+        assertTrue(onShare("Films/beach.mp4"))
+        assertEquals(listOf(filmsId), picturesChecked)
     }
 
     // ── folders ────────────────────────────────────────────────────────

@@ -141,7 +141,7 @@ fun ShortsScreen(
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     // The poster editor, opened from the panel, comes back here rather than
-    // to the player, so its "Poster saved to …" has to be shown here too.
+    // to the player, so its "Poster set for …" has to be shown here too.
     LaunchedEffect(viewModel) { viewModel.posterMessages.collect { snackbar.showMessage(it, MessageKind.DONE) } }
 
     // The player's own brightness/volume helper, not a second one: brightness

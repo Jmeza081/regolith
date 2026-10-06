@@ -21,11 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import kotlinx.coroutines.delay
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +34,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.CardStyle
@@ -55,31 +53,29 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.util.formatBytes
+import com.regolith.ui.util.formatOtherFileCount
 import com.regolith.ui.util.formatFileCount
 import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.components.MediaTile
-import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.library.ViewMode
+import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import com.regolith.ui.components.SecondaryButton
-import com.regolith.ui.components.ConfirmDialog
-import com.regolith.ui.components.MoveToSheet
-import com.regolith.ui.components.PromptDialog
-import com.regolith.ui.components.LocalAppSnackbar
-import com.regolith.ui.components.MessageKind
-import com.regolith.ui.components.showMessage
-import com.regolith.ui.components.LocalSelectionChrome
-import com.regolith.ui.components.SelectionChromeState
-import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.util.SelectionUiState
 import com.regolith.ui.components.TopBarAction
+import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.UploadActionsHost
+import com.regolith.ui.components.UploadSection
+import com.regolith.ui.components.UploadSectionView
+import com.regolith.ui.components.UploadSource
+import com.regolith.ui.util.UploadActionsState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import com.regolith.ui.components.FileSelectionChrome
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -180,6 +176,8 @@ private fun BrowseContent(
     var playAllOpen by remember { mutableStateOf(false) }
     val selection = state.selection
     val selecting = selection != null
+    val uploadActions = viewModel.uploadActions
+    val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
 
     // No BackHandler here on purpose. Back walks UP a folder and the
     // selection comes with it — picking things that are not on one screen is
@@ -214,8 +212,8 @@ private fun BrowseContent(
                 actions = listOfNotNull(
                     // Upload into this folder (P16), only where a share is behind it:
                     // not at the Browse root, not in Phone storage, not in the demo.
-                    TopBarAction(R.drawable.rg_ic_upload, "Upload to this folder", "browse_upload_button", viewModel::openUploadSheet)
-                        .takeIf { state.canUpload },
+                    TopBarAction(R.drawable.rg_ic_upload, "Upload to this folder", "browse_upload_button") { uploadActions?.openSheet() }
+                        .takeIf { uploads.canUpload },
                     viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode),
                 ),
             )
@@ -230,6 +228,7 @@ private fun BrowseContent(
         val shares = state.rows.filterIsInstance<BrowseRow.ShareRow>()
         val folders = state.rows.filterIsInstance<BrowseRow.FolderRow>()
         val files = state.rows.filterIsInstance<BrowseRow.FileRow>()
+        val others = state.rows.filterIsInstance<BrowseRow.OtherRow>()
 
         // The folder's own CTA, above the list and only where there is
         // something to play: a folder of folders has nothing to queue.
@@ -270,16 +269,16 @@ private fun BrowseContent(
                 Text("Nothing playable in this folder.", style = TextStyles.body, color = colors.body)
                 // An empty folder on a share is where uploading is most
                 // likely wanted, and the top-bar glyph is easy to miss.
-                if (state.canUpload) {
+                if (uploads.canUpload) {
                     Spacer(Modifier.height(Spacing.s12))
-                    SecondaryButton(text = "Upload from this phone", onClick = viewModel::openUploadSheet, testTag = "browse_empty_upload_button", compact = true)
+                    SecondaryButton(text = "Upload from this phone", onClick = { uploadActions?.openSheet() }, testTag = "browse_empty_upload_button", compact = true)
                 }
             }
         }
         // Files on their way are what this folder is about to hold: no "nothing here" above them.
-        val showEmpty = state.loaded && state.rows.isEmpty() && offline == null && state.uploads == null
+        val showEmpty = state.loaded && state.rows.isEmpty() && offline == null && uploads.section == null
         val uploadSection = @Composable { section: UploadSection ->
-            UploadSectionView(section, viewModel::onUploadAction, viewModel::retryUpload, viewModel::removeUpload)
+            UploadSectionView(section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) })
         }
 
         /*
@@ -299,7 +298,7 @@ private fun BrowseContent(
             val id = highlightFileId ?: return@LaunchedEffect
             val index = files.indexOfFirst { it.fileId == id }
             if (index < 0) return@LaunchedEffect
-            val lead = (if (offline != null) 1 else 0) + (if (state.uploads != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
+            val lead = (if (offline != null) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (shares.isNotEmpty()) 1 else 0)
             runCatching {
                 if (state.viewMode == ViewMode.GRID) {
                     // + the folders eyebrow and every folder tile, + the files eyebrow.
@@ -347,7 +346,7 @@ private fun BrowseContent(
             ) {
                 if (offline != null) item { offlineCard() }
                 // At the top: the files on their way are what the user just did.
-                state.uploads?.let { section -> item(key = "browse_uploads") { uploadSection(section) } }
+                uploads.section?.let { section -> item(key = "browse_uploads") { uploadSection(section) } }
                 item { shareSection() }
                 if (folders.isNotEmpty()) {
                     item {
@@ -425,6 +424,13 @@ private fun BrowseContent(
                         }
                     }
                 }
+                if (others.isNotEmpty()) {
+                    item(key = "browse_others") {
+                        Section(formatOtherFileCount(others.size), dimmed = offline != null) {
+                            others.forEach { row -> OtherFileRow(row, selection, viewModel) }
+                        }
+                    }
+                }
                 if (showEmpty) item { emptyCard() }
             }
         } else {
@@ -442,7 +448,7 @@ private fun BrowseContent(
                 if (offline != null) item(span = { GridItemSpan(maxLineSpan) }) { offlineCard() }
                 // Rows even among tiles: a file on its way has a status line to
                 // read, and no poster yet to show.
-                state.uploads?.let { section ->
+                uploads.section?.let { section ->
                     item(key = "browse_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) }
                 }
                 if (shares.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { shareSection() }
@@ -501,218 +507,43 @@ private fun BrowseContent(
                         )
                     }
                 }
+                // Rows among the tiles, as uploads are: a subtitles file or an
+                // .nfo has no picture to make a tile of.
+                if (others.isNotEmpty()) {
+                    item(key = "browse_others", span = { GridItemSpan(maxLineSpan) }) {
+                        Section(formatOtherFileCount(others.size), dimmed = offline != null) {
+                            others.forEach { row -> OtherFileRow(row, selection, viewModel) }
+                        }
+                    }
+                }
                 if (showEmpty) item(span = { GridItemSpan(maxLineSpan) }) { emptyCard() }
             }
         }
     }
 
-        // Over the list rather than in it, so the count stays put while the
-        // list scrolls under it. Sits above the nav pill on a phone and at
-        // the foot of the pane on a wide window, from the same insets.
-        // The nav pill becomes this selection's toolbar (SelectionChrome):
-        // the screen keeps the behaviour — the dialogs, the repository, the
-        // undo — and lends the chrome its buttons. Cancel is drawn by the
-        // pill, in the cell where Home sits when it is a nav.
-        val selectionChrome = LocalSelectionChrome.current
-        DisposableEffect(selection, state.canManage, state.canRename) {
-            val live = selection
-            if (live == null) {
-                selectionChrome.clear()
-            } else {
-                selectionChrome.show(
-                    SelectionChromeState(
-                        verbs = listOf(
-                            SelectionVerb("Download", R.drawable.rg_ic_download, viewModel::downloadSelection, "browse_select_download", enabled = live.canDownload),
-                            SelectionVerb("Move", R.drawable.rg_ic_folder_go, viewModel::startMove, "browse_select_move", enabled = state.canManage),
-                            SelectionVerb("Rename", R.drawable.rg_ic_rename, viewModel::startRename, "browse_select_rename", enabled = state.canRename),
-                            SelectionVerb("Delete", R.drawable.rg_ic_trash, viewModel::startDelete, "browse_select_delete", enabled = state.canManage, destructive = true),
-                        ),
-                        onCancel = viewModel::cancelSelection,
-                        summary = live.summary,
-                        // The hint explains a GREY verb, so it outranks the
-                        // selection's own qualifier when both apply.
-                        detail = state.selectionHint ?: live.detail,
-                    ),
-                )
-            }
-            onDispose { selectionChrome.clear() }
-        }
+        // The nav pill becomes this selection's toolbar, and the dialogs, the
+        // move sheet and the messages are drawn by the shared host: the same
+        // four verbs behave the same way here and in the Library.
+        FileSelectionChrome(
+            selection = selection,
+            actions = viewModel.fileActions,
+            here = state.currentFolderId,
+            tagPrefix = "browse",
+            onDownload = viewModel::downloadSelection,
+            onCancel = viewModel::cancelSelection,
+        )
+        FileActionsHost(viewModel.fileActions, tagPrefix = "browse")
 
-        state.renaming?.let { target ->
-            // A folder has no extension to protect, so the whole name is
-            // the field; a video keeps its suffix outside it, where it
-            // cannot be typed away.
-            val ext = if (target.isFolder) "" else target.name.substringAfterLast('.', "")
-            PromptDialog(
-                title = if (target.isFolder) "Rename folder" else "Rename video",
-                label = "Name",
-                initialValue = if (target.isFolder) target.name else FileNames.baseOf(target.name),
-                confirmLabel = "Rename",
-                onConfirm = viewModel::rename,
-                onCancel = viewModel::cancelRename,
-                testTag = "browse_rename",
-                note = when {
-                    target.isFolder -> "Everything inside keeps its place — the folder moves as one."
-                    ext.isEmpty() -> "Chapters and your place follow the new name."
-                    else -> "Keeps .$ext — chapters and your place follow the new name."
-                },
-                maxLength = FileNames.MAX_BASE,
+        // Files from the phone into this folder (P16) and its poster (P19).
+        uploadActions?.let { actions ->
+            UploadActionsHost(
+                actions = actions,
+                title = "Upload to ${state.title}",
+                detail = listOfNotNull(state.breadcrumb, uploads.serverName?.let { "on $it" }).joinToString(" · ").ifEmpty { null },
+                sources = listOf(UploadSource.GALLERY, UploadSource.FILES, UploadSource.POSTER),
+                posterNoun = "folder",
+                onSendingAway = onSendingAway,
             )
-        }
-
-        state.confirmingDelete?.let { target ->
-            ConfirmDialog(
-                title = deleteTitle(target),
-                body = deleteBody(target),
-                confirmLabel = deleteConfirmLabel(target),
-                keepLabel = if (target.targets.size == 1) "Keep it" else "Keep them",
-                onConfirm = viewModel::confirmDelete,
-                onKeep = viewModel::cancelDelete,
-                testTag = "browse_delete",
-            )
-        }
-
-        state.moveSheet?.let { sheet ->
-            MoveToSheet(
-                state = sheet,
-                onUp = viewModel::moveUp,
-                onOpen = viewModel::moveWalk,
-                onChoose = viewModel::moveChoose,
-                onNewFolder = viewModel::startNewFolder,
-                onConfirm = viewModel::confirmMove,
-                onDismiss = viewModel::dismissMove,
-            )
-        }
-
-        // Over the sheet rather than instead of it: the folder is being made
-        // as an answer to "where?", so the picker stays open behind and comes
-        // back with the new folder already chosen.
-        if (state.newFolderIn != null) {
-            PromptDialog(
-                title = "New folder",
-                label = "Name",
-                initialValue = "",
-                placeholder = "Season 02",
-                confirmLabel = "Create",
-                onConfirm = viewModel::createFolder,
-                onCancel = viewModel::cancelNewFolder,
-                testTag = "browse_new_folder",
-                note = "Made on the share, inside ${state.moveSheet?.breadcrumb?.substringAfterLast(" / ") ?: "this folder"}.",
-                maxLength = FileNames.MAX_BASE,
-            )
-        }
-
-        // ── Uploads (P16) ──────────────────────────────────────────────
-        // The two system pickers. `rememberLauncherForActivityResult` is the
-        // Compose spelling of registerForActivityResult: the result comes
-        // back to this spot in the composition, even if the Activity was
-        // recreated while the picker was open. Neither needs a permission —
-        // the pickers are the system's, and they hand back only what was chosen.
-        val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
-            viewModel.onPicked(uris.map { it.toString() })
-        }
-        val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-            viewModel.onPicked(uris.map { it.toString() })
-        }
-        // One picture, to be the folder's poster (P19): images only, and one.
-        val posterPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null) viewModel.onPosterPicked(uri.toString())
-        }
-        if (state.uploadSheet) {
-            UploadSourceSheet(
-                folderName = state.title,
-                detail = listOfNotNull(state.breadcrumb, state.uploadServer?.let { "on $it" }).joinToString(" · ").ifEmpty { null },
-                onPhotos = {
-                    viewModel.dismissUploadSheet()
-                    onSendingAway()
-                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                },
-                onFiles = {
-                    viewModel.dismissUploadSheet()
-                    onSendingAway()
-                    filePicker.launch(arrayOf("*/*"))
-                },
-                onPoster = {
-                    viewModel.dismissUploadSheet()
-                    onSendingAway()
-                    posterPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                onDismiss = viewModel::dismissUploadSheet,
-            )
-        }
-        state.uploadQuestion?.let { question ->
-            UploadQuestionSheet(question, onAnswer = viewModel::answerUploadQuestion, onDismiss = viewModel::dismissUploadQuestion)
-        }
-        state.posterQuestion?.let { question ->
-            PosterQuestionSheet(question, onAnswer = viewModel::answerPosterQuestion, onDismiss = viewModel::dismissPosterQuestion)
-        }
-
-        // One host for the whole app, drawn by the chrome above the pill.
-        val snackbar = LocalAppSnackbar.current
-        LaunchedEffect(state.fileOpMessage) {
-            val message = state.fileOpMessage ?: return@LaunchedEffect
-            // A failure stays up longer (showMessage's default for FAILED),
-            // and the ring around its icon shows the longer life running down.
-            val result = snackbar.showMessage(
-                message.text,
-                kind = if (message.failed) MessageKind.FAILED else MessageKind.DONE,
-                actionLabel = if (message.undo != null) "Undo" else null,
-            )
-            if (result == SnackbarResult.ActionPerformed) viewModel.undoMove() else viewModel.clearFileOpMessage()
-        }
-    }
-}
-
-/**
- * The delete dialog's three lines, kept together because they have to agree.
- *
- * A folder is the case worth being careful with: the server's delete is
- * recursive and takes files the app never indexed — subtitles, artwork,
- * other formats — so the body says what Regolith can count AND admits to
- * what it cannot. The counts come from rows already on the device, which is
- * why the dialog opens instantly instead of behind a network walk.
- */
-private fun deleteTitle(target: DeleteTarget): String = when {
-    target.folderCount == 0 -> if (target.targets.size == 1) "Delete this video?" else "Delete ${target.targets.size} videos?"
-    target.targets.size == 1 -> "Delete this folder?"
-    else -> "Delete ${target.targets.size} items?"
-}
-
-private fun deleteConfirmLabel(target: DeleteTarget): String = when {
-    target.folderCount == 0 -> if (target.targets.size == 1) "Delete video" else "Delete ${target.targets.size} videos"
-    target.targets.size == 1 -> "Delete folder"
-    else -> "Delete ${target.targets.size} items"
-}
-
-/** "1 video" / "9 videos" — the delete dialog counts films, not files on disk. */
-private fun videos(n: Int): String = if (n == 1) "1 video" else "$n videos"
-
-private fun deleteBody(target: DeleteTarget): String {
-    val forever = "This can't be undone"
-    val insideFolders = "A folder takes everything inside it, including files Regolith doesn't list"
-    val alsoGone = "the chapters you wrote and where you left off go with"
-    return when {
-        // Files only: the shape this dialog had before folders existed.
-        target.folderCount == 0 && target.targets.size == 1 ->
-            "${target.names.first()} leaves the share for good — ${target.sizeLabel}. $forever, and $alsoGone it."
-        target.folderCount == 0 ->
-            "${target.sizeLabel} leaves the share for good. $forever, and $alsoGone them."
-        // One folder, named, with what is known to be inside it.
-        target.targets.size == 1 -> {
-            val holds = if (target.videoCount == 0) {
-                "Regolith doesn't list anything in it"
-            } else {
-                "${videos(target.videoCount)} · ${target.sizeLabel}"
-            }
-            "${target.names.first()} and everything inside it leaves the share for good — $holds. " +
-                "$insideFolders. $forever, and $alsoGone them."
-        }
-        else -> {
-            val folders = if (target.folderCount == 1) "1 folder" else "${target.folderCount} folders"
-            val files = target.targets.size - target.folderCount
-            val picked = if (files == 0) folders else "$folders and ${videos(files)}"
-            "$picked leave the share for good — ${videos(target.videoCount)} · ${target.sizeLabel} in all. " +
-                "$insideFolders. $forever."
         }
     }
 }
@@ -778,6 +609,45 @@ private fun NoSourceContent(onAddServer: () -> Unit) {
     }
 }
 
+/** What a screen with no folder (the Browse root) reads in place of its uploads. */
+private val NoUploads: StateFlow<UploadActionsState> = MutableStateFlow(UploadActionsState())
+
 /** Long enough to find with your eye, short enough not to look stuck. */
 private const val FLASH_HOLD_MS = 1_200L
 private const val FLASH_FADE_MS = 500
+
+/**
+ * One file that is not a video, by its real name, its kind and its size.
+ * Picked like a video (hold, then tap), and moved, renamed or deleted on
+ * its own: a companion picked by itself goes alone. Tapping it otherwise
+ * opens nothing, since the app has nothing to show it in.
+ */
+@Composable
+private fun OtherFileRow(row: BrowseRow.OtherRow, selection: SelectionUiState?, viewModel: BrowseViewModel) {
+    // As for a video: picked itself, or inside a picked folder and not
+    // taken back out.
+    val coming = selection?.pickedOthers?.contains(row.otherId) == true ||
+        (selection?.coversFile(row.shareId, row.folderRelPath) == true && !selection.excludedOthers.contains(row.otherId))
+    ListRow(
+        title = row.name,
+        meta = "${row.kind.label} · ${formatBytes(row.sizeBytes)}",
+        leading = RowLeading.IconBox(iconFor(row.kind)),
+        trailing = if (coming) RowTrailing.Checked else RowTrailing.None,
+        compact = true,
+        onClick = if (selection != null) {
+            { viewModel.toggleSelection(row) }
+        } else {
+            {}
+        },
+        onLongClick = { viewModel.beginSelection(row) },
+        testTag = row.testTag,
+    )
+}
+
+private fun iconFor(kind: OtherFiles.Kind): Int = when (kind) {
+    OtherFiles.Kind.PICTURE -> LucideR.drawable.lucide_ic_image
+    OtherFiles.Kind.SUBTITLES -> LucideR.drawable.lucide_ic_captions
+    OtherFiles.Kind.CHAPTERS -> LucideR.drawable.lucide_ic_list_ordered
+    OtherFiles.Kind.INFO -> LucideR.drawable.lucide_ic_file_text
+    OtherFiles.Kind.OTHER -> LucideR.drawable.lucide_ic_file
+}

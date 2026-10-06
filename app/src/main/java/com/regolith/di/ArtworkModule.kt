@@ -38,6 +38,9 @@ abstract class ArtworkModule {
     // The chapter side prunes moment frames through this seam rather than
     // depending on the resolver itself; see MomentFrames.
     @Binds abstract fun bindMomentFrames(impl: ArtworkRepository): MomentFrames
+    // The file operations ask for a picture check through this after they
+    // change a picture on the share; see FolderPictures.
+    @Binds abstract fun bindFolderPictures(impl: ArtworkRepository): com.regolith.data.artwork.FolderPictures
 
     companion object {
         /** The artwork pipeline's last resort for a runtime: the container probe. */
