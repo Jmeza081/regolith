@@ -3,6 +3,7 @@ package com.regolith.data.prefs
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.regolith.domain.display.NavHideAfter
@@ -49,6 +50,7 @@ class AppPreferences @Inject constructor(
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val navHideAfter = stringPreferencesKey("nav_hide_after")
         val postersPerRow = stringPreferencesKey("posters_per_row")
+        val titleParserVersion = intPreferencesKey("title_parser_version")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
@@ -241,6 +243,17 @@ class AppPreferences @Inject constructor(
 
     suspend fun setPostersPerRow(perRow: PostersPerRow) {
         store.edit { it[Keys.postersPerRow] = perRow.name }
+    }
+
+    /**
+     * The [com.regolith.domain.library.TitleParser.VERSION] every stored
+     * parse is at. Behind it, `LibraryRepository.ensureNamesParsed` re-parses
+     * the names once. 0 on an install that has never checked.
+     */
+    val titleParserVersion: Flow<Int> = store.data.map { it[Keys.titleParserVersion] ?: 0 }
+
+    suspend fun setTitleParserVersion(version: Int) {
+        store.edit { it[Keys.titleParserVersion] = version }
     }
 
     /**

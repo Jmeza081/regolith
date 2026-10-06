@@ -31,6 +31,7 @@ import com.regolith.domain.smb.SmbHost
 import com.regolith.domain.smb.listingRetryDelayMs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -61,9 +62,25 @@ class LibraryRepository @Inject constructor(
     private val recentSearchDao: RecentSearchDao,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
     private val chapterSync: com.regolith.data.media.ChapterSyncRepository,
+    private val prefs: com.regolith.data.prefs.AppPreferences,
 ) : FolderLookup {
     /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
     data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
+
+    /**
+     * Bring every stored parse up to [TitleParser.VERSION], once. A listing
+     * re-parses its own folder, but a library has folders nobody lists again
+     * until the next scan, and their videos would keep the names an older
+     * parser gave them. Cheap: the names are already on the device. Run at
+     * startup (AppViewModel).
+     */
+    suspend fun ensureNamesParsed() {
+        if (prefs.titleParserVersion.first() >= TitleParser.VERSION) return
+        val files = mediaFileDao.reparseNames()
+        val folders = folderDao.reparseNames()
+        Log.i(TAG, "names parsed again for parser ${TitleParser.VERSION}: $files videos and $folders folders changed")
+        prefs.setTitleParserVersion(TitleParser.VERSION)
+    }
 
     fun observeFolder(folderId: Long): Flow<FolderEntity?> = folderDao.observe(folderId)
 

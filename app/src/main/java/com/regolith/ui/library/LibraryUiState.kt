@@ -229,6 +229,20 @@ sealed interface DeviceFilter {
 enum class RemoveTarget { PICKED, EVERYTHING }
 
 /**
+ * No two videos on one wall wear the same name. Where two parse to the same
+ * title (one film in two qualities, say), each is named by its own file
+ * instead, which a share keeps unique within a folder. Every video in a
+ * collection is its own thing, and two tiles reading alike say otherwise.
+ */
+internal fun List<LibraryTile>.withUniqueTitles(): List<LibraryTile> {
+    val counts = filterIsInstance<LibraryTile.Title>().groupingBy { it.name }.eachCount()
+    if (counts.values.none { it > 1 }) return this
+    return map { tile ->
+        if (tile is LibraryTile.Title && (counts[tile.name] ?: 0) > 1) tile.copy(name = tile.fileName.substringBeforeLast('.')) else tile
+    }
+}
+
+/**
  * Install a freshly built wall onto the live state.
  *
  * Copies the BUILT fields onto the existing state, not the other way

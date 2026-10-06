@@ -29,6 +29,17 @@ data class ParsedName(
 }
 
 object TitleParser {
+    /**
+     * Bumped whenever a name would now parse differently. The parse is
+     * stored on each row when its folder is listed, so a change only reaches
+     * rows listed since; `LibraryRepository.ensureNamesParsed` re-parses the
+     * rest once, when the stored version is older than this.
+     *
+     * 2 (2026-10-06): a year only ends a title when nothing follows it but
+     * release noise, so "Hawaii 2019 - day 1" keeps its whole name.
+     */
+    const val VERSION = 2
+
     private val titleYear = Regex("""^(.+?)\s*[(\[](\d{4})[)\]]\s*$""")
     private val episodeTag = Regex("""(?i)(?:^|[\s._-])S(\d{1,2})[\s._-]?E(\d{1,3})(?=$|[\s._-])""")
     private val altEpisodeTag = Regex("""(?i)(?:^|[\s._-])(\d{1,2})x(\d{2,3})(?=$|[\s._-])""")
@@ -70,16 +81,25 @@ object TitleParser {
         var year: Int? = null
         for ((i, t) in tokens.withIndex()) {
             if (i == 0) continue // a name can start with a year ("2001 A Space Odyssey")
-            if (yearToken.matches(t) && (i == tokens.lastIndex || i > 0)) {
+            // A year ends the title only where a release name puts it: last,
+            // or followed by release noise. Followed by words, it is part of
+            // the name: "Hawaii 2019 - day 1" is not "Hawaii (2019)", and
+            // cutting there gave day 1 and day 2 the same title. Followed by
+            // another year, the later one is the release year
+            // ("Blade.Runner.2049.2017.1080p").
+            if (yearToken.matches(t) && tokens.getOrNull(i + 1).let { it == null || isNoise(it) }) {
                 year = t.toInt(); cut = i; break
             }
-            if (resolutionToken.matches(t) || t.lowercase() in releaseTags) {
+            if (isNoise(t)) {
                 cut = i; break
             }
         }
         val title = cleanTitle(tokens.take(cut).joinToString(" ")).ifEmpty { cleanTitle(text) }
         return ParsedName(title, year = year)
     }
+
+    /** A resolution or a release tag: where a release name's title has ended. */
+    private fun isNoise(token: String): Boolean = resolutionToken.matches(token) || token.lowercase() in releaseTags
 
     private fun stripExtension(name: String): String {
         val dot = name.lastIndexOf('.')

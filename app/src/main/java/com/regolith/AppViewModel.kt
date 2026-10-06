@@ -7,6 +7,7 @@ import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.scan.ScanRepository
+import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.PhoneLibrary
 import com.regolith.data.repository.StorageSweeper
 import com.regolith.data.transfer.SelectionStore
@@ -75,6 +76,7 @@ class AppViewModel @Inject constructor(
     scans: ScanRepository,
     prefetcher: ArtworkPrefetcher,
     private val uploads: UploadRepository,
+    library: LibraryRepository,
 ) : ViewModel() {
 
     // --- The app lock (fingerprint, face, or the screen lock).
@@ -162,6 +164,10 @@ class AppViewModel @Inject constructor(
         // The same for uploads, which also hands back read access to phone
         // files no row needs any more (P16).
         viewModelScope.launch { uploads.resumeInterrupted() }
+        // Names stored under an older parser, parsed again once (see
+        // TitleParser.VERSION), so videos the scan has not reached since
+        // stop wearing the old names.
+        viewModelScope.launch { library.ensureNamesParsed() }
         // Downloads and artwork whose rows have gone. Startup for the same
         // reason: nothing else in the app's life is a safe moment to decide
         // that a file on disk is unclaimed, and this is the one place that

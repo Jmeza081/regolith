@@ -9,6 +9,7 @@ import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareEntity
+import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.media.ShortsRule
 import kotlinx.coroutines.flow.first
@@ -49,6 +50,30 @@ class MediaFileDaoTest {
         shareId = shareId, folderId = folderId, relPath = relPath, name = relPath.substringAfterLast('/'), ext = "mkv",
         sizeBytes = size, modifiedAtMs = 1, durationMs = null, missing = false, addedAtMs = 1, lastSeenAtMs = 1,
     )
+
+    @Test
+    fun `a listing that no longer finds a year clears the one stored`() = runTest {
+        val name = "Hawaii 2019 - day 1.mp4"
+        db.mediaFileDao().upsert(file(name).copy(titleParsed = "Hawaii", year = 2019))
+        val listed = TitleParser.parseVideoName(name)
+        val row = db.mediaFileDao().upsert(file(name).copy(titleParsed = listed.title, year = listed.year))
+        assertNull("an older parser's year outlived the name", row.year)
+        assertEquals("Hawaii 2019 day 1", db.mediaFileDao().byId(row.id)!!.titleParsed)
+    }
+
+    @Test
+    fun `reparsing the names rewrites only the rows a parser change affects`() = runTest {
+        // As an older parser left them: day 1 cut at its year, Arrival right.
+        val day1 = db.mediaFileDao().upsert(file("Hawaii 2019 - day 1.mp4").copy(titleParsed = "Hawaii", year = 2019))
+        db.mediaFileDao().upsert(file("Arrival.2016.mkv").copy(titleParsed = "Arrival", year = 2016))
+
+        assertEquals(1, db.mediaFileDao().reparseNames())
+
+        val row = db.mediaFileDao().byId(day1.id)!!
+        assertNull(row.year)
+        assertEquals("Hawaii 2019 day 1", row.titleParsed)
+        assertEquals(0, db.mediaFileDao().reparseNames())
+    }
 
     @Test
     fun `upsert keeps the id and refreshes size`() = runTest {

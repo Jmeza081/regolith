@@ -369,7 +369,7 @@ class LibraryViewModel @AssistedInject constructor(
         return LibraryUiState(
             title = parentTitle,
             meta = meta.takeIf { shares.isNotEmpty() },
-            tiles = tiles,
+            tiles = tiles.withUniqueTitles(),
             loaded = true,
             noSource = shares.isEmpty(),
             scanning = runs.any { it.status == ScanRunEntity.RUNNING },
