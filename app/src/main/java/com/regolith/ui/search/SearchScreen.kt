@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -111,6 +113,16 @@ fun SearchScreen(
 
     val selection = state.selection
     val selecting = selection != null
+    // A pick brings the selection's toolbar up from the bottom, which is
+    // where the keyboard is: picking means the typing is done for now.
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(selecting) {
+        if (selecting) {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+    }
     // Screen state, not ViewModel state: whether a sheet is open dies with
     // the screen, unlike the filter it sets.
     var momentSheet by remember { mutableStateOf(false) }

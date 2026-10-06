@@ -78,7 +78,11 @@ import com.regolith.ui.theme.scaledDp
  */
 @Composable
 fun NavPill(
-    selected: MainTab,
+    /**
+     * The tab you are on, or null on a screen that is no tab: Search, where
+     * the pill only ever appears as a selection's toolbar.
+     */
+    selected: MainTab?,
     onSelect: (MainTab) -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
@@ -93,8 +97,8 @@ fun NavPill(
     vertical: Boolean = false,
     /**
      * Non-null while something is selected: the pill stops being a nav and
-     * becomes that selection's toolbar. Phones only — a wide window's rail
-     * sits on the side edge where a bottom toolbar never belonged.
+     * becomes that selection's toolbar, in both shapes, the pill on a phone
+     * and the rail on a wide window.
      */
     selection: SelectionChromeState? = null,
 ) {
@@ -320,7 +324,8 @@ private const val MODE_MS = 140
  */
 @Composable
 fun NavRailSpine(
-    selected: MainTab,
+    /** As on the pill: null on a screen that is no tab. */
+    selected: MainTab?,
     onExpand: () -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,

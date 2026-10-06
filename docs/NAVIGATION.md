@@ -120,6 +120,10 @@ page is pushed and slides in, as it has since Phase 6.
 
 ## Pushed screens (pill hidden)
 
+One exception: while something is picked, Search brings the nav chrome up
+as the selection's toolbar (never as tabs), because that toolbar is the only
+place the selection's verbs live.
+
 | Key | Reached from | Phase |
 |---|---|---|
 | `Onboarding` | first launch only; Skip → `[Home]`, "Find my server" → `[Home, AddServer.Search]` | 6 |

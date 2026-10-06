@@ -235,6 +235,20 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     } else {
         selecting || messageUp || navChromeHold.held || (!railIdle && !pillScroll.hidden)
     }
+    // Search is a pushed screen with no nav of its own, but a pick made there
+    // needs the selection's toolbar, and the toolbar IS the nav chrome. So
+    // the chrome comes up on Search while something is picked, and stays
+    // while the message that reports on it is showing: a message needs a
+    // host to be shown in, or it holds the queue (see the wide window's host
+    // below). The pill itself appears there only as the toolbar, never as a nav.
+    val searchChrome = topKey is RegolithKey.Search && (selecting || messageUp)
+    val pillHere = currentTab != null || selecting
+    // Search has no rail beside it, so while the rail is its toolbar it moves
+    // over to make room, as the tab screens always have (tabContent).
+    val searchInset by animateDpAsState(
+        if (windowShape.wide && selecting && topKey is RegolithKey.Search) NAV_RAIL_INSET else 0.dp,
+        label = "searchInset",
+    )
     // F6 reserved the rail's 102dp even while it was slid away, so nothing
     // would reflow. What that actually produced was a screen with an obvious
     // empty stripe down the side and no rail in it — and the two ways of
@@ -559,6 +573,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
                                 // A point of interest opens the player at that time (P9).
                                 onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
+                                modifier = Modifier.padding(start = searchInset),
                             )
                         }
                         entry<RegolithKey.Browse>(metadata = tabScreen + WallSceneStrategy.wall()) { key ->
@@ -726,7 +741,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     LockScreen(authenticate = appViewModel::authenticate, onUnlocked = appViewModel::unlocked)
                 }
 
-                if (currentTab != null && !splash && locked != true) {
+                if ((currentTab != null || searchChrome) && !splash && locked != true) {
                     // A wide window's message has no pill to ride above, so it
                     // docks to the bottom of the window instead, clear of the
                     // rail on the start edge. Without this the message was
@@ -762,7 +777,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // idle seconds, and a scan that is still running is exactly
                     // what someone who has stopped touching the screen wants to
                     // be able to see.
-                    if (windowShape.wide) {
+                    if (windowShape.wide && currentTab != null) {
                         BackgroundWorkTier(
                             backgroundWork,
                             hazeState,
@@ -774,7 +789,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         )
                     }
                     AnimatedVisibility(
-                        visible = !railVisible && windowShape.wide,
+                        visible = !railVisible && windowShape.wide && currentTab != null,
                         enter = fadeIn(),
                         exit = fadeOut(),
                         modifier = Modifier.align(Alignment.CenterStart),
@@ -791,7 +806,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         )
                     }
                     AnimatedVisibility(
-                        visible = navVisible,
+                        // A phone's group also carries the message host, which
+                        // Search needs after its selection has ended; the
+                        // rail is the nav and nothing else.
+                        visible = if (windowShape.wide) navVisible && pillHere else navVisible,
                         // The rail leaves by the start edge it lives on; the
                         // pill leaves by the bottom, which is where it already
                         // sits and the shortest way out of the way.
@@ -825,10 +843,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 // lived of the three and should not shuffle
                                 // when one of them appears. A wide window has
                                 // no "above" — see the bottom-docked copy below.
-                                BackgroundWorkTier(
-                                    backgroundWork, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18),
-                                    onOpen = { openUploadFolder(it.folderId) },
-                                )
+                                if (currentTab != null) {
+                                    BackgroundWorkTier(
+                                        backgroundWork, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18),
+                                        onOpen = { openUploadFolder(it.folderId) },
+                                    )
+                                }
                                 // What is picked, and why a verb might be grey.
                                 // The pill has no room for a sentence, so it
                                 // rides directly above it in the same glass.
@@ -837,7 +857,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 }
                                 ChromeMessageHost(appSnackbar, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                             }
-                            NavPill(
+                            if (pillHere) NavPill(
                                 selected = currentTab,
                                 onSelect = { tab ->
                                     if (backStack.lastOrNull() == tab.key) tabReselects.tryEmit(tab) else navigateToTab(tab)
