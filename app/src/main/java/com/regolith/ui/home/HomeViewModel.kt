@@ -1,5 +1,7 @@
 package com.regolith.ui.home
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.db.MediaFileEntity
@@ -35,9 +37,11 @@ class HomeViewModel @Inject constructor(
     private val library: LibraryRepository,
     private val scans: ScanRepository,
     transfers: TransferRepository,
+    spoof: SpoofMode,
 ) : ViewModel() {
 
-    private val resume = library.observeResume(RESUME_LIMIT)
+    // Every row's files go through spoof mode before anything is named from them.
+    private val resume = library.observeResume(RESUME_LIMIT, spoof)
     private val shares = sources.observeEnabledShares()
     private val runs = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
 
@@ -47,10 +51,10 @@ class HomeViewModel @Inject constructor(
         .flatMapLatest { rows ->
             val ready = rows.filter { it.status == TransferStatus.DONE.name }
                 .sortedByDescending { it.finishedAtMs ?: it.updatedAtMs }
-            library.observeFilesByIds(ready.map { it.fileId }).map { files -> ready to files }
+            library.observeFilesByIds(ready.map { it.fileId }).spoofed(spoof) { files(it) }.map { files -> ready to files }
         }
 
-    private val newest = library.observeNewest(NEW_LIMIT)
+    private val newest = library.observeNewest(NEW_LIMIT).spoofed(spoof) { files(it) }
         .flatMapLatest { files -> library.observeProgress(files.map { it.id }).map { p -> files to p } }
 
     val uiState: StateFlow<HomeUiState> = combine(

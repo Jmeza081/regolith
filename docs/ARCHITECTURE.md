@@ -420,6 +420,46 @@ off the container, and scrubbing shows real frames — with the network off.
 `probeReachable` skip it instead of failing against a host that does not
 exist. Gated by `BuildConfig.DEMO_LIBRARY`.
 
+## Spoof mode
+
+Settings › Demo › Spoof mode shows the owner's real library with every name
+and picture made up, for a demo or a screen recording. It changes what the
+phone draws and nothing else: Room keeps the real rows, and the share is never
+written.
+
+```
+AppPreferences.spoofSalt ── SpoofMode.state: Spoof? ─┬─ ViewModels: rows.spoofed(spoof) { files(it) / folders(it) / matches(it) / browseItems(it) }
+  (salt picked on first use)                         │     names made up, ids + relPaths real → playing, picking, downloading still find the file
+                                                     ├─ MainActivity ── LocalSpoof ── ArtworkImage / ArtworkLight: model = spoof.image(request)
+                                                     │     SpoofImage(seed, w, h) ── SpoofImageFetcher ── picsum.photos/seed/…, kept in cacheDir/spoof
+                                                     ├─ PlaybackSession: title, Up next, lock-screen MediaMetadata, user chapter names
+                                                     ├─ TransferQueueWorker / ScanWorker: notification text
+                                                     └─ FileOpsRepository.readOnly → ReadOnlySource.SPOOF: no move, rename, delete, upload,
+                                                           chapter edit or poster while it is on
+```
+
+What a web developer would not guess:
+
+- **Names are made up on the way IN to a screen, not on the way out.** A
+  ViewModel passes the rows it reads through `spoofed`, which combines them
+  with `SpoofMode.state`, so switching re-emits every screen at once. The
+  background work (scans, artwork, transfers) reads the DAOs directly and
+  never sees a made-up name, which is why the artwork cache cannot be
+  polluted by one.
+- **Pictures are swapped in the composable, by a composition local.** Coil
+  only loads again when the model changes; swapping inside the fetcher would
+  have left every picture already on screen as it was until a restart.
+- **A made-up name is worked out, never stored** (`SpoofNames`, pure): the
+  same real name and install salt always give the same two words, so a
+  folder's tile, its paths and its videos agree. Photos are picked by the
+  owner's database id and the salt, so the photo service learns nothing.
+- **It is read-only while on**, through the same `ReadOnlySource` gate the
+  demo library uses. That is a guarantee, not a nicety: the chapter editor
+  seeds its draft from the chapters on screen, so saving there would have
+  written made-up names to the share.
+- **The first value is read synchronously** when `SpoofMode` is created, so
+  a launch never draws one frame of real names before the setting arrives.
+
 ## User chapters (P9)
 
 Every file already had chapters — the container's own markers, or the even
@@ -766,6 +806,7 @@ MainActivity ── EXTRA_OPEN_UPLOAD_FOLDER (either notification) ── reques
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-10-06 | **Spoof mode: a display-only stand-in for the whole library** (`SpoofMode`, `Spoof`, `SpoofNames`, `SpoofImage`, `LocalSpoof`, `ReadOnlySource.SPOOF`) | The owner asked for a demo mode that "doesn't actually touch the SMB, it just changes their display information on the phone only". **Made up at the ViewModels' inputs** (`Flow.spoofed`) rather than in the repositories, because the same repository flows feed the artwork walk and the selection's coverage, which must see real names and paths; and rather than at each string, because there are dozens of those and only a dozen inputs. Real ids and relPaths ride along, so playing and downloading are untouched. **Pictures swap in `ArtworkImage`/`ArtworkLight` through a composition local** so toggling reloads what is on screen. **Photos from Lorem Picsum**, which serves Unsplash photographs by seed with no key; the Unsplash API itself needs a key in the APK and caps a demo app at 50 requests an hour, and its keyless random endpoint is gone. Kept in the cache directory, so they cost a few hundred kilobytes once. **Names are readable two-word titles keeping year, episode and structural folders** ("Season 01", "DCIM"), so a demo still reads as a library. **Read-only while on**, since the chapter editor would otherwise save made-up names to the share. Server and share names, the share's folder picker and Settings stay real: they are configuration, not the library. Search's moment chips are hidden while on, because a made-up label cannot find the real name it stands for. |
 | 2026-10-06 | **A leaf collection opens as its own page, a profile, instead of a plain wall** (`CollectionProfile`, `collectionProfile`, `ProfileHeader`, `ProfileTabs`, `MomentTile`; `ArtworkLight` lifted out of the player) | The owner wanted a collection to read like a channel's page, and set the rule: "only the leaf node collections should have this". Direction chosen on the canvas *Collection View Refinements*: C's light with A's tabs. **The rule is read off the wall itself:** a collection whose wall would hold videos and no collections is a profile; anything holding a collection stays a wall, loose videos or not. No new column or scan step: the same build that makes the tiles decides it, so moving a folder of videos in turns a profile back into a wall at the next emission. **The header is the wall's first item, not a pinned block over it.** A pinned header would leave a phone a third of a screen of wall; in the list it scrolls away, and the top bar floats over it (transparent over the light, filled in with the collection's name once the header has gone under it), so the light can run up under the status bar. Moments are a column rule away from the videos: the same grid swaps its `columns` (`ThumbCells`, Search's 2–4 across) and keeps one scroll state, so switching tabs never jumps. **The light is the player's Mirror recipe, shared:** `ArtworkLight` (scale, blur, saturate, fade) now draws both, the player keeping its frame sample inside the same blur; the profile uses the poster held still, since a moving GIF re-blurred every frame would cost more than the page. **Moments are named chapters only**, the same points of interest Search finds; an unnamed mark is arithmetic. **Runtime is left out until every video's length is known**, the rule Play all's sheet already follows. Rejected: a banner image (most collections have only a poster, so it needed a fallback chain anyway), and a fixed header column on the inner display (it does not survive a title's page taking half the window). |
 | 2026-10-06 | **Every video reads as its own: a year only ends a title where a release name puts it, stored parses are refreshed, and no two tiles on a wall share a name** (`TitleParser.VERSION` 2, `MediaFileDao.upsert`, `reparseNames`, `LibraryRepository.ensureNamesParsed`, `withUniqueTitles`) | The owner's rule after 0.19.0: "every video in the library should not be merged, but should be a unique video instead". The parser cut a title at the first year it met, so "Hawaii 2019 - day 1" and "day 2" both read "Hawaii (2019)". **A year now ends the title only when nothing follows it or release noise does** (a resolution, a release tag); followed by words it is part of the name, and of two years the release year is the one the noise follows ("Blade.Runner.2049.2017.1080p" is Blade Runner 2049, 2017, where it used to be Blade Runner, 2049). **The stored parse was sticky:** `upsert` kept an old year when a new parse had none, so a fixed parser would have produced "Hawaii 2019 day 1 (2019)". Both callers parse the name afresh, so the parse is now taken as it comes. Rows in folders nobody lists again are parsed once more at startup when `TitleParser.VERSION` moves past the stored one, the way `ArtworkStore.GENERATION` cleans artwork; the search index follows through Room's triggers. **And a wall never shows two tiles with one name:** where parsing still makes two alike (one film in two qualities), both fall back to their file names, which a share keeps unique in a folder. |
 | 2026-10-06 | **How many posters a Library wall shows across the inner display is a setting: five, six or seven** (`PostersPerRow`, `AppPreferences.postersPerRow`, Settings › Display, `wallColumns` and `WallCells` moved to `ui/library/WallColumns.kt`, `LocalNavRailInset`) | The owner's ask: seven fit the Fold 8's inner display and use it well, but the posters come out small. The setting gives the count with the wall at full width, beside the rail, either way up; seven stays the default because it is what that display showed. **With a title's page open, the posters keep the size the setting gave them** (the nearest whole number of columns, never fewer than two), so opening a page still reads as the wall making room. That needs the wall's full width while the page has half of it, so the rail's current inset is published to screens (`LocalNavRailInset`, dynamic because it animates) and the wall measures the window rather than its own box. The 104dp floor stays: a window too narrow for the chosen count shows as many as fit at that width instead (the 739dp AVD tops out at five). A phone, the cover screen included, keeps exactly three, and the setting says so rather than hiding on the cover screen, so it never seems to vanish. Rejected: a free slider, since the meaningful choices are three; and applying it to Home's wall, which has its own fixed six. |

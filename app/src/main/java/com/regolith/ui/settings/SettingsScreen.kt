@@ -537,6 +537,13 @@ fun SettingsScreen(
                                 enabled = !state.demoWorking, testTag = "settings_demo_button",
                             )
                         }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                        RegolithSwitch(
+                            label = "Spoof mode",
+                            note = "Made-up names and stock photos in place of your library's, on this phone only. " +
+                                "The share isn't touched, and nothing can be changed until it's off.",
+                            checked = state.spoofMode, onCheckedChange = viewModel::setSpoofMode, testTag = "settings_spoof_switch",
+                        )
                     }
                 }
             }

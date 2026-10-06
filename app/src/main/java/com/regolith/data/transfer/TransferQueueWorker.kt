@@ -1,5 +1,6 @@
 package com.regolith.data.transfer
 
+import com.regolith.data.spoof.SpoofMode
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -73,6 +74,7 @@ class TransferQueueWorker @AssistedInject constructor(
     private val gateway: SmbGateway,
     private val store: DownloadStore,
     private val chapterSync: com.regolith.data.media.ChapterSyncRepository,
+    private val spoof: SpoofMode,
 ) : CoroutineWorker(context, params) {
 
     /** How one file ended. Only [Paused] backs the whole batch off. */
@@ -190,7 +192,8 @@ class TransferQueueWorker @AssistedInject constructor(
             cause = null, causeBytes = null, updatedAtMs = System.currentTimeMillis(),
         )
         transfers.update(current)
-        progress = progress.copy(name = file.name, bytesDone = doneBytes)
+        // The notification shade is on screen too: spoof mode names the file there as it does in the app.
+        progress = progress.copy(name = spoof.current?.fileName(file.name) ?: file.name, bytesDone = doneBytes)
         notify(force = true)
 
         if (!StorageCheck.hasRoom(store.freeBytes(), row.totalBytes, doneBytes)) {

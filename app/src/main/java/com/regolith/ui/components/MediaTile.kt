@@ -1,5 +1,7 @@
 package com.regolith.ui.components
 
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.regolith.data.spoof.Spoof
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -70,6 +72,16 @@ import com.regolith.ui.theme.TileShape
 import com.regolith.ui.theme.scaledDp
 
 /**
+ * Spoof mode for the pictures: non-null while Settings › Demo › Spoof mode
+ * is on, and then [ArtworkImage] and [ArtworkLight] draw a stock photo
+ * ([com.regolith.data.spoof.SpoofImage]) in place of every picture of the
+ * library. Provided once, at the root of the app. A composition local
+ * rather than a check in the fetcher because switching it has to change
+ * what is already on screen: a new model is what makes Coil load again.
+ */
+val LocalSpoof = staticCompositionLocalOf<Spoof?> { null }
+
+/**
  * Art at any size: the image when there is one, the design's "reading"
  * look while it is pulled off the share, and, when there is no picture at
  * all, a dark gradient with the filename set inside. Used by
@@ -97,7 +109,9 @@ fun ArtworkImage(
     if (pending != null) DisposableEffect(pending) { onDispose { mark.done(pending) } }
     // Settings › Accessibility › Remove animations turns off every animator
     // in the app; a moving poster is one more thing it should hold still.
-    val model = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
+    val still = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
+    // Spoof mode: a stock photo in its place, picked by the owner's id.
+    val model: Any = LocalSpoof.current?.image(still) ?: still
     SubcomposeAsyncImage(
         model = model,
         contentDescription = null,

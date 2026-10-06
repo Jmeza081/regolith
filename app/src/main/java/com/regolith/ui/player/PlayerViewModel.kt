@@ -65,6 +65,7 @@ class PlayerViewModel @AssistedInject constructor(
     private val phone: com.regolith.data.repository.PhoneLibrary,
     private val userChapters: UserChapterRepository,
     private val posters: com.regolith.data.artwork.PosterRepository,
+    private val spoof: com.regolith.data.spoof.SpoofMode,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -277,10 +278,14 @@ class PlayerViewModel @AssistedInject constructor(
     val chapterDraft: StateFlow<ChapterDraft?> get() = _chapterDraft
     private val _chapterDraft = MutableStateFlow<ChapterDraft?>(null)
 
-    /** True when the film on screen can carry chapters: it has a library row, and its runtime is known. */
+    /**
+     * True when the film on screen can carry chapters: it has a library row,
+     * and its runtime is known. Never in spoof mode, where the names showing
+     * are made up and saving them would write them to the share.
+     */
     fun canEditChapters(): Boolean {
         val s = state.value
-        return s.fileId != null && s.fileId != RegolithKey.Player.EXTERNAL && s.chaptersReady
+        return s.fileId != null && s.fileId != RegolithKey.Player.EXTERNAL && s.chaptersReady && spoof.current == null
     }
 
     /**
@@ -357,8 +362,8 @@ class PlayerViewModel @AssistedInject constructor(
      * Regolith can write to). Hides the Playback sheet's
      * "Make a poster" row otherwise.
      */
-    val canMakePoster: StateFlow<Boolean> = state.map { it.fileId }.distinctUntilChanged()
-        .mapLatest { id -> id != null && id != RegolithKey.Player.EXTERNAL && posters.target(id) != null }
+    val canMakePoster: StateFlow<Boolean> = kotlinx.coroutines.flow.combine(state.map { it.fileId }.distinctUntilChanged(), spoof.state) { id, spoofed -> id to spoofed }
+        .mapLatest { (id, spoofed) -> spoofed == null && id != null && id != RegolithKey.Player.EXTERNAL && posters.target(id) != null }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** "Poster set for …", once the editor has closed and this screen is back. */

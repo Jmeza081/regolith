@@ -9,6 +9,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import com.regolith.ui.components.LocalSpoof
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -50,8 +54,12 @@ class MainActivity : ComponentActivity() {
         watchForBackgrounding()
 
         setContent {
+            // Spoof mode reaches every picture from here (LocalSpoof).
+            val spoof by appViewModel.spoof.collectAsStateWithLifecycle()
             RegolithTheme {
-                RegolithNavGraph(appViewModel = appViewModel)
+                CompositionLocalProvider(LocalSpoof provides spoof) {
+                    RegolithNavGraph(appViewModel = appViewModel)
+                }
             }
         }
     }

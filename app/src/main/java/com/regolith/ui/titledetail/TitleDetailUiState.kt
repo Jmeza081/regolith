@@ -47,6 +47,8 @@ data class TitleDetailUiState(
      * to "Hide from Regolith" and "Delete from phone".
      */
     val phone: Boolean = false,
+    /** Spoof mode is on: the names here are made up, so the file can't be managed until it is off. */
+    val spoofed: Boolean = false,
     /** "Movies", for the hide row's promise that the file stays there. */
     val phoneFolder: String = "",
     /**

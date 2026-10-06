@@ -249,7 +249,15 @@ private fun TitleDetailContent(
                 // A phone video has no share: it can be hidden from Regolith
                 // (the safe verb, first) or deleted from the phone, where
                 // nothing else has a copy — so the words say "for good".
-                if (state.phone) {
+                // Spoof mode shows made-up names, so it offers no way to change
+                // the file at all until it is switched off (Settings › Demo).
+                if (state.spoofed) {
+                    Text(
+                        "Spoof mode is on: this file can't be changed until it's off.",
+                        style = TextStyles.meta, color = colors.metadata,
+                        modifier = Modifier.testTag("detail_spoofed_note"),
+                    )
+                } else if (state.phone) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         Eyebrow("Manage file", muted = true)
                         SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_manage_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {

@@ -1,5 +1,6 @@
 package com.regolith.ui
 
+import com.regolith.testing.testSpoofMode
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -76,6 +77,7 @@ class FileActionsTest {
             DownloadStore(ApplicationProvider.getApplicationContext()),
             db.subtreeDao(),
             db.shareFileDao(),
+            testSpoofMode(ApplicationProvider.getApplicationContext()),
             { folderId, _ -> picturesChecked += folderId },
         )
     }

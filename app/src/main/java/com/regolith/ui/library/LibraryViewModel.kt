@@ -1,5 +1,7 @@
 package com.regolith.ui.library
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.db.FolderEntity
@@ -82,6 +84,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val phone: PhoneLibrary,
     private val artwork: ArtworkRepository,
     private val chapters: UserChapterRepository,
+    private val spoof: SpoofMode,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -147,18 +150,20 @@ class LibraryViewModel @AssistedInject constructor(
             // the "On this device" tab only rather than on both.
             val shares = sources.observeNetworkShares()
             val servers = sources.observeServers()
+            // Every row is passed through spoof mode before a name is taken
+            // from it; ids and paths stay real, so walking and picking work.
             val parents: kotlinx.coroutines.flow.Flow<List<FolderEntity>> = if (folderId == null) {
                 shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else library.observeRoots(list.map { it.id }) }
             } else {
                 library.observeFolder(folderId).flatMapLatest { f -> flowOf(listOfNotNull(f)) }
-            }
-            val children = parents.flatMapLatest { ps -> library.observeFoldersInShares(ps.map { it.shareId }.distinct()) }
-            val files = parents.flatMapLatest { ps -> library.observeFilesInShares(ps.map { it.shareId }.distinct()) }
+            }.spoofed(spoof) { folders(it) }
+            val children = parents.flatMapLatest { ps -> library.observeFoldersInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { folders(it) }
+            val files = parents.flatMapLatest { ps -> library.observeFilesInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { files(it) }
             val progress = files.flatMapLatest { fs -> library.observeProgress(fs.map { it.id }) }
             val scanState = shares.flatMapLatest { list -> if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id }) }
             // The named chapters in this collection's videos, for its profile's
             // Moments tab. The first wall is no collection and has none.
-            val marks = if (folderId == null) flowOf(emptyList()) else chapters.observeNamedInFolder(folderId)
+            val marks = if (folderId == null) flowOf(emptyList()) else chapters.observeNamedInFolder(folderId).spoofed(spoof) { matches(it) }
 
             combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks) { values ->
                 @Suppress("UNCHECKED_CAST")
@@ -188,7 +193,7 @@ class LibraryViewModel @AssistedInject constructor(
         }
         viewModelScope.launch {
             val rows = transfers.observeAll()
-            val files = rows.flatMapLatest { rs -> library.observeFilesByIds(rs.map { it.fileId }) }
+            val files = rows.flatMapLatest { rs -> library.observeFilesByIds(rs.map { it.fileId }) }.spoofed(spoof) { files(it) }
             val progress = rows.flatMapLatest { rs -> library.observeProgress(rs.map { it.fileId }) }
             val servers = sources.observeServers()
             combine(rows, files, progress, servers) { rs, fs, ps, sv -> listOf(rs, fs, ps, sv) }.collect { values ->
@@ -205,9 +210,10 @@ class LibraryViewModel @AssistedInject constructor(
             // Phone storage beside the downloads. Its own collector: MediaStore
             // and the transfer queue change on different clocks, and neither
             // should rebuild the other's half of the page.
-            val files = phone.observeFiles()
+            val files = phone.observeFiles().spoofed(spoof) { files(it) }
             val progress = files.flatMapLatest { fs -> library.observeProgress(fs.map { it.id }) }
-            combine(phone.access, phone.observeFolders(), files, progress) { access, folders, fs, ps ->
+            val folders = phone.observeFolders().spoofed(spoof) { folders(it) }
+            combine(phone.access, folders, files, progress, spoof.state) { access, folders, fs, ps, spoofed ->
                 val progressById = ps.associateBy { it.fileId }
                 val byFolder = fs.groupBy { it.folderId }
                 // Newest video first inside a folder, and the folder with the
@@ -220,7 +226,8 @@ class LibraryViewModel @AssistedInject constructor(
                         folderId = folder.id,
                         relPath = folder.relPath,
                         name = folder.name,
-                        path = PhonePaths.display(folder.relPath),
+                        // The path as text is made up too; the real one stays on relPath.
+                        path = spoofed?.phonePath(folder.relPath) ?: PhonePaths.display(folder.relPath),
                         videos = videos.map { phoneRow(it, progressById[it.id]) },
                     )
                 }.sortedByDescending { it.first }.map { it.second }

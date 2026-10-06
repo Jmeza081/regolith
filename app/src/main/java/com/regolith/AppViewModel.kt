@@ -77,7 +77,14 @@ class AppViewModel @Inject constructor(
     prefetcher: ArtworkPrefetcher,
     private val uploads: UploadRepository,
     library: LibraryRepository,
+    spoofMode: com.regolith.data.spoof.SpoofMode,
 ) : ViewModel() {
+
+    /**
+     * Settings › Demo › Spoof mode, for the root of the UI to hand down as
+     * `LocalSpoof`: the pictures follow it there, the names in each ViewModel.
+     */
+    val spoof: StateFlow<com.regolith.data.spoof.Spoof?> = spoofMode.state
 
     // --- The app lock (fingerprint, face, or the screen lock).
 

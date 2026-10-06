@@ -1,5 +1,6 @@
 package com.regolith.data.fileops
 
+import com.regolith.data.spoof.SpoofMode
 import android.util.Log
 import com.regolith.data.artwork.FolderPictures
 import com.regolith.data.db.FolderDao
@@ -89,6 +90,7 @@ class FileOpsRepository @Inject constructor(
     private val downloads: DownloadStore,
     private val subtrees: SubtreeDao,
     private val shareFiles: ShareFileDao,
+    private val spoof: SpoofMode,
     private val pictures: FolderPictures,
 ) {
     private companion object {
@@ -494,6 +496,7 @@ class FileOpsRepository @Inject constructor(
      * write to ([ctxFor] says the same per item, after the fact).
      */
     suspend fun readOnly(shareIds: Collection<Long>): ReadOnlySource? {
+        if (spoof.current != null) return ReadOnlySource.SPOOF
         for (id in shareIds) {
             val share = shareDao.byId(id) ?: continue
             val host = serverDao.byId(share.serverId)?.host ?: continue

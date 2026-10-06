@@ -1,5 +1,7 @@
 package com.regolith.ui.browse
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.artwork.ArtworkRepository
@@ -47,6 +49,7 @@ class BrowseViewModel @AssistedInject constructor(
     private val prefs: AppPreferences,
     private val selection: SelectionPresenter,
     private val artwork: ArtworkRepository,
+    private val spoof: SpoofMode,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -97,7 +100,7 @@ class BrowseViewModel @AssistedInject constructor(
             sources.observeEnabledShares()
                 .flatMapLatest { shares ->
                     val ids = shares.map { it.id }
-                    library.observeFoldersInShares(ids).map { folders -> shares to folders }
+                    library.observeFoldersInShares(ids).spoofed(spoof) { folders(it) }.map { folders -> shares to folders }
                 }
                 .collect { (shares, folders) ->
                     val roots = folders.filter { it.parentId == null }.associateBy { it.shareId }
@@ -141,9 +144,14 @@ class BrowseViewModel @AssistedInject constructor(
             }
         }
         viewModelScope.launch {
-            combine(library.observeFolder(id), library.observeContents(id), artworkRevisions) { folder, items, revisions ->
-                Triple(folder, items, revisions)
-            }.collect { (folder, items, revisions) ->
+            // Names through spoof mode first; the breadcrumb is made from the
+            // real path, so it is made up here too, part by part.
+            val folderRow = library.observeFolder(id).spoofed(spoof) { it?.let(::folder) }
+            val contents = library.observeContents(id).spoofed(spoof) { browseItems(it) }
+            combine(folderRow, contents, artworkRevisions, spoof.state) { folder, items, revisions, spoofed ->
+                Triple(folder, items, revisions) to spoofed
+            }.collect { (row, spoofed) ->
+                val (folder, items, revisions) = row
                 // The folder this screen IS was deleted — reachable now that
                 // folders are targets, because a pick survives walking into
                 // the thing that was picked. Nothing below can be drawn, so
@@ -157,7 +165,7 @@ class BrowseViewModel @AssistedInject constructor(
                 _uiState.update {
                     it.copy(
                         title = folder.name,
-                        breadcrumb = (listOf(shareName) + folder.relPath.split('/').filter { p -> p.isNotEmpty() }).joinToString(" / "),
+                        breadcrumb = (listOf(shareName) + (spoofed?.path(folder.relPath) ?: folder.relPath).split('/').filter { p -> p.isNotEmpty() }).joinToString(" / "),
                         rows = items.map { item -> item.toRow(revisions) },
                         loaded = true,
                     )

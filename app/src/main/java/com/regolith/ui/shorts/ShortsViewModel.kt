@@ -1,5 +1,7 @@
 package com.regolith.ui.shorts
 
+import com.regolith.data.spoof.spoofed
+import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
@@ -62,6 +64,7 @@ class ShortsViewModel @Inject constructor(
     private val frames: ShortsFrames,
     private val warmup: ShortsWarmup,
     private val posters: PosterRepository,
+    private val spoof: SpoofMode,
 ) : ViewModel() {
 
     /**
@@ -131,6 +134,7 @@ class ShortsViewModel @Inject constructor(
         .flatMapLatest { (shares, length) ->
             if (shares.isEmpty()) flowOf(emptyList()) else library.observeShorts(shares.map { it.id }, length.maxMs)
         }
+        .spoofed(spoof) { files(it) }
 
     val uiState: StateFlow<ShortsUiState> = combine(
         shorts, transfers.observeDoneFileIds(), artwork.observe(), pick, _shuffleSeed,
@@ -159,7 +163,7 @@ class ShortsViewModel @Inject constructor(
     private fun MediaFileEntity.toItem(onDevice: Boolean) = ShortItem(
         fileId = id,
         name = name.substringBeforeLast('.'),
-        folderLabel = relPath.substringBeforeLast('/', "").substringAfterLast('/').ifEmpty { "This share" },
+        folderLabel = relPath.substringBeforeLast('/', "").substringAfterLast('/').let { f -> spoof.current?.folderName(f) ?: f }.ifEmpty { "This share" },
         meta = listOfNotNull(
             durationMs?.takeIf { it > 0 }?.let { formatDurationShort(it) },
             VideoInfo.resolutionLabelFor(width, height).ifEmpty { null },
@@ -224,7 +228,7 @@ class ShortsViewModel @Inject constructor(
     val posterMessages: Flow<String> = posters.saved
 
     /** Whether [fileId] has a folder on a share for a poster.jpg to go in. The player hides its row on the same test. */
-    suspend fun canMakePoster(fileId: Long): Boolean = posters.target(fileId) != null
+    suspend fun canMakePoster(fileId: Long): Boolean = spoof.current == null && posters.target(fileId) != null
 
     /** Take [fileId] out of this deck until the next one is dealt. */
     fun skip(fileId: Long) = _skipped.update { it + fileId }

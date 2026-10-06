@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.regolith.domain.display.NavHideAfter
@@ -51,6 +52,8 @@ class AppPreferences @Inject constructor(
         val navHideAfter = stringPreferencesKey("nav_hide_after")
         val postersPerRow = stringPreferencesKey("posters_per_row")
         val titleParserVersion = intPreferencesKey("title_parser_version")
+        val spoofMode = booleanPreferencesKey("spoof_mode")
+        val spoofSalt = longPreferencesKey("spoof_salt")
         val railHidden = booleanPreferencesKey("rail_hidden")
         val playerOrientation = stringPreferencesKey("player_orientation")
         val playerRepeat = stringPreferencesKey("player_repeat")
@@ -254,6 +257,21 @@ class AppPreferences @Inject constructor(
 
     suspend fun setTitleParserVersion(version: Int) {
         store.edit { it[Keys.titleParserVersion] = version }
+    }
+
+    /**
+     * Settings › Demo › Spoof mode, with the salt its made-up names and
+     * stand-in photos are worked out from (`SpoofMode`). Null while it is off.
+     * The salt is picked the first time it is switched on and kept, so a
+     * video keeps the same made-up name every time it is switched back on.
+     */
+    val spoofSalt: Flow<Long?> = store.data.map { prefs -> if (prefs[Keys.spoofMode] == true) prefs[Keys.spoofSalt] else null }
+
+    suspend fun setSpoofMode(enabled: Boolean) {
+        store.edit { prefs ->
+            if (enabled && prefs[Keys.spoofSalt] == null) prefs[Keys.spoofSalt] = java.security.SecureRandom().nextLong()
+            prefs[Keys.spoofMode] = enabled
+        }
     }
 
     /**

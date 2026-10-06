@@ -239,6 +239,20 @@ what makes the app reviewable on a train. **Remove** deletes it; nothing else is
 touched. Nothing in it can be moved, renamed or deleted: there is no share
 behind it, so those verbs stay grey and the pill says why.
 
+## Show it without showing your library
+
+**Settings › Demo › Spoof mode** makes up every name and picture the app shows
+from your own library, for a demo, a screen recording or a screenshot. Videos,
+folders, paths and the chapters you named get believable made-up titles
+("Quiet Lantern (2016)", keeping the year and "S01E02"), and every poster,
+thumbnail and backdrop is a low-resolution stock photo from Unsplash, through
+Lorem Picsum. Each video keeps the same stand-ins every time, so it still reads
+as one library. Only the phone's display changes: the share is never touched,
+the lock-screen title and the download notification are made up too, and
+nothing can be moved, renamed, deleted or uploaded until it is switched off.
+The photos are the one thing it fetches from the internet, picked by a random
+number that says nothing about the file.
+
 The section is behind `BuildConfig.DEMO_LIBRARY`, true in both build types today
 because the side-load (`assembleRelease`) build is the one that gets tested on a
 phone. Set it false — and delete `res/raw/demo_*.mp4` — before any store upload.
