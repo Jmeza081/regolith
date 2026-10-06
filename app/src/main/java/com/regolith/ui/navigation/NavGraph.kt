@@ -557,6 +557,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     // mean every file on every share.
                                     onPlayAll = if (key.folderId != null) ::playAll else null,
                                     onSendingAway = appViewModel::sendingAway,
+                                    // A moment on a collection's profile plays from its time, as in Search.
+                                    onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                                 )
                             }
                         }

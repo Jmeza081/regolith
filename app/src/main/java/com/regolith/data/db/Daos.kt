@@ -1202,6 +1202,23 @@ interface UserChapterDao {
             "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
     )
     fun occurrencesOf(title: String, limit: Int): Flow<List<UserChapterHitRow>>
+
+    /**
+     * The named marks on the videos directly in one folder: a collection
+     * profile's Moments tab. Same shape as [search]. An unnamed mark is
+     * arithmetic ("Part 3") rather than a place someone marked, so it stays
+     * out here as it does in Search. In name order, then time; the screen
+     * puts the videos back in the wall's own order.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE media_files.folderId = :folderId AND media_files.missing = 0 " +
+            "AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +
+            "ORDER BY media_files.name, user_chapters.startMs",
+    )
+    fun observeNamedInFolder(folderId: Long): Flow<List<UserChapterHitRow>>
 }
 
 @Dao

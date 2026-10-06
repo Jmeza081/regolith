@@ -5,6 +5,7 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.PhoneAccess
+import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.util.SelectionUiState
@@ -77,6 +78,11 @@ data class LibraryUiState(
     /** "TOWER · media · 1,284 files" */
     val meta: String? = null,
     val tiles: List<LibraryTile> = emptyList(),
+    /**
+     * Set when this wall is a leaf collection's and so opens as its profile
+     * page: videos only, no collections inside. Null on every other wall.
+     */
+    val profile: CollectionProfile? = null,
     val order: LibraryOrder = LibraryOrder(),
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
@@ -258,6 +264,7 @@ fun LibraryUiState.withWall(built: LibraryUiState, sortedTiles: List<LibraryTile
     title = built.title,
     meta = built.meta,
     tiles = sortedTiles,
+    profile = built.profile,
     loaded = built.loaded,
     noSource = built.noSource,
     scanning = built.scanning,
@@ -278,3 +285,89 @@ fun DeviceUiState.withRows(built: DeviceUiState): DeviceUiState = copy(
     inFlight = built.inFlight,
     failed = built.failed,
 )
+
+/**
+ * A leaf collection's page, read as a profile (the canvas "Collection View
+ * Refinements", boards C + A): its poster lighting the top of the page, a
+ * line of stats, Play all, and Videos / Moments tabs over the wall.
+ *
+ * Only a collection whose wall would hold videos and no collections gets
+ * one ([collectionProfile]): a collection inside a collection is a stop on
+ * the way, and only the last stop is a profile (the owner's rule,
+ * 2026-10-06).
+ */
+data class CollectionProfile(
+    /** What it sits in, for the line over its name: "Home videos", or the share's name at the top of one. */
+    val parentName: String?,
+    /** Its poster, moving where the first wall lets a poster move. */
+    val poster: ArtworkRequest,
+    /** The same poster held still, for the light behind the page: a GIF re-blurred on every frame would cost more than the page. */
+    val light: ArtworkRequest,
+    val videoCount: Int,
+    /** Every video's runtime added up, or null while any is still unknown: a total that is quietly short is worse than none. */
+    val runtimeMs: Long?,
+    val sizeBytes: Long,
+    /** Videos played to the end. */
+    val watchedCount: Int,
+    /** The named chapters in its videos, by video in name order and then by time ([inWallOrder] re-orders them). */
+    val moments: List<CollectionMoment>,
+)
+
+/** One point of interest on a profile's Moments tab: a chapter someone named, played from where it starts. */
+data class CollectionMoment(
+    val fileId: Long,
+    val startMs: Long,
+    /** The chapter's name. */
+    val title: String,
+    /** The video it is in, named as its tile names it. */
+    val videoName: String,
+) {
+    val testTag get() = "library_moment_${fileId}_$startMs"
+}
+
+/**
+ * The profile for a collection's wall, or null when the page stays a wall:
+ * a wall holding any collection is not a leaf, and a wall with no video on
+ * it has nothing to show a profile of.
+ *
+ * [tiles] are the wall's tiles as built (names already made unique), so a
+ * moment names its video exactly as the video's tile does. [completed] is
+ * the ids of videos played to the end. [marks] are the named chapters in the
+ * folder; only those on the wall's own videos are kept, since a hidden or
+ * vanished video's marks have nothing to play.
+ */
+internal fun collectionProfile(
+    tiles: List<LibraryTile>,
+    parentName: String?,
+    poster: ArtworkRequest,
+    completed: Set<Long>,
+    marks: List<ChapterMatch>,
+): CollectionProfile? {
+    if (tiles.any { it is LibraryTile.Collection }) return null
+    val videos = tiles.filterIsInstance<LibraryTile.Title>()
+    if (videos.isEmpty()) return null
+    val names = videos.associate { it.fileId to it.name }
+    val durations = videos.map { it.durationMs }
+    return CollectionProfile(
+        parentName = parentName,
+        poster = poster,
+        light = poster.copy(animated = false),
+        videoCount = videos.size,
+        runtimeMs = if (durations.all { it != null }) durations.sumOf { it ?: 0L } else null,
+        sizeBytes = videos.sumOf { it.sizeBytes },
+        watchedCount = videos.count { it.fileId in completed },
+        moments = marks.mapNotNull { mark ->
+            names[mark.fileId]?.let { name -> CollectionMoment(mark.fileId, mark.startMs, mark.title, name) }
+        },
+    )
+}
+
+/**
+ * The moments in the order the wall shows their videos, each video's in
+ * time order, so sorting the wall sorts the Moments tab with it.
+ */
+internal fun List<CollectionMoment>.inWallOrder(tiles: List<LibraryTile>): List<CollectionMoment> {
+    val position = HashMap<Long, Int>()
+    tiles.forEachIndexed { index, tile -> if (tile is LibraryTile.Title) position[tile.fileId] = index }
+    return sortedWith(compareBy<CollectionMoment>({ position[it.fileId] ?: Int.MAX_VALUE }, { it.startMs }))
+}

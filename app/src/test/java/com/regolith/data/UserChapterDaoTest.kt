@@ -163,4 +163,33 @@ class UserChapterDaoTest {
         assertEquals(listOf(a, b, b), db.userChapterDao().namedInShare(shareId).map { it.fileId })
         assertEquals(listOf(10_000L, 90_000L), db.userChapterDao().namedInShare(shareId).filter { it.fileId == b }.map { it.startMs })
     }
+
+    // ── A collection profile's Moments tab ─────────────────────────────
+
+    @Test
+    fun `a folder's moments are the named marks on its own present videos`() = runTest {
+        val lake = db.folderDao().upsert(FolderEntity(shareId = shareId, parentId = folderId, relPath = "Lake", name = "Lake", fileCount = 0, byteCount = 0, lastListedAtMs = null)).id
+        suspend fun video(name: String, missing: Boolean = false): Long = db.mediaFileDao().upsert(
+            MediaFileEntity(
+                shareId = shareId, folderId = lake, relPath = "Lake/$name", name = name, ext = "mp4",
+                sizeBytes = 1, modifiedAtMs = 1, durationMs = null, missing = missing, addedAtMs = 1, lastSeenAtMs = 1,
+            ),
+        ).id
+        val swing = video("Rope swing.mp4")
+        val storm = video("Storm.mp4")
+        val gone = video("Gone.mp4", missing = true)
+        val elsewhere = file("Films/Heat.1995.mkv")
+        db.userChapterDao().replaceForFile(swing, listOf(row(swing, 408_000, "The backflip"), row(swing, 192_000, "First jump"), row(swing, 0, null)))
+        db.userChapterDao().replaceForFile(storm, listOf(row(storm, 100_000, "The storm rolls in"), row(storm, 30_000, "")))
+        db.userChapterDao().replaceForFile(gone, listOf(row(gone, 0, "Off the share")))
+        db.userChapterDao().replaceForFile(elsewhere, listOf(row(elsewhere, 0, "The heist")))
+
+        // Named only, this folder only, present only; by video name, then time.
+        val moments = db.userChapterDao().observeNamedInFolder(lake).first()
+        assertEquals(
+            listOf(Triple(swing, 192_000L, "First jump"), Triple(swing, 408_000L, "The backflip"), Triple(storm, 100_000L, "The storm rolls in")),
+            moments.map { Triple(it.fileId, it.startMs, it.title) },
+        )
+        assertEquals("Rope swing.mp4", moments.first().fileName)
+    }
 }

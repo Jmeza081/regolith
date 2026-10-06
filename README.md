@@ -45,6 +45,17 @@ first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
 of the next clips are fetched in the background while you are elsewhere in the app.
 
+### Collections with a page of their own
+
+Open a collection that holds only videos and it opens as its own page rather
+than a plain wall. Its poster lights the top of the page, the way the player
+lights the room around a film. Under it: how many videos it holds, how long they
+run, how much space they take and how many you have watched, then Play all,
+Shuffle, and two tabs. **Videos** is the wall you know. **Moments** lists every
+chapter you have named in those videos, each with the frame at its time, and
+plays from there. A collection with collections inside stays a wall: only the
+last one down a branch gets a page.
+
 ### Lights the room around the picture
 
 A film rarely fills the screen exactly, and the bars around it carry its own
@@ -157,8 +168,9 @@ video that lands is a video in the library at once; a photo or any other file
 lands among the folder's other files in Browse.
 
 A collection in the Library takes new videos the same way. **Add to this
-collection** in its top bar offers videos from the gallery or the file picker,
-and a poster for its tile, and the uploads show at the top of its wall.
+collection**, in its top bar or beside Play all on a collection's own page,
+offers videos from the gallery or the file picker, and a poster for its tile,
+and the uploads show at the top of its wall.
 
 It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
 sleeps, the batch waits and carries on by itself from the bytes already sent —

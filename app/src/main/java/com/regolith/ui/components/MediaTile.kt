@@ -1,5 +1,8 @@
 package com.regolith.ui.components
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.foundation.lazy.grid.GridCells
 import android.animation.ValueAnimator
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -390,5 +393,27 @@ private fun NoPictureArt(label: String, modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(Spacing.s8),
             )
         }
+    }
+}
+
+/**
+ * The narrowest a 16:9 [MediaTile] gets before a grid of them drops a
+ * column: Search's results, and the moments on a collection's profile.
+ */
+val ThumbTileMin = 160.dp
+
+/** How many 16:9 tiles go across [width]: as many as fit at [ThumbTileMin], never fewer than two or more than four. */
+fun thumbColumns(width: Dp): Int = (width / ThumbTileMin).toInt().coerceIn(2, 4)
+
+/**
+ * [thumbColumns] as a lazy grid's column rule, the cells sharing the width
+ * evenly as [GridCells.Fixed] does. Web analogy: a CSS grid's
+ * `repeat(auto-fill, minmax(160px, 1fr))`, capped at four tracks.
+ */
+object ThumbCells : GridCells {
+    override fun Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val count = thumbColumns(availableSize.toDp())
+        val usable = availableSize - spacing * (count - 1)
+        return List(count) { usable / count + if (it < usable % count) 1 else 0 }
     }
 }

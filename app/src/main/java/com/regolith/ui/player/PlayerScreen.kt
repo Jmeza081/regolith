@@ -63,8 +63,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -125,13 +123,8 @@ import com.regolith.ui.theme.PillShape
 import com.regolith.ui.adaptive.FoldPosture
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.theme.RegolithTheme
-import coil3.compose.SubcomposeAsyncImageContent
-import coil3.compose.SubcomposeAsyncImage
-import androidx.compose.ui.draw.scale
+import com.regolith.ui.components.ArtworkLight
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import com.regolith.ui.theme.ThumbShape
 import kotlin.math.abs
 import kotlin.math.absoluteValue
@@ -1691,7 +1684,7 @@ private fun FlexDeck(
  * picture's edges, shone outward. Everything below is Mirror, and Off.
  *
  * Mirror is scaled out so nothing has an edge, blurred, and dimmed under a
- * scrim.
+ * scrim: the recipe is [ArtworkLight], which a collection's profile shares.
  *
  * Two layers. The base coat is the title's own backdrop, which costs no
  * read over the share and is there before the first frame is drawn — and is
@@ -1723,27 +1716,10 @@ private fun AmbientGlow(
     // fills the bands beside it, so a 2:3 centre crop would show the
     // middle strip of the frame stretched across the whole window.
     val request = remember(fileId) { ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP) }
-    // Film is graded for a screen you look at, not for a lamp. Pushed a
-    // little past life it reads as coloured light; left alone the blur
-    // averages most shots into grey.
-    val lift = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(GLOW_SATURATION) }) }
     Box(modifier.clipToBounds()) {
-        // One blur over both layers rather than one each, so the sample and
-        // the backdrop under it mix as light rather than as two pictures.
-        Box(
-            Modifier.fillMaxSize()
-                .scale(GLOW_SCALE)
-                .blur(GLOW_BLUR, BlurredEdgeTreatment.Unbounded)
-                .alpha(GLOW_ALPHA),
-        ) {
-            SubcomposeAsyncImage(
-                model = request,
-                contentDescription = null,
-                loading = {},
-                error = {},
-                success = { SubcomposeAsyncImageContent(contentScale = ContentScale.Crop, colorFilter = lift) },
-                modifier = Modifier.fillMaxSize().testTag("player_ambient_glow"),
-            )
+        // The sample goes inside the same blur as the backdrop, so the two
+        // mix as light rather than as two pictures (ArtworkLight).
+        ArtworkLight(request, Modifier.fillMaxSize(), testTag = "player_ambient_glow") { lift ->
             // No cross-fade here on purpose. The light is smoothed where it
             // is sampled, in 576 pixels; animating a full-screen layer's
             // alpha instead would re-run the blur on every frame of every
@@ -1773,20 +1749,6 @@ private fun AmbientGlow(
     }
 }
 
-/**
- * Takes the last edges off the upscaled sample. Much smaller than it was
- * when this drew a whole poster: a 32-pixel-wide picture blown up to a
- * phone is already smooth, and blur radius is the cost here.
- */
-private val GLOW_BLUR = 32.dp
-
-/** Scaled past the edges so the blur has nothing to fade into. */
-private const val GLOW_SCALE = 1.35f
-
-private const val GLOW_ALPHA = 0.65f
-
-/** Past life, so the wash reads as light rather than as haze. 1f would be the film's own grade. */
-private const val GLOW_SATURATION = 1.45f
 
 /**
  * How far a middle drag must travel, as a fraction of the picture's height,

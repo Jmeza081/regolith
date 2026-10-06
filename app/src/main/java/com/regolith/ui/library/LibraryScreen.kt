@@ -32,6 +32,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +80,7 @@ import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.EyebrowAction
 import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.ThumbCells
 import com.regolith.ui.components.PlayAllButton
 import com.regolith.ui.components.PlayAllSheet
 import com.regolith.ui.components.PrimaryButton
@@ -174,6 +180,11 @@ fun LibraryScreen(
      * the user on.
      */
     onSendingAway: () -> Unit = {},
+    /**
+     * Play a video from a time: a moment on a collection profile's Moments
+     * tab opens the player there, as a point of interest does in Search.
+     */
+    onPlayAt: (fileId: Long, startMs: Long) -> Unit = { _, _ -> },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val uploadActions = viewModel.uploadActions
@@ -197,6 +208,18 @@ fun LibraryScreen(
 
     val selection = state.selection
     val selecting = selection != null
+
+    // A leaf collection opens as its profile (CollectionProfile): the poster
+    // lighting the page, its stats, and Videos / Moments tabs over the wall.
+    // Network tab only: the device tab is a different page sharing this screen.
+    val profile = state.profile.takeIf { onBack != null && tab == LibraryTab.NETWORK }
+    var profileTab by rememberSaveable { mutableStateOf(ProfileTab.VIDEOS) }
+    // The wall's scroll positions. Up here, not beside the wall, because a
+    // profile's top bar floats over the wall and fills in once the header
+    // has scrolled up behind it, which it reads from these.
+    val gridState = rememberLazyGridState()
+    val listState = rememberLazyListState()
+    var profileHeaderPx by remember { mutableIntStateOf(0) }
 
     // Deleting the collection you are standing in leaves nothing to draw, so
     // the wall leaves with it, as Browse's folders do. Only a success can
@@ -269,19 +292,9 @@ fun LibraryScreen(
                     TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "device_select_cancel_button", viewModel::cancelDeviceSelection),
                 ),
             )
-        } else if (selecting) {
-            TopBar(
-                title = if (selection!!.itemCount == 1) "1 selected" else "${selection.itemCount} selected",
-                // The screen's own back, not a cancel: it walks out of the
-                // collection and the picks come with it. Cancelling is the X.
-                onBack = onBack,
-                modifier = Modifier.testTag("library_selection_topbar"),
-                actions = listOf(
-                    TopBarAction(R.drawable.rg_ic_check, "Select all", "library_select_all_button", viewModel::selectAllHere),
-                    TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "library_select_cancel_button", viewModel::cancelSelection),
-                ),
-            )
-        } else {
+        } else if (selecting && profile == null) {
+            SelectionBar(selection!!.itemCount, onBack, viewModel::selectAllHere, viewModel::cancelSelection)
+        } else if (profile == null) {
             TopBar(
                 title = if (onBack == null) "Media" else state.title,
                 onBack = onBack,
@@ -328,7 +341,7 @@ fun LibraryScreen(
         // of folders and has no single file to start with, so a wall of them
         // has nothing to play in order.
         val playable = state.tiles.filterIsInstance<LibraryTile.Title>()
-        if (onPlayAll != null && tab == LibraryTab.NETWORK && playable.isNotEmpty()) {
+        if (onPlayAll != null && tab == LibraryTab.NETWORK && playable.isNotEmpty() && profile == null) {
             PlayAllButton(
                 onClick = { playAllOpen = true },
                 modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
@@ -404,15 +417,13 @@ fun LibraryScreen(
             return
         }
 
-        // The wall's scroll positions, held here so a new sort can move them.
+        // A new sort moves the wall's scroll positions (held above).
         // Tiles are keyed, and a keyed list keeps the item that was at the
         // top in view when the order changes. After a re-sort that item can
         // be near the END, so the wall landed at the bottom. A new order is
         // a new list to read from the start, so glide back to the top.
         // `lastOrder` skips the first composition, which is also what keeps
         // a restored scroll position when you come back from a title.
-        val gridState = rememberLazyGridState()
-        val listState = rememberLazyListState()
         var lastOrder by remember { mutableStateOf(state.order) }
         LaunchedEffect(state.order) {
             if (state.order == lastOrder) return@LaunchedEffect
@@ -453,7 +464,26 @@ fun LibraryScreen(
         // gets one look, and a tapped tile left out of view is brought up to
         // the top, level with the page's art. Rows need none of this: a row
         // is the same height at any width, so it stays where it was.
-        val leadingItems = (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (showScanLine) 1 else 0)
+        val leadingItems = (if (profile != null) 2 else 0) +
+            (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (showScanLine) 1 else 0)
+        // The profile's header and tabs, the first two items of either layout.
+        val playableIds = { state.tiles.filterIsInstance<LibraryTile.Title>().map { it.fileId } }
+        val profileHeader = @Composable { p: CollectionProfile ->
+            ProfileHeader(
+                profile = p,
+                name = state.title,
+                onPlay = { onPlayAll?.invoke(playableIds(), false) },
+                onShuffle = { onPlayAll?.invoke(playableIds(), true) },
+                onAdd = if (uploads.canUpload) ({ uploadActions?.openSheet() }) else null,
+                modifier = Modifier.onSizeChanged { profileHeaderPx = it.height },
+            )
+        }
+        val profileTabs = @Composable { p: CollectionProfile ->
+            ProfileTabs(p, profileTab, { profileTab = it }, Modifier.padding(bottom = Spacing.s8))
+        }
+        // In the order the wall shows their videos, so sorting one sorts both.
+        val moments = remember(profile?.moments, state.tiles) { profile?.moments.orEmpty().inWallOrder(state.tiles) }
+        val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
         val uploadSection = @Composable { section: com.regolith.ui.components.UploadSection ->
             UploadSectionView(
                 section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) },
@@ -462,7 +492,7 @@ fun LibraryScreen(
         }
         LaunchedEffect(selectedFileId) {
             val id = selectedFileId ?: return@LaunchedEffect
-            if (state.viewMode != ViewMode.GRID) return@LaunchedEffect
+            if (state.viewMode != ViewMode.GRID || showMoments) return@LaunchedEffect
             val tile = state.tiles.indexOfFirst { it.isSelected(id) }
             if (tile < 0) return@LaunchedEffect
             val index = leadingItems + tile
@@ -476,7 +506,9 @@ fun LibraryScreen(
         if (state.viewMode == ViewMode.GRID) {
             LazyVerticalGrid(
                 // Posters per row is the owner's (Settings › Display); see wallColumns.
-                columns = WallCells(LocalWindowShape.current.wide, state.postersPerRow.count, wallFullWidth()),
+                // A moment is a 16:9 frame with a name under it, so the Moments
+                // tab takes Search's columns for those instead.
+                columns = if (showMoments) ThumbCells else WallCells(LocalWindowShape.current.wide, state.postersPerRow.count, wallFullWidth()),
                 state = gridState,
                 modifier = Modifier.fillMaxSize().testTag("library_grid"),
                 contentPadding = PaddingValues(
@@ -486,6 +518,18 @@ fun LibraryScreen(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s8),
             ) {
+                if (profile != null) {
+                    item(key = "library_profile_header", span = { GridItemSpan(maxLineSpan) }) { profileHeader(profile) }
+                    item(key = "library_profile_tabs", span = { GridItemSpan(maxLineSpan) }) { profileTabs(profile) }
+                    if (showMoments) {
+                        if (moments.isEmpty()) {
+                            item(key = "library_moments_empty", span = { GridItemSpan(maxLineSpan) }) { NoMoments() }
+                        } else {
+                            items(moments, key = { it.testTag }) { moment -> MomentTile(moment, onPlayAt) }
+                        }
+                        return@LazyVerticalGrid
+                    }
+                }
                 // Only the Network tab is affected by a share going away (design:
                 // "the message lives there rather than over files that play fine").
                 if (showUnreachable) item(span = { GridItemSpan(maxLineSpan) }) { unreachableBlock() }
@@ -522,6 +566,21 @@ fun LibraryScreen(
                     bottom = LocalNavPillInsets.current.calculateBottomPadding(),
                 ),
             ) {
+                if (profile != null) {
+                    item(key = "library_profile_header") { profileHeader(profile) }
+                    item(key = "library_profile_tabs") { profileTabs(profile) }
+                    if (showMoments) {
+                        if (moments.isEmpty()) {
+                            item(key = "library_moments_empty") { NoMoments() }
+                        } else {
+                            itemsIndexed(moments, key = { _, moment -> moment.testTag }) { index, moment ->
+                                if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                                MomentRow(moment, onPlayAt)
+                            }
+                        }
+                        return@LazyColumn
+                    }
+                }
                 if (showUnreachable) item { unreachableBlock() }
                 uploads.section?.let { section -> item(key = "library_uploads") { uploadSection(section) } }
                 if (showSkeletons) {
@@ -544,6 +603,37 @@ fun LibraryScreen(
                     )
                 }
             }
+        }
+    }
+
+    // A profile's top bar floats over the page, so the poster's light runs
+    // up under it. It fills in with the page's ground, and takes the
+    // collection's name, once the header has scrolled up behind it. A
+    // selection's bar takes its place, solid from the start, so starting
+    // one moves nothing on the page.
+    if (profile != null) {
+        val barPx = with(LocalDensity.current) { profileBarHeight().roundToPx() }
+        val collapseAt = (profileHeaderPx - barPx).coerceAtLeast(1)
+        val collapsed by remember(collapseAt, state.viewMode) {
+            derivedStateOf {
+                if (state.viewMode == ViewMode.GRID) gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset >= collapseAt
+                else listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset >= collapseAt
+            }
+        }
+        val barGround by animateColorAsState(if (collapsed) colors.ground else colors.ground.copy(alpha = 0f), label = "profile_bar")
+        if (selecting) {
+            SelectionBar(selection!!.itemCount, onBack, viewModel::selectAllHere, viewModel::cancelSelection, Modifier.background(colors.ground))
+        } else {
+            TopBar(
+                title = if (collapsed) state.title else "",
+                onBack = onBack,
+                modifier = Modifier.background(barGround).testTag("library_profile_topbar"),
+                actions = listOf(
+                    TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
+                    TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                    viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
+                ),
+            )
         }
     }
 
@@ -593,6 +683,30 @@ fun LibraryScreen(
             )
         }
     }
+}
+
+/**
+ * The wall's top bar while picking: the count, Select all and the X. The
+ * back arrow is the screen's own, not a cancel: it walks out of the
+ * collection and the picks come with it. Cancelling is the X.
+ */
+@Composable
+private fun SelectionBar(
+    count: Int,
+    onBack: (() -> Unit)?,
+    onSelectAll: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TopBar(
+        title = if (count == 1) "1 selected" else "$count selected",
+        onBack = onBack,
+        modifier = modifier.testTag("library_selection_topbar"),
+        actions = listOf(
+            TopBarAction(R.drawable.rg_ic_check, "Select all", "library_select_all_button", onSelectAll),
+            TopBarAction(R.drawable.rg_ic_close, "Cancel selection", "library_select_cancel_button", onCancel),
+        ),
+    )
 }
 
 /** What the first wall, which is no folder, reads in place of its uploads. */
