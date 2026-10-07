@@ -36,7 +36,13 @@ sealed interface RegolithKey : NavKey {
     @Serializable data object Settings : RegolithKey
 
     // --- Pushed screens.
-    @Serializable data object Search : RegolithKey
+    /**
+     * [poi] opens Search with that moment already picked: a chip in Home's
+     * Moments section, where a tap on a name means "show me everywhere this
+     * is". It rides on the key, like the player's queue, so a Search restored
+     * after the process was killed still knows what it was opened for.
+     */
+    @Serializable data class Search(val poi: String? = null) : RegolithKey
     /** Home's "All": every part-watched title. */
     @Serializable data object ContinueWatching : RegolithKey
     @Serializable data class TitleDetail(val fileId: Long) : RegolithKey

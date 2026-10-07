@@ -86,8 +86,15 @@ fun FilterChip(
     modifier: Modifier = Modifier,
     /** A 14dp glyph before the label: the sliders on a chip that opens a sheet. */
     icon: Int? = null,
+    /**
+     * A quiet word after the label, in the nav's idle grey: Home's moment
+     * chips carry how many videos use the name. The label gives way to it
+     * (ellipsis) on a chip too long for its row, so the count stays legible.
+     */
+    trailing: String? = null,
 ) {
     val colors = RegolithTheme.colors
+    val textStyle = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp())
     Box(
         modifier
             .height(34.scaledDp())
@@ -110,11 +117,24 @@ fun FilterChip(
             }
             Text(
                 text,
-                style = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp()),
+                style = textStyle,
                 color = if (selected) Color.White else colors.inkSoft,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // Only beside a count: Search's row scrolls sideways, so its
+                // chips are measured with no width limit, and a weight there
+                // would share out nothing and squeeze the label to zero.
+                modifier = if (trailing != null) Modifier.weight(1f, fill = false) else Modifier,
             )
+            if (trailing != null) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    trailing,
+                    style = textStyle,
+                    color = if (selected) Color.White.copy(alpha = 0.72f) else colors.navIdle,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

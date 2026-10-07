@@ -98,6 +98,7 @@ import com.regolith.ui.home.HomeScreen
 import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.library.LibraryViewModel
 import com.regolith.ui.search.SearchScreen
+import com.regolith.ui.search.SearchViewModel
 import com.regolith.ui.onboarding.OnboardingScreen
 import com.regolith.ui.lock.LockScreen
 import com.regolith.ui.onboarding.SplashContent
@@ -533,11 +534,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     viewModel = hiltViewModel(),
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     onEnterAddress = { backStack.add(RegolithKey.AddServer.Manual()) },
-                                    onSearch = { backStack.add(RegolithKey.Search) },
+                                    onSearch = { backStack.add(RegolithKey.Search()) },
                                     onOpenTitle = { openTitle(it) },
                                     onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
                                     onOpenDevice = { backStack.clear(); backStack.add(RegolithKey.Home); backStack.add(RegolithKey.Library(onDevice = true)) },
                                     onOpenContinueWatching = { backStack.add(RegolithKey.ContinueWatching) },
+                                    // A name in the Moments section: Search, with it already picked.
+                                    onOpenMoment = { backStack.add(RegolithKey.Search(poi = it)) },
                                 )
                             }
                         }
@@ -550,7 +553,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onBack = if (key.folderId == null) null else ({ leaveWall(key) }),
                                     onOpenCollection = { openFromWall(RegolithKey.Library(it)) },
                                     onOpenTitle = { openTitle(it) },
-                                    onSearch = { backStack.add(RegolithKey.Search) },
+                                    onSearch = { backStack.add(RegolithKey.Search()) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     startOnDevice = key.onDevice,
                                     selectedFileId = paneFileId,
@@ -570,15 +573,19 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
                             )
                         }
-                        entry<RegolithKey.Search> {
+                        entry<RegolithKey.Search> { key ->
                             SearchScreen(
-                                viewModel = hiltViewModel(),
+                                viewModel = hiltViewModel<SearchViewModel, SearchViewModel.Factory>(
+                                    creationCallback = { it.create(key.poi) },
+                                ),
                                 onCancel = { backStack.removeLastOrNull() },
                                 onOpenTitle = { openTitle(it) },
                                 onOpenFolder = { backStack.add(RegolithKey.Browse(it)) },
                                 // A point of interest opens the player at that time (P9).
                                 onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                                 modifier = Modifier.padding(start = searchInset),
+                                // Opened on a moment, the results are the point: keyboard down.
+                                focusField = key.poi == null,
                             )
                         }
                         entry<RegolithKey.Browse>(metadata = tabScreen + WallSceneStrategy.wall()) { key ->

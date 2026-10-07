@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +48,7 @@ import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.EmptyAction
 import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.FilterChip
 import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.ResumeCard
 import com.regolith.ui.components.SurfaceCard
@@ -63,7 +65,8 @@ import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.theme.scaledDp
 
 /**
- * Home tab (design section 04): resume first, then what arrived. The
+ * Home tab (design section 04): resume first, then what arrived, then every
+ * moment name in the library as a way into Search. The
  * states: first use (no server but this phone, and nothing on it), never
  * scanned, nothing found, resume, nothing started (no resume row at all:
  * its absence is the message), and the two halves of a pull to refresh,
@@ -85,6 +88,8 @@ fun HomeScreen(
     onPlay: (fileId: Long, startMs: Long) -> Unit,
     onOpenDevice: () -> Unit,
     onOpenContinueWatching: () -> Unit,
+    /** A chip in the Moments section: open Search with this moment name picked. */
+    onOpenMoment: (name: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -268,6 +273,36 @@ fun HomeScreen(
                                     aspect = 2f / 3f,
                                     onClick = onOpenDevice,
                                     testTag = "home_device_all",
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Every name you have given a moment, A to Z, wrapping in a
+                // section of its own after the others (the owner, 2026-10-07:
+                // "not hidden behind a horizontal scroll ... left to right and
+                // wrapping"). Last, because it is a way into the library rather
+                // than a shelf of things in it: a tap opens Search on that name,
+                // already picked, listing every place it appears.
+                if (state.moments.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        SectionHeader(
+                            title = "Moments",
+                            meta = "${state.moments.size} ${if (state.moments.size == 1) "name" else "names"} · A to Z",
+                        )
+                        FlowRow(
+                            Modifier.padding(horizontal = Spacing.s18).testTag("home_moments"),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        ) {
+                            state.moments.forEach { moment ->
+                                FilterChip(
+                                    text = moment.title,
+                                    selected = false,
+                                    onClick = { onOpenMoment(moment.title) },
+                                    testTag = "home_moment_${moment.title.lowercase().replace(' ', '_')}",
+                                    trailing = moment.films.toString(),
                                 )
                             }
                         }
