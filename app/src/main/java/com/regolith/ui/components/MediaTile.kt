@@ -25,11 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -90,6 +90,10 @@ val LocalSpoof = staticCompositionLocalOf<Spoof?> { null }
  * An [ArtworkRequest.animated] request plays a folder's moving poster
  * (a GIF), unless the phone's "Remove animations" is on: then it is the
  * still one, like everywhere else.
+ *
+ * [placeholder] is a smaller picture of the same thing to show while this
+ * one is on its way, in place of the "reading" look: Title Detail's 720p
+ * backdrop is made when the page opens, and its tile's thumb already exists.
  */
 @Composable
 fun ArtworkImage(
@@ -97,6 +101,7 @@ fun ArtworkImage(
     modifier: Modifier = Modifier,
     fallbackLabel: String = "",
     contentScale: ContentScale = ContentScale.Crop,
+    placeholder: ArtworkRequest? = null,
 ) {
     if (artwork == null) {
         NoPictureArt(fallbackLabel, modifier)
@@ -116,7 +121,13 @@ fun ArtworkImage(
         model = model,
         contentDescription = null,
         modifier = modifier,
-        loading = { ReadingArt() },
+        loading = {
+            if (placeholder != null) {
+                ArtworkImage(placeholder, Modifier.fillMaxSize(), fallbackLabel = fallbackLabel, contentScale = contentScale)
+            } else {
+                ReadingArt()
+            }
+        },
         error = { NoPictureArt(fallbackLabel, Modifier.fillMaxSize()) },
         success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
         onLoading = pending?.let { p -> { _ -> mark.start(p) } },
@@ -241,12 +252,28 @@ fun MediaTile(
      * which is right for a title — there is nowhere to walk into.
      */
     onCheckClick: (() -> Unit)? = null,
+    /**
+     * Whose picture this is, when the tile opens a page that shows the same
+     * picture: the art flies there ([posterFlight]) and back. Null
+     * for a tile whose picture lands nowhere.
+     */
+    flight: ArtworkOwner? = null,
 ) {
     val colors = RegolithTheme.colors
     val picked = checked == true
+    // Beside a wall a page's picture is flown in by hand, from where this was tapped.
+    val pad = rememberFlightLaunchPad(flight, artwork)
     Column(
         modifier
-            .combinedClickable(interactionSource = null, indication = null, onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(
+                interactionSource = null,
+                indication = null,
+                onClick = {
+                    pad?.launch()
+                    onClick()
+                },
+                onLongClick = onLongClick,
+            )
             .testTag(testTag),
     ) {
         Box(
@@ -265,9 +292,13 @@ fun MediaTile(
                     },
                 )
                 .padding(if (selected || picked || highlight > 0f) 4.dp else 0.dp)
+                .posterFlight(flight)
+                .then(pad?.modifier ?: Modifier)
                 .clip(shape)
                 .background(colors.surface)
-                .alpha(if (dimmed) 0.45f else 1f),
+                // Read as it is drawn, so a flight starting or landing redraws
+                // this one picture rather than recomposing the wall.
+                .graphicsLayer { alpha = (if (dimmed) 0.45f else 1f) * (if (pad?.hidden == true) 0f else 1f) },
         ) {
             ArtworkImage(artwork, Modifier.fillMaxSize(), fallbackLabel = fallbackLabel)
             if (count != null) {

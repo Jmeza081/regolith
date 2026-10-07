@@ -82,6 +82,8 @@ import com.regolith.ui.poster.PosterEditorViewModel
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavRailInset
+import com.regolith.ui.components.PosterFlightLayout
+import com.regolith.ui.components.rememberPosterFlightDecorator
 import com.regolith.ui.components.NavChromeHold
 import androidx.compose.material3.SnackbarHostState
 import com.regolith.ui.components.SelectionChrome
@@ -488,7 +490,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 .then(if (!windowShape.wide && autoHideRail) Modifier.nestedScroll(pillScroll.connection) else Modifier)
                 .semantics { testTagsAsResourceId = true },
         ) {
-            Box(Modifier.fillMaxSize()) {
+            // A Box in which a tile's poster can fly into the page it opens (PosterFlight.kt).
+            PosterFlightLayout(Modifier.fillMaxSize()) {
                 NavDisplay(
                     backStack = backStack,
                     onBack = { backStack.removeLastOrNull() },
@@ -496,6 +499,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 entryDecorators = listOf(
                         rememberSaveableStateHolderNavEntryDecorator(),
                         rememberViewModelStoreNavEntryDecorator(),
+                        // Lets a screen's posters fly with its transition (PosterFlight.kt).
+                        rememberPosterFlightDecorator(),
                     ),
                     // Screens register as the blur source so the pill frosts
                     // whatever scrolls beneath it.
@@ -617,7 +622,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 )
                             }
                         }
-                        entry<RegolithKey.TitleDetail>(metadata = WallSceneStrategy.page()) { key ->
+                        // A page posters fly into: it fades in under the poster (pageScreen).
+                        // Beside a wall the scene's own metadata applies instead (WallScene).
+                        entry<RegolithKey.TitleDetail>(metadata = WallSceneStrategy.page() + pageScreen) { key ->
                             TitleDetailScreen(
                                 viewModel = hiltViewModel<TitleDetailViewModel, TitleDetailViewModel.Factory>(
                                     creationCallback = { it.create(key.fileId) },

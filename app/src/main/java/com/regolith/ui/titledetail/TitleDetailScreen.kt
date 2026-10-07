@@ -43,6 +43,11 @@ import com.regolith.domain.transfer.TransferStatus
 import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.ArtworkImage
+import com.regolith.ui.components.rememberFlightLanding
+import com.regolith.ui.components.posterFlight
+import com.regolith.domain.artwork.ArtworkKind
+import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.PromptDialog
 import com.regolith.ui.components.Chip
@@ -167,13 +172,25 @@ private fun TitleDetailContent(
             // other fixed size; the 24dp is the status bar it runs under, which
             // is a system inset and does not scale.
             Box(Modifier.fillMaxWidth().height(210.scaledDp() + 24.dp)) {
-                ArtworkImage(state.artwork, Modifier.fillMaxSize(), fallbackLabel = state.title)
-                Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x2EFFFFFF), Color.Transparent), radius = 700f)))
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(0f to Color(0x99000000), 0.32f to Color.Transparent, 1f to Color(0xF5000000)),
-                    ),
-                )
+                // The picture and its overlays are where a tile's poster lands
+                // (PosterFlight.kt): it grows from the tile into this box,
+                // uncropping into the wide frame. The tile's own thumb stands in
+                // while the backdrop is made, so it lands on a picture.
+                // Beside a wall the tile stays on screen, so the poster is flown
+                // in by hand (rememberFlightLanding) and never flies back: the
+                // page slides out as it always has.
+                val owner = ArtworkOwner.File(state.fileId)
+                val thumb = ArtworkRequest(owner, ArtworkKind.THUMB)
+                val landing = rememberFlightLanding(owner, state.artwork, thumb, enabled = inPane)
+                Box(Modifier.fillMaxSize().posterFlight(owner.takeUnless { inPane }).then(landing.modifier)) {
+                    ArtworkImage(state.artwork, Modifier.fillMaxSize(), fallbackLabel = state.title, placeholder = thumb)
+                    Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x2EFFFFFF), Color.Transparent), radius = 700f)))
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(0f to Color(0x99000000), 0.32f to Color.Transparent, 1f to Color(0xF5000000)),
+                        ),
+                    )
+                }
                 // In a pane the glyph closes the pane (and sits at the end, where
                 // a close control belongs); pushed, it is the back circle the
                 // design draws at the start. The pane's glyph is a side panel

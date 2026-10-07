@@ -35,6 +35,7 @@ import androidx.navigation3.scene.SceneStrategy
 import androidx.navigation3.scene.SceneStrategyScope
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import com.regolith.ui.components.LocalPendingArtwork
+import com.regolith.ui.components.LocalPosterFlights
 import com.regolith.ui.components.PendingArtwork
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -47,8 +48,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * the plain full-screen push it has always been.
  *
  * - **Nothing open:** the wall has the whole window beside the rail.
- * - **A title open:** its page (Title Detail) slides in from the end edge and
- *   takes half the window; the wall dissolves and reappears in the other half.
+ * - **A title open:** its page (Title Detail) takes half the window; the wall
+ *   dissolves and reappears in the other half. Opened from a tile, the page
+ *   fades in while the tile's poster flies into its picture by hand
+ *   (`PosterFlight.kt`); opened any other way, it slides in from the end edge.
  * - **Closed again** (its close button, back, or the ringed tile tapped a
  *   second time): the page slides back out, the wall dissolves with it, and
  *   reappears across the full width once its pictures are drawn ([WallAt]).
@@ -189,6 +192,11 @@ private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, w
     val motion = LocalNavAnimatedContentScope.current
     val key = wall.contentKey
     val from = remember { widths.alone[key] }
+    // Opened by a tap on a tile, whose poster is flying in by hand: then the
+    // page fades in under it instead of sliding (paneFadeIn). Decided once,
+    // as it opens, so a recomposition mid-entrance cannot swap the motion.
+    val flights = LocalPosterFlights.current
+    val flownIn = remember { flights?.launching == true }
     DisposableEffect(key) { onDispose { widths.beside.remove(key) } }
     // Only while the page is open: popped, it stays composed for its slide-out,
     // and a second back then belongs to NavDisplay (it leaves the wall).
@@ -197,7 +205,7 @@ private fun <T : Any> WallWithPageLayout(wall: NavEntry<T>, page: NavEntry<T>, w
         WallAt(wall, from, widths.picturesFor(key), Modifier.weight(1f).fillMaxHeight()) { widths.beside[key] = it }
         Spacer(Modifier.width(PANE_GAP))
         Box(
-            with(motion) { Modifier.animateEnterExit(enter = paneEnter, exit = paneExit) }
+            with(motion) { Modifier.animateEnterExit(enter = if (flownIn) paneFadeIn else paneEnter, exit = paneExit) }
                 .weight(1f)
                 .fillMaxHeight()
                 // Title Detail draws on the window's ground below its hero; on
