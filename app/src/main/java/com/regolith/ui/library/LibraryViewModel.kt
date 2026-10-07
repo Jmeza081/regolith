@@ -36,6 +36,7 @@ import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.comparator
 import com.regolith.domain.library.ViewMode
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.ui.util.formatDurationShort
@@ -551,6 +552,14 @@ class LibraryViewModel @AssistedInject constructor(
 
     fun toggleViewMode() {
         viewModelScope.launch { prefs.setLibraryViewMode(_uiState.value.viewMode.toggled()) }
+    }
+
+    /**
+     * A pinch's step on the wall: [count] posters across, kept as Settings ›
+     * Display › Posters per row, which this wall and every other one follow.
+     */
+    fun setPostersPerRow(count: Int) {
+        viewModelScope.launch { prefs.setPostersPerRow(PostersPerRow.ofCount(count)) }
     }
 
     /** "Scan first" nudge and pull-to-refresh both land here. */

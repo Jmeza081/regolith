@@ -16,6 +16,17 @@ class WallColumnsTest {
     private val fold = 832.dp
 
     @Test
+    fun `four across is a choice like the others`() {
+        assertEquals(4, wallColumns(fold, wide = true, perRow = 4, fullWidth = fold))
+    }
+
+    @Test
+    fun `the most a pinch can reach is what fits at the smallest poster`() {
+        assertEquals("the Fold's inner display", 7, wallFitting(fold))
+        assertEquals("the 739dp emulator", 5, wallFitting(601.dp))
+    }
+
+    @Test
     fun `a phone shows three whatever the setting`() {
         for (perRow in 5..7) assertEquals(3, wallColumns(375.dp, wide = false, perRow = perRow, fullWidth = 375.dp))
     }
@@ -50,7 +61,8 @@ class WallColumnsTest {
     fun `the setting reads back what was stored, and seven otherwise`() {
         assertEquals(PostersPerRow.SIX, PostersPerRow.of("SIX"))
         assertEquals(PostersPerRow.SEVEN, PostersPerRow.of(null))
-        assertEquals(PostersPerRow.SEVEN, PostersPerRow.of("FOUR"))
-        assertEquals(listOf("5", "6", "7"), PostersPerRow.entries.map { it.label })
+        assertEquals(PostersPerRow.SEVEN, PostersPerRow.of("EIGHT"))
+        assertEquals(PostersPerRow.FOUR, PostersPerRow.of("FOUR"))
+        assertEquals(listOf("4", "5", "6", "7"), PostersPerRow.entries.map { it.label })
     }
 }

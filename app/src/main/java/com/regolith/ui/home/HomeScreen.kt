@@ -55,6 +55,12 @@ import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
 import com.regolith.ui.components.TopBarAction
 import com.regolith.ui.components.UnwatchedDot
+import com.regolith.ui.components.WallPinchPill
+import com.regolith.ui.components.rememberWallPinch
+import com.regolith.ui.components.wallPinch
+import com.regolith.ui.library.wallColumns
+import com.regolith.ui.library.wallFitting
+import com.regolith.ui.library.wallFullWidth
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -105,6 +111,13 @@ fun HomeScreen(
     val settling by animateFloatAsState(if (refreshing) 0f else dragOffset, label = "pullSettle")
     val pullOffset = if (refreshing) settling else dragOffset
     val wide = LocalWindowShape.current.wide
+    // The inner display's Newly added wall follows Settings › Display ›
+    // Posters per row, and a pinch on it steps that setting, as on the
+    // Library's walls. Home never has a page beside it, so its wall always
+    // has the whole width.
+    val wallWidth = wallFullWidth()
+    val across = wallColumns(wallWidth, wide = true, state.postersPerRow.count, wallWidth)
+    val pinch = rememberWallPinch(shown = across, most = wallFitting(wallWidth), onStep = viewModel::setPostersPerRow)
 
     // BoxWithConstraints: the wide layout sizes the resume cards from the
     // real width (three edge to edge), which a plain Box cannot read.
@@ -211,15 +224,19 @@ fun HomeScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         Eyebrow("Newly added", Modifier.padding(horizontal = Spacing.s18), large = true)
                         if (wide) {
-                            // The wall: rows of six posters, edge to edge. Home is a
-                            // vertical scroll, so this is plain rows rather than a
-                            // LazyVerticalGrid (which would need its own height).
-                            // The tag stays the same so the QA flows find it either way.
-                            Column(Modifier.padding(horizontal = Spacing.s18).testTag("home_new_row"), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                state.newlyAdded.chunked(WALL_COLUMNS).forEach { row ->
+                            // The wall: rows of posters, edge to edge, as many across
+                            // as the Library's walls. Home is a vertical scroll, so
+                            // this is plain rows rather than a LazyVerticalGrid
+                            // (which would need its own height). The tag stays the
+                            // same so the QA flows find it either way.
+                            Column(
+                                Modifier.padding(horizontal = Spacing.s18).wallPinch(pinch).testTag("home_new_row"),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                            ) {
+                                state.newlyAdded.chunked(across).forEach { row ->
                                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                                         row.forEach { item -> NewPoster(item, onOpenTitle, Modifier.weight(1f)) }
-                                        repeat(WALL_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                                        repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
                                     }
                                 }
                             }
@@ -311,6 +328,9 @@ fun HomeScreen(
             }
             Spacer(Modifier.height(LocalNavPillInsets.current.calculateBottomPadding()))
         }
+        // The pinch's "N across" pill, under the top bar. A TopBar is s12
+        // above a 44dp row and s18 below; s8 here lifts the pill onto that gap.
+        WallPinchPill(pinch, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = Spacing.s12 + 44.dp + Spacing.s8))
     }
 }
 
@@ -320,9 +340,6 @@ fun HomeScreen(
  * as small tiles rather than "the thing you were watching".
  */
 private val RESUME_CARD_WIDTH = 256.dp
-
-/** Posters across on the wide Home wall (the inner-display frame). */
-private const val WALL_COLUMNS = 6
 
 /**
  * A row's title, and an optional quiet fact beside it.

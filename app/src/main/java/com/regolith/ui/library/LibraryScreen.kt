@@ -133,6 +133,15 @@ import com.regolith.domain.media.PhoneAccess
 import com.regolith.ui.components.FilterChip
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
+import com.regolith.ui.components.WallPinchPill
+import com.regolith.ui.components.rememberWallPinch
+import com.regolith.ui.components.wallPinch
+import kotlin.math.roundToInt
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -222,6 +231,21 @@ fun LibraryScreen(
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
     var profileHeaderPx by remember { mutableIntStateOf(0) }
+
+    // A pinch on the wall steps how many posters sit across it (WallPinch),
+    // from what the wall shows to as many as fit, and keeps the answer as
+    // Settings › Display › Posters per row. The inner display only, and only
+    // with the whole width: beside a page the wall keeps its posters' size
+    // rather than a count, so "N across" would not be what you were looking at.
+    val wallWidth = wallFullWidth()
+    val pinch = rememberWallPinch(
+        shown = wallColumns(wallWidth, wide = true, state.postersPerRow.count, wallWidth),
+        most = wallFitting(wallWidth),
+        onStep = viewModel::setPostersPerRow,
+    )
+    val pinchable = LocalWindowShape.current.wide && selectedFileId == null
+    // Where the poster wall starts on screen, for the pill to sit just inside it.
+    var wallTopPx by remember { mutableIntStateOf(0) }
 
     // Deleting the collection you are standing in leaves nothing to draw, so
     // the wall leaves with it, as Browse's folders do. Only a success can
@@ -370,7 +394,9 @@ fun LibraryScreen(
         if (tab == LibraryTab.ON_DEVICE) {
             // Its own Box so the remove bar floats over the list rather than
             // stacking under it; this branch returns before the wall's own.
-            Box(Modifier.fillMaxSize()) {
+            // Its tiles follow the same posters across, so the same pinch.
+            Box(Modifier.fillMaxSize().wallPinch(pinch.takeIf { pinchable && state.device.viewMode == ViewMode.GRID })) {
+                WallPinchPill(pinch, Modifier.align(Alignment.TopCenter).padding(top = Spacing.s8).zIndex(1f))
                 DeviceTab(
                     state = state.device,
                     onOpenTitle = onOpenTitle,
@@ -531,7 +557,12 @@ fun LibraryScreen(
                 // tab takes Search's columns for those instead.
                 columns = if (showMoments) ThumbCells else WallCells(LocalWindowShape.current.wide, state.postersPerRow.count, wallFullWidth()),
                 state = gridState,
-                modifier = Modifier.fillMaxSize().testTag("library_grid"),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { wallTopPx = it.positionInParent().y.roundToInt() }
+                    // Posters only: Moments are 16:9 frames on Search's columns.
+                    .wallPinch(pinch.takeIf { pinchable && !showMoments }, gridState)
+                    .testTag("library_grid"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
                     bottom = LocalNavPillInsets.current.calculateBottomPadding(),
@@ -626,6 +657,12 @@ fun LibraryScreen(
             }
         }
     }
+
+    // The pinch's "N across" pill, just inside the top of the wall: under the
+    // tabs on a wall, under the floating bar on a profile (whose grid starts
+    // at the top of the screen, beneath that bar).
+    val pillTopPx = wallTopPx + with(LocalDensity.current) { ((if (profile != null) profileBarHeight() else 0.dp) + Spacing.s8).roundToPx() }
+    WallPinchPill(pinch, Modifier.align(Alignment.TopCenter).offset { IntOffset(0, pillTopPx) })
 
     // A profile's top bar floats over the page, so the poster's light runs
     // up under it. It fills in with the page's ground, and takes the

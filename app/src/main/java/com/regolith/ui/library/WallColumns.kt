@@ -29,13 +29,19 @@ import kotlin.math.roundToInt
  */
 internal fun wallColumns(width: Dp, wide: Boolean, perRow: Int, fullWidth: Dp): Int {
     if (!wide) return PHONE_COLUMNS
-    fun fitting(w: Dp): Int = ((w + WALL_GAP) / (WIDE_TILE_MIN + WALL_GAP)).toInt()
-    val across = perRow.coerceAtMost(fitting(fullWidth)).coerceAtLeast(2)
+    val across = perRow.coerceAtMost(wallFitting(fullWidth)).coerceAtLeast(2)
     // A poster's width with the whole screen: the size the wall keeps.
     val poster = (fullWidth + WALL_GAP) / across - WALL_GAP
     val nearest = ((width + WALL_GAP) / (poster + WALL_GAP)).roundToInt()
-    return nearest.coerceAtMost(fitting(width)).coerceAtLeast(2)
+    return nearest.coerceAtMost(wallFitting(width)).coerceAtLeast(2)
 }
+
+/**
+ * How many posters fit across [width] at all, none narrower than
+ * [WIDE_TILE_MIN]: the most a wall shows, and so the most a pinch can reach
+ * (the Fold's inner display fits seven; the 739dp emulator, five).
+ */
+internal fun wallFitting(width: Dp): Int = ((width + WALL_GAP) / (WIDE_TILE_MIN + WALL_GAP)).toInt()
 
 /**
  * The width a wall's tiles would share with the whole window to itself: the

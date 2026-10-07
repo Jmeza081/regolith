@@ -377,7 +377,7 @@ fun SettingsScreen(
                     ) {
                         Text("Posters per row", style = TextStyles.settingLabel, color = colors.ink)
                         Text(
-                            "Across the Library on the inner display. Fewer makes each poster bigger; the cover screen always shows three.",
+                            "Across the poster walls on the inner display, Home's included. Fewer makes each poster bigger, and pinching a wall steps through these too. The cover screen always shows three.",
                             style = TextStyles.settingMeta, color = colors.metadata,
                         )
                         SegmentedTabs(
