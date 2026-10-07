@@ -1,6 +1,7 @@
 package com.regolith.ui.home
 
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.playback.ChapterFacet
 
 /** One card in "Continue watching": 16:9 so the frame is recognisable, labelled with time left. */
@@ -66,6 +67,8 @@ data class HomeUiState(
      * marked yet, which leaves the section out.
      */
     val moments: List<ChapterFacet> = emptyList(),
+    /** Settings › Display › Posters per row: the inner display's Newly added wall follows it, as the Library's walls do. */
+    val postersPerRow: PostersPerRow = PostersPerRow.DEFAULT,
 ) {
     val hasSource: Boolean get() = serverNames.isNotEmpty()
 }

@@ -18,7 +18,8 @@ Progress, in the build order at the end:
 - Done after the plan (2026-10-06): Search shows the selection's toolbar,
   a video whose name parses into nothing is shown by that name instead of
   "No match", and the Library's posters per row on the inner display is a
-  setting (five, six or seven).
+  setting (five, six or seven; four to seven, and pinchable, since
+  2026-10-07).
 
 The owner browses through the Library, but renaming, moving, deleting,
 downloading and setting posters all live in Browse. Finding the same video

@@ -9,6 +9,8 @@ import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.repository.UserChapterRepository
+import com.regolith.data.prefs.AppPreferences
+import com.regolith.domain.display.PostersPerRow
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.domain.transfer.TransferStatus
@@ -41,6 +43,7 @@ class HomeViewModel @Inject constructor(
     private val scans: ScanRepository,
     transfers: TransferRepository,
     userChapters: UserChapterRepository,
+    private val prefs: AppPreferences,
     spoof: SpoofMode,
 ) : ViewModel() {
 
@@ -71,8 +74,9 @@ class HomeViewModel @Inject constructor(
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
-        combine(sources.observeServers(), shares, ::Pair), resume, newest, runs, combine(downloads, moments, ::Pair),
-    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (downloadsAndCopies, momentNames) ->
+        combine(sources.observeServers(), shares, ::Pair), resume, newest, runs,
+        combine(downloads, moments, prefs.postersPerRow, ::Triple),
+    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (downloadsAndCopies, momentNames, perRow) ->
         val (ready, deviceFiles) = downloadsAndCopies
         val running = runList.filter { it.status == ScanRunEntity.RUNNING }
         val progressById = newestProgress.associateBy { it.fileId }
@@ -109,12 +113,18 @@ class HomeViewModel @Inject constructor(
             refreshLine = running.takeIf { it.isNotEmpty() }?.let { "Reading the share · ${"%,d".format(it.sumOf { r -> r.filesFound })} files so far" },
             neverScanned = shareList.isNotEmpty() && shareList.none { it.lastScanAtMs != null } && runList.none { it.status == ScanRunEntity.DONE },
             moments = momentNames,
+            postersPerRow = perRow,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     /** Pull to refresh: every enabled share is walked again. The rows stay tappable meanwhile. */
     fun refresh() {
         viewModelScope.launch { scans.scanAll() }
+    }
+
+    /** A pinch's step on the Newly added wall: kept as Settings › Display › Posters per row, which the Library follows too. */
+    fun setPostersPerRow(count: Int) {
+        viewModelScope.launch { prefs.setPostersPerRow(PostersPerRow.ofCount(count)) }
     }
 
     private companion object {

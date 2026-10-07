@@ -220,9 +220,11 @@ own confirmation.
 The inner display gets its own layouts: a nav rail that retracts to a spine, and
 library and browse walls that fill the screen until you open a title, whose page
 then slides in beside the wall and slides away again when you close it. The
-Library shows five, six or seven posters across it, as you pick in Settings ›
-Display › Posters per row; with a title open beside it, the posters keep their
-size and fewer fit. The
+Library and Home show four to seven posters across, as you pick in Settings ›
+Display › Posters per row, or by pinching a wall: spread two fingers for fewer,
+bigger posters and pinch them together for more, one step at a time, each with
+a tick you feel and an "N across" pill at the top of the wall. With a title open
+beside it, the posters keep their size and fewer fit. The
 player has two-column and flex-mode layouts. Turned sideways, Shorts plays the clip in
 one half and fills the other with its frames — tap one to jump there, pause to make
 a poster from that moment — and the clips that play next.
