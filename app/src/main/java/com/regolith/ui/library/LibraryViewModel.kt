@@ -33,7 +33,8 @@ import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
-import com.regolith.domain.library.SortDirection
+import com.regolith.domain.library.MomentSort
+import com.regolith.domain.library.comparator
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.playback.VideoInfo
@@ -122,6 +123,8 @@ class LibraryViewModel @AssistedInject constructor(
 
     init {
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted, order)) } } }
+        viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
+        viewModelScope.launch { prefs.deviceOrder.collect { order -> _uiState.update { it.copy(device = it.device.inOrder(order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch { prefs.postersPerRow.collect { perRow -> _uiState.update { it.copy(postersPerRow = perRow) } } }
         viewModelScope.launch { prefs.deviceViewMode.collect { mode -> _uiState.update { it.copy(device = it.device.copy(viewMode = mode)) } } }
@@ -216,13 +219,13 @@ class LibraryViewModel @AssistedInject constructor(
             combine(phone.access, folders, files, progress, spoof.state) { access, folders, fs, ps, spoofed ->
                 val progressById = ps.associateBy { it.fileId }
                 val byFolder = fs.groupBy { it.folderId }
-                // Newest video first inside a folder, and the folder with the
-                // newest video first on the page: the clip you just shot is
-                // the one you came here for.
+                // In no particular order here: the tab's own order puts the
+                // videos and the folders in place once they are on the state
+                // (DeviceUiState.inOrder), and again whenever it changes.
                 val built = folders.mapNotNull { folder ->
-                    val videos = byFolder[folder.id].orEmpty().sortedByDescending { it.modifiedAtMs }
+                    val videos = byFolder[folder.id].orEmpty()
                     if (videos.isEmpty()) return@mapNotNull null
-                    videos.first().modifiedAtMs to PhoneFolder(
+                    PhoneFolder(
                         folderId = folder.id,
                         relPath = folder.relPath,
                         name = folder.name,
@@ -230,7 +233,7 @@ class LibraryViewModel @AssistedInject constructor(
                         path = spoofed?.phonePath(folder.relPath) ?: PhonePaths.display(folder.relPath),
                         videos = videos.map { phoneRow(it, progressById[it.id]) },
                     )
-                }.sortedByDescending { it.first }.map { it.second }
+                }
                 access to built
             }.collect { (access, folders) ->
                 _uiState.update { s ->
@@ -238,7 +241,7 @@ class LibraryViewModel @AssistedInject constructor(
                     // its last video deleted) falls back to everything rather
                     // than showing a blank page with no chip lit.
                     val filter = s.device.filter.let { f -> if (f is DeviceFilter.Folder && folders.none { it.folderId == f.folderId }) DeviceFilter.All else f }
-                    s.copy(device = s.device.copy(phoneAccess = access, phoneFolders = folders, filter = filter))
+                    s.copy(device = s.device.copy(phoneAccess = access, phoneFolders = folders, filter = filter).inOrder())
                 }
             }
         }
@@ -272,6 +275,9 @@ class LibraryViewModel @AssistedInject constructor(
             status = TransferStatus.DONE, cause = null, causeBytes = null,
             bytesDone = file.sizeBytes, totalBytes = file.sizeBytes, meta = meta,
             phone = true,
+            // The phone's own "date added", which for a clip it shot is when it was shot.
+            addedAtMs = file.addedAtMs, fileDateMs = file.modifiedAtMs,
+            durationMs = file.durationMs, height = file.height,
         )
     }
 
@@ -301,6 +307,9 @@ class LibraryViewModel @AssistedInject constructor(
                 name = if (parsed.matched) parsed.display else file.name.substringBeforeLast('.'),
                 status = t.statusEnum(), cause = t.causeEnum(), causeBytes = t.causeBytes,
                 bytesDone = t.bytesDone, totalBytes = t.totalBytes, meta = meta,
+                // Arrived here when the copy finished, as Home's row counts it.
+                addedAtMs = t.finishedAtMs ?: t.updatedAtMs, fileDateMs = file.modifiedAtMs,
+                durationMs = file.durationMs, height = file.height,
             )
         }
         val all = rows.mapNotNull(::row)
@@ -359,6 +368,7 @@ class LibraryViewModel @AssistedInject constructor(
                         revision = revisions[ArtworkOwner.Folder(folder.id)] ?: 0, animated = folderId == null,
                     ),
                     addedAtMs = beneath.maxOfOrNull { it.addedAtMs } ?: 0,
+                    fileDateMs = beneath.maxOfOrNull { it.modifiedAtMs } ?: 0,
                     sizeBytes = beneath.sumOf { it.sizeBytes },
                     durationMs = beneath.mapNotNull { it.durationMs }.takeIf { it.isNotEmpty() }?.sum(),
                     height = beneath.mapNotNull { it.height }.maxOrNull(),
@@ -485,6 +495,7 @@ class LibraryViewModel @AssistedInject constructor(
             meta = duration?.let { formatDurationShort(it) } ?: formatBytes(file.sizeBytes),
             artwork = ArtworkRequest(ArtworkOwner.File(file.id), ArtworkKind.POSTER, revision = artworkRevision),
             addedAtMs = file.addedAtMs,
+            fileDateMs = file.modifiedAtMs,
             sizeBytes = file.sizeBytes,
             durationMs = duration,
             height = file.height,
@@ -494,36 +505,42 @@ class LibraryViewModel @AssistedInject constructor(
     }
 
     /**
-     * The wall in [order]. A tile with no runtime or resolution yet (not
-     * probed) goes LAST in both directions: reversing the sort should not
-     * bring every unknown to the top. Ties fall back to the name, so equal
-     * sizes do not shuffle between recompositions.
+     * The wall in [order] ([comparator]). "Date added" compares to the day:
+     * a scan stamps everything it finds at the moment it finds it, so a
+     * library scanned in one go would otherwise sort by the order the scan
+     * happened to walk in, and a collection's videos would all tie.
      */
-    private fun sorted(tiles: List<LibraryTile>, order: LibraryOrder): List<LibraryTile> {
-        val byName = compareBy<LibraryTile, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
-        val key: (LibraryTile) -> Long? = when (order.sort) {
-            LibrarySort.NAME -> { _ -> 0L }
-            LibrarySort.DATE_ADDED -> { t -> t.addedAtMs }
-            LibrarySort.FILE_SIZE -> { t -> t.sizeBytes }
-            LibrarySort.RUNTIME -> { t -> t.durationMs }
-            LibrarySort.RESOLUTION -> { t -> t.height?.toLong() }
-        }
-        val primary = if (order.sort == LibrarySort.NAME) byName else compareBy<LibraryTile> { key(it) }.then(byName)
-        val directed = if (order.direction == SortDirection.ASCENDING) primary else primary.reversed()
-        return tiles.sortedWith(compareBy<LibraryTile> { key(it) == null }.then(directed))
-    }
+    private fun sorted(tiles: List<LibraryTile>, order: LibraryOrder): List<LibraryTile> =
+        tiles.sortedWith(order.comparator(addedByDay = true))
 
     fun openSortSheet(open: Boolean) = _uiState.update { it.copy(sortSheetOpen = open) }
 
-    /**
+    /*
      * A row in the sort sheet was tapped: a new criterion, or the one in use
-     * reversed. Either way it applies and the sheet closes, and the screen
-     * takes the wall back to the top (it watches [LibraryUiState.order]).
+     * reversed. Each list on the page has its own, and the sheet offers the
+     * one on screen. Either way it applies and the sheet closes, and the
+     * screen takes that list back to the top (it watches each order).
      */
+
+    /** The wall, and a profile's Videos tab: one order for every wall in the Library. */
     fun pickSort(sort: LibrarySort) {
         val next = _uiState.value.order.pick(sort)
         _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted, next)) }
         viewModelScope.launch { prefs.setLibraryOrder(next) }
+    }
+
+    /** A profile's Moments tab. */
+    fun pickMomentSort(sort: MomentSort) {
+        val next = _uiState.value.momentOrder.pick(sort)
+        _uiState.update { it.copy(momentOrder = next, sortSheetOpen = false) }
+        viewModelScope.launch { prefs.setMomentOrder(next) }
+    }
+
+    /** The device tab: its copies and the phone's own videos. */
+    fun pickDeviceSort(sort: LibrarySort) {
+        val next = _uiState.value.device.order.pick(sort)
+        _uiState.update { it.copy(device = it.device.inOrder(next), sortSheetOpen = false) }
+        viewModelScope.launch { prefs.setDeviceOrder(next) }
     }
 
     /** Poster wall <-> rows. Written to preferences; the collector above puts it back on the state. */

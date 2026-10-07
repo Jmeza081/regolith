@@ -1049,6 +1049,8 @@ data class UserChapterHitRow(
     val fileTitle: String?,
     val shareId: Long,
     val fileRelPath: String,
+    /** When the chapter was named or last renamed. */
+    val updatedAtMs: Long,
 )
 
 /** Where one named mark is: all a moment frame needs to be grabbed. */
@@ -1131,7 +1133,7 @@ interface UserChapterDao {
      */
     @Query(
         "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
-            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
             "FROM user_chapters JOIN user_chapter_fts ON user_chapters.id = user_chapter_fts.rowid " +
             "JOIN media_files ON media_files.id = user_chapters.fileId " +
             "WHERE user_chapter_fts MATCH :match AND user_chapters.title IS NOT NULL AND media_files.missing = 0 " +
@@ -1196,7 +1198,7 @@ interface UserChapterDao {
      */
     @Query(
         "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
-            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
             "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
             "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
@@ -1212,7 +1214,7 @@ interface UserChapterDao {
      */
     @Query(
         "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
-            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
             "WHERE media_files.folderId = :folderId AND media_files.missing = 0 " +
             "AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +

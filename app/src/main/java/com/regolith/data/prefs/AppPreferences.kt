@@ -11,6 +11,8 @@ import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.MomentOrder
+import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.SortDirection
 import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
@@ -41,6 +43,10 @@ class AppPreferences @Inject constructor(
         val scrubThumbnails = booleanPreferencesKey("scrub_thumbnails")
         val librarySort = stringPreferencesKey("library_sort")
         val librarySortDirection = stringPreferencesKey("library_sort_direction")
+        val deviceSort = stringPreferencesKey("device_sort")
+        val deviceSortDirection = stringPreferencesKey("device_sort_direction")
+        val momentSort = stringPreferencesKey("moment_sort")
+        val momentSortDirection = stringPreferencesKey("moment_sort_direction")
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
@@ -327,6 +333,39 @@ class AppPreferences @Inject constructor(
         store.edit {
             it[Keys.librarySort] = order.sort.name
             it[Keys.librarySortDirection] = order.direction.name
+        }
+    }
+
+    /**
+     * The device tab's order: its downloads and the phone's own videos.
+     * Its own, because the tab is a different list with a different
+     * question behind it ("what did I just keep?"), so it starts at Date
+     * added, newest first, which is how the tab always read.
+     */
+    val deviceOrder: Flow<LibraryOrder> = store.data.map { p ->
+        val sort = p[Keys.deviceSort]?.let { runCatching { LibrarySort.valueOf(it) }.getOrNull() } ?: LibraryOrder.DEVICE_DEFAULT.sort
+        val direction = p[Keys.deviceSortDirection]?.let { runCatching { SortDirection.valueOf(it) }.getOrNull() } ?: sort.natural
+        LibraryOrder(sort, direction)
+    }
+
+    suspend fun setDeviceOrder(order: LibraryOrder) {
+        store.edit {
+            it[Keys.deviceSort] = order.sort.name
+            it[Keys.deviceSortDirection] = order.direction.name
+        }
+    }
+
+    /** A collection profile's Moments tab: one order for every profile, as the wall has one for every wall. */
+    val momentOrder: Flow<MomentOrder> = store.data.map { p ->
+        val sort = p[Keys.momentSort]?.let { runCatching { MomentSort.valueOf(it) }.getOrNull() } ?: MomentSort.VIDEO
+        val direction = p[Keys.momentSortDirection]?.let { runCatching { SortDirection.valueOf(it) }.getOrNull() } ?: sort.natural
+        MomentOrder(sort, direction)
+    }
+
+    suspend fun setMomentOrder(order: MomentOrder) {
+        store.edit {
+            it[Keys.momentSort] = order.sort.name
+            it[Keys.momentSortDirection] = order.direction.name
         }
     }
 

@@ -3,6 +3,12 @@ package com.regolith.ui.library
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
+import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.MomentOrder
+import com.regolith.domain.library.MomentSort
+import com.regolith.domain.library.SortDirection
+import com.regolith.domain.library.SortKeys
+import com.regolith.domain.library.comparator
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.PhoneAccess
 import com.regolith.domain.playback.ChapterMatch
@@ -10,17 +16,10 @@ import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.util.SelectionUiState
 
-/** One poster on the wall. */
-sealed interface LibraryTile {
+/** One poster on the wall. Its [SortKeys] let the wall be ordered without knowing the tile kind. */
+sealed interface LibraryTile : SortKeys {
     val testTag: String
-    val name: String
     val artwork: ArtworkRequest
-
-    /** Sort keys, so the ViewModel orders without knowing the tile kind. */
-    val addedAtMs: Long
-    val sizeBytes: Long
-    val durationMs: Long?
-    val height: Int?
 
     /** `Films/`, `Series/`, a show: opens its own wall. */
     data class Collection(
@@ -34,6 +33,8 @@ sealed interface LibraryTile {
         override val sizeBytes: Long,
         override val durationMs: Long?,
         override val height: Int?,
+        /** The newest file beneath it, by the file's own date. */
+        override val fileDateMs: Long = 0,
         val shareId: Long = 0,
         /** `/`-joined path inside the share; what a download pick is keyed on. */
         val relPath: String = "",
@@ -64,6 +65,7 @@ sealed interface LibraryTile {
         override val sizeBytes: Long,
         override val durationMs: Long?,
         override val height: Int?,
+        override val fileDateMs: Long = 0,
         val shareId: Long = 0,
         /** The folder holding it, so a selection can tell if an ancestor is picked. */
         val folderRelPath: String = "",
@@ -84,6 +86,9 @@ data class LibraryUiState(
      */
     val profile: CollectionProfile? = null,
     val order: LibraryOrder = LibraryOrder(),
+    /** A collection profile's Moments tab; its own list, so its own order. */
+    val momentOrder: MomentOrder = MomentOrder(),
+    /** Open over whichever list is on screen: it shows that list's choices ([LibraryScreen]). */
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
     val viewMode: ViewMode = ViewMode.GRID,
@@ -113,10 +118,10 @@ data class LibraryUiState(
 
 data class UnreachableServer(val serverId: Long, val name: String, val lastSeenAtMs: Long?)
 
-/** One row on the device tab. */
+/** One row on the device tab. Its [SortKeys] are what the tab's own order reads. */
 data class DeviceRow(
     val fileId: Long,
-    val name: String,
+    override val name: String,
     val status: TransferStatus,
     val cause: TransferCause?,
     val causeBytes: Long?,
@@ -130,7 +135,13 @@ data class DeviceRow(
      * because removing it would delete someone's only copy.
      */
     val phone: Boolean = false,
-) {
+    /** When it arrived here: the copy finishing, or the phone's own date for a video it already had. */
+    override val addedAtMs: Long = 0,
+    override val fileDateMs: Long = 0,
+    override val durationMs: Long? = null,
+    override val height: Int? = null,
+) : SortKeys {
+    override val sizeBytes: Long get() = totalBytes
     val testTag get() = "device_row_$fileId"
     val fraction: Float get() = if (totalBytes > 0) (bytesDone.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
 }
@@ -138,6 +149,12 @@ data class DeviceRow(
 data class DeviceUiState(
     /** Tiles or rows. Its own choice, remembered apart from the network wall's. */
     val viewMode: ViewMode = ViewMode.ROWS,
+    /**
+     * The order [ready] and the phone's videos are in, remembered apart from
+     * the wall's. The queue and the failures keep theirs: what downloads next
+     * is not a sort.
+     */
+    val order: LibraryOrder = LibraryOrder.DEVICE_DEFAULT,
     val usedBytes: Long = 0,
     val totalBytes: Long = 0,
     val ready: List<DeviceRow> = emptyList(),
@@ -167,7 +184,7 @@ data class DeviceUiState(
     // --- Phone storage: the videos the phone already had (PhoneLibrary).
     /** What the person has allowed; NONE draws the ask card in place of the section. */
     val phoneAccess: PhoneAccess = PhoneAccess.NONE,
-    /** One entry per phone folder with something showing in it, most recent video first. */
+    /** One entry per phone folder with something showing in it, in [order] ([inOrder]). */
     val phoneFolders: List<PhoneFolder> = emptyList(),
     /** Which origin the chips narrow the page to. */
     val filter: DeviceFilter = DeviceFilter.All,
@@ -281,10 +298,29 @@ fun LibraryUiState.withWall(built: LibraryUiState, sortedTiles: List<LibraryTile
 fun DeviceUiState.withRows(built: DeviceUiState): DeviceUiState = copy(
     usedBytes = built.usedBytes,
     totalBytes = built.totalBytes,
-    ready = built.ready,
+    ready = built.ready.sortedWith(order.comparator()),
     inFlight = built.inFlight,
     failed = built.failed,
 )
+
+/**
+ * The device tab in [next] order: the finished copies, each phone folder's
+ * videos, and the folders themselves. By name, the folders go by their own
+ * names; by anything else, the folder holding the first video comes first,
+ * the rule "the folder with the newest clip first" always followed.
+ */
+fun DeviceUiState.inOrder(next: LibraryOrder = order): DeviceUiState {
+    val byOrder = next.comparator<DeviceRow>()
+    val folders = phoneFolders.map { it.copy(videos = it.videos.sortedWith(byOrder)) }
+    val folderOrder: Comparator<PhoneFolder> = if (next.sort == LibrarySort.NAME) {
+        compareBy<PhoneFolder, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
+            .let { if (next.direction == SortDirection.ASCENDING) it else it.reversed() }
+    } else {
+        // Every folder listed has at least one video ([PhoneFolder]).
+        Comparator { a, b -> byOrder.compare(a.videos.first(), b.videos.first()) }
+    }
+    return copy(order = next, ready = ready.sortedWith(byOrder), phoneFolders = folders.sortedWith(folderOrder))
+}
 
 /**
  * A leaf collection's page, read as a profile (the canvas "Collection View
@@ -309,7 +345,7 @@ data class CollectionProfile(
     val sizeBytes: Long,
     /** Videos played to the end. */
     val watchedCount: Int,
-    /** The named chapters in its videos, by video in name order and then by time ([inWallOrder] re-orders them). */
+    /** The named chapters in its videos, by video in name order and then by time ([inOrder] re-orders them). */
     val moments: List<CollectionMoment>,
 )
 
@@ -321,6 +357,8 @@ data class CollectionMoment(
     val title: String,
     /** The video it is in, named as its tile names it. */
     val videoName: String,
+    /** When it was named or last renamed. */
+    val namedAtMs: Long = 0,
 ) {
     val testTag get() = "library_moment_${fileId}_$startMs"
 }
@@ -357,17 +395,30 @@ internal fun collectionProfile(
         sizeBytes = videos.sumOf { it.sizeBytes },
         watchedCount = videos.count { it.fileId in completed },
         moments = marks.mapNotNull { mark ->
-            names[mark.fileId]?.let { name -> CollectionMoment(mark.fileId, mark.startMs, mark.title, name) }
+            names[mark.fileId]?.let { name -> CollectionMoment(mark.fileId, mark.startMs, mark.title, name, mark.namedAtMs) }
         },
     )
 }
 
 /**
- * The moments in the order the wall shows their videos, each video's in
- * time order, so sorting the wall sorts the Moments tab with it.
+ * The moments in [order]. [tiles] are the wall's, in the wall's own order:
+ * [MomentSort.VIDEO] follows it, so sorting the Videos tab sorts the
+ * moments with it, and it settles every tie in the other two, a video's
+ * moments always in the order they play.
  */
-internal fun List<CollectionMoment>.inWallOrder(tiles: List<LibraryTile>): List<CollectionMoment> {
+internal fun List<CollectionMoment>.inOrder(order: MomentOrder, tiles: List<LibraryTile>): List<CollectionMoment> {
     val position = HashMap<Long, Int>()
     tiles.forEachIndexed { index, tile -> if (tile is LibraryTile.Title) position[tile.fileId] = index }
-    return sortedWith(compareBy<CollectionMoment>({ position[it.fileId] ?: Int.MAX_VALUE }, { it.startMs }))
+    val video = compareBy<CollectionMoment> { position[it.fileId] ?: Int.MAX_VALUE }
+    val inPlay = compareBy<CollectionMoment> { it.startMs }
+    val ascending = order.direction == SortDirection.ASCENDING
+    val comparator = when (order.sort) {
+        // Reversed, the videos run backwards but a video's moments still play forwards.
+        MomentSort.VIDEO -> (if (ascending) video else video.reversed()).then(inPlay)
+        MomentSort.NAME -> compareBy<CollectionMoment, String>(String.CASE_INSENSITIVE_ORDER) { it.title }
+            .let { if (ascending) it else it.reversed() }.then(video).then(inPlay)
+        MomentSort.DATE_NAMED -> compareBy<CollectionMoment> { it.namedAtMs }
+            .let { if (ascending) it else it.reversed() }.then(video).then(inPlay)
+    }
+    return sortedWith(comparator)
 }

@@ -59,6 +59,9 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.MomentSort
+import com.regolith.domain.library.SortChoice
+import com.regolith.domain.library.SortDirection
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.components.LocalNavPillInsets
@@ -262,6 +265,23 @@ fun LibraryScreen(
             android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)),
         )
     }
+    // The one Sort button sorts whatever list is on screen, and the sheet
+    // offers that list's own choices: the device tab and a profile's Moments
+    // tab each keep an order of their own. Up here, before the page, because
+    // the device tab and the no-server page return early, and a sheet below
+    // them was never drawn: tapping Sort there did nothing until you went
+    // back to the Network tab, where it opened by itself.
+    if (state.sortSheetOpen) {
+        val close = { viewModel.openSortSheet(false) }
+        when {
+            tab == LibraryTab.ON_DEVICE ->
+                SortSheet(LibrarySort.entries, state.device.order.sort, state.device.order.direction, viewModel::pickDeviceSort, close)
+            profile != null && profileTab == ProfileTab.MOMENTS ->
+                SortSheet(MomentSort.entries, state.momentOrder.sort, state.momentOrder.direction, viewModel::pickMomentSort, close)
+            else -> SortSheet(LibrarySort.entries, state.order.sort, state.order.direction, viewModel::pickSort, close)
+        }
+    }
+
     // No BackHandler: back walks out of the collection and the selection
     // comes with it, so a pick can span a wall and the folders under it.
     // Leaving selection is the X above or Cancel below.
@@ -423,10 +443,12 @@ fun LibraryScreen(
         // a new list to read from the start, so glide back to the top.
         // `lastOrder` skips the first composition, which is also what keeps
         // a restored scroll position when you come back from a title.
-        var lastOrder by remember { mutableStateOf(state.order) }
-        LaunchedEffect(state.order) {
-            if (state.order == lastOrder) return@LaunchedEffect
-            lastOrder = state.order
+        // The Moments tab's order moves the same lists, so it counts as a new order too.
+        val orders = state.order to state.momentOrder
+        var lastOrder by remember { mutableStateOf(orders) }
+        LaunchedEffect(orders) {
+            if (orders == lastOrder) return@LaunchedEffect
+            lastOrder = orders
             if (state.viewMode == ViewMode.GRID) gridState.animateScrollToItem(0) else listState.animateScrollToItem(0)
         }
 
@@ -481,7 +503,7 @@ fun LibraryScreen(
             ProfileTabs(p, profileTab, { profileTab = it }, Modifier.padding(bottom = Spacing.s8))
         }
         // In the order the wall shows their videos, so sorting one sorts both.
-        val moments = remember(profile?.moments, state.tiles) { profile?.moments.orEmpty().inWallOrder(state.tiles) }
+        val moments = remember(profile?.moments, state.tiles, state.momentOrder) { profile?.moments.orEmpty().inOrder(state.momentOrder, state.tiles) }
         val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
         val uploadSection = @Composable { section: com.regolith.ui.components.UploadSection ->
             UploadSectionView(
@@ -652,9 +674,6 @@ fun LibraryScreen(
         )
     }
 
-    if (state.sortSheetOpen) {
-        SortSheet(order = state.order, onSelect = viewModel::pickSort, onDismiss = { viewModel.openSortSheet(false) })
-    }
 
         // The pill becomes this selection's toolbar with Browse's four verbs:
         // a collection is moved, renamed and deleted as its folder, a video as
@@ -953,23 +972,30 @@ private fun ScanLine() {
 /**
  * The sort sheet (design: "Sheets step up to #0F0F0F with a 22px top
  * radius. The check is the only red on the screen."): a 38×4 handle,
- * "SORT BY" in Michroma 14, five 48dp rows at 500 15/20.
+ * "SORT BY" in Michroma 14, a 48dp row at 500 15/20 for each of [choices]:
+ * the wall's five ([LibrarySort]), or the Moments tab's three ([MomentSort]).
  *
  * Each row says which way it runs on the right: the one in force shows
  * its current direction, the others the direction they would start in.
  * Tapping the one in force reverses it, like a table header.
  */
 @Composable
-private fun SortSheet(order: LibraryOrder, onSelect: (LibrarySort) -> Unit, onDismiss: () -> Unit) {
+private fun <C> SortSheet(
+    choices: List<C>,
+    inForce: C,
+    direction: SortDirection,
+    onSelect: (C) -> Unit,
+    onDismiss: () -> Unit,
+) where C : Enum<C>, C : SortChoice {
     RegolithSheet(title = "Sort by", onDismiss = onDismiss, testTag = "library_sort_sheet") {
-        LibrarySort.entries.forEach { sort ->
-            val inForce = sort == order.sort
+        choices.forEach { sort ->
+            val selected = sort == inForce
             SheetOption(
                 label = sort.label,
-                selected = inForce,
+                selected = selected,
                 onClick = { onSelect(sort) },
                 testTag = "library_sort_${sort.name.lowercase()}",
-                trailing = sort.directionLabel(if (inForce) order.direction else sort.natural),
+                trailing = sort.directionLabel(if (selected) direction else sort.natural),
             )
         }
         Text(
@@ -1172,8 +1198,17 @@ private fun DeviceTab(
     }
     val filter = state.filter
     val openFolder = (filter as? DeviceFilter.Folder)?.let { f -> state.phoneFolders.firstOrNull { it.folderId == f.folderId } }
+    // A new order is a new list to read from the top, as on the wall.
+    val listState = rememberLazyListState()
+    var lastOrder by remember { mutableStateOf(state.order) }
+    LaunchedEffect(state.order) {
+        if (state.order == lastOrder) return@LaunchedEffect
+        lastOrder = state.order
+        listState.animateScrollToItem(0)
+    }
     LazyColumn(
         Modifier.fillMaxSize().testTag("library_device_list"),
+        state = listState,
         contentPadding = PaddingValues(
             start = Spacing.s18, end = Spacing.s18,
             bottom = 126.dp,
