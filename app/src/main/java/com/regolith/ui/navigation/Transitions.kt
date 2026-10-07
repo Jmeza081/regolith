@@ -9,10 +9,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
+import com.regolith.ui.components.FLIGHT_MS
+import com.regolith.ui.components.FlightEasing
 
 /*
  * How screens replace each other.
@@ -71,10 +75,40 @@ val tabScreen: Map<String, Any> =
         NavDisplay.predictivePopTransitionSpec { _ -> tabTransition }
 
 /*
+ * A page a poster flies into (PosterFlight.kt): Title Detail on a phone, or
+ * filling a wide window. It fades in under the poster, rising a little,
+ * instead of sliding in from the right — a slide would carry the poster's
+ * landing spot sideways while the poster is still in the air. The screen it
+ * covers fades as the poster leaves it. Back is the same in reverse, with the
+ * poster flying home over it, and the Back swipe scrubs it.
+ *
+ * Every Title Detail arrives this way, flown into or not: a page opened from
+ * a list row has no poster to bring, and fades in all the same.
+ */
+
+/** How far the page rises as it fades in: a sixtieth of its height, about 12dp on a phone, as drawn. */
+private const val PAGE_RISE = 60
+
+private val pageArrive: ContentTransform
+    get() = (fadeIn(tween(FLIGHT_MS)) + slideInVertically(tween(FLIGHT_MS, easing = FlightEasing)) { height -> height / PAGE_RISE }) togetherWith
+        fadeOut(tween(FLIGHT_MS / 2))
+
+private val pageLeave: ContentTransform
+    get() = fadeIn(tween(FLIGHT_MS)) togetherWith
+        (fadeOut(tween(FLIGHT_MS / 2)) + slideOutVertically(tween(FLIGHT_MS, easing = FlightEasing)) { height -> height / PAGE_RISE })
+
+/** Per-entry metadata for a page posters fly into. Spread onto `entry<Key>(metadata = pageScreen)`. */
+val pageScreen: Map<String, Any> =
+    NavDisplay.transitionSpec { pageArrive } +
+        NavDisplay.popTransitionSpec { pageLeave } +
+        NavDisplay.predictivePopTransitionSpec { _ -> pageLeave }
+
+/*
  * A title's page opening beside a wall on a wide window (WallScene).
  *
  * The page alone moves: in from the end edge on the push's clock, back out
- * on the pop's. The wall beside it never slides — it is the thing you were
+ * on the pop's. Opened by a tap on a tile it fades in instead ([paneFadeIn]),
+ * under the poster flying into it. The wall beside it never slides — it is the thing you were
  * looking at, and it dissolves and reappears at its new width instead (below). So the scene
  * as a whole does nothing ([paneScene]) and the page carries its own motion
  * through `animateEnterExit`, which NavDisplay's transition drives. Back is
@@ -86,6 +120,15 @@ val tabScreen: Map<String, Any> =
 /** The page arriving. */
 val paneEnter: EnterTransition
     get() = slideInHorizontally(tween(PUSH_MS, easing = EaseOutCubic)) { width -> width }
+
+/**
+ * The page arriving under a poster flown in from the wall (PosterFlight.kt):
+ * it fades in where it will stay, as on a phone, because a slide would carry
+ * the poster's landing spot sideways while it is still in the air. It leaves
+ * by [paneExit] all the same.
+ */
+val paneFadeIn: EnterTransition
+    get() = fadeIn(tween(FLIGHT_MS))
 
 /** The page leaving: its close button, back, or its tile tapped again. */
 val paneExit: ExitTransition

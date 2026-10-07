@@ -99,9 +99,12 @@ On a wide window:
 - **Nothing open** (`[…, Library]`): the wall has the whole window beside the
   rail, four to seven posters across the inner display (Settings › Display ›
   Posters per row, or a pinch on the wall).
-- **A title open** (`[…, Library, TitleDetail]`): its page slides in from the
-  end edge and takes half the window; the wall reflows into the other half
-  and rings the open tile. The split is even and does not move.
+- **A title open** (`[…, Library, TitleDetail]`): its page takes the end half
+  of the window; the wall reflows into the other half and rings the open
+  tile. Opened from a tile, the page fades in there while the tile's poster
+  flies into its picture (`PosterFlight.kt`, a flight made by hand because
+  the tile stays on screen); opened any other way it slides in from the end
+  edge. The split is even and does not move.
 - **Closing it** — the close-panel button on the page (`detail_close_button`,
   a side panel with a chevron), system back, or the ringed tile tapped again
   — pops `TitleDetail`: the page slides back out while the wall dissolves,
@@ -116,8 +119,11 @@ rather than stacking one; walking into a collection or folder from the wall
 closes the page first.
 
 A page opened from `Home` or `Search` has no wall beneath it, so it fills the
-window and keeps the back arrow. On a compact window nothing changes: the
-page is pushed and slides in, as it has since Phase 6.
+window and keeps the back arrow. On a compact window the page is pushed, as
+it has been since Phase 6, but since 2026-10-07 it fades in with a small rise
+instead of sliding (`pageScreen`), and the poster of the tile that opened it
+flies into its picture; back reverses both, and the back swipe scrubs them.
+A full-window page on a wide window does the same.
 
 ## Pushed screens (pill hidden)
 

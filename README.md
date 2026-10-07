@@ -56,6 +56,15 @@ chapter you have named in those videos, each with the frame at its time, and
 plays from there. A collection with collections inside stays a wall: only the
 last one down a branch gets a page.
 
+### Posters that fly
+
+Tap a poster and it flies to where its page shows it. A video's poster grows
+into the wide picture at the top of its page, uncropping as it goes, and a
+collection's poster settles into its place on the collection's page, while the
+page fades in around it. Back flies it home, and on a phone the back swipe
+holds it under your thumb. On the inner display it flies into the page beside
+the wall too; closing that page slides it away as before.
+
 ### Lights the room around the picture
 
 A film rarely fills the screen exactly, and the bars around it carry its own
@@ -219,7 +228,8 @@ own confirmation.
 
 The inner display gets its own layouts: a nav rail that retracts to a spine, and
 library and browse walls that fill the screen until you open a title, whose page
-then slides in beside the wall and slides away again when you close it. The
+then opens beside the wall, its poster flying in, and slides away again when
+you close it. The
 Library and Home show four to seven posters across, as you pick in Settings ›
 Display › Posters per row, or by pinching a wall: spread two fingers for fewer,
 bigger posters and pinch them together for more, one step at a time, each with

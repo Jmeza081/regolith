@@ -818,6 +818,8 @@ private fun TileView(
                     null
                 },
                 testTag = tile.testTag,
+                // Into the poster on its profile, where it has one.
+                flight = tile.artwork.owner,
             )
         }
         is LibraryTile.Title -> {
@@ -844,6 +846,8 @@ private fun TileView(
                 onLongClick = { onLongPress(tile) },
                 checked = if (selecting) coming else null,
                 testTag = tile.testTag,
+                // Into the wide picture at the top of its page.
+                flight = tile.artwork.owner,
             )
         }
     }

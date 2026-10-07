@@ -55,6 +55,7 @@ import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
+import com.regolith.ui.components.posterFlight
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -234,12 +235,17 @@ internal fun profileBarHeight(): Dp =
 /** The frame at a moment's time, the picture Search already caches for it. */
 private fun CollectionMoment.frame() = ArtworkRequest(ArtworkOwner.Moment(fileId, startMs), ArtworkKind.THUMB)
 
-/** The poster, whole: 2:3 at the wall's 12dp corners, with a hairline so a dark poster keeps its edge on the light. */
+/**
+ * The poster, whole: 2:3 at the wall's 12dp corners, with a hairline so a
+ * dark poster keeps its edge on the light. The collection's tile flies into
+ * it from the wall, and back (PosterFlight.kt).
+ */
 @Composable
 private fun ProfilePoster(poster: ArtworkRequest, name: String, modifier: Modifier) {
     ArtworkImage(
         poster,
         modifier
+            .posterFlight(poster.owner)
             .clip(TileShape)
             .border(1.dp, Color(0x24FFFFFF), TileShape)
             .testTag("library_profile_poster"),

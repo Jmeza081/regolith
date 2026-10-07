@@ -45,6 +45,7 @@ import com.regolith.R
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
+import com.regolith.ui.components.posterFlight
 import com.regolith.ui.components.EmptyAction
 import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
@@ -418,6 +419,8 @@ private fun NewPoster(item: NewItem, onOpenTitle: (fileId: Long) -> Unit, modifi
     Box(
         modifier
             .aspectRatio(2f / 3f)
+            // It flies into the wide picture at the top of its page.
+            .posterFlight(item.artwork.owner)
             .clip(TileShape)
             .background(colors.surface)
             .clickable(interactionSource = null, indication = null) { onOpenTitle(item.fileId) }

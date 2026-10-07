@@ -58,7 +58,13 @@ class TitleDetailViewModel @AssistedInject constructor(
         fun create(fileId: Long): TitleDetailViewModel
     }
 
-    private val _uiState = MutableStateFlow(TitleDetailUiState(fileId = fileId))
+    // The hero runs the full width of the window — 2076px unfolded — so it
+    // takes the 1280x720 backdrop, not the 320x180 tile thumb. Known from the
+    // id alone, so it is there from the first frame: a poster flying into it
+    // lands on a picture, not on "no picture" while the row loads.
+    private val _uiState = MutableStateFlow(
+        TitleDetailUiState(fileId = fileId, artwork = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP)),
+    )
     val uiState: StateFlow<TitleDetailUiState> = _uiState
 
     private var probed = false
@@ -85,9 +91,6 @@ class TitleDetailViewModel @AssistedInject constructor(
                     it.copy(
                         loaded = true,
                         title = file.name.substringBeforeLast('.'),
-                        // The hero runs the full width of the window — 2076px unfolded —
-                        // so it takes the 1280x720 backdrop, not the 320x180 tile thumb.
-                        artwork = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP),
                         chips = chipsFor(file),
                         progressMs = progress?.positionMs?.takeIf { p -> p > 0 },
                         durationMs = progress?.durationMs ?: file.durationMs,
