@@ -3,6 +3,9 @@ package com.regolith.ui.library
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.library.MomentOrder
+import com.regolith.domain.library.MomentSort
+import com.regolith.domain.library.SortDirection
 import com.regolith.domain.playback.ChapterMatch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -90,14 +93,40 @@ class CollectionProfileTest {
         )
     }
 
+    // Named on different days: the backflip last, the storm first.
+    private val moments = listOf(
+        CollectionMoment(1, 408_000, "The backflip", "Rope swing", namedAtMs = 3_000),
+        CollectionMoment(1, 192_000, "First jump", "Rope swing", namedAtMs = 2_000),
+        CollectionMoment(2, 100_000, "The storm rolls in", "Storm", namedAtMs = 1_000),
+    )
+    private val stormFirst = listOf(video(2, "Storm"), video(1, "Rope swing"))
+
     @Test
-    fun `moments follow the wall's order, then time`() {
-        val moments = listOf(
-            CollectionMoment(1, 408_000, "The backflip", "Rope swing"),
-            CollectionMoment(1, 192_000, "First jump", "Rope swing"),
-            CollectionMoment(2, 100_000, "The storm rolls in", "Storm"),
-        )
-        val stormFirst = listOf(video(2, "Storm"), video(1, "Rope swing"))
-        assertEquals(listOf("The storm rolls in", "First jump", "The backflip"), moments.inWallOrder(stormFirst).map { it.title })
+    fun `by video, moments follow the wall's order, then time`() {
+        assertEquals(listOf("The storm rolls in", "First jump", "The backflip"), moments.inOrder(MomentOrder(), stormFirst).map { it.title })
+    }
+
+    @Test
+    fun `reversed by video, the videos turn round but each still plays forwards`() {
+        val reversed = MomentOrder(MomentSort.VIDEO, SortDirection.DESCENDING)
+        assertEquals(listOf("First jump", "The backflip", "The storm rolls in"), moments.inOrder(reversed, stormFirst).map { it.title })
+    }
+
+    @Test
+    fun `by name, a moment's own name decides, not its video's`() {
+        assertEquals(listOf("First jump", "The backflip", "The storm rolls in"), moments.inOrder(MomentOrder(MomentSort.NAME), stormFirst).map { it.title })
+        val zToA = MomentOrder(MomentSort.NAME, SortDirection.DESCENDING)
+        assertEquals(listOf("The storm rolls in", "The backflip", "First jump"), moments.inOrder(zToA, stormFirst).map { it.title })
+    }
+
+    @Test
+    fun `by date named, the newest name comes first`() {
+        assertEquals(listOf("The backflip", "First jump", "The storm rolls in"), moments.inOrder(MomentOrder(MomentSort.DATE_NAMED), stormFirst).map { it.title })
+    }
+
+    @Test
+    fun `a moment carries the day it was named from its mark`() {
+        val profile = profileOf(listOf(video(1, "Rope swing")), marks = listOf(mark(1, 192_000, "First jump").copy(namedAtMs = 42)))!!
+        assertEquals(42L, profile.moments.single().namedAtMs)
     }
 }

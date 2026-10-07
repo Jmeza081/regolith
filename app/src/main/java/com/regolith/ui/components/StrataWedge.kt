@@ -19,9 +19,8 @@ import androidx.compose.ui.unit.dp
  * The Strata Wedge: the app's mark, point right, concave back edge, cut
  * into five bands of rock with the ground showing through between them.
  *
- * DRAWN rather than shipped as a drawable, for the same reason as
- * [OrbitArt]: a vector asset is one fixed picture, and this one has to come
- * apart. The splash slides each band in separately, which a
+ * DRAWN rather than shipped as a drawable: a vector asset is one fixed
+ * picture, and this one has to come apart. The splash slides each band in separately, which a
  * `VectorDrawable` cannot do without an `AnimatedVectorDrawable` per
  * variation. Drawing it also means no bitmap to upscale — the old splash
  * stretched a 427x640 photograph to fill the screen, which is what made it

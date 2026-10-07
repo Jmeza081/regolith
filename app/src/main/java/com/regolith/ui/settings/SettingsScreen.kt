@@ -131,7 +131,8 @@ fun SettingsScreen(
                 // server had three things you could do to it. Addresses made
                 // that four, choosing folders made it five, and none of them
                 // fits beside a name that already truncates.
-                SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
+                // No servers, no card: an empty one drew a bare sliver of frame.
+                if (state.servers.isNotEmpty()) SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     state.servers.forEach { row ->
                         Row(
                             Modifier.fillMaxWidth()

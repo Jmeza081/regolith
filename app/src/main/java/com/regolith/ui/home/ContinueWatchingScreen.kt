@@ -3,16 +3,12 @@ package com.regolith.ui.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -20,14 +16,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.ui.components.LocalNavPillInsets
-import com.regolith.ui.components.CardStyle
-import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.ResumeCard
-import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
-import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
-import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.util.formatRemaining
 
 /**
@@ -46,7 +39,6 @@ fun ContinueWatchingScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val colors = RegolithTheme.colors
 
     Column(modifier.fillMaxSize().testTag("continue_watching_screen")) {
         TopBar(
@@ -64,11 +56,13 @@ fun ContinueWatchingScreen(
         ) {
             if (state.loaded && state.items.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("continue_watching_empty")) {
-                        DisplayText("Nothing started", style = TextStyles.dialogTitle)
-                        Spacer(Modifier.height(Spacing.s8))
-                        Text("Play something and it waits here at the moment you left it.", style = TextStyles.body, color = colors.body)
-                    }
+                    EmptyState(
+                        title = "Nothing started yet",
+                        body = "Play something and it waits here at the moment you left it.",
+                        ghost = Ghost.Frames(rows = 2, columns = 2),
+                        modifier = Modifier.padding(top = Spacing.s12),
+                        testTag = "continue_watching_empty",
+                    )
                 }
                 return@LazyVerticalGrid
             }

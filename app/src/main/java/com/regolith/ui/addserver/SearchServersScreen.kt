@@ -45,10 +45,11 @@ import com.regolith.R
 import com.regolith.data.discovery.DiscoveredHost
 import com.regolith.data.discovery.DiscoveryEvent
 import com.regolith.data.discovery.HostDiscovery
-import com.regolith.ui.components.CardStyle
+import com.regolith.ui.components.EmptyAction
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
 import com.regolith.ui.components.SurfaceCard
@@ -128,22 +129,15 @@ fun SearchServersScreen(
     Column(modifier.fillMaxSize().navigationBarsPadding().testTag("addserver_search_screen")) {
         TopBar(title = "Add source server", onBack = onBack)
         if (state.nothingFound) {
-            Box(Modifier.fillMaxSize().padding(horizontal = Spacing.s18), contentAlignment = Alignment.Center) {
-                SurfaceCard(style = CardStyle.Empty, contentPadding = PaddingValues(horizontal = Spacing.s18, vertical = Spacing.s30), modifier = Modifier.fillMaxWidth().testTag("addserver_nothing_found")) {
-                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                        Box(Modifier.size(52.dp).background(colors.surface, RoundedCornerShape(16.dp)).border(1.dp, colors.hairline, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-                            Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.ink, modifier = Modifier.size(18.dp))
-                        }
-                        DisplayText("Nothing found", style = TextStyles.dialogTitle, textAlign = TextAlign.Center)
-                        Text(
-                            "No SMB shares answered on this network. Check the server is awake and on the same Wi-Fi, or type its address.",
-                            style = TextStyles.body, color = colors.metadata, textAlign = TextAlign.Center,
-                        )
-                        PrimaryButton(text = "Search again", onClick = viewModel::start, testTag = "addserver_search_again_button", modifier = Modifier.fillMaxWidth())
-                        TertiaryButton(text = "Enter an address", onClick = onManual, testTag = "addserver_manual_button", modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
+            EmptyState(
+                title = "No servers answered",
+                body = "No SMB shares answered on this network. Check the server is awake and on the same Wi-Fi, or type its address.",
+                ghost = Ghost.Folders(count = 3),
+                action = EmptyAction("Search again", viewModel::start, "addserver_search_again_button"),
+                link = EmptyAction("Enter an address", onManual, "addserver_manual_button"),
+                modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = Spacing.s12),
+                testTag = "addserver_nothing_found",
+            )
             return
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {

@@ -18,6 +18,8 @@ data class ChapterMatch(
     val shareId: Long,
     /** The file's own path in the share, `/`-separated, no leading slash. */
     val fileRelPath: String,
+    /** When the chapter was named or last renamed: a profile's Moments tab sorts by it. */
+    val namedAtMs: Long = 0,
 )
 
 /**

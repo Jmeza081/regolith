@@ -35,12 +35,18 @@ data class NewItem(
 }
 
 /**
- * Home (design section 04): no source, resume, nothing started, and the
+ * Home (design section 04): first use, resume, nothing started, and the
  * refresh line. The resume row's absence is the "nothing started" message.
  */
 data class HomeUiState(
     val loaded: Boolean = false,
     val serverNames: List<String> = emptyList(),
+    /**
+     * A server other than this phone's own storage, which is always listed
+     * once phone access is granted. Without one, Home has nowhere to fill
+     * from and says so (its first-use state), even though [hasSource] is true.
+     */
+    val hasNetworkSource: Boolean = false,
     val resume: List<ResumeItem> = emptyList(),
     val newlyAdded: List<NewItem> = emptyList(),
     /** "Reading media · 312 files" while a scan walks a share; null otherwise. */

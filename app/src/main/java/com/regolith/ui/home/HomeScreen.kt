@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,7 +37,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,12 +44,12 @@ import com.regolith.R
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.ArtworkImage
-import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyAction
+import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.ResumeCard
 import com.regolith.ui.components.SurfaceCard
-import com.regolith.ui.components.TertiaryButton
 import com.regolith.ui.components.TopBar
 import com.regolith.ui.components.TopBarAction
 import com.regolith.ui.components.UnwatchedDot
@@ -65,10 +63,11 @@ import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.theme.scaledDp
 
 /**
- * Home tab (design section 04): resume first, then what arrived. Five
- * states: no source server, resume, nothing started (no resume row at
- * all: its absence is the message), and the two halves of a pull to
- * refresh, which never blanks a screen that already has content.
+ * Home tab (design section 04): resume first, then what arrived. The
+ * states: first use (no server but this phone, and nothing on it), never
+ * scanned, nothing found, resume, nothing started (no resume row at all:
+ * its absence is the message), and the two halves of a pull to refresh,
+ * which never blanks a screen that already has content.
  *
  * Measurements from the frames: sections 18dp apart, eyebrows at 18dp
  * gutters, resume cards 186dp wide, Newly added posters 112dp wide with a
@@ -80,6 +79,7 @@ import com.regolith.ui.theme.scaledDp
 fun HomeScreen(
     viewModel: HomeViewModel,
     onAddServer: () -> Unit,
+    onEnterAddress: () -> Unit,
     onSearch: () -> Unit,
     onOpenTitle: (fileId: Long) -> Unit,
     onPlay: (fileId: Long, startMs: Long) -> Unit,
@@ -137,8 +137,19 @@ fun HomeScreen(
                 actions = if (state.hasSource) listOf(TopBarAction(R.drawable.rg_ic_search, "Search", "home_search_button", onSearch)) else emptyList(),
             )
             if (!state.loaded) return@Column
-            if (!state.hasSource) {
-                NoSourceServer(onAddServer)
+            val nothingYet = state.resume.isEmpty() && state.newlyAdded.isEmpty() && state.onDevice.isEmpty()
+            // First use. Phone storage alone is a source, but not one Home
+            // fills from until it has videos, so it does not count here.
+            if (!state.hasNetworkSource && nothingYet) {
+                EmptyState(
+                    title = "Your library starts with a server",
+                    body = "Regolith plays what is already on your own network. Add the SMB share your videos live on, and what you watch and what arrives shows up here.",
+                    ghost = Ghost.Shelves,
+                    action = EmptyAction("Add source server", onAddServer, "home_add_server_button"),
+                    link = EmptyAction("Enter an address", onEnterAddress, "home_enter_address_button"),
+                    modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = Spacing.s12),
+                    testTag = "home_first_use",
+                )
                 return@Column
             }
             if (refreshing) Spacer(Modifier.height(30.dp + Spacing.s18))
@@ -147,6 +158,18 @@ fun HomeScreen(
             // (header to row), so the page read as one long list of rows
             // rather than three named groups.
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s30)) {
+                // Scanned, and nothing on any share Regolith can play. While a
+                // scan walks, the refresh line above says enough.
+                if (nothingYet && !state.neverScanned && !refreshing) {
+                    EmptyState(
+                        title = "Nothing here yet",
+                        body = "The last scan found nothing Regolith can play. Add videos to the share, then scan again.",
+                        ghost = Ghost.Shelves,
+                        action = EmptyAction("Scan again", viewModel::refresh, "home_scan_again_button", primary = false),
+                        modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = Spacing.s12),
+                        testTag = "home_empty",
+                    )
+                }
                 if (state.resume.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         SectionHeader("Continue watching")
@@ -208,11 +231,17 @@ fun HomeScreen(
                         }
                     }
                 } else if (state.neverScanned && !refreshing) {
-                    Column(Modifier.padding(horizontal = Spacing.s18), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("Newly added", large = true)
-                        Text("Nothing yet. Scan the share and what it holds shows up here.", style = TextStyles.body, color = colors.body)
-                        PrimaryButton(text = "Scan now", onClick = viewModel::refresh, testTag = "home_scan_button")
-                    }
+                    // The whole page when nothing else is here yet; one
+                    // section among others when downloads already are.
+                    EmptyState(
+                        title = "Nothing scanned yet",
+                        body = "Regolith reads the share once to know what is on it. Nothing is copied off it.",
+                        ghost = if (nothingYet) Ghost.Shelves else Ghost.Posters(rows = 1),
+                        compact = !nothingYet,
+                        action = EmptyAction("Scan now", viewModel::refresh, "home_scan_button"),
+                        modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = if (nothingYet) Spacing.s12 else 0.dp),
+                        testTag = "home_never_scanned",
+                    )
                 }
 
                 // What is already here, as the films themselves rather than a
@@ -388,35 +417,3 @@ private fun RefreshLine(fraction: Float, refreshing: Boolean, status: String?, m
     }
 }
 
-/**
- * No source server (design section 04): the 44dp server mark in a 13dp
- * box, a two-line Michroma 17 title, body copy, the one red action and
- * "Enter an address" as plain text, all centred in the space above the pill.
- */
-@Composable
-private fun NoSourceServer(onAddServer: () -> Unit) {
-    val colors = RegolithTheme.colors
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = Spacing.s18).padding(top = 80.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.s18),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-            Box(Modifier.size(44.scaledDp()).border(1.dp, colors.raised, androidx.compose.foundation.shape.RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.rg_ic_server), contentDescription = null, tint = colors.body, modifier = Modifier.size(21.scaledDp()))
-            }
-            DisplayText("No source\nserver", style = TextStyles.emptyTitle, textAlign = TextAlign.Center)
-            Text(
-                "Regolith plays what is already on your own network. Point it at a share and everything on it shows up here.",
-                style = TextStyles.body, color = colors.body, textAlign = TextAlign.Center,
-            )
-        }
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-            PrimaryButton(
-                text = "Add source server", onClick = onAddServer, testTag = "home_add_server_button",
-                leadingIcon = painterResource(R.drawable.rg_ic_search), modifier = Modifier.fillMaxWidth(),
-            )
-            TertiaryButton(text = "Enter an address", onClick = onAddServer, testTag = "home_enter_address_button", modifier = Modifier.fillMaxWidth())
-        }
-    }
-}

@@ -40,6 +40,7 @@ import com.regolith.ui.theme.scaledDp
  *  - Destructive  44dp · #E11B17 · 600 14px
  *  - Disabled     #161616 fill, #4A4A4A ink
  *  - Compact      42dp · 600 13px (Settings' "Scan all" / "Disconnect")
+ *  - Inline       a Tertiary with no side padding, 600 13px (an empty state's link)
  *  - Icon         48dp circle, frosted, 18dp glyph
  * Red fills the ONE action a screen wants; never a second red fill.
  *
@@ -139,12 +140,23 @@ fun TertiaryButton(
     testTag: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /**
+     * A link in running layout ([EmptyState]'s "Clear the search"): no side
+     * padding, so the label lines up with the words above it, and the
+     * compact 600 13px label, so it matches a compact button beside it. The
+     * height stays a full touch target.
+     */
+    inline: Boolean = false,
+    /** #A0A0A0 instead of white: a link that steps back beside a button. */
+    muted: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     BasePill(
         text, onClick, testTag, modifier, enabled,
-        height = 44.scaledDp(), background = Color.Transparent, border = null, ink = colors.ink,
-        style = TextStyles.buttonTertiary, leadingIcon = null,
+        height = if (inline) 42.scaledDp() else 44.scaledDp(), background = Color.Transparent, border = null,
+        ink = if (muted) colors.body else colors.ink,
+        style = if (inline) TextStyles.buttonSmall else TextStyles.buttonTertiary, leadingIcon = null,
+        horizontalPadding = if (inline) 0.dp else Spacing.s18,
     )
 }
 

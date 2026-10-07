@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,14 +36,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
 import com.regolith.ui.components.LocalNavPillInsets
-import com.regolith.ui.components.CardStyle
-import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyAction
+import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.ListRow
 import com.regolith.ui.components.PlayAllButton
 import com.regolith.ui.components.PlayAllSheet
 import com.regolith.ui.components.NoticeCard
-import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.SurfaceCard
@@ -64,7 +63,6 @@ import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.artwork.ArtworkKind
 import androidx.compose.foundation.lazy.grid.items
 import androidx.activity.compose.BackHandler
-import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.util.SelectionUiState
 import com.regolith.ui.components.TopBarAction
 import com.regolith.ui.components.FileActionsHost
@@ -254,7 +252,7 @@ private fun BrowseContent(
         val offlineCard = @Composable {
             NoticeCard(
                 message = "Couldn't reach ${state.title.lowercase()} — showing what's saved here",
-                detail = "Saved from your last visit. Pull down to try the share again.",
+                detail = "Saved from your last visit. Tap Retry to try the share again.",
                 testTag = "browse_offline_card",
                 action = {
                     Text(
@@ -265,15 +263,23 @@ private fun BrowseContent(
             )
         }
         val emptyCard = @Composable {
-            SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth()) {
-                Text("Nothing playable in this folder.", style = TextStyles.body, color = colors.body)
+            EmptyState(
+                title = "Nothing in this folder yet",
+                // Every file shows here, playable or not, so an empty list is
+                // an empty folder.
+                body = if (uploads.canUpload) "Videos added to it show up here. You can send some from this phone." else "Videos added to it show up here.",
+                ghost = if (state.viewMode == ViewMode.GRID) Ghost.Frames(rows = 2, columns = 2) else Ghost.Rows(count = 3),
+                compact = true,
                 // An empty folder on a share is where uploading is most
                 // likely wanted, and the top-bar glyph is easy to miss.
-                if (uploads.canUpload) {
-                    Spacer(Modifier.height(Spacing.s12))
-                    SecondaryButton(text = "Upload from this phone", onClick = { uploadActions?.openSheet() }, testTag = "browse_empty_upload_button", compact = true)
-                }
-            }
+                action = if (uploads.canUpload) {
+                    EmptyAction("Upload from this phone", { uploadActions?.openSheet() }, "browse_empty_upload_button", primary = false)
+                } else {
+                    null
+                },
+                modifier = Modifier.padding(top = Spacing.s8),
+                testTag = "browse_empty_folder",
+            )
         }
         // Files on their way are what this folder is about to hold: no "nothing here" above them.
         val showEmpty = state.loaded && state.rows.isEmpty() && offline == null && uploads.section == null
@@ -590,23 +596,17 @@ private fun Section(label: String, dimmed: Boolean = false, content: @Composable
     }
 }
 
+/** The Browse root with no server: the shares it will list, and the one way to add them. */
 @Composable
 private fun NoSourceContent(onAddServer: () -> Unit) {
-    val colors = RegolithTheme.colors
-    Column(Modifier.padding(horizontal = Spacing.s18)) {
-        Spacer(Modifier.height(Spacing.s30))
-        SurfaceCard(style = CardStyle.Empty, modifier = Modifier.fillMaxWidth().testTag("browse_empty_card")) {
-            DisplayText("No source server", style = TextStyles.dialogTitle)
-            Spacer(Modifier.height(Spacing.s8))
-            Text(
-                "Point Regolith at an SMB share and it lists what's on it. Films, recordings, anything it can play.",
-                style = TextStyles.body,
-                color = colors.body,
-            )
-            Spacer(Modifier.height(Spacing.s18))
-            PrimaryButton(text = "Add source server", onClick = onAddServer, testTag = "browse_add_server_button", modifier = Modifier.fillMaxWidth())
-        }
-    }
+    EmptyState(
+        title = "Your shares will be listed here",
+        body = "Add the SMB server your videos live on, and every share on it opens here as folders, the way the server keeps them.",
+        ghost = Ghost.Folders(count = 4),
+        action = EmptyAction("Add source server", onAddServer, "browse_add_server_button"),
+        modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = Spacing.s12),
+        testTag = "browse_empty_card",
+    )
 }
 
 /** What a screen with no folder (the Browse root) reads in place of its uploads. */

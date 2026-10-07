@@ -115,5 +115,6 @@ class UserChapterRepository @Inject constructor(
     private fun UserChapterHitRow.toMatch() = ChapterMatch(
         fileId = fileId, startMs = startMs, title = title,
         fileName = fileName, fileTitle = fileTitle, shareId = shareId, fileRelPath = fileRelPath,
+        namedAtMs = updatedAtMs,
     )
 }

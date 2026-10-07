@@ -43,8 +43,9 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.ArtworkLight
-import com.regolith.ui.components.CardStyle
 import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.ListRow
@@ -54,7 +55,6 @@ import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
-import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -203,17 +203,22 @@ internal fun MomentRow(moment: CollectionMoment, onPlayAt: (fileId: Long, startM
     )
 }
 
-/** The Moments tab with nothing on it: what a moment is, and how one gets here. */
+/**
+ * The Moments tab with nothing on it: what a moment is, and how one gets
+ * here, over the outline of the frames ([rows]: the rows) it will hold.
+ * Compact, because the profile's header is right above it.
+ */
 @Composable
-internal fun NoMoments(modifier: Modifier = Modifier) {
-    SurfaceCard(style = CardStyle.Empty, modifier = modifier.fillMaxWidth().testTag("library_moments_empty")) {
-        DisplayText("No moments yet", style = TextStyles.dialogTitle)
-        Spacer(Modifier.height(Spacing.s8))
-        Text(
-            "Name a chapter while one of these videos plays and it shows up here, ready to play from.",
-            style = TextStyles.body, color = RegolithTheme.colors.body,
-        )
-    }
+internal fun NoMoments(rows: Boolean, modifier: Modifier = Modifier) {
+    EmptyState(
+        title = "Moments will collect here",
+        body = "Name a chapter while one of these videos plays and it shows up here, ready to play from.",
+        // Two rows of frames: one alone fades out before its names show.
+        ghost = if (rows) Ghost.Rows(count = 3) else Ghost.Frames(rows = 2),
+        compact = true,
+        modifier = modifier.padding(top = Spacing.s8),
+        testTag = "library_moments_empty",
+    )
 }
 
 /**

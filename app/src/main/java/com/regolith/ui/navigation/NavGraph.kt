@@ -532,6 +532,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 HomeScreen(
                                     viewModel = hiltViewModel(),
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                                    onEnterAddress = { backStack.add(RegolithKey.AddServer.Manual()) },
                                     onSearch = { backStack.add(RegolithKey.Search) },
                                     onOpenTitle = { openTitle(it) },
                                     onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },

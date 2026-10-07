@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Icon
@@ -65,7 +66,8 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
-import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.LocalAppSnackbar
@@ -75,7 +77,6 @@ import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.OnMediaLabel
-import com.regolith.ui.components.OrbitArt
 import com.regolith.ui.components.ProgressEdge
 import com.regolith.ui.components.RegolithSheet
 import com.regolith.ui.components.StrataLoader
@@ -195,7 +196,9 @@ fun ShortsScreen(
 
     Box(modifier.fillMaxSize().background(colors.ground).testTag("shorts_screen")) {
         if (state.items.isEmpty()) {
-            EmptyFeed(state)
+            // Before the first answer the page stays dark: "nothing vertical"
+            // flashing up for a frame on every open was the old behaviour.
+            if (state.isEmpty) EmptyFeed(state)
         } else Row(Modifier.fillMaxSize()) {
             // The feed keeps this slot whichever way the screen is held, so
             // turning the phone does not rebuild the pager and its players.
@@ -701,32 +704,25 @@ private val LEVELS = listOf(0.01f, 0.25f, 0.5f, 0.75f, 1f)
 /** A backwards jump bigger than one poll means the clip looped, not that it drifted. */
 private const val WRAP_SLACK_MS = 400L
 
-/** Nothing to show — and whether that is "none" or "not yet" is the whole message. */
+/**
+ * Nothing to show — and whether that is "none" or "not yet" is the whole
+ * message. Shorts has no top bar, so the words start under the status bar,
+ * over the outline of a row of clips.
+ */
 @Composable
 private fun EmptyFeed(state: ShortsUiState) {
     val colors = RegolithTheme.colors
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = Spacing.s40).testTag("shorts_empty"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+    EmptyState(
+        title = if (state.measuringLine != null) "Still measuring your share" else "No vertical clips yet",
+        body = state.measuringLine?.let { "Clips show up here as each file is measured. Nothing extra to run." }
+            ?: "Shorts collects videos that are taller than they are wide and a minute or less.",
+        ghost = Ghost.Clips,
+        modifier = Modifier.statusBarsPadding().padding(horizontal = Spacing.s18).padding(top = Spacing.s40),
+        testTag = "shorts_empty",
     ) {
-        OrbitArt()
-        Spacer(Modifier.size(Spacing.s30))
-        DisplayText(
-            if (state.measuringLine != null) "STILL MEASURING YOUR SHARE" else "NOTHING VERTICAL YET",
-            style = TextStyles.emptyTitle,
-            color = colors.ink,
-        )
-        Spacer(Modifier.size(Spacing.s12))
-        Text(
-            state.measuringLine?.let { "Clips show up here as each file is measured. Nothing extra to run." }
-                ?: "Shorts collects videos that are taller than they are wide and a minute or less.",
-            style = TextStyles.body, color = colors.body,
-        )
         state.measuringLine?.let { line ->
-            Spacer(Modifier.size(Spacing.s30))
+            Spacer(Modifier.size(Spacing.s4))
             ProgressEdge(state.measuringFraction, Modifier.fillMaxWidth().testTag("shorts_measuring_bar"))
-            Spacer(Modifier.size(Spacing.s12))
             Text(line.uppercase(), style = TextStyles.eyebrow, color = colors.metadata, modifier = Modifier.testTag("shorts_measuring_line"))
         }
     }
