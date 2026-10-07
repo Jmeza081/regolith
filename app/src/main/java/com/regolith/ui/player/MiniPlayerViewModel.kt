@@ -32,8 +32,13 @@ class MiniPlayerViewModel @Inject constructor(
     val state: StateFlow<PlaybackState> = session.state
     val player: StateFlow<ExoPlayer?> = session.player
 
-    /** Settings › Playback › Keep playing, which the mini player obeys as the player does. */
-    val autoplayNext: StateFlow<Boolean> = prefs.autoplayNext.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    /** Settings › Playback › Picture-in-picture: whether leaving the app floats the film or pauses it. */
+    val pictureInPicture: StateFlow<Boolean> = prefs.pictureInPicture.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** The film is in its picture-in-picture window, which holds it when it ends (see [PlaybackSession.floating]). */
+    fun setFloating(floating: Boolean) {
+        session.floating = floating
+    }
 
     fun togglePlayPause() = session.togglePlayPause()
 

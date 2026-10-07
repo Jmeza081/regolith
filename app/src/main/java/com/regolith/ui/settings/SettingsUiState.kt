@@ -61,6 +61,8 @@ data class SettingsUiState(
     val scrubThumbnails: Boolean = true,
     val autoplayNext: Boolean = true,
     val autoplayImmediately: Boolean = false,
+    val pictureInPicture: Boolean = true,
+    val playWithScreenOff: Boolean = false,
     /** Wide windows only: whether the nav rail retracts after three idle seconds. */
     val autoHideRail: Boolean = true,
     val navHideAfter: NavHideAfter = NavHideAfter.DEFAULT,

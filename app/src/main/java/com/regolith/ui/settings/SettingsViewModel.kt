@@ -125,6 +125,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.scrubThumbnails.collect { v -> _uiState.update { it.copy(scrubThumbnails = v) } } }
         viewModelScope.launch { prefs.autoplayNext.collect { v -> _uiState.update { it.copy(autoplayNext = v) } } }
         viewModelScope.launch { prefs.autoplayImmediately.collect { v -> _uiState.update { it.copy(autoplayImmediately = v) } } }
+        viewModelScope.launch { prefs.pictureInPicture.collect { v -> _uiState.update { it.copy(pictureInPicture = v) } } }
+        viewModelScope.launch { prefs.playWithScreenOff.collect { v -> _uiState.update { it.copy(playWithScreenOff = v) } } }
         viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
         viewModelScope.launch { prefs.navHideAfter.collect { v -> _uiState.update { it.copy(navHideAfter = v) } } }
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
@@ -284,6 +286,8 @@ class SettingsViewModel @Inject constructor(
     fun setScrubThumbnails(enabled: Boolean) = viewModelScope.launch { prefs.setScrubThumbnails(enabled) }.let { }
     fun setAutoplayNext(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayNext(enabled) }.let { }
     fun setAutoplayImmediately(enabled: Boolean) = viewModelScope.launch { prefs.setAutoplayImmediately(enabled) }.let { }
+    fun setPictureInPicture(enabled: Boolean) = viewModelScope.launch { prefs.setPictureInPicture(enabled) }.let { }
+    fun setPlayWithScreenOff(enabled: Boolean) = viewModelScope.launch { prefs.setPlayWithScreenOff(enabled) }.let { }
     fun setAutoHideRail(enabled: Boolean) = viewModelScope.launch { prefs.setAutoHideRail(enabled) }.let { }
 
     /** Settings › Display › Hide after: how long the navigation waits before it goes. */

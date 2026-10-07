@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.compose.currentStateAsState
 import com.regolith.ui.navigation.PLAYER_MOTION_MS
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.EnterExitState
@@ -310,7 +311,10 @@ fun PlayerScreen(
     // player's while that one takes the film over.
     DisposableEffect(handoff) {
         handoff?.playerShowing = true
-        onDispose { handoff?.playerShowing = false }
+        onDispose {
+            handoff?.playerShowing = false
+            handoff?.playerPicture = null
+        }
     }
     LaunchedEffect(handoff, leaving) {
         if (!leaving || handoff == null) return@LaunchedEffect
@@ -320,7 +324,11 @@ fun PlayerScreen(
     // The picture's way into the slot and out of it: from where it sits on the
     // page to the mini player's picture, by [away]. Both are 16:9, so one scale.
     val intoSlot = Modifier
-        .onGloballyPositioned { pictureBounds = it.boundsInRoot() }
+        .onGloballyPositioned {
+            pictureBounds = it.boundsInRoot()
+            // Also where the floating window grows out of, if the app is left now.
+            handoff?.playerPicture = pictureBounds
+        }
         .graphicsLayer {
             val from = pictureBounds
             if (!shrinks || from == null || slot == null || from.width <= 0f) return@graphicsLayer
@@ -336,6 +344,20 @@ fun PlayerScreen(
     val pageAlpha = if (shrinks) (1f - away * 1.6f).coerceIn(0f, 1f) else 1f
     // The slide, for the ways in and out that do not shrink.
     val slide = Modifier.graphicsLayer { if (!shrinks) translationX = away * size.width }
+
+    // Who decides what follows when the film ends: this screen's Up next card
+    // while you are looking at it, the session (straight on, no card)
+    // whenever you are not — put away, floating, or with the screen off.
+    val inPip = LocalInPictureInPicture.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateAsState()
+    val inFront = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && !inPip
+    DisposableEffect(viewModel, inFront) {
+        viewModel.ownTheEnd(inFront)
+        onDispose { viewModel.ownTheEnd(false) }
+    }
+    // Back from the floating window, the surface is new: a film that ended in
+    // the window has its last frame drawn again rather than a black box.
+    LaunchedEffect(inPip) { if (!inPip) viewModel.redrawIfEnded() }
 
     // --- Up next (F6). Four things have to be true before the app plays on
     // by itself: you left the setting on, the film actually ran to its end
@@ -598,7 +620,9 @@ fun PlayerScreen(
         // layout's to fill, which is how the letterbox bars pick up the glow
         // instead of being black.
         Box(Modifier.fillMaxSize()) {
-            player?.let { p ->
+            // Floating, the picture-in-picture window has the film (one
+            // ExoPlayer draws on one surface); this takes it back after.
+            player?.takeUnless { inPip }?.let { p ->
                 // A SurfaceView goes straight to the compositor and cannot be
                 // read back; a TextureView draws through the view hierarchy and
                 // can. That is the whole trade behind the Ambient light setting,

@@ -87,6 +87,13 @@ import com.regolith.ui.components.LocalMiniPlayerClearance
 import com.regolith.ui.components.NAV_PILL_HEIGHT
 import androidx.compose.foundation.layout.Spacer
 import com.regolith.ui.player.MiniPlayerViewModel
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
+import com.regolith.ui.player.LocalInPictureInPicture
+import com.regolith.ui.player.PictureInPictureFilm
+import com.regolith.ui.player.pictureInPictureParams
+import com.regolith.ui.player.pipAspect
+import com.regolith.ui.player.rememberInPictureInPicture
 import com.regolith.ui.player.MiniPlayerHandoff
 import com.regolith.ui.player.LocalMiniPlayerHandoff
 import com.regolith.ui.player.miniBarPictureRect
@@ -99,7 +106,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.animation.core.tween
 import com.regolith.ui.player.MiniPlayerBar
 import com.regolith.ui.player.MiniPlayerCard
-import com.regolith.ui.player.MiniPlayerAtTheEnd
 import com.regolith.ui.player.MINI_BAR_HEIGHT
 import com.regolith.ui.player.MINI_CARD_HEIGHT
 import com.regolith.ui.player.MINI_CARD_WIDTH
@@ -179,7 +185,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val miniPlayer: MiniPlayerViewModel = hiltViewModel()
     val playback by miniPlayer.state.collectAsStateWithLifecycle()
     val miniPlayerPlayer by miniPlayer.player.collectAsStateWithLifecycle()
-    val autoplayNext by miniPlayer.autoplayNext.collectAsStateWithLifecycle()
+    val pictureInPicture by miniPlayer.pictureInPicture.collectAsStateWithLifecycle()
     // What the player and the mini player tell each other as the film passes
     // between them: where it lands, and when to take it (MiniPlayerHandoff).
     val handoff = remember { MiniPlayerHandoff() }
@@ -425,10 +431,39 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val canSelectHere = currentTab == MainTab.BROWSE ||
         currentTab == MainTab.LIBRARY ||
         topKey is RegolithKey.Search
-    // While the player is put away, a queue, a repeat or Keep playing goes on
-    // to the next film by itself, as the player's own card would; a film with
-    // nothing after it closes the mini player when it ends.
-    if (!playerOnStack) MiniPlayerAtTheEnd(playback, autoplayNext, onPlay = miniPlayer::play, onClose = miniPlayer::close)
+
+    // Picture-in-picture (PictureInPicture.kt). Android floats the app by
+    // itself when it is left while a film plays and the setting is on; the
+    // window is shaped like the film. Floating, the session holds a finished
+    // film rather than closing it, and the lock times the trip.
+    val activity = LocalActivity.current as? ComponentActivity
+    val inPip = rememberInPictureInPicture(activity)
+    LaunchedEffect(inPip) {
+        miniPlayer.setFloating(inPip)
+        if (inPip) appViewModel.enteredPictureInPicture() else appViewModel.leftPictureInPicture()
+        // A film that finished in the window, opening out onto the mini player
+        // rather than the player: over, so it closes as it would have there.
+        if (!inPip && playback.ended && !playerOnStack) miniPlayer.close()
+    }
+    val floats = pictureInPicture && playback.loaded && playback.playWhenReady && !playback.ended && locked != true
+    val pipShape = pipAspect(playback.video)
+    // The window grows out of the film where it is: the player's picture, or
+    // the mini player's when the player is put away. Not while floating: laid
+    // out in the small window, they would aim the window's way back out at
+    // its own corner, so it opens out the plain way instead.
+    val pipSource = (if (handoff.playerShowing) handoff.playerPicture else handoff.miniPicture).takeUnless { inPip }
+    LaunchedEffect(activity, floats, pipShape, pipSource) {
+        activity?.setPictureInPictureParams(pictureInPictureParams(floats, playback.video, pipSource))
+    }
+    // For `adb logcat -s Regolith/PiP` on a phone: whether leaving the app now
+    // would float the film, and if not, which condition said no.
+    LaunchedEffect(floats) {
+        Log.d(
+            "Regolith/PiP",
+            "floats=$floats setting=$pictureInPicture loaded=${playback.loaded} " +
+                "playing=${playback.playWhenReady} ended=${playback.ended} locked=$locked",
+        )
+    }
 
     LaunchedEffect(canSelectHere) {
         if (!canSelectHere) appViewModel.clearSelection()
@@ -573,6 +608,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         LocalNavPillInsets provides pillInsets,
         LocalMiniPlayerClearance provides pushedClearance,
         LocalMiniPlayerHandoff provides handoff,
+        LocalInPictureInPicture provides inPip,
         LocalNavRailInset provides railInset,
         // The same answer the pill acts on, published for screens that float
         // their own chrome. One timer, so nothing can drift out of step.
@@ -1111,6 +1147,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         }
                     }
                 }
+                // The picture-in-picture window: the film and nothing else, over
+                // everything else, which stays composed underneath for when the
+                // window opens out again (PictureInPicture.kt).
+                if (inPip) PictureInPictureFilm(miniPlayerPlayer, Modifier.fillMaxSize())
             }
         }
     }

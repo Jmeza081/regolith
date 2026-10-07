@@ -199,6 +199,20 @@ fun SettingsScreen(
                             enabled = state.autoplayNext, testTag = "settings_autoplay_immediately_switch",
                         )
                     }
+                    // Leaving the app while a film plays: a window over the
+                    // other apps, or a pause (MainActivity).
+                    RegolithSwitch(
+                        label = "Picture-in-picture",
+                        note = "Leave Regolith while a film plays and it carries on in a small window over your other apps.",
+                        checked = state.pictureInPicture, onCheckedChange = viewModel::setPictureInPicture,
+                        testTag = "settings_picture_in_picture_switch",
+                    )
+                    RegolithSwitch(
+                        label = "Play with the screen off",
+                        note = "The sound carries on when the screen locks. Uses more battery.",
+                        checked = state.playWithScreenOff, onCheckedChange = viewModel::setPlayWithScreenOff,
+                        testTag = "settings_play_with_screen_off_switch",
+                    )
                 }
             }
 

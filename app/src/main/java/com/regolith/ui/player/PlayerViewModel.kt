@@ -477,6 +477,7 @@ class PlayerViewModel @AssistedInject constructor(
                 if (_chapterDraft.value?.let { it.fileId != id } == true) _chapterDraft.value = null
             }
         }
+        session.playerScreenOpened()
         val external = key.externalUri
         when {
             // Opened from the mini player: the film is already here, playing or
@@ -505,6 +506,14 @@ class PlayerViewModel @AssistedInject constructor(
     fun nudgeLoopB(deltaMs: Long = AbLoop.NUDGE_MS) = session.nudgeLoopB(deltaMs)
     fun clearLoop() = session.clearLoop()
     fun playNext(fileId: Long) = session.load(fileId)
+
+    /** The screen's surface is back (from the floating window): a finished film's last frame, drawn again. */
+    fun redrawIfEnded() = session.redrawIfEnded()
+
+    /** While true the screen's Up next card decides what follows a film; otherwise the session does. */
+    fun ownTheEnd(owns: Boolean) {
+        session.screenOwnsTheEnd = owns
+    }
     fun onPause() = session.saveProgress()
 
     /** The scrubber reports where the finger is; ask for that frame. */
@@ -523,6 +532,8 @@ class PlayerViewModel @AssistedInject constructor(
      * there is nothing to carry on with and a bar would only be in the way.
      */
     override fun onCleared() {
+        session.screenOwnsTheEnd = false
+        session.playerScreenClosed()
         val s = session.state.value
         if (s.ended || s.error != null) session.stop()
     }

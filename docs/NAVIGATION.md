@@ -167,6 +167,14 @@ of it; its ✕ stops the film. A film that has ended or failed stops when the
 player is left, and one that ends in the mini player with nothing after it
 closes the mini player.
 
+**Leaving the app is not navigation.** Picture-in-picture shrinks the whole
+Activity into a floating window and leaves the back stack alone: while it
+floats, `NavGraph` draws the film over everything (`PictureInPictureFilm`)
+and the screens underneath stay where they were, so opening the window out
+lands on the same screen, the player or the mini player over a tab. The one
+thing that changes on the way back is a film that ended while floating with
+no player under it: the mini player closes then, as it would have.
+
 Bottom sheets (sort, playback, A–B loop) and the disconnect confirm are not
 routes; they are state in the owning screen's `UiState`.
 

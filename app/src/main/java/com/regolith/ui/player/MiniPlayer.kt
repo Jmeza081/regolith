@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +34,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -42,9 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.withStateAtLeast
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.ContentFrame
@@ -96,11 +95,17 @@ val MINI_CARD_HEIGHT: Dp = MINI_CARD_WIDTH * 9 / 16 + 56.dp
  * still on screen ([playerShowing]) — which includes the moments it spends
  * shrinking into that slot, during which the mini player waits rather than
  * taking the picture off it. One ExoPlayer can draw on one surface at a time.
+ *
+ * Each also says where its picture is right now ([playerPicture],
+ * [miniPicture]; null while it is not on screen), for the picture-in-picture
+ * window to grow out of when the app is left.
  */
 @Stable
 class MiniPlayerHandoff {
     var slot: Rect? by mutableStateOf(null)
     var playerShowing by mutableStateOf(false)
+    var playerPicture: Rect? by mutableStateOf(null)
+    var miniPicture: Rect? by mutableStateOf(null)
 }
 
 val LocalMiniPlayerHandoff = staticCompositionLocalOf<MiniPlayerHandoff?> { null }
@@ -251,28 +256,6 @@ fun MiniPlayerCard(
 }
 
 /**
- * What happens when a film ends while the player is small. A queue, a
- * repeat, or Settings › Playback › Keep playing carries on to the next film
- * at once, without the player's ten-second card — there is nobody looking at
- * a countdown in a bar. With nothing to follow it, the mini player closes,
- * as the player does when it is left on a finished film: a bar holding a
- * film that is over is only in the way. Either way only while the app is in
- * front, as in the player: a film that ends behind another app waits.
- */
-@Composable
-fun MiniPlayerAtTheEnd(state: PlaybackState, autoplayNext: Boolean, onPlay: (fileId: Long) -> Unit, onClose: () -> Unit) {
-    val next = state.playsOnTo(autoplayNext)
-    val ended = state.ended && state.playWhenReady
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(ended, next?.fileId) {
-        if (!ended) return@LaunchedEffect
-        lifecycle.withStateAtLeast(Lifecycle.State.RESUMED) {
-            if (next != null) onPlay(next.fileId) else onClose()
-        }
-    }
-}
-
-/**
  * The film itself, cropped to the box: a TextureView, so the corners and
  * fades apply. Its own thumbnail sits behind it, for the frame or two a new
  * surface takes to be given a picture, which would otherwise be black.
@@ -280,9 +263,19 @@ fun MiniPlayerAtTheEnd(state: PlaybackState, autoplayNext: Boolean, onPlay: (fil
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun MiniPicture(player: Player?, fileId: Long?, modifier: Modifier) {
-    Box(modifier.background(Color.Black).testTag("mini_player_picture")) {
+    val handoff = LocalMiniPlayerHandoff.current
+    DisposableEffect(handoff) { onDispose { handoff?.miniPicture = null } }
+    Box(
+        modifier
+            .onGloballyPositioned { handoff?.miniPicture = it.boundsInRoot() }
+            .background(Color.Black)
+            .testTag("mini_player_picture"),
+    ) {
         if (fileId != null) ArtworkImage(ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB), Modifier.fillMaxSize())
-        if (player != null) ContentFrame(player, Modifier.fillMaxSize(), SURFACE_TYPE_TEXTURE_VIEW, ContentScale.Crop)
+        // Floating, the picture-in-picture window has the film; this takes it back after.
+        if (player != null && !LocalInPictureInPicture.current) {
+            ContentFrame(player, Modifier.fillMaxSize(), SURFACE_TYPE_TEXTURE_VIEW, ContentScale.Crop)
+        }
     }
 }
 

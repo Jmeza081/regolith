@@ -22,6 +22,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- A film keeps playing as a foreground service of type mediaPlayback
+         (PlaybackService): with the screen off when Settings › Playback says
+         so, and while its notification and lock-screen controls are up. The
+         wake lock keeps the CPU and the Wi-Fi awake while it plays, or the
+         share stops being read the moment the screen goes off. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Library › On this device › Phone storage: the videos already on the
          phone (Camera, Movies, Download, …), read through MediaStore and
          played straight from their own folders. Asked from that tab, never
@@ -57,10 +64,26 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- The film, published to the rest of Android: the notification, the
+             lock screen, headset buttons and the picture-in-picture controls.
+             Exported because those controls are other apps binding to it, as
+             Media3 requires; the media session itself decides who may
+             connect, which is why it needs no permission of its own. -->
+        <service
+            android:name=".player.PlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:supportsPictureInPicture="true"
             android:theme="@style/Theme.Regolith.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
