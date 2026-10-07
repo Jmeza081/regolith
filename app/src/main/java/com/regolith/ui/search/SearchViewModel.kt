@@ -21,6 +21,9 @@ import com.regolith.domain.playback.VideoInfo
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -34,7 +37,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 import com.regolith.ui.util.formatFileCount
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
@@ -144,8 +146,14 @@ data class SearchUiState(
  * indexes, so results keep arriving while a scan is still walking.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-@HiltViewModel
-class SearchViewModel @Inject constructor(
+@HiltViewModel(assistedFactory = SearchViewModel.Factory::class)
+class SearchViewModel @AssistedInject constructor(
+    /**
+     * A moment to start on, from [com.regolith.ui.navigation.RegolithKey.Search]:
+     * Home's Moments section opens Search with one already picked. Null is
+     * the ordinary Search, opened from a search icon.
+     */
+    @Assisted initialPoi: String?,
     private val library: LibraryRepository,
     sources: SourceRepository,
     scans: ScanRepository,
@@ -156,12 +164,17 @@ class SearchViewModel @Inject constructor(
     fileActionsFactory: FileActions.Factory,
 ) : ViewModel() {
 
+    @AssistedFactory
+    interface Factory {
+        fun create(poi: String?): SearchViewModel
+    }
+
     /** Rename, move and delete for the picks, the same as Browse's and the Library's. */
     val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
 
     private val query = MutableStateFlow("")
     private val filter = MutableStateFlow(SearchFilter.ALL)
-    private val poi = MutableStateFlow<String?>(null)
+    private val poi = MutableStateFlow(initialPoi)
 
     // The names themselves: free of the share, since the sidecar import put
     // every chapter name in the table when the folder was listed. Every one

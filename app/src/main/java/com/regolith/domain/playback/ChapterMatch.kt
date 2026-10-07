@@ -1,5 +1,8 @@
 package com.regolith.domain.playback
 
+import java.text.Collator
+import java.util.Locale
+
 /**
  * A chapter the user named, found by Search. It is a PLACE in a film, not
  * a file, which is why it carries the file's identity beside the chapter's:
@@ -24,9 +27,23 @@ data class ChapterMatch(
 
 /**
  * A point of interest that recurs across the library: a chapter name and
- * the number of films carrying it. Search offers these as filter chips.
+ * the number of films carrying it. Search offers these as filter chips,
+ * commonest first; Home lists every one of them, [alphabetical].
  */
 data class ChapterFacet(val title: String, val films: Int)
+
+/**
+ * These names A to Z the way a person reads a list, not the way the
+ * database compares bytes: capitals and accents don't move a name
+ * ("éclair" sits with the e's, "Piñata" with the p's). SQLite's `NOCASE`
+ * folds ASCII only, which is why the order is made here rather than in the
+ * query. Names that collate alike still keep one fixed order between them,
+ * so chips never swap places from one refresh to the next.
+ */
+fun List<ChapterFacet>.alphabetical(locale: Locale = Locale.getDefault()): List<ChapterFacet> {
+    val collator = Collator.getInstance(locale).apply { strength = Collator.PRIMARY }
+    return sortedWith(compareBy<ChapterFacet, String>(collator) { it.title }.thenBy { it.title })
+}
 
 /** How much the user has written, for Settings › Chapters. */
 data class UserChapterStats(

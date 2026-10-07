@@ -68,10 +68,11 @@ class UserChapterRepository @Inject constructor(
     fun stats(): Flow<UserChapterStats> = dao.observeTally().map { UserChapterStats(chapters = it.chapters, files = it.files) }
 
     /**
-     * The points of interest to filter by: every chapter name in the
-     * library, commonest first. Free of the share — the sidecar import
-     * already put every name in this table when the folder was listed (see
-     * `ChapterSyncRepository.onFolderListed`).
+     * The points of interest: every chapter name in the library, commonest
+     * first, the first [limit] of them. Search's moment sheet filters by
+     * them; Home lists them all, A to Z. Free of the share — the sidecar
+     * import already put every name in this table when the folder was
+     * listed (see `ChapterSyncRepository.onFolderListed`).
      */
     fun facets(limit: Int): Flow<List<ChapterFacet>> =
         dao.observeFacets(limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }

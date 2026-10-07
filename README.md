@@ -85,6 +85,11 @@ opens the film at that moment — and each result shows the frame *at* that mome
 so two marks in the same film are two different pictures rather than the film's
 poster twice.
 
+Home ends with **Moments**: every name you have given a mark, A to Z, each with
+how many videos use it, wrapping across the screen rather than hiding in a
+sideways row. Tap one and Search opens with that name already picked, listing
+every place it appears and every video it is in.
+
 ### Posters you choose
 
 Don't like the frame a folder picked? "Make a poster from this frame", at the

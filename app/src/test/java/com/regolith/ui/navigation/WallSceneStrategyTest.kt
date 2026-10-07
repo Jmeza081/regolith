@@ -25,7 +25,7 @@ class WallSceneStrategyTest {
         NavEntry<NavKey>(key, metadata = metadata) { }
 
     private val home = entry(RegolithKey.Home, tabScreen)
-    private val search = entry(RegolithKey.Search)
+    private val search = entry(RegolithKey.Search())
     private val library = entry(RegolithKey.Library(), tabScreen + WallSceneStrategy.wall())
     private val films = entry(RegolithKey.Library(folderId = 2), tabScreen + WallSceneStrategy.wall())
     private val browse = entry(RegolithKey.Browse(folderId = 7), tabScreen + WallSceneStrategy.wall())

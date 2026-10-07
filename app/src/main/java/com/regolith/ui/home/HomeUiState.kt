@@ -1,6 +1,7 @@
 package com.regolith.ui.home
 
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.playback.ChapterFacet
 
 /** One card in "Continue watching": 16:9 so the frame is recognisable, labelled with time left. */
 data class ResumeItem(
@@ -58,6 +59,13 @@ data class HomeUiState(
     /** How many finished copies there are in total, and what they occupy. */
     val downloadsReady: Int = 0,
     val downloadsBytes: Long = 0,
+    /**
+     * Every name the library's moments carry, A to Z, each with how many
+     * videos use it: Home's last section, where a tap opens Search on that
+     * name. Empty while spoof mode is on, and on a library nobody has
+     * marked yet, which leaves the section out.
+     */
+    val moments: List<ChapterFacet> = emptyList(),
 ) {
     val hasSource: Boolean get() = serverNames.isNotEmpty()
 }

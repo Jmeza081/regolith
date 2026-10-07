@@ -8,6 +8,7 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.domain.transfer.TransferStatus
@@ -17,6 +18,7 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.media.DeviceSource
 import com.regolith.domain.playback.VideoInfo
+import com.regolith.domain.playback.alphabetical
 import com.regolith.ui.util.formatWhen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,7 +32,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** Home state: servers, the resume row, what arrived, and whether a scan is walking. */
+/** Home state: servers, the resume row, what arrived, the moments, and whether a scan is walking. */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -38,6 +40,7 @@ class HomeViewModel @Inject constructor(
     private val library: LibraryRepository,
     private val scans: ScanRepository,
     transfers: TransferRepository,
+    userChapters: UserChapterRepository,
     spoof: SpoofMode,
 ) : ViewModel() {
 
@@ -58,9 +61,19 @@ class HomeViewModel @Inject constructor(
     private val newest = library.observeNewest(NEW_LIMIT).spoofed(spoof) { files(it) }
         .flatMapLatest { files -> library.observeProgress(files.map { it.id }).map { p -> files to p } }
 
+    // Every name the library's moments carry, A to Z: the names Search's
+    // moment sheet offers, without its cap and in reading order, since Home
+    // lists all of them as a section of its own. Spoof mode lists none, as
+    // the sheet does: a made-up label would open a Search that finds
+    // nothing, and the real names are the owner's own words.
+    private val moments = combine(userChapters.facets(MOMENTS_GUARD), spoof.state) { names, spoofed ->
+        if (spoofed == null) names.alphabetical() else emptyList()
+    }
+
     val uiState: StateFlow<HomeUiState> = combine(
-        combine(sources.observeServers(), shares, ::Pair), resume, newest, runs, downloads,
-    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (ready, deviceFiles) ->
+        combine(sources.observeServers(), shares, ::Pair), resume, newest, runs, combine(downloads, moments, ::Pair),
+    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (downloadsAndCopies, momentNames) ->
+        val (ready, deviceFiles) = downloadsAndCopies
         val running = runList.filter { it.status == ScanRunEntity.RUNNING }
         val progressById = newestProgress.associateBy { it.fileId }
         val deviceById = deviceFiles.associateBy { it.id }
@@ -95,6 +108,7 @@ class HomeViewModel @Inject constructor(
             },
             refreshLine = running.takeIf { it.isNotEmpty() }?.let { "Reading the share · ${"%,d".format(it.sumOf { r -> r.filesFound })} files so far" },
             neverScanned = shareList.isNotEmpty() && shareList.none { it.lastScanAtMs != null } && runList.none { it.status == ScanRunEntity.DONE },
+            moments = momentNames,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -109,5 +123,13 @@ class HomeViewModel @Inject constructor(
         const val DEVICE_LIMIT = 12
 
         const val NEW_LIMIT = 12
+
+        /**
+         * Not a design limit — Home lists every moment name — but a guard
+         * against a library where something named ten thousand marks, which
+         * would be ten thousand chips composed at once. Past it, the
+         * commonest names win, still shown A to Z.
+         */
+        const val MOMENTS_GUARD = 1_000
     }
 }

@@ -109,11 +109,18 @@ fun SearchScreen(
     /** A point of interest: play this film from this time. */
     onPlayAt: (fileId: Long, startMs: Long) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Put the cursor in the field on arrival, which raises the keyboard.
+     * False when Search opens with a moment already picked (Home's
+     * Moments): the results are the point then, and the keyboard would
+     * cover most of them.
+     */
+    focusField: Boolean = true,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(Unit) { if (focusField) focus.requestFocus() }
 
     val selection = state.selection
     val selecting = selection != null
