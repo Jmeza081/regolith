@@ -4,6 +4,9 @@ import com.regolith.data.spoof.spoofed
 import com.regolith.data.spoof.SpoofMode
 import android.content.Context
 import android.util.Log
+import android.app.PendingIntent
+import android.content.Intent
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
@@ -17,6 +20,10 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaSession
+import com.regolith.data.artwork.ArtworkStore
+import com.regolith.domain.artwork.ArtworkKind
+import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.FrameSourceFactory
 import com.regolith.data.db.MediaFileEntity
@@ -41,12 +48,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -55,6 +65,12 @@ data class NextItem(val fileId: Long, val name: String, val sizeBytes: Long, val
 
 /** What the Player screen draws. */
 data class PlaybackState(
+    /**
+     * Something is loaded, a library file or a film another app handed over
+     * ([fileId] is null for that one): what keeps the mini player on screen
+     * once the player itself has been put away. False after [PlaybackSession.stop].
+     */
+    val loaded: Boolean = false,
     val fileId: Long? = null,
     val title: String = "",
     /** "TOWER · media/Films" */
@@ -172,12 +188,24 @@ data class PlaybackState(
 
     /** The mirror of [upNext]: Previous wraps back to the last file while repeating all. */
     val upPrevious: NextItem? get() = previous ?: wrapToLast.takeIf { repeat == RepeatMode.ALL }
+
+    /**
+     * What the player goes on to by itself when this film ends, or null when
+     * it stops there. A running order (Play all, Shuffle) and repeat-all both
+     * mean "keep going" whatever the setting says; otherwise it is Settings ›
+     * Playback › Keep playing, [keepPlaying]. The player's Up next card and
+     * the mini player both ask this, so they never disagree.
+     */
+    fun playsOnTo(keepPlaying: Boolean): NextItem? =
+        upNext.takeIf { keepPlaying || queued || repeat == RepeatMode.ALL }
 }
 
 /**
  * The one ExoPlayer, owned by the app rather than by a screen (guardrail
  * G4). The Player screen observes [state] and sends commands; if it is
  * rotated, recreated or left, playback and progress saving carry on here.
+ * The mini player, the picture-in-picture window and the lock screen's
+ * controls ([mediaSession]) all show this same player.
  *
  * The player instance can change: switching hardware/software decoding
  * needs a new renderers factory, which means a new ExoPlayer. That is why
@@ -202,6 +230,8 @@ class PlaybackSession @Inject constructor(
     private val chapterSource: ChapterRepository,
     private val userChapters: UserChapterRepository,
     private val spoof: SpoofMode,
+    /** Where a film's thumb is cached, for the notification's picture. */
+    private val artwork: ArtworkStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow(PlaybackState())
@@ -222,6 +252,8 @@ class PlaybackSession @Inject constructor(
     private var currentFile: MediaFileEntity? = null
     /** file:// for a copy on this device, regolith:// for the share. */
     private var currentUri: android.net.Uri? = null
+    /** The loaded film's thumb, for the notification's picture ([artFor]). */
+    private var currentArt: ByteArray? = null
 
     /**
      * The running order set by Play all or Shuffle: file ids in the order you
@@ -240,9 +272,97 @@ class PlaybackSession @Inject constructor(
      */
     private var shuffledHere: Boolean = false
 
-    private fun current(): ExoPlayer = _player.value ?: createPlayer(_state.value.hardwareDecoding).also { _player.value = it }
+    private fun current(): ExoPlayer = _player.value ?: createPlayer(_state.value.hardwareDecoding).also {
+        _player.value = it
+        publish(it)
+    }
+
+    /**
+     * The media session over the current player, while there is a film:
+     * what [PlaybackService] publishes as the notification, the lock-screen
+     * controls and the picture-in-picture window's buttons. Made and released
+     * here, beside the player it wraps, so it can never be left holding one
+     * that has been released.
+     */
+    var mediaSession: MediaSession? = null
+        private set
+
+    /** What [mediaSession] shows: the current player, with Previous and Next following the running order. */
+    private var sessionPlayer: SessionPlayer? = null
+
+    init {
+        // The running order changes without the player noticing (a queue
+        // worked out after the film opened, repeat switched on), so the lock
+        // screen's buttons are told when Previous or Next comes or goes.
+        scope.launch {
+            _state.map { (it.upPrevious != null) to (it.upNext != null) }.distinctUntilChanged().collect {
+                sessionPlayer?.stepsChanged()
+            }
+        }
+    }
+
+    /**
+     * True while the player screen is in front of you: it puts up its own Up
+     * next card when a film ends and decides what follows. Everywhere else —
+     * the mini player, the picture-in-picture window, the screen off — the
+     * session decides at the end itself ([atTheEnd]), because nothing on
+     * screen is drawing then: Compose stops when its window cannot be seen.
+     */
+    var screenOwnsTheEnd = false
+
+    /**
+     * True while the film is in its picture-in-picture window, which keeps
+     * showing a film that has finished instead of vanishing under you; you
+     * close the window to end it.
+     */
+    var floating = false
+
+    /**
+     * Player screens open, in front of you or not: normally one, two when a
+     * film handed over by another app opened over one. A film that ends under
+     * a player you cannot see — the screen off — is held at its end for you
+     * to come back to, as if you had watched it finish ([atTheEnd]).
+     */
+    private var playerScreens = 0
+
+    /** A player screen opened (its ViewModel was made); paired with [playerScreenClosed]. */
+    fun playerScreenOpened() {
+        playerScreens++
+    }
+
+    /** A player screen was put away. */
+    fun playerScreenClosed() {
+        playerScreens = (playerScreens - 1).coerceAtLeast(0)
+    }
+
+    /**
+     * With the app lock on, the notification and the lock screen say only
+     * that Regolith is playing: a film's name is the owner's own, and the
+     * lock is there to keep it to them. Read at each load.
+     */
+    private var discreet = false
+
+    /** Put [player] behind the media session, making it — and starting its service — the first time. */
+    private fun publish(player: ExoPlayer) {
+        val shown = SessionPlayer(player, steps = { _state.value }, go = { load(it) })
+        sessionPlayer = shown
+        mediaSession?.let {
+            it.player = shown
+            return
+        }
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        mediaSession = MediaSession.Builder(context, shown)
+            .apply {
+                if (open != null) {
+                    setSessionActivity(PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                }
+            }
+            .build()
+        context.startService(Intent(context, PlaybackService::class.java))
+    }
 
     private fun createPlayer(hardware: Boolean): ExoPlayer {
+        surfaceShown = false
         // DefaultDataSource handles file:// (Phase 5 downloads) itself and
         // hands every other scheme, i.e. regolith://, to our SMB factory.
         val dataSourceFactory = DefaultDataSource.Factory(context, smbDataSourceFactory)
@@ -251,6 +371,14 @@ class PlaybackSession @Inject constructor(
             .setMediaCodecSelector(if (hardware) MediaCodecSelector.DEFAULT else MediaCodecSelector.PREFER_SOFTWARE)
         return ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
+            // Keeps the CPU and the Wi-Fi awake while a film plays, which only
+            // matters once the screen is off: without it the share stops being
+            // read and the sound stops with it. Held only while playing.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            // A film is a film to the rest of the phone: it pauses for a call,
+            // ducks under a notification, and stops when the headphones come out.
+            .setAudioAttributes(MOVIE_AUDIO, true)
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .also {
                 it.addListener(listener)
@@ -284,7 +412,13 @@ class PlaybackSession @Inject constructor(
                     durationMs = current().duration.coerceAtLeast(0),
                 )
             }
-            if (playbackState == Player.STATE_ENDED) saveProgress()
+            if (playbackState == Player.STATE_ENDED) {
+                saveProgress()
+                // Ended with nothing showing it (the screen off): the next
+                // surface is given the last frame ([redrawIfEnded]).
+                if (!surfaceShown) redrawOnNewSurface = true
+                scope.launch { atTheEnd() }
+            }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
@@ -306,6 +440,22 @@ class PlaybackSession @Inject constructor(
                     )
                 }
             }
+        }
+
+        override fun onSurfaceSizeChanged(width: Int, height: Int) {
+            val p = _player.value ?: return
+            val ended = p.playbackState == Player.STATE_ENDED
+            if (width <= 0 || height <= 0) {
+                // The surface went: the screen went off, or another app came
+                // over this one. A finished film will want its frame back.
+                surfaceShown = false
+                if (ended) redrawOnNewSurface = true
+                return
+            }
+            surfaceShown = true
+            if (!redrawOnNewSurface) return
+            redrawOnNewSurface = false
+            if (ended) p.seekTo((p.duration - REDRAW_BEFORE_END_MS).coerceAtLeast(0))
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -337,11 +487,24 @@ class PlaybackSession @Inject constructor(
             !activeQueue.contains(fileId) -> { activeQueue = emptyList(); shuffledHere = false }
         }
         if (_state.value.fileId == fileId && _state.value.error == null) {
-            if (!current().isPlaying) current().play()
+            // Already loaded — the mini player keeps a film here after its
+            // screen has gone, so this is the common case now, not a corner.
+            // Asked for a time (a moment), go there; finished, start again;
+            // otherwise carry on from where it is.
+            val p = current()
+            when {
+                startMs != null -> p.seekTo(startMs)
+                p.playbackState == Player.STATE_ENDED -> p.seekTo(0)
+            }
+            if (!p.isPlaying) p.play()
+            // A running order handed over now (Play all on the same film) is
+            // the order from here on: what plays next follows it.
+            if (queue != null) scope.launch { refreshQueueView(fileId) }
             return
         }
         saveProgress()
-        _state.value = PlaybackState(fileId = fileId, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding)
+        redrawOnNewSurface = false
+        _state.value = PlaybackState(loaded = true, fileId = fileId, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding)
         followUserChapters(fileId)
         scope.launch {
             val hardware = prefs.hardwareDecoding.first()
@@ -355,6 +518,7 @@ class PlaybackSession @Inject constructor(
             val resume = startMs ?: playback.progress(fileId)?.takeUnless { it.completed }?.positionMs ?: 0L
             val view = queueView(fileId)
             val repeat = prefs.playerRepeat.first()
+            discreet = prefs.appLock.first()
             val uri = resolver.playableUriFor(fileId)
             _state.update {
                 it.copy(
@@ -371,6 +535,7 @@ class PlaybackSession @Inject constructor(
                 )
             }
             currentUri = uri
+            currentArt = artFor(fileId)
             startPlayer(fileId, file, resume)
             // After the player is started: the header read is worth a second
             // of latency on a sheet nobody has opened yet, and never worth
@@ -402,6 +567,7 @@ class PlaybackSession @Inject constructor(
         currentFile = null
         currentUri = uri
         _state.value = PlaybackState(
+            loaded = true,
             fileId = null,
             title = title,
             sourceLabel = "Opened from another app",
@@ -420,6 +586,8 @@ class PlaybackSession @Inject constructor(
                 _player.value?.release()
                 _player.value = null
             }
+            discreet = prefs.appLock.first()
+            currentArt = null
             startPlayer(null, null, 0L)
         }
     }
@@ -532,14 +700,40 @@ class PlaybackSession @Inject constructor(
                 activeQueue = emptyList()
                 shuffledHere = false
             }
-            val view = queueView(fileId)
-            _state.update {
-                it.copy(
-                    next = view.next, previous = view.previous,
-                    wrapTo = view.wrapTo, wrapToLast = view.wrapToLast,
-                    queued = activeQueue.isNotEmpty(), shuffled = shuffledHere,
-                )
-            }
+            refreshQueueView(fileId)
+        }
+    }
+
+    /**
+     * A film ended with the player screen not in front of you. A queue, a
+     * repeat, or Settings › Playback › Keep playing goes on to the next one
+     * at once, with no card, since nobody is looking at one (the same rule as
+     * the card's, [PlaybackState.playsOnTo]). With nothing after it, a film in
+     * the mini player stops, closing it. One in its floating window, or under
+     * a player screen with the screen off, is held at its end instead: the
+     * window keeps its last frame until you close it, and the player is
+     * waiting at the end when you come back.
+     */
+    private suspend fun atTheEnd() {
+        if (screenOwnsTheEnd || !_state.value.playWhenReady) return
+        val next = _state.value.playsOnTo(prefs.autoplayNext.first())
+        when {
+            next != null -> load(next.fileId)
+            floating || playerScreens > 0 -> Unit
+            else -> stop()
+        }
+    }
+
+    /** What plays next and before, worked out again for [fileId] after the running order changed under it. */
+    private suspend fun refreshQueueView(fileId: Long) {
+        val view = queueView(fileId)
+        if (_state.value.fileId != fileId) return
+        _state.update {
+            it.copy(
+                next = view.next, previous = view.previous,
+                wrapTo = view.wrapTo, wrapToLast = view.wrapToLast,
+                queued = activeQueue.isNotEmpty(), shuffled = shuffledHere,
+            )
         }
     }
 
@@ -547,19 +741,56 @@ class PlaybackSession @Inject constructor(
         val item = MediaItem.Builder()
             .setUri(currentUri ?: resolver.uriFor(checkNotNull(fileId) { "no file and no uri" }))
             .setMediaId(fileId?.toString() ?: EXTERNAL_MEDIA_ID)
-            // The lock screen and the notification shade show this title, so
-            // spoof mode makes it up there too.
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(file?.let { shownName(it) } ?: _state.value.title).build())
+            // The lock screen and the notification shade show this (through
+            // the media session), so spoof mode makes the title up there too.
+            .setMediaMetadata(metadataFor(file?.let { shownName(it) } ?: _state.value.title))
             .build()
         val p = current()
         p.repeatMode = if (_state.value.repeat == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         p.setMediaItem(item, positionMs)
         p.prepare()
         p.play()
+        // Read back, not left to the listener: going on from a film that was
+        // playing, play() changes nothing and reports nothing, and the fresh
+        // state load() made would say paused while the next film plays.
+        _state.update { it.copy(playWhenReady = p.playWhenReady) }
     }
 
+    /**
+     * What the notification and the lock screen say about the film: its name,
+     * the folder it lives in and its thumb — or, with the app lock on, only
+     * "Regolith · Playing" (see [discreet]). Spoof mode gets no picture, as a
+     * stock photo there would be one more thing to explain.
+     */
+    private fun metadataFor(title: String): MediaMetadata {
+        if (discreet) return MediaMetadata.Builder().setTitle("Regolith").setArtist("Playing").build()
+        val place = _state.value.sourceLabel.substringAfterLast(" · ").substringAfterLast('/').ifEmpty { null }
+        return MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(place)
+            .apply { currentArt?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) } }
+            .build()
+    }
+
+    /**
+     * [fileId]'s thumb as bytes, for the notification's picture, or null in
+     * spoof mode or before it has been made. Bytes rather than the file's
+     * address: the notification is drawn by the system, which cannot open a
+     * file inside the app's own storage.
+     */
+    private suspend fun artFor(fileId: Long): ByteArray? {
+        if (spoof.current != null) return null
+        val thumb = artwork.fileFor(artwork.relPathFor(ArtworkOwner.File(fileId), ArtworkKind.THUMB))
+        return withContext(Dispatchers.IO) { thumb.takeIf { it.exists() }?.readBytes() }
+    }
+
+    /**
+     * Where [file] lives, as the player's header, the mini player and the
+     * lock screen show it ("MEDIA · Films/Arrival (2016)"). With spoof mode
+     * on, the folders are made up, as on Title Detail and in Browse.
+     */
     private suspend fun sourceLabelFor(file: MediaFileEntity): String {
-        val folder = file.relPath.substringBeforeLast('/', "")
+        val folder = file.relPath.substringBeforeLast('/', "").let { spoof.current?.path(it) ?: it }
         val share = library.shareLabel(file.shareId)
         return listOf(share, folder).filter { it.isNotEmpty() }.joinToString(" · ")
     }
@@ -576,6 +807,29 @@ class PlaybackSession @Inject constructor(
             else -> p.play()
         }
     }
+
+    /**
+     * Draw a finished film's last frame again, on the next surface it is
+     * given. A new surface — the player taking the film back from its
+     * floating window — is given a frame by a paused film but not by one that
+     * has ended, which has nothing left to decode, and would stay black.
+     * Seeking to just before the end draws it, and the film ends again a
+     * moment later, where it was. The seek waits for the surface itself
+     * ([redrawOnNewSurface], answered in the listener), which Android makes a
+     * frame or two after the screen asking for it: any sooner and the frame
+     * is drawn into nothing. The screen going off needs no asking: the
+     * listener sees the surface go and arms this itself.
+     */
+    fun redrawIfEnded() {
+        val p = _player.value ?: return
+        if (p.playbackState == Player.STATE_ENDED && p.duration > 0) redrawOnNewSurface = true
+    }
+
+    /** A finished film's last frame is wanted on the next surface that arrives ([redrawIfEnded]). */
+    private var redrawOnNewSurface = false
+
+    /** The player is drawing into a surface now (the last size the listener heard was not zero). */
+    private var surfaceShown = false
 
     /**
      * Pause without asking what the user meant. The app lock uses this:
@@ -660,6 +914,10 @@ class PlaybackSession @Inject constructor(
         saveProgress()
         ticker?.cancel()
         userChapterJob?.cancel()
+        mediaSession?.release()
+        mediaSession = null
+        sessionPlayer = null
+        context.stopService(Intent(context, PlaybackService::class.java))
         _player.value?.let {
             it.stop()
             it.clearMediaItems()
@@ -668,6 +926,7 @@ class PlaybackSession @Inject constructor(
         _player.value = null
         currentFile = null
         currentUri = null
+        currentArt = null
         _scrubThumbnails.value.close()
         _scrubThumbnails.value = ScrubThumbnails.None
         _state.value = PlaybackState(speed = 1f, hardwareDecoding = _state.value.hardwareDecoding)
@@ -716,7 +975,14 @@ class PlaybackSession @Inject constructor(
     }
 
     private companion object {
+        /** A film's sound, for audio focus: paused by a call, ducked under a notification. */
+        val MOVIE_AUDIO: AudioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
         const val EXTERNAL_MEDIA_ID = "external"
+        /** How far before the end [redrawIfEnded] goes back for a frame to draw. */
+        const val REDRAW_BEFORE_END_MS = 80L
         const val TAG = "Regolith/Playback"
         const val TICK_MS = 250L
         const val SAVE_EVERY_TICKS = 20 // every 5 s while playing

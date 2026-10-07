@@ -163,7 +163,7 @@ fun NavPill(
             // against the frame, not a correction of it.
                 .weight(1f)
                 .widthIn(max = NAV_PILL_MAX_WIDTH)
-                .height(62.dp)
+                .height(NAV_PILL_HEIGHT)
                 .then(frosted)
                 // 10dp, not 4: the end labels sit against a 50% radius, and
                 // a 4dp inset put SETTINGS right on the curve once the pill
@@ -490,6 +490,9 @@ private val NAV_PILL_MAX_WIDTH = 375.dp
  */
 val NAV_PILL_CLEARANCE: Dp = 112.dp
 
+/** The phone's pill itself, top to bottom: what the mini player's bar rises above while it shows. */
+val NAV_PILL_HEIGHT: Dp = 62.dp
+
 /**
  * How wide a docked message may get. On a phone it spans the gutters; on a
  * wide window the content area is far wider than a line anyone wants to read,
@@ -509,6 +512,14 @@ val CHROME_MESSAGE_MAX_WIDTH: Dp = 520.dp
  * root and read by every page.
  */
 val LocalNavPillInsets = staticCompositionLocalOf { PaddingValues(bottom = NAV_PILL_CLEARANCE) }
+
+/**
+ * How far Title Detail pads the end of its scroll so its last rows clear the
+ * mini player floating over it (a phone's bar, a wide window's card); zero
+ * while there is none. The screens that pad by [LocalNavPillInsets] already
+ * get the room, because those insets count the mini player too.
+ */
+val LocalMiniPlayerClearance = staticCompositionLocalOf { 0.dp }
 
 /**
  * How much of the window's width the nav rail takes from the start edge on a

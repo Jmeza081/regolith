@@ -45,6 +45,22 @@ first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
 of the next clips are fetched in the background while you are elsewhere in the app.
 
+### Keeps playing while you look around
+
+Put the player away (back, a swipe down, or its arrow) and the film shrinks into
+a bar above the nav on a phone, or a card in the corner of the inner display,
+and keeps playing while you browse. Tap it to bring the player back, or ✕ to
+stop. A queue, a repeat or Keep playing goes on to the next film by itself while
+it is small; a film with nothing after it closes the bar when it ends.
+
+Leave Regolith while a film plays and it carries on in a small window over your
+other apps (**Settings › Playback › Picture-in-picture**, on to start with);
+the window has play, pause, previous and next, and opening it out puts you back
+where you were. The lock screen and the notification shade show what is playing
+with the same buttons, and headphones coming out pause it. With the screen off
+the film pauses, unless **Play with the screen off** is on, when the sound
+carries on; leaving the app with picture-in-picture off pauses it too.
+
 ### Collections with a page of their own
 
 Open a collection that holds only videos and it opens as its own page rather
@@ -244,7 +260,9 @@ a poster from that moment — and the clips that play next.
 Settings › Privacy asks for a fingerprint, face or the phone's own screen lock
 before the library is shown, and you choose how long the app may sit in the
 background first. If the phone loses its screen lock entirely, the lock stands
-down rather than shutting you out.
+down rather than shutting you out. A film floating over other apps counts as
+time away: open it out after that long and the lock asks first. While the lock is
+on, the lock screen and the notification say only "Regolith · Playing".
 
 ## Try it without a share
 
@@ -265,7 +283,8 @@ folders, paths and the chapters you named get believable made-up titles
 thumbnail and backdrop is a low-resolution stock photo from Unsplash, through
 Lorem Picsum. Each video keeps the same stand-ins every time, so it still reads
 as one library. Only the phone's display changes: the share is never touched,
-the lock-screen title and the download notification are made up too, and
+the lock screen (which shows no picture) and the download notification are made
+up too, and
 nothing can be moved, renamed, deleted or uploaded until it is switched off.
 The photos are the one thing it fetches from the internet, picked by a random
 number that says nothing about the file.

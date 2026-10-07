@@ -1,5 +1,6 @@
 package com.regolith
 
+import com.regolith.domain.playback.BackgroundPlay
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.domain.display.NavHideAfter
@@ -100,6 +101,12 @@ class AppViewModel @Inject constructor(
     /** Whether the lock is switched on at all — the Activity reads it to blank the recents preview. */
     val appLockEnabled: StateFlow<Boolean> = prefs.appLock.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** Settings › Playback › Play with the screen off ([BackgroundPlay]). */
+    private val playWithScreenOff: StateFlow<Boolean> = prefs.playWithScreenOff.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** When the film went into its picture-in-picture window, for the lock to time the trip by. */
+    private var floatingSinceMs: Long? = null
+
     /** When the app last went to the background; null on a cold start, which always asks. */
     private var leftAtMs: Long? = null
 
@@ -121,8 +128,31 @@ class AppViewModel @Inject constructor(
      * only read on the way back, so a long film in the background does not
      * lock behind you while you watch it.
      */
-    fun wentToBackground() {
+    fun wentToBackground(screenOn: Boolean) {
         if (_locked.value == false) leftAtMs = System.currentTimeMillis()
+        // Nothing can be seen any more: a film pauses rather than playing to
+        // nobody, unless this is the screen going off and Settings says the
+        // sound carries on (BackgroundPlay).
+        if (!BackgroundPlay.keepsPlaying(screenOn, playWithScreenOff.value)) playback.pause()
+    }
+
+    /**
+     * The film went into its picture-in-picture window. Android does not stop
+     * the Activity for that — it is still on screen, just small — so the
+     * lock's clock starts here instead of at [wentToBackground].
+     */
+    fun enteredPictureInPicture() {
+        if (_locked.value == false) floatingSinceMs = System.currentTimeMillis()
+    }
+
+    /**
+     * The window opened out into the app again. Floating counts as being
+     * away: past the lock's grace time, it asks before the library shows.
+     */
+    fun leftPictureInPicture() {
+        val since = floatingSinceMs ?: return
+        floatingSinceMs = null
+        if (AppLock.shouldAsk(appLockEnabled.value, lockAfter, since, System.currentTimeMillis())) lockNow()
     }
 
     /** The app came back. [AppLock.shouldAsk] decides, and locking pauses whatever was playing. */

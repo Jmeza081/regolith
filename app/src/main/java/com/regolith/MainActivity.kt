@@ -3,6 +3,7 @@ package com.regolith
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.OpenableColumns
 import android.view.WindowManager
 import androidx.lifecycle.Lifecycle
@@ -85,7 +86,9 @@ class MainActivity : ComponentActivity() {
                     Lifecycle.Event.ON_PAUSE -> if (appViewModel.appLockEnabled.value) {
                         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                     }
-                    Lifecycle.Event.ON_STOP -> appViewModel.wentToBackground()
+                    // Whether the screen is still on decides whether a playing film
+                    // pauses (Settings › Playback › Play with the screen off).
+                    Lifecycle.Event.ON_STOP -> appViewModel.wentToBackground(screenOn = getSystemService(PowerManager::class.java).isInteractive)
                     Lifecycle.Event.ON_START -> appViewModel.cameToForeground()
                     Lifecycle.Event.ON_RESUME -> window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                     else -> Unit

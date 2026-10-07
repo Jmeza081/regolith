@@ -137,7 +137,7 @@ place the selection's verbs live.
 | `AddServer.Manual(prefill?)` | "Enter an address" on the finder and Home; a found host arrives as `prefill` | 1, 6 |
 | `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
 | `AddServer.Folders(shareId, relPath)` | A share's chevron on Choose a share, and its own rows going deeper; one key per level, Done pops them all | P1 |
-| `Player(fileId, startMs?)` | TitleDetail; Home resume row; a Search point of interest pushes it with `startMs` at the chapter (P9) | 1 |
+| `Player(fileId, startMs?, expand?)` | TitleDetail; Home resume row; a Search point of interest pushes it with `startMs` at the chapter (P9); the mini player pushes it with `expand` set, which picks the film up as it was instead of loading it again | 1 |
 | `TitleDetail(fileId)` | Browse, Library, Home "Newly added", Search | 3 |
 | `Search(poi?)` | Home's and Library's search icon; a chip in Home's Moments section pushes it with `poi` set, which opens it with that moment already picked and the keyboard down; a hit opens `TitleDetail` or `Browse(folderId)`; a point of interest opens `Player(fileId, startMs)` | 4 |
 | `AddServer.Scanning(serverId)` | Share picker "Scan N shares"; "Run in the background" → `[Home]`, "Open the library" → `[Home, Library]` | 4 |
@@ -153,6 +153,27 @@ startMs)` directly.
 The Player is the only screen that changes Activity-level settings
 (landscape, immersive); it applies them in a `DisposableEffect` and undoes
 them on the way out.
+
+**Putting the player away.** Back, the swipe down and the arrow pop `Player`
+as before, but the film keeps playing: `PlaybackSession` keeps it, and the
+mini player shows it over whatever is underneath (`ui/player/MiniPlayer.kt`).
+On a phone that is a bar above the pill, docking at the bottom on its own
+when the pill slides away or on a pushed page; on a wide window, a card in
+the bottom corner, in the wall's half beside an open page. The player moves
+itself on its own transition (`playerScreen`): its picture shrinks into the
+mini player's spot as the rest of it fades, and the back swipe scrubs that.
+Tapping the mini player pushes `Player(…, expand = true)`, which grows out
+of it; its ✕ stops the film. A film that has ended or failed stops when the
+player is left, and one that ends in the mini player with nothing after it
+closes the mini player.
+
+**Leaving the app is not navigation.** Picture-in-picture shrinks the whole
+Activity into a floating window and leaves the back stack alone: while it
+floats, `NavGraph` draws the film over everything (`PictureInPictureFilm`)
+and the screens underneath stay where they were, so opening the window out
+lands on the same screen, the player or the mini player over a tab. The one
+thing that changes on the way back is a film that ended while floating with
+no player under it: the mini player closes then, as it would have.
 
 Bottom sheets (sort, playback, A–B loop) and the disconnect confirm are not
 routes; they are state in the owning screen's `UiState`.

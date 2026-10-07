@@ -43,6 +43,7 @@ import com.regolith.domain.transfer.TransferStatus
 import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.ArtworkImage
+import com.regolith.ui.components.LocalMiniPlayerClearance
 import com.regolith.ui.components.rememberFlightLanding
 import com.regolith.ui.components.posterFlight
 import com.regolith.domain.artwork.ArtworkKind
@@ -315,6 +316,9 @@ private fun TitleDetailContent(
                         )
                     }
                 }
+                // Room to scroll the last row clear of a mini player over the
+                // page; nothing beside a wall, where it keeps to the wall's half.
+                if (!inPane) Spacer(Modifier.height(LocalMiniPlayerClearance.current))
 
                 if (state.renaming) {
                     val ext = state.fileName.substringAfterLast('.', "")

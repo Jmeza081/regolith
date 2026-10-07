@@ -104,6 +104,41 @@ val pageScreen: Map<String, Any> =
         NavDisplay.predictivePopTransitionSpec { _ -> pageLeave }
 
 /*
+ * The player (PlayerScreen), which moves itself on the transition NavDisplay
+ * runs: put away, its picture shrinks into the mini player's spot; opened
+ * from the mini player, it grows out of it; any other way in or out, it
+ * slides. So the scene does nothing but keep both screens on hand until the
+ * player has finished moving, the page underneath staying put — and when the
+ * player is put away it stays drawn on top of that page as it shrinks
+ * (targetContentZIndex), where a pop would normally put the page on top.
+ */
+
+/**
+ * The page under the player kept on screen while the player grows over it.
+ * AnimatedContent drops outgoing content the moment it has nothing left to
+ * animate, so it is given a fade too slight to see that lasts as long as the
+ * player's own motion. (Compose's own "keep until finished" is internal.)
+ */
+private val holdUnderPlayer: ExitTransition
+    get() = fadeOut(tween(PLAYER_MOTION_MS), targetAlpha = 0.99f)
+
+private val playerArrive: ContentTransform
+    get() = ContentTransform(EnterTransition.None, holdUnderPlayer)
+
+/** Putting it away: the player animates itself, which keeps it on screen; the page below is simply there. */
+private val playerLeave: ContentTransform
+    get() = ContentTransform(EnterTransition.None, ExitTransition.None, targetContentZIndex = -1f)
+
+/** How long the player takes to shrink, grow or slide; PlayerScreen times its own motion by it. */
+const val PLAYER_MOTION_MS = 360
+
+/** Per-entry metadata for the player, which animates itself. */
+val playerScreen: Map<String, Any> =
+    NavDisplay.transitionSpec { playerArrive } +
+        NavDisplay.popTransitionSpec { playerLeave } +
+        NavDisplay.predictivePopTransitionSpec { _ -> playerLeave }
+
+/*
  * A title's page opening beside a wall on a wide window (WallScene).
  *
  * The page alone moves: in from the end edge on the push's clock, back out

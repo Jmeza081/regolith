@@ -54,6 +54,8 @@ class AppPreferences @Inject constructor(
         val searchViewMode = stringPreferencesKey("search_view_mode")
         val autoplayNext = booleanPreferencesKey("autoplay_next")
         val autoplayImmediately = booleanPreferencesKey("autoplay_immediately")
+        val pictureInPicture = booleanPreferencesKey("picture_in_picture")
+        val playWithScreenOff = booleanPreferencesKey("play_with_screen_off")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val navHideAfter = stringPreferencesKey("nav_hide_after")
         val postersPerRow = stringPreferencesKey("posters_per_row")
@@ -219,6 +221,29 @@ class AppPreferences @Inject constructor(
 
     suspend fun setAutoplayImmediately(enabled: Boolean) {
         store.edit { it[Keys.autoplayImmediately] = enabled }
+    }
+
+    /**
+     * Settings › Playback › Picture-in-picture. On by default: leave Regolith
+     * while a film plays and it carries on in a small window over other apps.
+     * Off, leaving pauses it.
+     */
+    val pictureInPicture: Flow<Boolean> = store.data.map { it[Keys.pictureInPicture] ?: true }
+
+    suspend fun setPictureInPicture(enabled: Boolean) {
+        store.edit { it[Keys.pictureInPicture] = enabled }
+    }
+
+    /**
+     * Settings › Playback › Play with the screen off. Off by default: the
+     * sound carrying on behind a locked screen costs battery, and keeps the
+     * Wi-Fi awake to go on reading the share. Off, the screen going off
+     * pauses the film.
+     */
+    val playWithScreenOff: Flow<Boolean> = store.data.map { it[Keys.playWithScreenOff] ?: false }
+
+    suspend fun setPlayWithScreenOff(enabled: Boolean) {
+        store.edit { it[Keys.playWithScreenOff] = enabled }
     }
 
     /**

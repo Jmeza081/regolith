@@ -76,6 +76,19 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.compose.currentStateAsState
+import com.regolith.ui.navigation.PLAYER_MOTION_MS
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.EnterExitState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.util.lerp
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
+import com.regolith.ui.components.FlightEasing
+import kotlinx.coroutines.flow.first
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -167,6 +180,8 @@ fun PlayerScreen(
     /** Open the poster editor on (file, position). */
     onMakePoster: (Long, Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** Opened from the mini player: the picture grows out of it rather than the screen sliding in. */
+    expandFromMini: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val player by viewModel.player.collectAsStateWithLifecycle()
@@ -270,6 +285,80 @@ fun PlayerScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // --- Coming and going (MiniPlayer.kt). The screen moves itself, on its own
+    // NavDisplay transition. Put away, the picture shrinks into the spot the
+    // mini player's picture is about to take while the rest of the player
+    // fades off the page underneath; opened from the mini player, the same in
+    // reverse. Full screen and the hinge layout, and anything opened another
+    // way, slide as a pushed screen always has. The back swipe scrubs the same
+    // transition, so the picture follows the thumb.
+    val handoff = LocalMiniPlayerHandoff.current
+    val screen = LocalNavAnimatedContentScope.current
+    val away by screen.transition.animateFloat(
+        transitionSpec = { tween(PLAYER_MOTION_MS, easing = FlightEasing) },
+        label = "playerAway",
+    ) { s -> if (s == EnterExitState.Visible) 0f else 1f }
+    val leaving = screen.transition.targetState == EnterExitState.PostExit
+    val slot = handoff?.slot
+    // Not a finished film or a failed one: leaving those stops them, so there
+    // is no mini player to shrink into (PlayerViewModel.onCleared).
+    val shrinks = slot != null && !immersive && !flex && (leaving || expandFromMini) &&
+        !state.ended && state.error == null
+    var pictureBounds by remember { mutableStateOf<Rect?>(null) }
+    // While it is on screen the mini player stays away from the picture: one
+    // ExoPlayer draws on one surface. Shrinking, it lets go just before it
+    // lands — the player's surface holds its last frame under the mini
+    // player's while that one takes the film over.
+    DisposableEffect(handoff) {
+        handoff?.playerShowing = true
+        onDispose {
+            handoff?.playerShowing = false
+            handoff?.playerPicture = null
+        }
+    }
+    LaunchedEffect(handoff, leaving) {
+        if (!leaving || handoff == null) return@LaunchedEffect
+        snapshotFlow { away >= MINI_HANDOVER_AT }.first { it }
+        handoff.playerShowing = false
+    }
+    // The picture's way into the slot and out of it: from where it sits on the
+    // page to the mini player's picture, by [away]. Both are 16:9, so one scale.
+    val intoSlot = Modifier
+        .onGloballyPositioned {
+            pictureBounds = it.boundsInRoot()
+            // Also where the floating window grows out of, if the app is left now.
+            handoff?.playerPicture = pictureBounds
+        }
+        .graphicsLayer {
+            val from = pictureBounds
+            if (!shrinks || from == null || slot == null || from.width <= 0f) return@graphicsLayer
+            transformOrigin = TransformOrigin(0f, 0f)
+            val scale = lerp(1f, slot.width / from.width, away)
+            scaleX = scale
+            scaleY = scale
+            translationX = lerp(0f, slot.left - from.left, away)
+            translationY = lerp(0f, slot.top - from.top, away)
+        }
+    // Everything but the picture: gone well before the picture lands, so the
+    // page underneath is what it lands on.
+    val pageAlpha = if (shrinks) (1f - away * 1.6f).coerceIn(0f, 1f) else 1f
+    // The slide, for the ways in and out that do not shrink.
+    val slide = Modifier.graphicsLayer { if (!shrinks) translationX = away * size.width }
+
+    // Who decides what follows when the film ends: this screen's Up next card
+    // while you are looking at it, the session (straight on, no card)
+    // whenever you are not — put away, floating, or with the screen off.
+    val inPip = LocalInPictureInPicture.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateAsState()
+    val inFront = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && !inPip
+    DisposableEffect(viewModel, inFront) {
+        viewModel.ownTheEnd(inFront)
+        onDispose { viewModel.ownTheEnd(false) }
+    }
+    // Back from the floating window, the surface is new: a film that ended in
+    // the window has its last frame drawn again rather than a black box.
+    LaunchedEffect(inPip) { if (!inPip) viewModel.redrawIfEnded() }
+
     // --- Up next (F6). Four things have to be true before the app plays on
     // by itself: you left the setting on, the film actually ran to its end
     // (playWhenReady is still set, so scrubbing to the last second while
@@ -286,8 +375,8 @@ fun PlayerScreen(
     // governs what happens when you open ONE file and it ends.
     // Repeating all is a third way of saying "keep going", and a louder one
     // than the setting: it was set on this film, about this folder.
-    val autoplayArmed = (autoplayNext || state.queued || state.repeat == RepeatMode.ALL) &&
-        !autoplayCancelled && upNext != null && state.ended && state.playWhenReady
+    val autoplayArmed = state.playsOnTo(autoplayNext) != null &&
+        !autoplayCancelled && state.ended && state.playWhenReady
     LaunchedEffect(autoplayArmed, upNext?.fileId) {
         countdown = null
         if (!autoplayArmed || upNext == null) return@LaunchedEffect
@@ -319,7 +408,7 @@ fun PlayerScreen(
     // no way to tell it was working or how far was far enough.
     //
     // Signed: negative is up (toward full screen), positive is down (out of
-    // full screen, or out of the player). `snap` while the finger is down so
+    // full screen, or into the mini player). `snap` while the finger is down so
     // the picture tracks it exactly, a spring on release so an abandoned drag
     // settles rather than jumping.
     var middleDrag by remember { mutableFloatStateOf(0f) }
@@ -477,7 +566,7 @@ fun PlayerScreen(
 
     val chromeCallbacks = ChromeCallbacks(
         // Back is "step out one level": out of portrait full screen first,
-        // out of the player only when there is no full screen to leave.
+        // into the mini player only when there is no full screen to leave.
         onBack = { if (fullscreen && !forcedFullscreen) fullscreen = false else onBack() },
         onTogglePlay = { viewModel.togglePlayPause(); controlsVisible = true },
         onSeekBy = { viewModel.seekBy(it); controlsVisible = true },
@@ -531,7 +620,9 @@ fun PlayerScreen(
         // layout's to fill, which is how the letterbox bars pick up the glow
         // instead of being black.
         Box(Modifier.fillMaxSize()) {
-            player?.let { p ->
+            // Floating, the picture-in-picture window has the film (one
+            // ExoPlayer draws on one surface); this takes it back after.
+            player?.takeUnless { inPip }?.let { p ->
                 // A SurfaceView goes straight to the compositor and cannot be
                 // read back; a TextureView draws through the view hierarchy and
                 // can. That is the whole trade behind the Ambient light setting,
@@ -596,7 +687,7 @@ fun PlayerScreen(
         LaunchedEffect(state.durationMs, scrubThumbnails) {
             if (scrubThumbnails && state.durationMs > 0) viewModel.requestStrip()
         }
-        Column(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
+        Column(modifier.fillMaxSize().then(slide).background(Color.Black).testTag("player_screen")) {
             Box(Modifier.fillMaxWidth().height(topHeight)) {
                 AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
                 video()
@@ -614,7 +705,7 @@ fun PlayerScreen(
             RegolithSnackbarHost(snackbar)
         }
     } else if (immersive) {
-        Box(modifier.fillMaxSize().background(Color.Black).testTag("player_screen")) {
+        Box(modifier.fillMaxSize().then(slide).background(Color.Black).testTag("player_screen")) {
             // Ambient bars (F10). A 2.39:1 film in a 16:9 window, or any film
             // on the near-square inner display, leaves bands the picture does
             // not reach; media3 sizes the video surface to the CONTENT, so
@@ -638,12 +729,16 @@ fun PlayerScreen(
         // in — and the right one is the folder, so what plays next sits
         // beside the picture rather than below a screenful of settings.
         val sideWidth = (windowShape.width * SIDE_COLUMN_FRACTION).coerceIn(300.dp, 460.dp)
-        Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
-            AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
+        Box(modifier.fillMaxSize().then(slide).testTag("player_screen")) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = pageAlpha }) {
+                Box(Modifier.fillMaxSize().background(RegolithTheme.colors.ground))
+                AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
+            }
             Row(Modifier.fillMaxSize().systemBarsPadding()) {
                 Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = Spacing.s12)) {
                     Box(
                         Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                            .then(intoSlot)
                             .graphicsLayer { scaleX = pictureScale; scaleY = pictureScale },
                     ) { video() }
                     // The same column the phone draws under its picture, minus
@@ -651,7 +746,7 @@ fun PlayerScreen(
                     PlayerDetails(
                         modifier = Modifier.weight(1f)
                             .padding(start = Spacing.s8, end = Spacing.s8)
-                            .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) },
+                            .graphicsLayer { alpha = (1f - maxOf(dragUp, dragDown)) * pageAlpha },
                         state = state,
                         cb = chromeCallbacks,
                         orientation = pillOrientation,
@@ -666,7 +761,7 @@ fun PlayerScreen(
                 Column(
                     Modifier.width(sideWidth).fillMaxHeight().verticalScroll(rememberScrollState())
                         .padding(end = Spacing.s18, top = Spacing.s12, bottom = Spacing.s12)
-                        .graphicsLayer { alpha = 1f - maxOf(dragUp, dragDown) }
+                        .graphicsLayer { alpha = (1f - maxOf(dragUp, dragDown)) * pageAlpha }
                         .testTag("player_up_next_column"),
                 ) {
                     NextInFolder(state, viewModel::playNext, emptyState = true)
@@ -676,17 +771,26 @@ fun PlayerScreen(
             RegolithSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         }
     } else {
-        Box(modifier.fillMaxSize().background(RegolithTheme.colors.ground).testTag("player_screen")) {
-        AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
+        Box(modifier.fillMaxSize().then(slide).testTag("player_screen")) {
+        // The ground and its glow on a layer of their own, so the page under
+        // the player shows through as the picture shrinks away.
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = pageAlpha }) {
+            Box(Modifier.fillMaxSize().background(RegolithTheme.colors.ground))
+            AmbientGlow(state.fileId, Modifier.fillMaxSize(), light = ambientLight, sample = ambientSample)
+        }
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f).graphicsLayer { scaleX = pictureScale; scaleY = pictureScale }) { video() }
+            Box(
+                Modifier.fillMaxWidth().statusBarsPadding().aspectRatio(16f / 9f)
+                    .then(intoSlot)
+                    .graphicsLayer { scaleX = pictureScale; scaleY = pictureScale },
+            ) { video() }
             PlayerDetails(
                 modifier = Modifier.graphicsLayer {
                     // Up: the details get out of the picture's way. Down: they
                     // go with it, so the whole player reads as one thing being
                     // put away rather than a picture shrinking on a live page.
-                    alpha = 1f - maxOf(dragUp, dragDown)
-                    translationY = dragUp * 60.dp.toPx()
+                    alpha = (1f - maxOf(dragUp, dragDown)) * pageAlpha
+                    translationY = dragUp * 60.dp.toPx() + (1f - pageAlpha) * 30.dp.toPx()
                     scaleX = 1f - dragDown * 0.06f
                     scaleY = 1f - dragDown * 0.06f
                 },
@@ -854,7 +958,7 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
             ChromeScrim(landscape = false)
-            IconCell(R.drawable.rg_ic_arrow_down, "Leave the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
+            IconCell(R.drawable.rg_ic_arrow_down, "Shrink the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
             IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
             Transport(state, cb, gap = Spacing.s18, circle = 48.dp, glyph = 26.dp, modifier = Modifier.align(Alignment.Center))
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
@@ -1757,6 +1861,9 @@ private fun AmbientGlow(
  * stray finger from flipping the layout.
  */
 private const val FULLSCREEN_DRAG_FRACTION = 0.12f
+
+/** How far into shrinking the mini player is handed the picture: just before it lands. */
+private const val MINI_HANDOVER_AT = 0.92f
 
 /**
  * How long the Up next card waits before it plays on by itself. Long enough

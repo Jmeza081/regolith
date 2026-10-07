@@ -51,8 +51,8 @@ import kotlin.math.absoluteValue
 /**
  * Thin adapter between the Player screen and the app-owned
  * [PlaybackSession]. It holds no playback state of its own (guardrail G4).
- * Playback stops when the screen goes away; background audio and PiP will
- * change that later without touching the screen.
+ * Putting the screen away leaves the film playing in the mini player
+ * ([MiniPlayerViewModel]), which is also what stops it, from its close button.
  */
 @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @UnstableApi
@@ -477,11 +477,14 @@ class PlayerViewModel @AssistedInject constructor(
                 if (_chapterDraft.value?.let { it.fileId != id } == true) _chapterDraft.value = null
             }
         }
+        session.playerScreenOpened()
         val external = key.externalUri
-        if (external != null) {
-            session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
-        } else {
-            session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
+        when {
+            // Opened from the mini player: the film is already here, playing or
+            // paused as it was left, and loading it again would unpause it.
+            key.expand -> Unit
+            external != null -> session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
+            else -> session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
         }
     }
 
@@ -503,6 +506,14 @@ class PlayerViewModel @AssistedInject constructor(
     fun nudgeLoopB(deltaMs: Long = AbLoop.NUDGE_MS) = session.nudgeLoopB(deltaMs)
     fun clearLoop() = session.clearLoop()
     fun playNext(fileId: Long) = session.load(fileId)
+
+    /** The screen's surface is back (from the floating window): a finished film's last frame, drawn again. */
+    fun redrawIfEnded() = session.redrawIfEnded()
+
+    /** While true the screen's Up next card decides what follows a film; otherwise the session does. */
+    fun ownTheEnd(owns: Boolean) {
+        session.screenOwnsTheEnd = owns
+    }
     fun onPause() = session.saveProgress()
 
     /** The scrubber reports where the finger is; ask for that frame. */
@@ -515,8 +526,16 @@ class PlayerViewModel @AssistedInject constructor(
         scrubMs.value = null
     }
 
+    /**
+     * The screen was put away (back, the swipe down, its arrow). The film
+     * carries on in the mini player — unless it had finished or failed, when
+     * there is nothing to carry on with and a bar would only be in the way.
+     */
     override fun onCleared() {
-        session.stop()
+        session.screenOwnsTheEnd = false
+        session.playerScreenClosed()
+        val s = session.state.value
+        if (s.ended || s.error != null) session.stop()
     }
 
     companion object {
