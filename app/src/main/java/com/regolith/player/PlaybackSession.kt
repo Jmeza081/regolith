@@ -55,6 +55,12 @@ data class NextItem(val fileId: Long, val name: String, val sizeBytes: Long, val
 
 /** What the Player screen draws. */
 data class PlaybackState(
+    /**
+     * Something is loaded, a library file or a film another app handed over
+     * ([fileId] is null for that one): what keeps the mini player on screen
+     * once the player itself has been put away. False after [PlaybackSession.stop].
+     */
+    val loaded: Boolean = false,
     val fileId: Long? = null,
     val title: String = "",
     /** "TOWER · media/Films" */
@@ -172,6 +178,16 @@ data class PlaybackState(
 
     /** The mirror of [upNext]: Previous wraps back to the last file while repeating all. */
     val upPrevious: NextItem? get() = previous ?: wrapToLast.takeIf { repeat == RepeatMode.ALL }
+
+    /**
+     * What the player goes on to by itself when this film ends, or null when
+     * it stops there. A running order (Play all, Shuffle) and repeat-all both
+     * mean "keep going" whatever the setting says; otherwise it is Settings ›
+     * Playback › Keep playing, [keepPlaying]. The player's Up next card and
+     * the mini player both ask this, so they never disagree.
+     */
+    fun playsOnTo(keepPlaying: Boolean): NextItem? =
+        upNext.takeIf { keepPlaying || queued || repeat == RepeatMode.ALL }
 }
 
 /**
@@ -337,11 +353,23 @@ class PlaybackSession @Inject constructor(
             !activeQueue.contains(fileId) -> { activeQueue = emptyList(); shuffledHere = false }
         }
         if (_state.value.fileId == fileId && _state.value.error == null) {
-            if (!current().isPlaying) current().play()
+            // Already loaded — the mini player keeps a film here after its
+            // screen has gone, so this is the common case now, not a corner.
+            // Asked for a time (a moment), go there; finished, start again;
+            // otherwise carry on from where it is.
+            val p = current()
+            when {
+                startMs != null -> p.seekTo(startMs)
+                p.playbackState == Player.STATE_ENDED -> p.seekTo(0)
+            }
+            if (!p.isPlaying) p.play()
+            // A running order handed over now (Play all on the same film) is
+            // the order from here on: what plays next follows it.
+            if (queue != null) scope.launch { refreshQueueView(fileId) }
             return
         }
         saveProgress()
-        _state.value = PlaybackState(fileId = fileId, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding)
+        _state.value = PlaybackState(loaded = true, fileId = fileId, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding)
         followUserChapters(fileId)
         scope.launch {
             val hardware = prefs.hardwareDecoding.first()
@@ -402,6 +430,7 @@ class PlaybackSession @Inject constructor(
         currentFile = null
         currentUri = uri
         _state.value = PlaybackState(
+            loaded = true,
             fileId = null,
             title = title,
             sourceLabel = "Opened from another app",
@@ -532,14 +561,20 @@ class PlaybackSession @Inject constructor(
                 activeQueue = emptyList()
                 shuffledHere = false
             }
-            val view = queueView(fileId)
-            _state.update {
-                it.copy(
-                    next = view.next, previous = view.previous,
-                    wrapTo = view.wrapTo, wrapToLast = view.wrapToLast,
-                    queued = activeQueue.isNotEmpty(), shuffled = shuffledHere,
-                )
-            }
+            refreshQueueView(fileId)
+        }
+    }
+
+    /** What plays next and before, worked out again for [fileId] after the running order changed under it. */
+    private suspend fun refreshQueueView(fileId: Long) {
+        val view = queueView(fileId)
+        if (_state.value.fileId != fileId) return
+        _state.update {
+            it.copy(
+                next = view.next, previous = view.previous,
+                wrapTo = view.wrapTo, wrapToLast = view.wrapToLast,
+                queued = activeQueue.isNotEmpty(), shuffled = shuffledHere,
+            )
         }
     }
 

@@ -72,6 +72,12 @@ sealed interface RegolithKey : NavKey {
         val queue: List<Long> = emptyList(),
         val externalUri: String? = null,
         val externalTitle: String? = null,
+        /**
+         * Opened from the mini player: the film is already loaded and playing
+         * (or paused) as it was left, so the player picks it up rather than
+         * loading it again, which would resume a film you had paused.
+         */
+        val expand: Boolean = false,
     ) : RegolithKey {
         companion object {
             /** No row has this id; it marks a key whose film came from outside the library. */

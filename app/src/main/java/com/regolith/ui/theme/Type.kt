@@ -183,6 +183,8 @@ object TextStyles {
     val settingMeta = sg(FontWeight.Normal, 12, 16f)
     /** Poster tile name: `600 12px/14px`. */
     val tileName = sg(FontWeight.SemiBold, 12, 14f)
+    /** The mini player's title: a tile's name a size up, as the canvas drew it (600 13/16). */
+    val miniPlayerTitle = sg(FontWeight.SemiBold, 13, 16f)
     /** Poster tile meta: `400 11px/1.2`. */
     val tileMeta = sg(FontWeight.Normal, 11, 13.2f)
     /** Filename drawn inside a tile that has no picture: `700 11px/13px`. */

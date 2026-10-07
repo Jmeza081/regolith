@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.compose.state.ProgressStateWithTickCount
@@ -103,6 +104,10 @@ fun rememberSmoothProgress(player: Player?): SmoothProgress {
  * runtime, since the elapsed time never formats wider than the duration it
  * is counting towards. An unknown runtime reserves nothing and the cell
  * falls back to fitting whatever it is showing.
+ *
+ * [suffix] follows the time in the same line — the mini player's
+ * "4:16 · Lake house 2024" and "4:16 of 8:50" — and is cut short rather than
+ * wrapped when the line runs out of room.
  */
 @Composable
 fun PositionClock(
@@ -111,6 +116,7 @@ fun PositionClock(
     color: Color,
     modifier: Modifier = Modifier,
     reserveForMs: Long = 0,
+    suffix: String = "",
 ) {
     // The box sizes to its widest child; [modifier] stays on the readout
     // itself so a caller's testTag still names the text a test reads.
@@ -123,10 +129,10 @@ fun PositionClock(
         // if it were the position.
         if (reserveForMs > 0) {
             Text(
-                formatClock(reserveForMs), style = style, color = Color.Transparent, maxLines = 1,
+                formatClock(reserveForMs) + suffix, style = style, color = Color.Transparent, maxLines = 1,
                 modifier = Modifier.clearAndSetSemantics {},
             )
         }
-        Text(formatClock(ms()), style = style, color = color, maxLines = 1, modifier = modifier)
+        Text(formatClock(ms()) + suffix, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
     }
 }

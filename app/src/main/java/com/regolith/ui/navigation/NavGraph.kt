@@ -83,6 +83,30 @@ import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavRailInset
 import com.regolith.ui.components.PosterFlightLayout
+import com.regolith.ui.components.LocalMiniPlayerClearance
+import com.regolith.ui.components.NAV_PILL_HEIGHT
+import androidx.compose.foundation.layout.Spacer
+import com.regolith.ui.player.MiniPlayerViewModel
+import com.regolith.ui.player.MiniPlayerHandoff
+import com.regolith.ui.player.LocalMiniPlayerHandoff
+import com.regolith.ui.player.miniBarPictureRect
+import com.regolith.ui.player.miniCardPictureRect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.toSize
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.core.tween
+import com.regolith.ui.player.MiniPlayerBar
+import com.regolith.ui.player.MiniPlayerCard
+import com.regolith.ui.player.MiniPlayerAtTheEnd
+import com.regolith.ui.player.MINI_BAR_HEIGHT
+import com.regolith.ui.player.MINI_CARD_HEIGHT
+import com.regolith.ui.player.MINI_CARD_WIDTH
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import com.regolith.ui.components.rememberPosterFlightDecorator
 import com.regolith.ui.components.NavChromeHold
 import androidx.compose.material3.SnackbarHostState
@@ -150,6 +174,18 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val tabDots by appViewModel.tabDots.collectAsStateWithLifecycle()
     val backgroundWork by appViewModel.backgroundWork.collectAsStateWithLifecycle()
     val locked by appViewModel.locked.collectAsStateWithLifecycle()
+    // The film that carries on once the player is put away (MiniPlayer.kt).
+    // Activity-scoped, like everything here: it outlives every screen.
+    val miniPlayer: MiniPlayerViewModel = hiltViewModel()
+    val playback by miniPlayer.state.collectAsStateWithLifecycle()
+    val miniPlayerPlayer by miniPlayer.player.collectAsStateWithLifecycle()
+    val autoplayNext by miniPlayer.autoplayNext.collectAsStateWithLifecycle()
+    // What the player and the mini player tell each other as the film passes
+    // between them: where it lands, and when to take it (MiniPlayerHandoff).
+    val handoff = remember { MiniPlayerHandoff() }
+    // The window, measured by the root: where the mini player's picture is
+    // worked out from, in the same coordinates the player measures itself in.
+    var rootSize by remember { mutableStateOf(IntSize.Zero) }
     // null = preferences still loading; the system splash is covering us.
     val startKey = start ?: return
 
@@ -187,7 +223,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // the start edge, reserved by [TabContent] below, so the list only needs
     // to clear the system navigation bar.
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val pillInsets = if (windowShape.wide) PaddingValues(bottom = navBarBottom + Spacing.s18) else PaddingValues(bottom = NAV_PILL_CLEARANCE)
 
     // The rail can be away in two deliberately different ways (F6):
     //  - PINNED AWAY ([railHidden], remembered in preferences): the layout
@@ -213,6 +248,29 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val selectionChrome = remember { SelectionChrome() }
     val selecting = selectionChrome.state != null
     val railVisible = windowShape.wide && (selecting || (!railHidden && !railIdle))
+    // The mini player shows once the player itself has been put away, on the
+    // tabs and on the pages pushed over them (the title page is where back
+    // from the player lands). Not over Shorts, whose clips are a player of
+    // their own (it pauses the film as it opens), not in the full-screen
+    // flows — onboarding, adding a server, the poster editor — and not while
+    // a selection has the chrome. Screens clear it as they clear the pill.
+    val playerOnStack = backStack.any { it is RegolithKey.Player }
+    val miniPlayerShown = playback.loaded && !playerOnStack && topKey.hostsMiniPlayer() && !selecting
+    // Not while the player is still on screen shrinking into it: the picture
+    // is the player's until it hands it over (MiniPlayerHandoff).
+    val miniPlayerDrawn = miniPlayerShown && !handoff.playerShowing
+    val miniPlayerClearance = when {
+        !miniPlayerShown -> 0.dp
+        windowShape.wide -> MINI_CARD_HEIGHT + Spacing.s18
+        else -> MINI_BAR_HEIGHT + Spacing.s8
+    }
+    val pillInsets = if (windowShape.wide) {
+        PaddingValues(bottom = navBarBottom + Spacing.s18 + miniPlayerClearance)
+    } else {
+        PaddingValues(bottom = NAV_PILL_CLEARANCE + miniPlayerClearance)
+    }
+    // Bottom-centred chrome on a wide window keeps to the left of the card.
+    val miniCardBeside = if (windowShape.wide && miniPlayerShown) MINI_CARD_WIDTH + Spacing.s18 else 0.dp
     // A phone's pill hides on the same timer, minus the pinning: there is no
     // spine to pin it to, so going idle is the only way it leaves, and any
     // touch brings it straight back.
@@ -266,6 +324,50 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         else -> NAV_RAIL_SPINE_INSET
     }
     val railInset by animateDpAsState(railInsetTarget, label = "railInset")
+    // Where the mini player's picture will be if the player on top is put away
+    // now: on the screen under it, which is where back lands. A phone's bar
+    // rides above the pill on a tab and sits low on a pushed page; a wide
+    // window's card keeps to the wall's half beside an open page. Kept, not
+    // cleared, once the player is gone: it is read all the way down.
+    if (topKey is RegolithKey.Player && playback.loaded && rootSize != IntSize.Zero) {
+        val below = backStack.getOrNull(backStack.lastIndex - 1) as? RegolithKey
+        val belowBelow = backStack.getOrNull(backStack.lastIndex - 2) as? RegolithKey
+        val window = rootSize.toSize()
+        val density = LocalDensity.current
+        val slot = when {
+            !below.hostsMiniPlayer() -> null
+            windowShape.wide -> {
+                val besideWall = below is RegolithKey.TitleDetail && (belowBelow is RegolithKey.Library || belowBelow is RegolithKey.Browse)
+                val end = if (besideWall) (windowShape.width - railInset - Spacing.s18) / 2 + Spacing.s18 + Spacing.s18 else Spacing.s18
+                miniCardPictureRect(window, navBarBottom, end, density)
+            }
+            else -> {
+                val lift = if (MainTab.forKey(below) != null) NAV_PILL_HEIGHT + Spacing.s8 else 0.dp
+                miniBarPictureRect(window, navBarBottom, lift, density)
+            }
+        }
+        SideEffect { handoff.slot = slot }
+    }
+    // With a page open beside a wall the card keeps to the wall's half, at its
+    // end, rather than sitting on the page: the page takes the end half of
+    // what the rail leaves, after the s18 gap between them (WallScene).
+    val miniCardEnd = if (windowShape.wide && paneListKey != null) {
+        (windowShape.width - railInset - Spacing.s18) / 2 + Spacing.s18 + Spacing.s18
+    } else {
+        Spacing.s18
+    }
+    // A pushed page has no pill: a phone's bar docks to the bottom on its own,
+    // and the page stops short of it — as it does short of a wide window's
+    // card, which would otherwise sit on the page's last rows.
+    val miniOnPushedPage = miniPlayerShown && currentTab == null && !searchChrome
+    val pushedClearance by animateDpAsState(
+        when {
+            !miniOnPushedPage -> 0.dp
+            windowShape.wide -> navBarBottom + Spacing.s18 + MINI_CARD_HEIGHT + Spacing.s18
+            else -> navBarBottom + Spacing.s8 + MINI_BAR_HEIGHT + Spacing.s8
+        },
+        label = "miniPlayerClearance",
+    )
     // Every touch in the app, observed without consuming (Initial pass) and
     // reported down a flow rather than into state, so a scroll does not
     // recompose the tree on every frame. collectLatest restarts the delay on
@@ -323,6 +425,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val canSelectHere = currentTab == MainTab.BROWSE ||
         currentTab == MainTab.LIBRARY ||
         topKey is RegolithKey.Search
+    // While the player is put away, a queue, a repeat or Keep playing goes on
+    // to the next film by itself, as the player's own card would; a film with
+    // nothing after it closes the mini player when it ends.
+    if (!playerOnStack) MiniPlayerAtTheEnd(playback, autoplayNext, onPlay = miniPlayer::play, onClose = miniPlayer::close)
+
     LaunchedEffect(canSelectHere) {
         if (!canSelectHere) appViewModel.clearSelection()
     }
@@ -382,6 +489,19 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         // out again when the rail goes away — no clipping, because nothing is
         // being dragged any more and the width only changes when the rail does.
         Box(Modifier.fillMaxSize().padding(start = railInset)) { content() }
+    }
+
+    // The mini player opens the player again on the film it is playing,
+    // which picks it up as it was rather than loading it afresh (`expand`).
+    fun expandPlayer() {
+        val s = playback
+        backStack.add(
+            RegolithKey.Player(
+                fileId = s.fileId ?: RegolithKey.Player.EXTERNAL,
+                externalTitle = s.title.takeIf { s.fileId == null },
+                expand = true,
+            ),
+        )
     }
 
     // Play all / Shuffle from a collection. The order is the one the wall was
@@ -451,6 +571,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     CompositionLocalProvider(
         LocalWindowShape provides windowShape,
         LocalNavPillInsets provides pillInsets,
+        LocalMiniPlayerClearance provides pushedClearance,
+        LocalMiniPlayerHandoff provides handoff,
         LocalNavRailInset provides railInset,
         // The same answer the pill acts on, published for screens that float
         // their own chrome. One timer, so nothing can drift out of step.
@@ -491,7 +613,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 .semantics { testTagsAsResourceId = true },
         ) {
             // A Box in which a tile's poster can fly into the page it opens (PosterFlight.kt).
-            PosterFlightLayout(Modifier.fillMaxSize()) {
+            PosterFlightLayout(Modifier.fillMaxSize().onSizeChanged { rootSize = it }) {
                 NavDisplay(
                     backStack = backStack,
                     onBack = { backStack.removeLastOrNull() },
@@ -732,13 +854,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onDone = { navigateToTab(MainTab.LIBRARY, force = true) },
                             )
                         }
-                        entry<RegolithKey.Player> { key ->
+                        // The player moves itself in and out (playerScreen): back puts
+                        // it away into the mini player, which brings it back.
+                        entry<RegolithKey.Player>(metadata = playerScreen) { key ->
                             PlayerScreen(
                                 viewModel = hiltViewModel<PlayerViewModel, PlayerViewModel.Factory>(
                                     creationCallback = { it.create(key) },
                                 ),
                                 onBack = { backStack.removeLastOrNull() },
                                 onMakePoster = { fileId, ms -> backStack.add(RegolithKey.PosterEditor(fileId, ms)) },
+                                expandFromMini = key.expand,
                             )
                         }
                         entry<RegolithKey.PosterEditor> { key ->
@@ -752,6 +877,55 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         // Phase 6: AddServer.Search.
                     },
                 )
+
+                // The mini player off the nav's own group: a wide window's card,
+                // in the bottom corner away from the rail, and a phone's bar on a
+                // pushed page, which has no pill to ride above (MiniPlayer.kt).
+                if (windowShape.wide) {
+                    AnimatedVisibility(
+                        visible = miniPlayerDrawn,
+                        enter = fadeIn(tween(MINI_ARRIVE_MS)),
+                        exit = fadeOut(tween(MINI_ARRIVE_MS)),
+                        modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                            .padding(end = miniCardEnd, bottom = Spacing.s18),
+                    ) {
+                        MiniPlayerCard(
+                            state = playback,
+                            player = miniPlayerPlayer,
+                            hazeState = hazeState,
+                            onExpand = ::expandPlayer,
+                            onTogglePlay = miniPlayer::togglePlayPause,
+                            onPrevious = playback.upPrevious?.let { p -> { miniPlayer.play(p.fileId) } },
+                            onNext = playback.upNext?.let { n -> { miniPlayer.play(n.fileId) } },
+                            onClose = miniPlayer::close,
+                        )
+                    }
+                } else {
+                    // A phone's bar stays when the pill slides away (scrolled,
+                    // or idle) and settles into its place, rather than taking
+                    // the playing film with it; above the pill while it shows.
+                    val pillShowing = navVisible && pillHere && (currentTab != null || searchChrome) && !splash && locked != true
+                    val barLift by animateDpAsState(
+                        if (pillShowing) NAV_PILL_HEIGHT + Spacing.s8 else 0.dp,
+                        label = "miniBarLift",
+                    )
+                    AnimatedVisibility(
+                        visible = miniPlayerDrawn,
+                        enter = fadeIn(tween(MINI_ARRIVE_MS)),
+                        exit = fadeOut(tween(MINI_ARRIVE_MS)),
+                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                            .padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s8 + barLift),
+                    ) {
+                        MiniPlayerBar(
+                            state = playback,
+                            player = miniPlayerPlayer,
+                            hazeState = hazeState,
+                            onExpand = ::expandPlayer,
+                            onTogglePlay = miniPlayer::togglePlayPause,
+                            onClose = miniPlayer::close,
+                        )
+                    }
+                }
 
                 AnimatedVisibility(visible = splash, exit = fadeOut(), modifier = Modifier.fillMaxSize()) { SplashContent() }
                 // The app lock, over everything including the splash: what it
@@ -771,7 +945,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(Spacing.s8),
                             modifier = Modifier.align(Alignment.BottomCenter)
-                                .padding(start = railInset, end = Spacing.s18, bottom = Spacing.s18)
+                                .padding(start = railInset, end = Spacing.s18 + miniCardBeside, bottom = Spacing.s18)
                                 .widthIn(max = CHROME_MESSAGE_MAX_WIDTH),
                         ) {
                             selectionChrome.state?.let { chrome ->
@@ -801,9 +975,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             backgroundWork,
                             hazeState,
                             Modifier.align(Alignment.BottomCenter)
-                                .widthIn(max = BACKGROUND_WORK_MAX_WIDTH)
                                 .navigationBarsPadding()
-                                .padding(horizontal = Spacing.s18, vertical = Spacing.s18),
+                                .padding(start = Spacing.s18, end = Spacing.s18 + miniCardBeside, top = Spacing.s18, bottom = Spacing.s18)
+                                .widthIn(max = BACKGROUND_WORK_MAX_WIDTH),
                             onOpen = { openUploadFolder(it.folderId) },
                         )
                     }
@@ -875,6 +1049,18 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     SelectionSummaryTier(chrome, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                                 }
                                 ChromeMessageHost(appSnackbar, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
+                                // Room for the mini player's bar, directly above
+                                // the pill: the bar itself is drawn outside this
+                                // group, because it stays when the pill slides
+                                // away (see below), and this keeps the messages
+                                // above it from landing on it.
+                                AnimatedVisibility(
+                                    visible = miniPlayerShown,
+                                    enter = expandVertically(),
+                                    exit = shrinkVertically(),
+                                ) {
+                                    Spacer(Modifier.height(MINI_BAR_HEIGHT))
+                                }
                             }
                             if (pillHere) NavPill(
                                 selected = currentTab,
@@ -938,3 +1124,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
  * number.
  */
 private val BACKGROUND_WORK_MAX_WIDTH = 420.dp
+
+/**
+ * Whether the mini player shows over this screen once the player is put
+ * away: not over Shorts, whose clips are a player of their own (it pauses the
+ * film as it opens), and not in the full-screen flows — onboarding, adding a
+ * server, the poster editor.
+ */
+private fun RegolithKey?.hostsMiniPlayer(): Boolean =
+    this !is RegolithKey.Shorts && this !is RegolithKey.Onboarding &&
+        this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor
+
+/** How long the mini player takes to fade in under a picture that has just shrunk into it, or out. */
+private const val MINI_ARRIVE_MS = 120

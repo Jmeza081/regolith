@@ -51,8 +51,8 @@ import kotlin.math.absoluteValue
 /**
  * Thin adapter between the Player screen and the app-owned
  * [PlaybackSession]. It holds no playback state of its own (guardrail G4).
- * Playback stops when the screen goes away; background audio and PiP will
- * change that later without touching the screen.
+ * Putting the screen away leaves the film playing in the mini player
+ * ([MiniPlayerViewModel]), which is also what stops it, from its close button.
  */
 @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @UnstableApi
@@ -478,10 +478,12 @@ class PlayerViewModel @AssistedInject constructor(
             }
         }
         val external = key.externalUri
-        if (external != null) {
-            session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
-        } else {
-            session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
+        when {
+            // Opened from the mini player: the film is already here, playing or
+            // paused as it was left, and loading it again would unpause it.
+            key.expand -> Unit
+            external != null -> session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
+            else -> session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
         }
     }
 
@@ -515,8 +517,14 @@ class PlayerViewModel @AssistedInject constructor(
         scrubMs.value = null
     }
 
+    /**
+     * The screen was put away (back, the swipe down, its arrow). The film
+     * carries on in the mini player — unless it had finished or failed, when
+     * there is nothing to carry on with and a bar would only be in the way.
+     */
     override fun onCleared() {
-        session.stop()
+        val s = session.state.value
+        if (s.ended || s.error != null) session.stop()
     }
 
     companion object {
