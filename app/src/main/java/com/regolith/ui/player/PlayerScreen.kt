@@ -379,7 +379,7 @@ fun PlayerScreen(
         // and that was the black box behind the picture as it landed.
         val frame = rootView.videoFrame()
         handoff.frame = frame
-        handoff.landed = frame?.let { LandedFrame(it, if (fill) ContentScale.Crop else ContentScale.Fit) }
+        handoff.landed = LandedFrame(frame, if (fill) ContentScale.Crop else ContentScale.Fit)
         handoff.playerShowing = false
     }
     // The picture's way into the slot and out of it: from where it sits on the

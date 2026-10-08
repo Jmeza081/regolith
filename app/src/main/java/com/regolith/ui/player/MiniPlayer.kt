@@ -117,9 +117,10 @@ val MINI_CARD_HEIGHT: Dp = MINI_CARD_WIDTH * 9 / 16 + 56.dp
  * that side's surface (videoFrame): a surface taking the film over has
  * nothing on it for a frame or several, and that was a black box behind the
  * picture as it landed. The side taking over shows the frame until its own
- * surface has drawn one. [landed] is the same frame for the moment after the
- * picture lands in the mini player: held over it (LandedPicture) while the
- * rest of the mini player fades in around the picture.
+ * surface has drawn one. [landed] is the moment after the picture lands in
+ * the mini player, with the same frame: held over it (LandedPicture) while
+ * the rest of the mini player fades in around the picture, and the phone's
+ * bar kept where the picture landed rather than rising with the pill.
  *
  * Both show the film whole, fitted to the box, as the player does unless it
  * was pinched to fill: an upright phone video stands in the middle of the box
@@ -137,9 +138,13 @@ class MiniPlayerHandoff {
     var landed: LandedFrame? by mutableStateOf(null)
 }
 
-/** A frame the picture landed in the mini player with, and how it sat in the player's box: fitted, or filling it. */
+/**
+ * A picture landing in the mini player: the frame it landed with (null if the
+ * surface had none to give, as when it is put away before its first frame),
+ * and how it sat in the player's box, fitted or filling it.
+ */
 @Immutable
-class LandedFrame(val frame: ImageBitmap, val contentScale: ContentScale)
+class LandedFrame(val frame: ImageBitmap?, val contentScale: ContentScale)
 
 val LocalMiniPlayerHandoff = staticCompositionLocalOf<MiniPlayerHandoff?> { null }
 
@@ -177,6 +182,8 @@ fun miniCardPictureRect(window: Size, bottomInset: Dp, end: Dp, density: Density
  * rather than going covers a player that was pinched to fill its box, where
  * the two are framed differently. [onDone] is called once it has faded, or
  * once it has gone from the screen before that, so it is never shown twice.
+ * A landing with no frame to show (see [LandedFrame]) draws nothing but is
+ * timed the same, since the phone's bar keeps to the landing while it lasts.
  */
 @Composable
 fun LandedPicture(landed: LandedFrame, slot: Rect, wide: Boolean, fadeMs: Int, onDone: () -> Unit) {
@@ -190,8 +197,9 @@ fun LandedPicture(landed: LandedFrame, slot: Rect, wide: Boolean, fadeMs: Int, o
             onDone()
         }
     }
+    val frame = landed.frame ?: return
     Image(
-        landed.frame,
+        frame,
         contentDescription = null,
         contentScale = landed.contentScale,
         modifier = Modifier

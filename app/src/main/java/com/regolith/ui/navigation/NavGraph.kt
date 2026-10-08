@@ -36,7 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.media3.common.util.UnstableApi
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -102,6 +105,7 @@ import com.regolith.ui.player.LandedPicture
 import com.regolith.ui.player.videoFrame
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.toSize
 import androidx.compose.runtime.SideEffect
@@ -202,6 +206,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     }
     // The Compose root, which the video surfaces hang under (videoFrame).
     val rootView = LocalView.current
+    // How high the phone's bar sits where the player is being put away to,
+    // as the slot below was worked out: where the bar lands (barLift).
+    var barLandingLift by remember { mutableStateOf(0.dp) }
     // The window, measured by the root: where the mini player's picture is
     // worked out from, in the same coordinates the player measures itself in.
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
@@ -348,6 +355,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // rides above the pill on a tab and sits low on a pushed page; a wide
     // window's card keeps to the wall's half beside an open page. Kept, not
     // cleared, once the player is gone: it is read all the way down.
+    // Where a phone's bar will sit on [page] once the player has gone from
+    // over it: above the pill if the page shows one. Arriving on a tab
+    // brings back a pill that was scrolled away, so only going idle keeps it
+    // off; a swipe down is a touch and wakes it, the system's back swipe is
+    // not one and does not.
+    fun barLiftThere(page: RegolithKey?): Dp {
+        val pillThere = MainTab.forKey(page) != null && !splash && locked != true &&
+            (selecting || messageUp || navChromeHold.held || !railIdle)
+        return if (pillThere) MINI_BAR_LIFT else 0.dp
+    }
     if (topKey is RegolithKey.Player && playback.loaded && rootSize != IntSize.Zero) {
         val below = backStack.getOrNull(backStack.lastIndex - 1) as? RegolithKey
         val belowBelow = backStack.getOrNull(backStack.lastIndex - 2) as? RegolithKey
@@ -360,12 +377,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 val end = if (besideWall) (windowShape.width - railInset - Spacing.s18) / 2 + Spacing.s18 + Spacing.s18 else Spacing.s18
                 miniCardPictureRect(window, navBarBottom, end, density)
             }
-            else -> {
-                val lift = if (MainTab.forKey(below) != null) NAV_PILL_HEIGHT + Spacing.s8 else 0.dp
-                miniBarPictureRect(window, navBarBottom, lift, density)
-            }
+            else -> miniBarPictureRect(window, navBarBottom, barLiftThere(below), density)
         }
-        SideEffect { handoff.slot = slot }
+        SideEffect {
+            handoff.slot = slot
+            barLandingLift = barLiftThere(below)
+        }
     }
     // With a page open beside a wall the card keeps to the wall's half, at its
     // end, rather than sitting on the page: the page takes the end half of
@@ -971,11 +988,32 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // A phone's bar stays when the pill slides away (scrolled,
                     // or idle) and settles into its place, rather than taking
                     // the playing film with it; above the pill while it shows.
+                    //
+                    // Landing from the player (MiniPlayerHandoff.landed) it is
+                    // where the picture was flown to, at once. Following the
+                    // pill, it rose from the bottom as the pill came back
+                    // with the page, so it arrived below the picture: two
+                    // pictures and a dark bar where one should be. Out of
+                    // sight it takes its place at once too, with nothing to
+                    // slide; after a landing it goes on to where the pill
+                    // says, if that is somewhere else.
                     val pillShowing = navVisible && pillHere && (currentTab != null || searchChrome) && !splash && locked != true
-                    val barLift by animateDpAsState(
-                        if (pillShowing) NAV_PILL_HEIGHT + Spacing.s8 else 0.dp,
+                    val barLanding = handoff.landed != null
+                    val barTarget = when {
+                        barLanding -> barLandingLift
+                        pillShowing -> MINI_BAR_LIFT
+                        else -> 0.dp
+                    }
+                    // Even a snap reaches an animated value a frame late, and
+                    // that frame is the bar's first: so the target is used as
+                    // it is, while the animation catches up out of sight.
+                    val barSnaps = barLanding || !miniPlayerDrawn
+                    val barLiftAnimated by animateDpAsState(
+                        barTarget,
+                        animationSpec = if (barSnaps) snap() else spring(visibilityThreshold = Dp.VisibilityThreshold),
                         label = "miniBarLift",
                     )
+                    val barLift = if (barSnaps) barTarget else barLiftAnimated
                     AnimatedVisibility(
                         visible = miniPlayerDrawn,
                         enter = fadeIn(tween(MINI_ARRIVE_MS)),
@@ -1221,3 +1259,6 @@ private fun RegolithKey?.hostsMiniPlayer(): Boolean =
  * picture is held over it, and then takes to fade off it.
  */
 private const val MINI_ARRIVE_MS = 120
+
+/** How high a phone's bar sits while the pill shows: over the pill, a gap between. */
+private val MINI_BAR_LIFT = NAV_PILL_HEIGHT + Spacing.s8
