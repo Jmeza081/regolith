@@ -64,14 +64,15 @@ carries on; leaving the app with picture-in-picture off pauses it too.
 
 ### Collections with a page of their own
 
-Open a collection that holds only videos and it opens as its own page rather
-than a plain wall. Its poster lights the top of the page, the way the player
-lights the room around a film. Under it: how many videos it holds, how long they
-run, how much space they take and how many you have watched, then Play all,
-Shuffle, and two tabs. **Videos** is the wall you know. **Moments** lists every
-chapter you have named in those videos, each with the frame at its time, and
-plays from there. A collection with collections inside stays a wall: only the
-last one down a branch gets a page.
+Open a collection that holds videos or pictures, and no collections, and it
+opens as its own page rather than a plain wall. Its poster lights the top of
+the page, the way the player lights the room around a film. Under it: how many
+videos and pictures it holds, how long they run, how much space they take and
+how many you have watched, then Play all, Shuffle, and its tabs. **Videos** is
+the wall you know. **Moments** lists every chapter you have named in those
+videos, each with the frame at its time, and plays from there. **Images** is
+its pictures (below). A collection with collections inside stays a wall: only
+the last one down a branch gets a page.
 
 On the Moments tab, **Play moments** plays them as a reel: ten seconds of each
 (less when the next one in the same video comes sooner), one after another with
@@ -80,6 +81,35 @@ Bars across the top of the picture show where you are, each moment's name comes
 up as it starts, and **Watch from here** leaves the reel for the whole video,
 carrying on from that moment. A reel isn't watching: it leaves no resume points
 and adds nothing to Continue watching.
+
+### Pictures on the share
+
+The photos on your share are part of the library, not only artwork. Chips under
+the Library's tabs choose what a wall shows: **Videos**, the collections and
+videos as always; **Moments**, the collections whose videos have named moments,
+each opening on its Moments tab; and **Images**, the albums: every folder that
+holds pictures, with any picture lying loose beside them. A folder of nothing
+but photos, which the wall used to leave out, is an album now, its cover made of
+its four newest pictures.
+
+A collection's **Images** tab is a mosaic: columns of one width, each picture at
+its own shape, the newest taken first (or by name, or by when a scan found it).
+Pinch it for fewer, bigger columns or more, smaller ones: two to four across on
+a phone, three to seven on the inner display, remembered apart from the
+posters. The collection's own poster is among them, marked, and so is a video's
+own picture (`beach.jpg` beside `beach.mp4`), carrying the video's name.
+
+Tap a picture and it flies open in the lightbox. Swipe for the next one, pinch or
+double-tap to zoom, and swipe down to send it back into its tile. The bar says
+where it is in the album and when it was taken; **Details** adds what it was
+taken on, how big it is and where it lives. The inner display adds a strip of
+the album to jump about in. JPEG, PNG, WebP, GIF (which moves in the lightbox),
+HEIC and AVIF are pictures; raw files stay plain files in Browse.
+
+Each picture's shape and date are read from its first few kilobytes, after a
+scan or as soon as its album is opened, so the mosaic is laid out before any
+thumbnail arrives. The thumbnails are made in the background after a scan,
+once the videos' posters are done.
 
 ### Posters that fly
 

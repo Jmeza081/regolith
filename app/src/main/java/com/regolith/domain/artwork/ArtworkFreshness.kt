@@ -30,6 +30,13 @@ object ArtworkFreshness {
     const val NO_IMAGES = ""
 
     /**
+     * A picture's own stamp: its size and modified time, as its folder's
+     * listing reports them. A thumbnail made under a different one is of a
+     * picture that has since been replaced, and is made again.
+     */
+    fun pictureStamp(sizeBytes: Long, modifiedAtMs: Long): String = "$sizeBytes\t$modifiedAtMs"
+
+    /**
      * The fingerprint of [candidates] as [listing] describes them: one line
      * per image, `name<TAB>size<TAB>modified`, in candidate order. Readable on
      * purpose, so `sqlite3` answers "why did this not refresh?".

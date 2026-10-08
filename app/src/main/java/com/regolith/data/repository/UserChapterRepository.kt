@@ -104,6 +104,10 @@ class UserChapterRepository @Inject constructor(
      * profile's Moments tab: the points of interest Search finds, gathered by
      * where they are rather than by what they are called.
      */
+    /** How many named moments each film on [shareIds] has, by file id: the Library's Moments chip. */
+    fun observeNamedCounts(shareIds: List<Long>): Flow<Map<Long, Int>> =
+        if (shareIds.isEmpty()) flowOf(emptyMap()) else dao.observeNamedCounts(shareIds).map { rows -> rows.associate { it.fileId to it.count } }
+
     fun observeNamedInFolder(folderId: Long): Flow<List<ChapterMatch>> =
         dao.observeNamedInFolder(folderId).map { rows -> rows.map { it.toMatch() } }
 

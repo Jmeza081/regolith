@@ -23,6 +23,18 @@ enum class ArtworkKind(val width: Int, val height: Int, val fileName: String) {
      * the one title you actually opened.
      */
     BACKDROP(1280, 720, "backdrop.jpg"),
+
+    /**
+     * A picture on the share, made small at its OWN shape: fitted inside
+     * 640×640, never cropped, so a portrait photo stays portrait. An album's
+     * mosaic draws these, and the lightbox shows one while the picture itself
+     * arrives. The only kind a [ArtworkOwner.Picture] has, and only it has it.
+     *
+     * 640 covers a mosaic tile at the counts it starts with (about 320 px
+     * across three on a phone, 400 across five on the inner display); pinched
+     * to fewer, bigger tiles, it is drawn a little larger than it was made.
+     */
+    PICTURE(640, 640, "picture.jpg"),
     ;
 
     companion object {
@@ -50,6 +62,9 @@ enum class ArtworkSource {
 
     /** Nothing readable: the tile carries the wedge and the filename. */
     PLACEHOLDER,
+
+    /** A picture on the share made small: its own thumbnail ([ArtworkKind.PICTURE]). */
+    PICTURE,
 }
 
 /** What an image belongs to. Ids are Room ids, stable across rescans (guardrail G3). */
@@ -76,6 +91,16 @@ sealed interface ArtworkOwner {
 
     data class Folder(override val id: Long) : ArtworkOwner {
         override val typeName get() = "folder"
+    }
+
+    /**
+     * A picture on the share: a `share_files` row (schema v17), whose id is
+     * stable across listings and renames as a video's is. It has one image,
+     * its own thumbnail ([ArtworkKind.PICTURE]), and it is also what a tile
+     * and the lightbox fly between.
+     */
+    data class Picture(override val id: Long) : ArtworkOwner {
+        override val typeName get() = "picture"
     }
 
     /**

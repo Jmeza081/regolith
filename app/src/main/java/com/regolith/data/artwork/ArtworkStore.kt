@@ -11,6 +11,8 @@ import java.io.File
 import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import androidx.core.graphics.scale
+import kotlin.math.roundToInt
 
 /**
  * The artwork directory (guardrail G5): `filesDir/artwork/{owner}/{id}/{kind}.jpg`,
@@ -23,9 +25,10 @@ import javax.inject.Singleton
  *
  * Every image is stored at exactly its kind's size, centre-cropped, so a
  * tile never scales at draw time and a 40 MB poster.jpg on the share costs
- * 40 KB on the phone. The one exception is a top-level folder's GIF, kept
- * as it came beside the still poster made from it so that it can move
- * ([saveAnimated]).
+ * 40 KB on the phone. Two exceptions: a top-level folder's GIF, kept as it
+ * came beside the still poster made from it so that it can move
+ * ([saveAnimated]), and a picture's own thumbnail, which keeps the
+ * picture's shape inside its box ([saveFitted]).
  */
 @Singleton
 class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
@@ -110,6 +113,31 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
             false
         } finally {
             if (cropped !== bitmap) cropped.recycle()
+        }
+    }
+
+    /**
+     * Scale [bitmap] to fit inside [kind]'s box, never cropping and never
+     * enlarging, and write it as JPEG: a picture's own thumbnail
+     * ([ArtworkKind.PICTURE]), which keeps the picture's shape. The size it
+     * was written at, or null when it could not be.
+     */
+    fun saveFitted(bitmap: Bitmap, owner: ArtworkOwner, kind: ArtworkKind): Pair<Int, Int>? {
+        val scale = minOf(1f, kind.width.toFloat() / bitmap.width, kind.height.toFloat() / bitmap.height)
+        val width = (bitmap.width * scale).roundToInt().coerceAtLeast(1)
+        val height = (bitmap.height * scale).roundToInt().coerceAtLeast(1)
+        val fitted = if (width == bitmap.width && height == bitmap.height) bitmap else bitmap.scale(width, height)
+        val file = fileFor(relPathFor(owner, kind))
+        file.parentFile?.mkdirs()
+        val tmp = File(file.path + ".tmp")
+        return try {
+            FileOutputStream(tmp).use { out -> fitted.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out) }
+            if (tmp.renameTo(file)) width to height else null
+        } catch (e: Exception) {
+            tmp.delete()
+            null
+        } finally {
+            if (fitted !== bitmap) fitted.recycle()
         }
     }
 

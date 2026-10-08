@@ -104,6 +104,25 @@ val pageScreen: Map<String, Any> =
         NavDisplay.predictivePopTransitionSpec { _ -> pageLeave }
 
 /*
+ * The lightbox (LightboxScreen), which a picture flies into from its tile
+ * and back out of: its black fades in over the screen it was opened from,
+ * which is held drawn underneath for as long as that takes, and fades away
+ * again on the way back, staying on top of the screen it reveals.
+ */
+
+private val lightboxArrive: ContentTransform
+    get() = ContentTransform(fadeIn(tween(FLIGHT_MS)), fadeOut(tween(FLIGHT_MS), targetAlpha = 0.99f))
+
+private val lightboxLeave: ContentTransform
+    get() = ContentTransform(EnterTransition.None, fadeOut(tween(FLIGHT_MS)), targetContentZIndex = -1f)
+
+/** Per-entry metadata for the lightbox. */
+val lightboxScreen: Map<String, Any> =
+    NavDisplay.transitionSpec { lightboxArrive } +
+        NavDisplay.popTransitionSpec { lightboxLeave } +
+        NavDisplay.predictivePopTransitionSpec { _ -> lightboxLeave }
+
+/*
  * The player (PlayerScreen), which moves itself on the transition NavDisplay
  * runs: put away, its picture shrinks into the mini player's spot; opened
  * from the mini player, it grows out of it; any other way in or out, it

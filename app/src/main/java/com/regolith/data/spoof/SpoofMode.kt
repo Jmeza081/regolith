@@ -3,6 +3,7 @@ package com.regolith.data.spoof
 import com.regolith.domain.media.PhonePaths
 import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileEntity
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
@@ -122,6 +123,9 @@ class Spoof(val salt: Long) {
 
     fun folders(folders: List<FolderEntity>): List<FolderEntity> = folders.map(::folder)
 
+    /** Files that are not videos (pictures, mostly): made-up names, the sidecars' kept as they are. */
+    fun otherFiles(files: List<ShareFileEntity>): List<ShareFileEntity> = files.map { it.copy(name = fileName(it.name)) }
+
     /** A named chapter found by Search or gathered for a profile: its name and its film's, made up. */
     fun match(match: ChapterMatch): ChapterMatch = match.copy(
         title = title(match.title),
@@ -151,9 +155,18 @@ class Spoof(val salt: Long) {
             ArtworkKind.POSTER -> 200 to 300
             ArtworkKind.THUMB -> 320 to 180
             ArtworkKind.BACKDROP -> 640 to 360
+            // Square, and cropped to each tile's shape: a mosaic of stand-ins.
+            ArtworkKind.PICTURE -> 400 to 400
         }
         return SpoofImage(SpoofNames.imageSeed(ownerKey(artwork.owner), salt), width, height)
     }
+
+    /**
+     * The stand-in for a picture opened whole in the lightbox: the same photo
+     * as its tile's ([image]), at a size that fills a screen.
+     */
+    fun picture(pictureId: Long): SpoofImage =
+        SpoofImage(SpoofNames.imageSeed(ownerKey(ArtworkOwner.Picture(pictureId)), salt), 1200, 1200)
 
     private fun ownerKey(owner: ArtworkOwner): String = "${owner.typeName}:${owner.id}:${owner.variant}"
 

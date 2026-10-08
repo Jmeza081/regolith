@@ -18,4 +18,14 @@ class MediaFileTypesTest {
     }
 
     @Test fun `extension of dotless name is empty`() = assertEquals("", MediaFileTypes.extensionOf("Makefile"))
+
+    @Test fun `the Library's pictures are what the phone decodes, raw left to Browse`() {
+        assertTrue(MediaFileTypes.isPicture("IMG_4821.HEIC"))
+        assertTrue(MediaFileTypes.isPicture("cover.avif"))
+        assertTrue(MediaFileTypes.isPicture("Sparkler.gif"))
+        assertTrue(MediaFileTypes.isPicture("poster.jpg"))
+        assertFalse(MediaFileTypes.isPicture("RAW_0001.dng"))
+        assertFalse(MediaFileTypes.isPicture("beach.mp4"))
+        assertFalse(MediaFileTypes.isPicture("beach.en.srt"))
+    }
 }

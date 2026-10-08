@@ -176,10 +176,16 @@ data class FolderEntity(
  * A file in a folder on the share that is not a video (schema v16): the
  * folder's poster, a film's subtitles or chapters, an `.nfo`, anything else.
  * Browse lists these, the way a file manager would, and picks them to move,
- * rename or delete; no other screen shows them, and every other screen keeps
- * assuming a media file is a video. Filled from the same folder listing that finds the videos, so
- * keeping them costs no extra trip to the share. A file that vanished from
- * the listing is deleted, not marked missing: there is no progress to keep.
+ * rename or delete. Filled from the same folder listing that finds the
+ * videos, so keeping them costs no extra trip to the share. A file that
+ * vanished from the listing is deleted, not marked missing: there is no
+ * progress to keep.
+ *
+ * Since schema v17 the PICTURES among them are library items too
+ * ([com.regolith.domain.media.MediaFileTypes.isPicture]): an album's mosaic,
+ * the lightbox, a story. Their shape, date and camera are read from the
+ * picture's own header ([com.regolith.domain.media.PictureHeaders]) after the
+ * listing, and kept for as long as the file keeps its size and date.
  */
 @Entity(
     tableName = "share_files",
@@ -198,6 +204,24 @@ data class ShareFileEntity(
     val name: String,
     val sizeBytes: Long,
     val modifiedAtMs: Long,
+    // --- Schema v17: a picture's header, read once it has been listed.
+    // Null until measured; a measurement that found nothing readable leaves
+    // them null with [measuredAtMs] set, so it is not tried on every pass.
+    /** Its width as SHOWN, the EXIF or HEIF turn applied: a portrait photo is narrower than it is tall. */
+    val width: Int? = null,
+    val height: Int? = null,
+    /** When the camera took it, as an instant; null when the picture does not say (then its file date stands in). */
+    val takenAtMs: Long? = null,
+    /** "Pixel 8 · f/1.7": the model and aperture, when the picture says. */
+    val camera: String? = null,
+    /** When the header was read. Null means not yet: new, or changed on the share since. */
+    val measuredAtMs: Long? = null,
+    /**
+     * When a listing first found it, as `media_files.addedAtMs` is for a
+     * video: a picture's "Date added". Null for one listed before v17, which
+     * sorts by its file date instead.
+     */
+    val addedAtMs: Long? = null,
 )
 
 @Entity(

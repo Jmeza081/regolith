@@ -82,6 +82,12 @@ fun formatWhen(thenMs: Long, nowMs: Long = System.currentTimeMillis()): String {
     }
 }
 
+/** "1 picture", "1,204 pictures": a count and its noun, grouped as the wall's file count is. */
+fun formatCount(count: Int, noun: String): String = "%,d %s".format(count, if (count == 1) noun else "${noun}s")
+
+/** "14 Jul 2024, 20:41": when a picture was taken, as the lightbox says it. */
+fun formatDateTime(epochMs: Long): String = SimpleDateFormat("d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(epochMs))
+
 /** "1 file", "3 files": counts read as counts, not as a template that forgot to check. */
 fun formatFileCount(count: Int): String = "$count file" + (if (count == 1) "" else "s")
 

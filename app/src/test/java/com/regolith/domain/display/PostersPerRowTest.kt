@@ -50,6 +50,26 @@ class PostersPerRowTest {
     }
 
     @Test
+    fun `a mosaic's pinch keeps to its own range`() {
+        // An album on a phone: two to four across.
+        assertEquals(2, pinchStep(shown = 3, fewer = true, most = 4, fewest = 2, top = 4))
+        assertNull(pinchStep(shown = 2, fewer = true, most = 4, fewest = 2, top = 4))
+        assertNull(pinchStep(shown = 4, fewer = false, most = 9, fewest = 2, top = 4))
+        // On the inner display: three to seven.
+        assertEquals(3, pinchStep(shown = 4, fewer = true, most = 9, fewest = 3, top = 7))
+        assertNull(pinchStep(shown = 3, fewer = true, most = 9, fewest = 3, top = 7))
+    }
+
+    @Test
+    fun `a mosaic's stored count is held to its screen's range`() {
+        assertEquals(3, PicturesAcross.PHONE.default)
+        assertEquals(5, PicturesAcross.WIDE.default)
+        assertEquals(4, PicturesAcross.PHONE.clamp(7))
+        assertEquals(3, PicturesAcross.WIDE.clamp(2))
+        assertEquals(PicturesAcross.WIDE, PicturesAcross.of(wide = true))
+    }
+
+    @Test
     fun `a setting saved before four existed reads back unchanged`() {
         assertEquals(PostersPerRow.FIVE, PostersPerRow.of("FIVE"))
         assertEquals(PostersPerRow.SEVEN, PostersPerRow.of("SEVEN"))

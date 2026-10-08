@@ -46,9 +46,16 @@ enum class PostersPerRow(val count: Int) {
  * screen. [most] is how many fit across at all.
  *
  * @param fewer true when the fingers spread apart: bigger posters, fewer across.
+ * @param fewest and [top] are the range the setting has: four to seven
+ *   posters, or an album's mosaic's own ([PicturesAcross]).
  */
-fun pinchStep(shown: Int, fewer: Boolean, most: Int): Int? {
+fun pinchStep(
+    shown: Int,
+    fewer: Boolean,
+    most: Int,
+    fewest: Int = PostersPerRow.FOUR.count,
+    top: Int = PostersPerRow.SEVEN.count,
+): Int? {
     val next = if (fewer) shown - 1 else shown + 1
-    val top = minOf(PostersPerRow.SEVEN.count, most)
-    return next.takeIf { it >= PostersPerRow.FOUR.count && it <= top }
+    return next.takeIf { it >= fewest && it <= minOf(top, most) }
 }

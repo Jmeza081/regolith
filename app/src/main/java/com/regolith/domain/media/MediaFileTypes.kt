@@ -17,4 +17,14 @@ object MediaFileTypes {
     private val photoExtensions = setOf("jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "dng", "avif")
 
     fun isPhoto(name: String): Boolean = extensionOf(name) in photoExtensions
+
+    /**
+     * The pictures the Library shows: in an album's mosaic, the lightbox and
+     * a story. Every format the phone decodes by itself (HEIF since Android 9,
+     * AVIF since 12, and minSdk is 14). Raw (`.dng`) is not one: 20–60 MB,
+     * slow to decode on a phone, and Browse still lists it as a file.
+     */
+    private val pictureExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "avif")
+
+    fun isPicture(name: String): Boolean = extensionOf(name) in pictureExtensions
 }

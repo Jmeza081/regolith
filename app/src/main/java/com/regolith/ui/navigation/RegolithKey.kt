@@ -2,6 +2,7 @@ package com.regolith.ui.navigation
 
 import androidx.navigation3.runtime.NavKey
 import com.regolith.domain.playback.ReelClip
+import com.regolith.ui.library.LibraryFilter
 import kotlinx.serialization.Serializable
 
 /**
@@ -21,8 +22,15 @@ sealed interface RegolithKey : NavKey {
     // --- The five tabs. Exactly one is at the top of the stack when the
     // nav pill is visible.
     @Serializable data object Home : RegolithKey
-    /** The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab). */
-    @Serializable data class Library(val folderId: Long? = null, val onDevice: Boolean = false) : RegolithKey
+    /**
+     * The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab).
+     * [filter] is the chip it opens with (Videos · Moments · Images): the one lit on the wall it was opened from.
+     */
+    @Serializable data class Library(
+        val folderId: Long? = null,
+        val onDevice: Boolean = false,
+        val filter: LibraryFilter = LibraryFilter.VIDEOS,
+    ) : RegolithKey
     /**
      * [highlightFileId] is a file to scroll to and ring once on arrival —
      * Shorts' Locate, which answers "where does this clip actually live".
@@ -110,6 +118,15 @@ sealed interface RegolithKey : NavKey {
             fun toClips(): List<ReelClip> = clips.map { ReelClip(it.fileId, it.startMs, it.endMs, it.name, it.videoName) }
         }
     }
+
+    /**
+     * The lightbox: the pictures of [folderId], one at a time, opened on
+     * [pictureId]. In the order the screen it was opened from showed them:
+     * an album's Images tab's, or the wall's own for a picture lying loose
+     * beside albums ([onWall]). The order is the settings', so it survives
+     * the process being killed as the key does.
+     */
+    @Serializable data class Lightbox(val folderId: Long, val pictureId: Long, val onWall: Boolean = false) : RegolithKey
 
     /**
      * The poster editor: pick a frame of [fileId], frame it in a 2:3 box, and
