@@ -140,6 +140,8 @@ import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.library.LibraryViewModel
 import com.regolith.ui.lightbox.LightboxScreen
 import com.regolith.ui.lightbox.LightboxViewModel
+import com.regolith.ui.story.StoryScreen
+import com.regolith.ui.story.StoryViewModel
 import com.regolith.ui.lightbox.LocalPictureFocus
 import com.regolith.ui.lightbox.PictureFocus
 import com.regolith.ui.search.SearchScreen
@@ -171,6 +173,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlin.random.Random
 
 /**
  * The router. One back stack (a list of [RegolithKey]), one [NavDisplay]
@@ -793,6 +796,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                         openFromWall(RegolithKey.Lightbox(folderId, pictureId, onWall))
                                     },
                                     onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
+                                    // Play pictures and its Shuffle, on a profile's Images tab.
+                                    onPlayPictures = { folderId, shuffle ->
+                                        backStack.add(RegolithKey.Story(folderId, shuffleSeed = if (shuffle) Random.nextLong() else null))
+                                    },
                                 )
                             }
                         }
@@ -980,6 +987,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 ),
                                 onClose = { backStack.removeLastOrNull() },
                                 onSetPoster = { folderId, pictureId -> backStack.add(RegolithKey.SetPoster(folderId, pictureId)) },
+                                onPlayFrom = { folderId, pictureId -> backStack.add(RegolithKey.Story(folderId, startPictureId = pictureId, onWall = key.onWall)) },
+                            )
+                        }
+                        // A collection's pictures as a story: on black over where it was played from, as the lightbox is.
+                        entry<RegolithKey.Story>(metadata = lightboxScreen) { key ->
+                            StoryScreen(
+                                viewModel = hiltViewModel<StoryViewModel, StoryViewModel.Factory>(
+                                    creationCallback = { it.create(key) },
+                                ),
+                                onClose = { backStack.removeLastOrNull() },
                             )
                         }
                         entry<RegolithKey.SetPoster> { key ->
@@ -1299,8 +1316,8 @@ private val BACKGROUND_WORK_MAX_WIDTH = 420.dp
 private fun RegolithKey?.hostsMiniPlayer(): Boolean =
     this !is RegolithKey.Shorts && this !is RegolithKey.Onboarding &&
         this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor && this !is RegolithKey.SetPoster &&
-        // The lightbox is a picture on black, edge to edge: the film carries on underneath.
-        this !is RegolithKey.Lightbox
+        // The lightbox and a story are pictures on black, edge to edge: the film carries on underneath.
+        this !is RegolithKey.Lightbox && this !is RegolithKey.Story
 
 /**
  * How long the mini player takes to fade in, around a picture that has just

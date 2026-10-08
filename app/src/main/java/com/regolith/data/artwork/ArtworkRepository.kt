@@ -16,6 +16,7 @@ import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareFileDao
 import com.regolith.data.db.UserChapterDao
 import com.regolith.data.pictures.PictureRepository
+import com.regolith.domain.media.LocalSource
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.AnimatedPoster
@@ -858,7 +859,11 @@ class ArtworkRepository @Inject constructor(
         // Null while the share cannot be listed: a mosaic made from local
         // copies then carries no stamp, and the next real listing judges it.
         var stamp: String? = null
-        try {
+        // The demo library has no share to list: its albums' pictures are on
+        // the phone, its own poster among them.
+        if (isLocal(folder.shareId)) {
+            if (localSidecar(folder.id, owner, kinds)) return
+        } else try {
             locate(folder.shareId)?.let { location ->
                 val entries = listing(location, folder.shareId, folder.relPath)
                 val candidates = ArtworkCandidates.forFolder(entries)
@@ -1065,8 +1070,11 @@ class ArtworkRepository @Inject constructor(
             placeholder(owner, PICTURE_ONLY, stamp)
             return
         }
-        val location = locate(row.shareId) ?: return
-        val bytes = readImage(location, row.relPath, MAX_PICTURE_BYTES)
+        // The demo library's pictures are on the phone; every other one is read off its share.
+        val bytes = local.picture(row.id)?.let { runCatching { it.readBytes() }.getOrNull() } ?: run {
+            val location = locate(row.shareId) ?: return
+            readImage(location, row.relPath, MAX_PICTURE_BYTES)
+        }
         if (bytes == null) {
             placeholder(owner, PICTURE_ONLY, stamp)
             return
@@ -1190,6 +1198,32 @@ class ArtworkRepository @Inject constructor(
     private data class MomentBatch(val fileId: Long)
 
     private data class Location(val host: SmbHost, val credentials: SmbCredentials, val share: String)
+
+    /** A share with nothing behind it to list: the demo library, or the phone's own videos. */
+    private suspend fun isLocal(shareId: Long): Boolean {
+        val share = shareDao.byId(shareId) ?: return false
+        val server = serverDao.byId(share.serverId) ?: return false
+        return LocalSource.isLocal(server.host)
+    }
+
+    /**
+     * A folder whose pictures are on the phone (the demo library's albums):
+     * the picture it wears, chosen by the share's own rules
+     * ([ArtworkCandidates.forFolder]) from its rows rather than a listing.
+     */
+    private suspend fun localSidecar(folderId: Long, owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>): Boolean {
+        val rows = shareFileDao.inFolder(folderId).filter { local.picture(it.id) != null }
+        if (rows.isEmpty()) return false
+        val entries = rows.map { SmbEntry(it.name, isDirectory = false, sizeBytes = it.sizeBytes, modifiedAtMs = it.modifiedAtMs) }
+        val candidates = ArtworkCandidates.forFolder(entries)
+        val stamp = ArtworkFreshness.stamp(candidates, entries)
+        for (candidate in candidates) {
+            val row = rows.firstOrNull { it.name == candidate.name } ?: continue
+            val bytes = local.picture(row.id)?.let { runCatching { it.readBytes() }.getOrNull() } ?: continue
+            if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) return true
+        }
+        return false
+    }
 
     private suspend fun locate(shareId: Long): Location? {
         val share = shareDao.byId(shareId) ?: return null

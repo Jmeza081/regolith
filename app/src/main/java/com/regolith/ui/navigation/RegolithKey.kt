@@ -129,6 +129,22 @@ sealed interface RegolithKey : NavKey {
     @Serializable data class Lightbox(val folderId: Long, val pictureId: Long, val onWall: Boolean = false) : RegolithKey
 
     /**
+     * A collection's pictures played as a story: one at a time, full screen,
+     * each for the time Settings › Playback › Picture stories says, a bar of
+     * segments across the top. In the Images tab's order, or the wall's
+     * ([onWall], as the lightbox has it), from [startPictureId] (the
+     * lightbox's Play from here) or the first; shuffled by [shuffleSeed] when
+     * there is one (Shuffle beside Play pictures), the same seed playing the
+     * same order when the app brings the story back.
+     */
+    @Serializable data class Story(
+        val folderId: Long,
+        val startPictureId: Long? = null,
+        val onWall: Boolean = false,
+        val shuffleSeed: Long? = null,
+    ) : RegolithKey
+
+    /**
      * The poster editor: pick a frame of [fileId], frame it in a 2:3 box, and
      * save it as poster.jpg in the film's folder. Opened from the player,
      * starting on the frame the player was paused at ([positionMs]).

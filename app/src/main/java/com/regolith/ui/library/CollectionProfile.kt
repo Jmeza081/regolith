@@ -75,10 +75,12 @@ import com.regolith.ui.util.formatDurationShort
 internal enum class ProfileTab { VIDEOS, MOMENTS, IMAGES }
 
 /**
- * The Moments tab's own Play and Shuffle: the reel its moments make
- * (PlaybackSession.loadReel), and roughly how long it runs ("1 min").
+ * A tab's own Play and Shuffle, in place of Play all: the Moments tab's
+ * reel (PlaybackSession.loadReel) or the Images tab's story (P20), named
+ * for what plays ([noun]: "moments", "pictures") with roughly how long it
+ * runs ("1 min").
  */
-internal class MomentsPlay(val length: String, val onPlay: () -> Unit, val onShuffle: () -> Unit)
+internal class TabPlay(val noun: String, val length: String, val onPlay: () -> Unit, val onShuffle: () -> Unit)
 
 /**
  * The top of a profile: the collection's poster lighting the page from
@@ -93,9 +95,10 @@ internal class MomentsPlay(val length: String, val onPlay: () -> Unit, val onShu
  * [bleed] is the wall's own side padding: the light reaches past it to the
  * window's edges, where padding would have stopped it in a straight line.
  * [onAdd] is null where nothing can be added (the demo, a phone folder).
- * [moments] is set while the Moments tab shows: Play and Shuffle then play
- * the moments as a reel instead of the videos. [onPlay] and [onShuffle] are
- * null where there is nothing to play: an album of pictures alone.
+ * [tab] is set while the Moments or Images tab shows: Play and Shuffle then
+ * play its moments as a reel, or its pictures as a story, instead of the
+ * videos. [onPlay] and [onShuffle] are null where there are no videos: an
+ * album of pictures alone, which plays its pictures.
  */
 @Composable
 internal fun ProfileHeader(
@@ -106,7 +109,7 @@ internal fun ProfileHeader(
     onAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     bleed: Dp = Spacing.s18,
-    moments: MomentsPlay? = null,
+    tab: TabPlay? = null,
 ) {
     val colors = RegolithTheme.colors
     Box(modifier.fillMaxWidth().testTag("library_profile_header")) {
@@ -135,7 +138,7 @@ internal fun ProfileHeader(
                             DisplayText(name, style = TextStyles.detailTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         StatStrip(profile, Modifier.widthIn(max = PROFILE_STATS_MAX_WIDTH).fillMaxWidth())
-                        ProfileActions(onPlay, onShuffle, onAdd, playWidth = PROFILE_PLAY_WIDTH, moments = moments)
+                        ProfileActions(onPlay, onShuffle, onAdd, playWidth = PROFILE_PLAY_WIDTH, tab = tab)
                     }
                 }
             } else {
@@ -150,7 +153,7 @@ internal fun ProfileHeader(
                     Spacer(Modifier.height(Spacing.s18))
                     StatStrip(profile, Modifier.fillMaxWidth())
                     Spacer(Modifier.height(Spacing.s18))
-                    ProfileActions(onPlay, onShuffle, onAdd, playWidth = null, modifier = Modifier.fillMaxWidth(), moments = moments)
+                    ProfileActions(onPlay, onShuffle, onAdd, playWidth = null, modifier = Modifier.fillMaxWidth(), tab = tab)
                 }
             }
         }
@@ -326,10 +329,10 @@ private fun ProfileActions(
     /** Play all's own width, or null to take whatever the row leaves. */
     playWidth: Dp?,
     modifier: Modifier = Modifier,
-    moments: MomentsPlay? = null,
+    tab: TabPlay? = null,
 ) {
-    val play = moments?.onPlay ?: onPlay
-    val shuffle = moments?.onShuffle ?: onShuffle
+    val play = tab?.onPlay ?: onPlay
+    val shuffle = tab?.onShuffle ?: onShuffle
     // Nothing to play (an album of pictures alone): Add stands on its own,
     // where the row's middle is on a phone.
     val arrangement = if (play == null) Arrangement.spacedBy(Spacing.s8, Alignment.CenterHorizontally) else Arrangement.spacedBy(Spacing.s8)
@@ -338,17 +341,17 @@ private fun ProfileActions(
             PlayAllButton(
                 play,
                 if (playWidth != null) Modifier.width(playWidth) else Modifier.weight(1f),
-                text = moments?.let { "Play moments · ${it.length}" } ?: "Play all",
-                testTag = if (moments != null) "library_play_moments_button" else "play_all_button",
+                text = tab?.let { "Play ${it.noun} · ${it.length}" } ?: "Play all",
+                testTag = tab?.let { "library_play_${it.noun}_button" } ?: "play_all_button",
             )
         }
         // The same height as the compact Play all beside them.
         if (shuffle != null) {
             IconCircleButton(
                 painterResource(R.drawable.rg_ic_shuffle),
-                if (moments != null) "Shuffle the moments" else "Shuffle",
+                tab?.let { "Shuffle the ${it.noun}" } ?: "Shuffle",
                 shuffle,
-                if (moments != null) "library_shuffle_moments_button" else "library_profile_shuffle_button",
+                tab?.let { "library_shuffle_${it.noun}_button" } ?: "library_profile_shuffle_button",
                 size = 42.scaledDp(),
             )
         }

@@ -23,6 +23,7 @@ import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.security.LockAfter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -79,6 +80,7 @@ class AppPreferences @Inject constructor(
         val appLockAfter = stringPreferencesKey("app_lock_after")
         val shortsAutoAdvance = booleanPreferencesKey("shorts_auto_advance")
         val shortsLength = stringPreferencesKey("shorts_length")
+        val storyPace = stringPreferencesKey("story_pace")
         val hiddenPhoneFolders = stringSetPreferencesKey("hidden_phone_folders")
         val hiddenPhoneFiles = stringSetPreferencesKey("hidden_phone_files")
     }
@@ -176,6 +178,17 @@ class AppPreferences @Inject constructor(
 
     suspend fun setShortsLength(length: ShortsLength) {
         store.edit { it[Keys.shortsLength] = length.name }
+    }
+
+    /**
+     * Settings › Playback › Picture stories: how long each picture stays
+     * when a collection's pictures play as a story. By name, as Shorts'
+     * length is, so the offered set can change.
+     */
+    val storyPace: Flow<StoryPace> = store.data.map { StoryPace.of(it[Keys.storyPace]) }
+
+    suspend fun setStoryPace(pace: StoryPace) {
+        store.edit { it[Keys.storyPace] = pace.name }
     }
 
     /** Settings › Playback › Scrub thumbnails. Consumed in Phase 3. */

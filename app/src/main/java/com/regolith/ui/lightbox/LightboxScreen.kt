@@ -7,10 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,8 +31,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,7 +48,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -60,23 +56,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import coil3.request.crossfade
-import coil3.size.Precision
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
 import com.regolith.data.pictures.PictureOriginal
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.ArtworkImage
-import com.regolith.ui.components.LocalSpoof
 import com.regolith.ui.components.PictureScrim
+import com.regolith.ui.components.WholePicture
 import com.regolith.ui.components.ScrimEdge
+import com.regolith.ui.components.SwipeToClose
+import com.regolith.ui.components.rememberSwipeToClose
+import com.regolith.ui.components.swipeToClose
 import com.regolith.ui.components.onPicture
 import com.regolith.ui.components.FileActionsHost
 import com.regolith.ui.components.RegolithSheet
 import com.regolith.ui.components.SheetChoice
 import com.regolith.domain.media.PictureSaves
+import com.regolith.domain.playback.StoryPace
 import com.regolith.ui.util.formatDate
 import com.regolith.ui.components.posterFlight
 import com.regolith.ui.library.PictureTile
@@ -87,12 +83,6 @@ import com.regolith.ui.theme.TextStyles
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDateTime
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.DisposableEffect
-import androidx.navigationevent.DirectNavigationEventInput
-import androidx.navigationevent.NavigationEvent
-import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import com.regolith.ui.components.FlightEasing
-import com.regolith.ui.components.timeFor
 
 /**
  * The lightbox (the canvas "Images on the Share", Light-Open, Light-Zoom,
@@ -106,13 +96,15 @@ import com.regolith.ui.components.timeFor
  * inner display puts those in the bar and a strip of the album along the
  * bottom, to jump about in it.
  *
- * [onSetPoster] opens Set as poster for the picture on screen.
+ * [onSetPoster] opens Set as poster for the picture on screen, and
+ * [onPlayFrom] plays the album as a story from it ("Play from here").
  */
 @Composable
 fun LightboxScreen(
     viewModel: LightboxViewModel,
     onClose: () -> Unit,
     onSetPoster: (folderId: Long, pictureId: Long) -> Unit,
+    onPlayFrom: (folderId: Long, pictureId: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -128,6 +120,7 @@ fun LightboxScreen(
             state, viewModel.pictureId, onClose,
             actions = PictureActions(
                 onPoster = { onSetPoster(it.folderId, it.pictureId) },
+                onPlay = { onPlayFrom(it.folderId, it.pictureId) },
                 onRename = viewModel::rename,
                 onMove = viewModel::move,
                 onSave = viewModel::save,
@@ -143,6 +136,7 @@ fun LightboxScreen(
 /** What can be done to the picture on screen, from the bar and from More. */
 private class PictureActions(
     val onPoster: (PictureTile) -> Unit,
+    val onPlay: (PictureTile) -> Unit,
     val onRename: (PictureTile) -> Unit,
     val onMove: (PictureTile) -> Unit,
     val onSave: (PictureTile) -> Unit,
@@ -173,23 +167,15 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
     // Spoof mode and the demo library: nothing here can be changed, so the
     // bar keeps More (for Details) and nothing else.
     val onPoster = if (state.readOnly == null) ({ actions.onPoster(current) }) else null
+    // A story plays whatever can be seen, so it is there in spoof mode and the demo too.
+    val onPlay = { actions.onPlay(current) }
     val focus = LocalPictureFocus.current
 
-    // --- The swipe down, back into the tile. It drives the very transition
-    // Back plays (lightboxScreen), through a back gesture of the lightbox's
-    // own, as the player's swipe into the mini player does: the picture flies
-    // home under the finger, the black fades, and the album shows through
-    // beneath it. Let go past [PULL_SETTLE] of the way, or flicked down, it
-    // finishes; short of it, or flicked up, it comes back.
-    val navEvents = LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher
-    val swipeInput = remember { DirectNavigationEventInput() }
-    DisposableEffect(navEvents) {
-        navEvents?.addInput(swipeInput)
-        onDispose { navEvents?.removeInput(swipeInput) }
-    }
-    // How far the picture has been pulled down, in pixels, while the swipe lasts.
-    var pull by remember { mutableFloatStateOf(0f) }
-    var swiping by remember { mutableStateOf(false) }
+    // --- The swipe down, back into the tile ([SwipeToClose]): it drives the
+    // very transition Back plays (lightboxScreen), so the picture flies home
+    // under the finger, the black fades, and the album shows through.
+    val swipe = rememberSwipeToClose()
+    val swiping = swipe?.swiping == true
 
     // The picture on screen is the one to land in its tile when this closes
     // (PictureFocus), and a picture swiped away goes back to fitted.
@@ -216,7 +202,11 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // Half the screen's height carries the picture all the way home.
         val travelPx = with(density) { maxHeight.toPx() } * PULL_TRAVEL
-        val flickPxPerS = with(density) { FLING_CLOSES.toPx() }
+        val flickPxPerS = with(density) { SwipeToClose.FLICK.toPx() }
+        SideEffect {
+            swipe?.travelPx = travelPx
+            swipe?.flickPxPerS = flickPxPerS
+        }
         Box(Modifier.fillMaxSize().background(Color.Black))
 
         HorizontalPager(
@@ -230,15 +220,6 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
             val picture = latest.value.getOrNull(page) ?: return@HorizontalPager
             val zoom = zoomOf(picture.pictureId)
             val isCurrent = page == pager.currentPage
-            val dragState = rememberDraggableState { delta ->
-                pull = (pull + delta).coerceAtLeast(0f)
-                if (!swiping && pull > 0f) {
-                    swiping = true
-                    chrome = false
-                    swipeInput.backStarted(backEvent(0f))
-                }
-                if (swiping) swipeInput.backProgressed(backEvent(FlightEasing.timeFor((pull / travelPx).coerceIn(0f, 1f))))
-            }
             PicturePage(
                 picture = picture,
                 zoom = zoom,
@@ -250,30 +231,9 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
                     val next = page + if (forward) 1 else -1
                     if (next in latest.value.indices) scope.launch { pager.animateScrollToPage(next) }
                 },
-                modifier = Modifier.draggable(
-                    state = dragState,
-                    orientation = Orientation.Vertical,
-                    enabled = isCurrent && !zoom.zoomed && navEvents != null,
-                    onDragStopped = { velocity ->
-                        if (swiping) {
-                            swiping = false
-                            val carried = (pull / travelPx).coerceIn(0f, 1f)
-                            pull = 0f
-                            val finish = when {
-                                velocity > flickPxPerS -> true
-                                velocity < -flickPxPerS -> false
-                                else -> carried >= PULL_SETTLE
-                            }
-                            if (finish) {
-                                zoom.reset()
-                                swipeInput.backCompleted()
-                            } else {
-                                swipeInput.backCancelled()
-                                chrome = true
-                            }
-                        }
-                    },
-                ),
+                // Only the picture on screen, and only when fitted: zoomed in,
+                // a drag pans the picture instead.
+                modifier = Modifier.swipeToClose(swipe, enabled = isCurrent && !zoom.zoomed, onClosing = { zoom.reset() }),
             )
         }
 
@@ -289,6 +249,7 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
                 wide = wide,
                 onClose = close,
                 onPoster = onPoster,
+                onPlay = onPlay,
                 onMore = { more = true },
             )
         }
@@ -304,6 +265,7 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
                 page = pager.currentPage,
                 wide = wide,
                 onPoster = onPoster,
+                onPlay = onPlay,
                 onMore = { more = true },
                 onJump = { scope.launch { pager.animateScrollToPage(it) } },
             )
@@ -315,8 +277,10 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit,
             picture = current,
             album = state.album,
             readOnly = state.readOnly,
+            pace = state.pace,
             onDismiss = { more = false },
             onPoster = { more = false; actions.onPoster(current) },
+            onPlay = { more = false; actions.onPlay(current) },
             onRename = { more = false; actions.onRename(current) },
             onMove = { more = false; actions.onMove(current) },
             onSave = { more = false; actions.onSave(current) },
@@ -382,33 +346,34 @@ private fun PicturePage(
 }
 
 /**
- * The picture itself, off the share whole ([PictureOriginal]), or spoof
- * mode's stand-in for it. Asked for at twice the screen, at most 4096
- * across: sharp through a double tap's zoom without decoding a 50 MP photo
- * at full size.
+ * The picture itself, at its own size ([com.regolith.ui.components.WholePicture]).
+ * Asked for at twice the screen, at most 4096 across: sharp through a double
+ * tap's zoom without decoding a 50 MP photo at full size.
  */
 @Composable
 private fun WholePicture(picture: PictureTile, pageWidth: Dp, pageHeight: Dp, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
     val density = LocalDensity.current
-    val spoof = LocalSpoof.current
     val longest = with(density) { maxOf(pageWidth, pageHeight).roundToPx() }
-    val target = (longest * 2).coerceAtMost(MAX_DECODE)
-    val model = spoof?.picture(picture.pictureId) ?: PictureOriginal(picture.pictureId, "${picture.sizeBytes}-${picture.modifiedAtMs}")
-    val request = remember(model, target) {
-        ImageRequest.Builder(context)
-            .data(model)
-            .size(target, target)
-            .precision(Precision.INEXACT)
-            .crossfade(true)
-            .build()
-    }
-    AsyncImage(model = request, contentDescription = picture.title, modifier = modifier, contentScale = ContentScale.Fit)
+    WholePicture(
+        pictureId = picture.pictureId,
+        version = picture.version,
+        target = (longest * 2).coerceAtMost(MAX_DECODE),
+        contentDescription = picture.title,
+        modifier = modifier,
+    )
 }
 
 /** The picture's top bar: close, its name, and where it is in the album; on a wide window, its actions beside. */
 @Composable
-private fun LightboxTopBar(picture: PictureTile, position: String, wide: Boolean, onClose: () -> Unit, onPoster: (() -> Unit)?, onMore: () -> Unit) {
+private fun LightboxTopBar(
+    picture: PictureTile,
+    position: String,
+    wide: Boolean,
+    onClose: () -> Unit,
+    onPoster: (() -> Unit)?,
+    onPlay: () -> Unit,
+    onMore: () -> Unit,
+) {
     val colors = RegolithTheme.colors
     // A wash dark enough to read over a white sky (PictureScrim).
     PictureScrim(ScrimEdge.TOP) {
@@ -439,6 +404,7 @@ private fun LightboxTopBar(picture: PictureTile, position: String, wide: Boolean
         }
         if (wide) {
             if (onPoster != null) LightboxAction("Set as poster", R.drawable.rg_ic_set_poster, onPoster, "lightbox_poster_button", inline = true)
+            LightboxAction("Play from here", R.drawable.rg_ic_play, onPlay, "lightbox_play_button", inline = true)
             LightboxAction("More", R.drawable.rg_ic_more, onMore, "lightbox_more_button", inline = true, iconOnly = true)
         }
     }
@@ -457,6 +423,7 @@ private fun LightboxFoot(
     page: Int,
     wide: Boolean,
     onPoster: (() -> Unit)?,
+    onPlay: () -> Unit,
     onMore: () -> Unit,
     onJump: (Int) -> Unit,
 ) {
@@ -480,6 +447,7 @@ private fun LightboxFoot(
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                 if (onPoster != null) LightboxAction("Set as poster", R.drawable.rg_ic_set_poster, onPoster, "lightbox_poster_button")
+                LightboxAction("Play from here", R.drawable.rg_ic_play, onPlay, "lightbox_play_button")
                 LightboxAction("More", R.drawable.rg_ic_more, onMore, "lightbox_more_button")
             }
         }
@@ -563,16 +531,18 @@ private fun Filmstrip(pictures: List<PictureTile>, page: Int, onJump: (Int) -> U
 
 /**
  * More (the canvas's Light-More): the picture's name and facts over
- * everything else it can do. On a source that cannot be changed, only
- * Details, and the reason.
+ * everything else it can do. On a source that cannot be changed, the reason
+ * first, then only Play from here and Details.
  */
 @Composable
 private fun PictureMoreSheet(
     picture: PictureTile,
     album: String,
     readOnly: String?,
+    pace: StoryPace,
     onDismiss: () -> Unit,
     onPoster: () -> Unit,
+    onPlay: () -> Unit,
     onRename: () -> Unit,
     onMove: () -> Unit,
     onSave: () -> Unit,
@@ -597,13 +567,17 @@ private fun PictureMoreSheet(
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
         },
     ) {
-        if (readOnly == null) {
+        // Why most of the list is missing, before what is left of it.
+        if (readOnly != null) {
+            Text(readOnly, style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.padding(vertical = Spacing.s12).testTag("lightbox_more_read_only"))
+        } else {
             SheetChoice(R.drawable.rg_ic_set_poster, "Set as poster", "Frame it 2:3 for ${album.ifEmpty { "this folder" }}", "lightbox_more_poster", onClick = onPoster)
+        }
+        SheetChoice(R.drawable.rg_ic_play, "Play from here", "A story from this picture on, ${pace.label} each", "lightbox_more_play", onClick = onPlay)
+        if (readOnly == null) {
             SheetChoice(R.drawable.rg_ic_rename, "Rename", picture.name, "lightbox_more_rename", onClick = onRename)
             SheetChoice(R.drawable.rg_ic_folder_go, "Move to…", "Another collection or folder", "lightbox_more_move", onClick = onMove)
             SheetChoice(R.drawable.rg_ic_download, "Save to phone", "Into your gallery, ${PictureSaves.PLACE}", "lightbox_more_save", onClick = onSave)
-        } else {
-            Text(readOnly, style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.padding(vertical = Spacing.s12).testTag("lightbox_more_read_only"))
         }
         SheetChoice(LucideR.drawable.lucide_ic_info, "Details", "Where it lives, the camera and the date", "lightbox_more_details", onClick = onDetails)
         if (readOnly == null) {
@@ -639,9 +613,6 @@ private fun PictureDetails(picture: PictureTile, album: String, onDismiss: () ->
     }
 }
 
-/** A step of the swipe down's back gesture, [progress] of the way home. */
-private fun backEvent(progress: Float) = NavigationEvent(touchX = 0f, touchY = 0f, progress = progress, swipeEdge = NavigationEvent.EDGE_NONE)
-
 /** The picture's box fitted inside [width] × [height] at its [aspect]. */
 private fun fit(aspect: Float, width: Dp, height: Dp): Pair<Dp, Dp> {
     val wide = aspect >= width / height
@@ -650,12 +621,6 @@ private fun fit(aspect: Float, width: Dp, height: Dp): Pair<Dp, Dp> {
 
 /** How far down the screen, as a fraction of its height, a pull carries the picture all the way home. */
 private const val PULL_TRAVEL = 0.5f
-
-/** Let go past this much of the way home, the picture goes on into its tile; short of it, it comes back. */
-private const val PULL_SETTLE = 0.3f
-
-/** How fast a flick, in dp a second, decides the swipe by its direction alone. */
-private val FLING_CLOSES = 1000.dp
 
 /** How far a zoomed picture is pushed past its side before the swipe goes on to the next one. */
 private val EDGE_PUSH = 64.dp

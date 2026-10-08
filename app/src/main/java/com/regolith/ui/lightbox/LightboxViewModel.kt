@@ -5,19 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.pictures.PictureRepository
 import com.regolith.data.pictures.PictureSaver
+import com.regolith.data.prefs.AppPreferences
+import com.regolith.data.spoof.SpoofMode
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.fileops.ReadOnlySource
-import com.regolith.ui.util.FileActions
-import com.regolith.data.prefs.AppPreferences
-import com.regolith.data.repository.LibraryRepository
-import com.regolith.data.spoof.SpoofMode
-import com.regolith.data.spoof.spoofed
-import com.regolith.domain.library.comparator
-import com.regolith.ui.library.LibraryTile
+import com.regolith.domain.playback.StoryPace
+import com.regolith.ui.library.AlbumPictures
 import com.regolith.ui.library.PictureTile
-import com.regolith.ui.library.inOrder
-import com.regolith.ui.library.pictureTiles
-import com.regolith.ui.library.tileName
+import com.regolith.ui.util.FileActions
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -26,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -43,15 +39,15 @@ data class LightboxUiState(
      * stand down, and More says why.
      */
     val readOnly: String? = null,
+    /** How long each picture stays when it plays as a story from here, for More's "5 s each". */
+    val pace: StoryPace = StoryPace.DEFAULT,
 )
 
 /**
  * The pictures of one folder, for the lightbox to page through
  * ([LightboxScreen]), in exactly the order the screen it was opened from
- * showed them: the Images tab's ([com.regolith.domain.library.PictureOrder]),
- * or, for a picture lying loose beside albums, the wall's own ([onWall]).
- * Both are read from the settings rather than handed over, so the order
- * survives the app being killed and coming back here.
+ * showed them ([AlbumPictures]: the Images tab's, or the wall's own for a
+ * picture lying loose beside albums, [onWall]).
  */
 @HiltViewModel(assistedFactory = LightboxViewModel.Factory::class)
 class LightboxViewModel @AssistedInject constructor(
@@ -59,7 +55,7 @@ class LightboxViewModel @AssistedInject constructor(
     /** The picture it opened on. */
     @Assisted("picture") val pictureId: Long,
     @Assisted private val onWall: Boolean,
-    library: LibraryRepository,
+    albums: AlbumPictures,
     prefs: AppPreferences,
     spoof: SpoofMode,
     private val pictures: PictureRepository,
@@ -84,25 +80,17 @@ class LightboxViewModel @AssistedInject constructor(
     val fileActions: FileActions = fileActionsFactory.create(viewModelScope)
 
     val uiState: StateFlow<LightboxUiState> = run {
-        val folder = library.observeFolder(folderId).spoofed(spoof) { it?.let(::folder) }
-        val others = library.observeOtherFilesIn(folderId).spoofed(spoof) { otherFiles(it) }
-        val videos = library.observeFilesIn(listOf(folderId)).spoofed(spoof) { files(it) }
-        val order: kotlinx.coroutines.flow.Flow<(List<PictureTile>) -> List<PictureTile>> = if (onWall) {
-            prefs.libraryOrder.map { o -> { tiles -> tiles.map { LibraryTile.Picture(it) }.sortedWith(o.comparator(addedByDay = true)).map { it.picture } } }
-        } else {
-            prefs.pictureOrder.map { o -> { tiles -> tiles.inOrder(o) } }
-        }
-        val readOnly = combine(spoof.state, folder) { spoofed, f ->
-            when (if (spoofed != null) ReadOnlySource.SPOOF else f?.let { fileOps.readOnly(listOf(it.shareId)) }) {
+        val album = albums.observe(folderId, onWall)
+        val readOnly = combine(spoof.state, album.map { it.shareId }.distinctUntilChanged()) { spoofed, shareId ->
+            when (if (spoofed != null) ReadOnlySource.SPOOF else shareId?.let { fileOps.readOnly(listOf(it)) }) {
                 ReadOnlySource.SPOOF -> "Nothing can be changed while spoof mode is on"
                 ReadOnlySource.DEMO -> "The demo library can't be changed"
                 ReadOnlySource.PHONE -> "Pictures on this phone can't be changed here"
                 null -> null
             }
         }
-        combine(folder, others, videos, order, readOnly) { f, os, vs, sort, locked ->
-            val shown = vs.associate { it.name to it.tileName() }
-            LightboxUiState(album = f?.name.orEmpty(), pictures = sort(pictureTiles(os, shown)), loaded = true, readOnly = locked)
+        combine(album, readOnly, prefs.storyPace) { a, locked, pace ->
+            LightboxUiState(album = a.name, pictures = a.pictures, loaded = true, readOnly = locked, pace = pace)
         }
             .onEach { state -> if (state.pictures.any { it.width == null }) measure() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LightboxUiState())

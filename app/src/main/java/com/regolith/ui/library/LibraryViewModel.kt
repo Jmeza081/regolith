@@ -152,6 +152,7 @@ class LibraryViewModel @AssistedInject constructor(
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }
         viewModelScope.launch { prefs.picturesAcross(PicturesAcross.PHONE).collect { n -> _uiState.update { it.copy(picturesAcrossPhone = n) } } }
         viewModelScope.launch { prefs.picturesAcross(PicturesAcross.WIDE).collect { n -> _uiState.update { it.copy(picturesAcrossWide = n) } } }
+        viewModelScope.launch { prefs.storyPace.collect { pace -> _uiState.update { it.copy(storyPace = pace) } } }
         viewModelScope.launch { prefs.deviceOrder.collect { order -> _uiState.update { it.copy(device = it.device.inOrder(order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch { prefs.postersPerRow.collect { perRow -> _uiState.update { it.copy(postersPerRow = perRow) } } }

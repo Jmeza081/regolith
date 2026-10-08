@@ -13,6 +13,7 @@ import com.regolith.domain.library.comparator
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.PhoneAccess
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.util.SelectionUiState
@@ -142,6 +143,8 @@ data class LibraryUiState(
     /** How many columns the Images tab's mosaic has on a phone, and on a wide window ([com.regolith.domain.display.PicturesAcross]). */
     val picturesAcrossPhone: Int = 3,
     val picturesAcrossWide: Int = 5,
+    /** Settings › Playback › Picture stories, for how long Play pictures says it runs. */
+    val storyPace: StoryPace = StoryPace.DEFAULT,
     /** Open over whichever list is on screen: it shows that list's choices ([LibraryScreen]). */
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */

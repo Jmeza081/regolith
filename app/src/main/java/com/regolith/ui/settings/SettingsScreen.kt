@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.regolith.domain.security.BiometricAvailability
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.playback.AmbientLight
 import com.regolith.ui.util.note
 import com.regolith.domain.security.LockAfter
@@ -213,6 +214,22 @@ fun SettingsScreen(
                         checked = state.playWithScreenOff, onCheckedChange = viewModel::setPlayWithScreenOff,
                         testTag = "settings_play_with_screen_off_switch",
                     )
+                    // Pictures play too (P20): a collection's, as a story.
+                    Column(
+                        Modifier.padding(vertical = Spacing.s12),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        Text("Picture stories", style = TextStyles.settingLabel, color = colors.ink)
+                        Text(
+                            "How long each picture stays when you play a collection's pictures.",
+                            style = TextStyles.settingMeta, color = colors.metadata,
+                        )
+                        SegmentedTabs(
+                            segments = StoryPace.entries.map { Segment(it.label, "settings_story_pace_${it.ms / 1000}") },
+                            selected = StoryPace.entries.indexOf(state.storyPace),
+                            onSelect = { viewModel.setStoryPace(StoryPace.entries[it]) },
+                        )
+                    }
                 }
             }
 

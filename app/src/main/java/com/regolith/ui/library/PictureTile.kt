@@ -50,6 +50,9 @@ data class PictureTile(
 
     val artwork: ArtworkRequest get() = ArtworkRequest(ArtworkOwner.Picture(pictureId), ArtworkKind.PICTURE)
 
+    /** Its size and date on the share: a picture replaced under the same name is a new version, fetched again whole. */
+    val version: String get() = "$sizeBytes-$modifiedAtMs"
+
     val testTag: String get() = "library_picture_$pictureId"
 }
 

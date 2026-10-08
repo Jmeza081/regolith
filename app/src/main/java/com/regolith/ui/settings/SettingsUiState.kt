@@ -4,6 +4,7 @@ import com.regolith.data.artwork.PrefetchStatus
 import com.regolith.domain.playback.UserChapterStats
 import com.regolith.domain.security.BiometricAvailability
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.playback.AmbientLight
@@ -88,6 +89,8 @@ data class SettingsUiState(
     // --- Privacy: the app lock (P11).
     /** Settings › Shorts: how long a clip may be and still reach the feed. */
     val shortsLength: ShortsLength = ShortsLength.DEFAULT,
+    /** Playback › Picture stories: how long each picture stays. */
+    val storyPace: StoryPace = StoryPace.DEFAULT,
     val appLock: Boolean = false,
     val appLockAfter: LockAfter = LockAfter.DEFAULT,
     /** What the device can do about biometrics; the switch is only usable when it is ready. */

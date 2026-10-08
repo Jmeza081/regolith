@@ -107,7 +107,8 @@ val pageScreen: Map<String, Any> =
  * The lightbox (LightboxScreen), which a picture flies into from its tile
  * and back out of: its black fades in over the screen it was opened from,
  * which is held drawn underneath for as long as that takes, and fades away
- * again on the way back, staying on top of the screen it reveals.
+ * again on the way back, staying on top of the screen it reveals. A story
+ * (StoryScreen) comes and goes the same way.
  */
 
 private val lightboxArrive: ContentTransform
@@ -116,7 +117,7 @@ private val lightboxArrive: ContentTransform
 private val lightboxLeave: ContentTransform
     get() = ContentTransform(EnterTransition.None, fadeOut(tween(FLIGHT_MS)), targetContentZIndex = -1f)
 
-/** Per-entry metadata for the lightbox. */
+/** Per-entry metadata for the lightbox and a story. */
 val lightboxScreen: Map<String, Any> =
     NavDisplay.transitionSpec { lightboxArrive } +
         NavDisplay.popTransitionSpec { lightboxLeave } +

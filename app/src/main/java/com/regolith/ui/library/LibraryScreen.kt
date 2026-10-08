@@ -60,6 +60,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.playback.Reel
+import com.regolith.domain.playback.Story
 import com.regolith.domain.playback.ReelClip
 import com.regolith.domain.playback.ReelMoment
 import com.regolith.domain.library.LibrarySort
@@ -232,6 +233,8 @@ fun LibraryScreen(
      * sheet's Collection poster).
      */
     onSetPoster: (folderId: Long, pictureId: Long?, uri: String?) -> Unit = { _, _, _ -> },
+    /** A profile's Play pictures: [folderId]'s pictures as a story, in the tab's order or [shuffle]d. */
+    onPlayPictures: ((folderId: Long, shuffle: Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val uploadActions = viewModel.uploadActions
@@ -605,10 +608,23 @@ fun LibraryScreen(
             Reel.clips(moments.map { ReelMoment(it.fileId, it.startMs, it.title, it.videoName) }, lengths)
         }
         val momentsPlay = if (showMoments && reelClips.isNotEmpty() && onPlayMoments != null) {
-            MomentsPlay(
+            TabPlay(
+                noun = "moments",
                 length = Reel.roughLength(Reel.lengthMs(reelClips)),
                 onPlay = { onPlayMoments(state.title, reelClips) },
                 onShuffle = { onPlayMoments(state.title, reelClips.shuffled()) },
+            )
+        } else {
+            null
+        }
+        // The Images tab plays its pictures as a story, at the pace Settings sets.
+        val albumId = viewModel.folderId
+        val picturesPlay = if (showPictures && profile?.pictures.orEmpty().isNotEmpty() && onPlayPictures != null && albumId != null) {
+            TabPlay(
+                noun = "pictures",
+                length = Reel.roughLength(Story.lengthMs(profile?.pictures.orEmpty().size, state.storyPace)),
+                onPlay = { onPlayPictures(albumId, false) },
+                onShuffle = { onPlayPictures(albumId, true) },
             )
         } else {
             null
@@ -624,7 +640,7 @@ fun LibraryScreen(
                 onShuffle = if (p.videoCount > 0) ({ onPlayAll?.invoke(playableIds(), true) }) else null,
                 onAdd = if (uploads.canUpload) ({ uploadActions?.openSheet() }) else null,
                 modifier = Modifier.onSizeChanged { profileHeaderPx = it.height },
-                moments = momentsPlay,
+                tab = momentsPlay ?: picturesPlay,
             )
         }
         val profileTabs = @Composable { p: CollectionProfile ->

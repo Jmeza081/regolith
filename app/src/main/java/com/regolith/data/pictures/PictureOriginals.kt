@@ -17,6 +17,7 @@ import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.LocalSource
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.smb.SmbGateway
+import com.regolith.player.LocalMedia
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -59,6 +60,7 @@ class PictureOriginals @Inject constructor(
     private val shareDao: ShareDao,
     private val serverDao: ServerDao,
     private val shareFileDao: ShareFileDao,
+    private val local: LocalMedia,
 ) {
     private val directory = File(context.cacheDir, DIRECTORY)
     private val locks = ConcurrentHashMap<Long, Mutex>()
@@ -68,6 +70,8 @@ class PictureOriginals @Inject constructor(
 
     /** The same, for [pictureId] as it is on the share now: what saving it to the phone or making a poster of it reads. */
     suspend fun file(pictureId: Long): File? {
+        // The demo library's pictures are on the phone already.
+        local.picture(pictureId)?.let { return it }
         val row = shareFileDao.byId(pictureId) ?: return null
         val file = File(directory, "${row.id}-${row.sizeBytes}-${row.modifiedAtMs}.${MediaFileTypes.extensionOf(row.name)}")
         if (file.exists()) {

@@ -115,9 +115,9 @@ Pictures are looked after where they are. Hold one in the mosaic (or in Browse)
 to start picking, and the pill offers **Move**, **Rename**, **Save**, **Poster**
 and **Delete**: Save copies them into the phone's gallery, under Pictures ›
 Regolith, where any other app can use them; Poster makes the one picked its
-collection's poster. The lightbox has the same at hand: **Set as poster** and
-**More** (Rename, Move to…, Save to phone, Details, Delete from share), up in its
-bar on the inner display. Renaming a video's own picture says it will stop being
+collection's poster. The lightbox has the same at hand: **Set as poster**,
+**Play from here** and **More** (Rename, Move to…, Save to phone, Details,
+Delete from share), up in its bar on the inner display. Renaming a video's own picture says it will stop being
 that video's, and deleting a collection's poster says what its tile falls back
 to — another picture of its own, or a mosaic.
 
@@ -126,6 +126,19 @@ the crop is saved as `poster.jpg` while the picture itself stays as it is. Or
 **Use whole picture**: a JPEG, PNG, WebP or GIF of 8 MB or less simply becomes
 the poster, renamed `poster.jpg` (or `.png` and so on); a HEIC, or anything
 bigger, is copied as a `poster.jpg` sized for a poster and left as it was.
+
+A collection's pictures also play as a story. **Play pictures** on its Images
+tab (with Shuffle beside it), or **Play from here** in the lightbox, shows them
+one at a time across the whole screen, with a bar of segments along the top that
+fill as they go: tap the right of the screen for the next picture and the left
+for the one before, hold to pause (let go and the same picture carries on), and
+swipe down to close. Each picture stays
+for the time set in **Settings › Playback › Picture stories** — 3, 5 or 8
+seconds — and a moving GIF plays through once, however long that takes. A long
+album's bar shows the twenty around the picture up and slides along. On a phone
+a tall picture fills the screen; a wide one, and every picture on the inner
+display, is shown whole over a blurred copy of itself. The next picture is
+fetched while this one shows, so none arrives late.
 
 ### Posters that fly
 
@@ -339,8 +352,9 @@ on, the lock screen and the notification say only "Regolith · Playing".
 ## Try it without a share
 
 **Settings › Demo › Load** writes a pretend NAS — four collections, 18 titles, a
-few part-watched, and a folder of vertical phone clips for Shorts — and copies five
-bundled test clips onto the device. Everything
+few part-watched, a folder of vertical phone clips for Shorts, and **Photos**,
+three albums of painted pictures (one with a poster of its own) — and copies
+five bundled test clips onto the device, painting the pictures as it goes. Everything
 plays, scrubs and shows real frame-grab posters with no network at all, which is
 what makes the app reviewable on a train. **Remove** deletes it; nothing else is
 touched. Nothing in it can be moved, renamed or deleted: there is no share
