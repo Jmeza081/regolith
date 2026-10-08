@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
@@ -45,6 +46,7 @@ import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.LocalMiniPlayerClearance
 import com.regolith.ui.components.rememberFlightLanding
+import com.regolith.ui.components.rememberFlightLaunchPad
 import com.regolith.ui.components.posterFlight
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
@@ -165,6 +167,10 @@ private fun TitleDetailContent(
         snackbar.showMessage(message, MessageKind.FAILED)
         onDismissFileOpError()
     }
+    // The hero's picture, which Play flies into the player (a flight by hand,
+    // so it can leave a page beside a wall too).
+    val owner = ArtworkOwner.File(state.fileId)
+    val heroPad = rememberFlightLaunchPad(owner, state.artwork, corner = 0.dp)
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("detail_screen")) {
             // Hero: the art runs under the status bar; the overlays are the
@@ -180,11 +186,16 @@ private fun TitleDetailContent(
                 // Beside a wall the tile stays on screen, so the poster is flown
                 // in by hand (rememberFlightLanding) and never flies back: the
                 // page slides out as it always has.
-                val owner = ArtworkOwner.File(state.fileId)
                 val thumb = ArtworkRequest(owner, ArtworkKind.THUMB)
                 val landing = rememberFlightLanding(owner, state.artwork, thumb, enabled = inPane)
-                Box(Modifier.fillMaxSize().posterFlight(owner.takeUnless { inPane }).then(landing.modifier)) {
-                    ArtworkImage(state.artwork, Modifier.fillMaxSize(), fallbackLabel = state.title, placeholder = thumb)
+                Box(Modifier.fillMaxSize().posterFlight(owner.takeUnless { inPane }).then(landing.modifier).then(heroPad?.modifier ?: Modifier)) {
+                    ArtworkImage(
+                        state.artwork,
+                        // Steps aside while its copy flies into the player.
+                        Modifier.fillMaxSize().graphicsLayer { alpha = if (heroPad?.hidden == true) 0f else 1f },
+                        fallbackLabel = state.title,
+                        placeholder = thumb,
+                    )
                     Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0x2EFFFFFF), Color.Transparent), radius = 700f)))
                     Box(
                         Modifier.fillMaxSize().background(
@@ -235,7 +246,10 @@ private fun TitleDetailContent(
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
                     PrimaryButton(
                         text = if (resume != null) "Resume" else "Play",
-                        onClick = { onPlay(state.fileId) },
+                        onClick = {
+                            heroPad?.launch()
+                            onPlay(state.fileId)
+                        },
                         leadingIcon = painterResource(R.drawable.rg_ic_play),
                         modifier = Modifier.weight(1f),
                         testTag = "detail_play_button",

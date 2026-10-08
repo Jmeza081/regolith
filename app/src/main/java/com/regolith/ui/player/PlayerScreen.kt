@@ -95,6 +95,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
@@ -117,6 +118,7 @@ import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.player.NextItem
 import com.regolith.ui.components.ArtworkImage
+import com.regolith.ui.components.rememberFlightLanding
 import com.regolith.ui.components.Filmstrip
 import com.regolith.ui.components.StripFrame
 import com.regolith.ui.components.DisplayText
@@ -182,6 +184,8 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
     /** Opened from the mini player: the picture grows out of it rather than the screen sliding in. */
     expandFromMini: Boolean = false,
+    /** Opened by a tap on the film's picture, which flies into this one's ([RegolithKey.Player.flies]). */
+    fliesIn: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val player by viewModel.player.collectAsStateWithLifecycle()
@@ -316,8 +320,11 @@ fun PlayerScreen(
             handoff?.playerPicture = null
         }
     }
-    LaunchedEffect(handoff, leaving) {
-        if (!leaving || handoff == null) return@LaunchedEffect
+    // Only when it shrinks into it. Sliding out, the player lets go as it
+    // goes; a finished film slides out, and is stopped as it goes, so a mini
+    // player shown before then would only flash up empty-handed.
+    LaunchedEffect(handoff, leaving, shrinks) {
+        if (!leaving || !shrinks || handoff == null) return@LaunchedEffect
         snapshotFlow { away >= MINI_HANDOVER_AT }.first { it }
         handoff.playerShowing = false
     }
@@ -339,11 +346,49 @@ fun PlayerScreen(
             translationX = lerp(0f, slot.left - from.left, away)
             translationY = lerp(0f, slot.top - from.top, away)
         }
+    // --- Flown into (PosterFlight.kt). Opened by a tap on the film's picture
+    // (a Continue watching card, or Play under the title page's hero), that
+    // picture flies into this one's, by hand, and the player fades in under
+    // it rather than sliding: a slide would carry the landing spot sideways
+    // while the picture is in the air. Only upright and not full screen, as
+    // the canvas has it, and only on the way in: Back shrinks the picture
+    // into the mini player instead.
+    val flies = fliesIn && !expandFromMini && !immersive && !flex
+    val fadesIn = flies && !leaving
+    val stillOwner = state.fileId?.let { ArtworkOwner.File(it) }
+    val stillThumb = stillOwner?.let { ArtworkRequest(it, ArtworkKind.THUMB) }
+    // The film's still: the backdrop when it is already made, else the thumb
+    // (PlayerViewModel.stillFor). The thumb at once, so a new film never
+    // shows the last one's picture while its own is looked up.
+    var still by remember(state.fileId) { mutableStateOf(stillThumb) }
+    LaunchedEffect(state.fileId) { state.fileId?.let { still = viewModel.stillFor(it) } }
+    // No picture of its own to fly: the tile's stays in the air all the way,
+    // then hands over to the still as it lands.
+    val landing = rememberFlightLanding(stillOwner, picture = null, placeholder = null, enabled = flies)
+    // The picture's surface waits for the landing. A SurfaceView ignores the
+    // fade, so in place during the flight it would be a black box under the
+    // picture still in the air.
+    val surfaceUp = !flies || (screen.transition.currentState == EnterExitState.Visible && landing.landed)
+    // The film was opened held while the picture flew (PlayerViewModel); it
+    // starts once there is somewhere to see it.
+    LaunchedEffect(surfaceUp) { if (surfaceUp) viewModel.arrived() }
+    // The still covers the picture until the film's first frame is drawn on
+    // it: what a flying picture lands on, and a picture rather than black
+    // while a film opens from the share. Not when grown out of the mini
+    // player, whose live picture it would interrupt.
+    val presentation = rememberPresentationState(player)
+    val stillShown = still != null && !expandFromMini && (!surfaceUp || presentation.coverSurface)
+    val stillAlpha by animateFloatAsState(if (stillShown) 1f else 0f, tween(STILL_FADE_MS), label = "playerStill")
+
     // Everything but the picture: gone well before the picture lands, so the
-    // page underneath is what it lands on.
-    val pageAlpha = if (shrinks) (1f - away * 1.6f).coerceIn(0f, 1f) else 1f
-    // The slide, for the ways in and out that do not shrink.
-    val slide = Modifier.graphicsLayer { if (!shrinks) translationX = away * size.width }
+    // page underneath is what it lands on; flown into, it fades in.
+    val pageAlpha = when {
+        shrinks -> (1f - away * 1.6f).coerceIn(0f, 1f)
+        fadesIn -> 1f - away
+        else -> 1f
+    }
+    // The slide, for the ways in and out that neither shrink nor fly.
+    val slide = Modifier.graphicsLayer { if (!shrinks && !fadesIn) translationX = away * size.width }
 
     // Who decides what follows when the film ends: this screen's Up next card
     // while you are looking at it, the session (straight on, no card)
@@ -622,7 +667,7 @@ fun PlayerScreen(
         Box(Modifier.fillMaxSize()) {
             // Floating, the picture-in-picture window has the film (one
             // ExoPlayer draws on one surface); this takes it back after.
-            player?.takeUnless { inPip }?.let { p ->
+            player?.takeUnless { inPip }?.takeIf { surfaceUp }?.let { p ->
                 // A SurfaceView goes straight to the compositor and cannot be
                 // read back; a TextureView draws through the view hierarchy and
                 // can. That is the whole trade behind the Ambient light setting,
@@ -634,45 +679,59 @@ fun PlayerScreen(
                     if (fill) ContentScale.Crop else ContentScale.Fit,
                 )
             }
+            if (still != null && stillAlpha > 0f) {
+                Box(
+                    Modifier.fillMaxSize()
+                        .then(landing.modifier)
+                        .graphicsLayer { alpha = stillAlpha }
+                        .testTag("player_still"),
+                ) {
+                    ArtworkImage(still, Modifier.fillMaxSize(), contentScale = if (fill) ContentScale.Crop else ContentScale.Fit, placeholder = stillThumb)
+                }
+            }
             Box(Modifier.fillMaxSize().playerGestures(gestures).testTag("player_gesture_layer"))
-            if (state.isBuffering) {
-                // The mark, not a circle: 48dp is the smallest size the five
-                // bands still read at (docs/ARCHITECTURE.md).
-                StrataLoader(modifier = Modifier.align(Alignment.Center), height = 48.dp, testTag = "player_buffering")
-            }
-            if (flex) {
-                // Above the fold there is only the header: the timeline and the
-                // transport live in the deck below, where the hands are.
-                FlexChrome(state, controlsVisible && drag == null, chromeCallbacks, transfer, smooth)
-            } else if (immersive) {
-                // The collapse glyph only appears when full screen was a
-                // choice; in landscape it is the rotation, so there is
-                // nothing for a button to undo.
-                FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft, smooth = smooth)
-            } else {
-                PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft, smooth)
-            }
-            if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
-            drag?.let { DragRail(it) }
-            seekLabel?.let { SeekPill(it, left = it.startsWith("−")) }
-            if (state.holdingFast) {
-                OnMediaLabel("2× while held", Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 78.dp).testTag("player_hold_pill"))
-            }
-            state.error?.let { error ->
-                ErrorCard(message = error, testTag = "player_error_card", modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding())
-            }
-            // Over the ended frame, in every layout: the picture is finished,
-            // so there is nothing underneath worth keeping clear.
-            countdown?.let { seconds ->
-                if (upNext != null) {
-                    Box(Modifier.fillMaxSize().background(Color(0x99000000)))
-                    UpNextCard(
-                        item = upNext,
-                        seconds = seconds,
-                        onPlayNow = { viewModel.playNext(upNext.fileId) },
-                        onCancel = { autoplayCancelled = true },
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding(),
-                    )
+            // The chrome over the picture fades in with the rest of the player
+            // when a picture flies in, rather than waiting on it at full strength.
+            Box(Modifier.fillMaxSize().graphicsLayer { if (fadesIn) alpha = 1f - away }) {
+                if (state.isBuffering) {
+                    // The mark, not a circle: 48dp is the smallest size the five
+                    // bands still read at (docs/ARCHITECTURE.md).
+                    StrataLoader(modifier = Modifier.align(Alignment.Center), height = 48.dp, testTag = "player_buffering")
+                }
+                if (flex) {
+                    // Above the fold there is only the header: the timeline and the
+                    // transport live in the deck below, where the hands are.
+                    FlexChrome(state, controlsVisible && drag == null, chromeCallbacks, transfer, smooth)
+                } else if (immersive) {
+                    // The collapse glyph only appears when full screen was a
+                    // choice; in landscape it is the rotation, so there is
+                    // nothing for a button to undo.
+                    FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft, smooth = smooth)
+                } else {
+                    PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft, smooth)
+                }
+                if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
+                drag?.let { DragRail(it) }
+                seekLabel?.let { SeekPill(it, left = it.startsWith("−")) }
+                if (state.holdingFast) {
+                    OnMediaLabel("2× while held", Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 78.dp).testTag("player_hold_pill"))
+                }
+                state.error?.let { error ->
+                    ErrorCard(message = error, testTag = "player_error_card", modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding())
+                }
+                // Over the ended frame, in every layout: the picture is finished,
+                // so there is nothing underneath worth keeping clear.
+                countdown?.let { seconds ->
+                    if (upNext != null) {
+                        Box(Modifier.fillMaxSize().background(Color(0x99000000)))
+                        UpNextCard(
+                            item = upNext,
+                            seconds = seconds,
+                            onPlayNow = { viewModel.playNext(upNext.fileId) },
+                            onCancel = { autoplayCancelled = true },
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(Spacing.s18).systemBarsPadding(),
+                        )
+                    }
                 }
             }
         }
@@ -1864,6 +1923,9 @@ private const val FULLSCREEN_DRAG_FRACTION = 0.12f
 
 /** How far into shrinking the mini player is handed the picture: just before it lands. */
 private const val MINI_HANDOVER_AT = 0.92f
+
+/** The film's still fading off its first frame: quick, so it reads as the picture arriving, not a dissolve. */
+private const val STILL_FADE_MS = 160
 
 /**
  * How long the Up next card waits before it plays on by itself. Long enough

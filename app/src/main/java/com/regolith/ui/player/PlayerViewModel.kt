@@ -7,6 +7,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.regolith.data.prefs.AppPreferences
 import com.regolith.data.repository.UserChapterRepository
+import com.regolith.domain.artwork.ArtworkKind
+import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
@@ -66,6 +69,7 @@ class PlayerViewModel @AssistedInject constructor(
     private val userChapters: UserChapterRepository,
     private val posters: com.regolith.data.artwork.PosterRepository,
     private val spoof: com.regolith.data.spoof.SpoofMode,
+    private val artwork: com.regolith.data.artwork.ArtworkRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -460,6 +464,9 @@ class PlayerViewModel @AssistedInject constructor(
     /** Where the open mark sits, or null when the editor is closed or no row is open. */
     private fun openMarkMs(): Long? = _chapterDraft.value?.let { d -> d.selected?.let { d.marks.getOrNull(it)?.startMs } }
 
+    /** Opened by a picture that flies in ([RegolithKey.Player.flies]): the film waits for it to land. */
+    private var heldForFlight = key.flies && !key.expand && key.externalUri == null
+
     init {
         // The sheet's pictures are asked for as soon as the chapter list
         // settles, NOT when the sheet opens. They cost a key-frame seek each
@@ -484,8 +491,29 @@ class PlayerViewModel @AssistedInject constructor(
             // paused as it was left, and loading it again would unpause it.
             key.expand -> Unit
             external != null -> session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
-            else -> session.load(key.fileId, key.startMs, key.queue.ifEmpty { null })
+            else -> session.load(key.fileId, key.startMs, key.queue.ifEmpty { null }, startPlaying = !heldForFlight)
         }
+    }
+
+    /**
+     * The screen has arrived: the picture that flew in has landed, or nothing
+     * flew. A film held for the flight starts now; otherwise this does nothing.
+     */
+    fun arrived() {
+        if (!heldForFlight) return
+        heldForFlight = false
+        session.play()
+    }
+
+    /**
+     * The film's still, for the player's picture until the film's first frame
+     * is drawn, and for a picture flying in to land on: the wide backdrop when
+     * it has already been made, else the small thumb. Never made for this: a
+     * frame grab reads the share, which the film itself is opening from.
+     */
+    suspend fun stillFor(fileId: Long): ArtworkRequest {
+        val backdrop = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.BACKDROP)
+        return if (artwork.cached(backdrop) != null) backdrop else ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB)
     }
 
     fun togglePlayPause() = session.togglePlayPause()

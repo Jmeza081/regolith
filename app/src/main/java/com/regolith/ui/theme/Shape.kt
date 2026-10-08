@@ -4,8 +4,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
+/** A card's corner radius, for a picture that leaves one in flight. */
+val CardCorner = 14.dp
 /** Cards are 14dp, sheets 22dp (top corners), everything tappable is a pill. */
-val CardShape = RoundedCornerShape(14.dp)
+val CardShape = RoundedCornerShape(CardCorner)
 /** Posters in a grid. */
 val TileShape = RoundedCornerShape(12.dp)
 /** Small thumbnails in list rows. */

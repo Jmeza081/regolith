@@ -78,6 +78,12 @@ sealed interface RegolithKey : NavKey {
          * loading it again, which would resume a film you had paused.
          */
         val expand: Boolean = false,
+        /**
+         * Opened by a tap on the film's picture (a Continue watching card,
+         * the title page's Play), which flies into the player's: the film
+         * loads while it is in the air and starts playing once it has landed.
+         */
+        val flies: Boolean = false,
     ) : RegolithKey {
         companion object {
             /** No row has this id; it marks a key whose film came from outside the library. */

@@ -81,6 +81,12 @@ page fades in around it. Back flies it home, and on a phone the back swipe
 holds it under your thumb. On the inner display it flies into the page beside
 the wall too; closing that page slides it away as before.
 
+Play does the same: the picture at the top of a video's page, or a Continue
+watching card's, flies into the player's picture while the player fades in
+under it, and the film starts as it lands. Until the film's first frame is
+drawn the player shows that picture rather than a black box, which is what you
+see while a film opens from the share.
+
 ### Lights the room around the picture
 
 A film rarely fills the screen exactly, and the bars around it carry its own
