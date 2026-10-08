@@ -178,7 +178,13 @@ internal fun ReelList(reel: ReelState, playing: Float, onClip: (Int) -> Unit, mo
                 testTag = "player_reel_clip_$index",
                 progress = playing.takeIf { current },
                 action = if (current) {
-                    { Icon(painterResource(LucideR.drawable.lucide_ic_audio_lines), "Playing", tint = colors.ink, modifier = Modifier.size(16.dp)) }
+                    {
+                        // Well in from the highlight's rounded end, not on it.
+                        Icon(
+                            painterResource(LucideR.drawable.lucide_ic_audio_lines), "Playing", tint = colors.ink,
+                            modifier = Modifier.padding(start = Spacing.s8, end = PLAYING_MARK_END).size(16.dp),
+                        )
+                    }
                 } else {
                     null
                 },
@@ -210,3 +216,6 @@ private const val PLAYED_ALPHA = 0.55f
 
 /** How far a row's highlight reaches past the list on each side, and how far its contents sit inside it. */
 private val ROW_INSET = 8.dp
+
+/** The playing mark's own room at the row's end, on top of [ROW_INSET]: 20dp in from the highlight's edge. */
+private val PLAYING_MARK_END = 12.dp

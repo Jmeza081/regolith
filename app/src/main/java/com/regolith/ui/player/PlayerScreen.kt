@@ -6,6 +6,14 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.NavigationEventTransitionState
+import androidx.navigationevent.NavigationEvent
+import androidx.navigationevent.DirectNavigationEventInput
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.collectAsState
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -312,6 +320,35 @@ fun PlayerScreen(
     val shrinks = slot != null && !immersive && !flex && (leaving || expandFromMini) &&
         !state.ended && state.error == null
     var pictureBounds by remember { mutableStateOf<Rect?>(null) }
+    // --- The swipe down into the mini player, the way YouTube does it: the
+    // finger carries the picture down into the mini player's spot while the
+    // player's ground fades off the page underneath, and letting go finishes
+    // the same motion from where it is. The swipe drives the very transition
+    // Back plays, which the system's back swipe already scrubs, through a
+    // back gesture of the app's own. It used to shrink the picture in place
+    // and spring back as the put-away began: the jolt.
+    val navEvents = LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher
+    val swipeInput = remember { DirectNavigationEventInput() }
+    DisposableEffect(navEvents) {
+        navEvents?.addInput(swipeInput)
+        onDispose { navEvents?.removeInput(swipeInput) }
+    }
+    val noGesture = remember { MutableStateFlow<NavigationEventTransitionState>(NavigationEventTransitionState.Idle) }
+    val backGesture by (navEvents?.transitionState ?: noGesture).collectAsState()
+    // Where a swipe down is the put-away: wherever Back would shrink the picture.
+    val swipeCanShrink by rememberUpdatedState(
+        navEvents != null && handoff?.slot != null && !immersive && !flex && !state.ended && state.error == null,
+    )
+    // A finger's travel down the window as the put-away's progress: the
+    // picture's top keeping pace with it on its way to the mini player's.
+    // The gesture's progress is the transition's time, so the transition's
+    // own easing is undone first.
+    val shrinkProgress = { fingerPx: Float ->
+        val from = pictureBounds
+        val to = handoff?.slot
+        val travel = if (from != null && to != null) to.top - from.top else 0f
+        if (travel <= 1f) 0f else FlightEasing.timeFor((fingerPx / travel).coerceIn(0f, 1f))
+    }
     // While it is on screen the mini player stays away from the picture: one
     // ExoPlayer draws on one surface. Shrinking, it lets go just before it
     // lands — the player's surface holds its last frame under the mini
@@ -328,7 +365,10 @@ fun PlayerScreen(
     // player shown before then would only flash up empty-handed.
     LaunchedEffect(handoff, leaving, shrinks) {
         if (!leaving || !shrinks || handoff == null) return@LaunchedEffect
-        snapshotFlow { away >= MINI_HANDOVER_AT }.first { it }
+        // Not while a finger still holds the swipe (the app's or the system's):
+        // it may let go short of the mini player and bring the picture back,
+        // and a picture already handed over would stay black.
+        snapshotFlow { away >= MINI_HANDOVER_AT && backGesture is NavigationEventTransitionState.Idle }.first { it }
         handoff.playerShowing = false
     }
     // The picture's way into the slot and out of it: from where it sits on the
@@ -543,6 +583,8 @@ fun PlayerScreen(
             private var dragValue = 0f
             private var zone: Zone? = null
             private var middleDy = 0f
+            /** This drag is the put-away itself, scrubbed by the finger (see swipeCanShrink). */
+            private var shrinkSwipe = false
             override fun onTap(zone: Zone) {
                 if (zone == Zone.MIDDLE) {
                     controlsVisible = !controlsVisible
@@ -576,6 +618,7 @@ fun PlayerScreen(
                 if (zone == Zone.MIDDLE) {
                     // No rail: the picture itself is the readout.
                     middleDy = 0f
+                    shrinkSwipe = false
                     middleDragging = true
                     middleDrag = 0f
                     return
@@ -587,7 +630,18 @@ fun PlayerScreen(
             override fun onDrag(dyFraction: Float) {
                 if (zone == Zone.MIDDLE) {
                     middleDy += dyFraction
-                    middleDrag = middleDy
+                    // Down where Back would shrink the picture: the drag is that
+                    // put-away from its first moment, not a preview of it.
+                    if (!shrinkSwipe && middleDy > 0f && swipeCanShrink) {
+                        shrinkSwipe = true
+                        middleDrag = 0f
+                        swipeInput.backStarted(shrinkEvent(0f))
+                    }
+                    if (shrinkSwipe) {
+                        swipeInput.backProgressed(shrinkEvent(shrinkProgress(middleDy * (pictureBounds?.height ?: 0f))))
+                    } else {
+                        middleDrag = middleDy
+                    }
                     return
                 }
                 val d = drag ?: return
@@ -610,6 +664,13 @@ fun PlayerScreen(
                 val down = middleDy > 0f
                 val committed = abs(middleDy) > FULLSCREEN_DRAG_FRACTION || flingDown
                 middleDy = 0f
+                if (shrinkSwipe) {
+                    // Let go: the put-away finishes from where the finger left
+                    // it, or the player comes back up if it was not far enough.
+                    shrinkSwipe = false
+                    if (committed && down) swipeInput.backCompleted() else swipeInput.backCancelled()
+                    return
+                }
                 if (!committed) return
                 when {
                     !canToggleFullscreen -> if (down) onBack()
@@ -1069,8 +1130,11 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
             ChromeScrim(landscape = false)
-            IconCell(R.drawable.rg_ic_arrow_down, "Shrink the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
-            IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
+            // A reel's bars run across the top (Reel.kt): the two ways out drop
+            // under them with the canvas's 16dp between, rather than touching.
+            val top = if (state.reel != null) REEL_CHROME_TOP else 6.dp
+            IconCell(R.drawable.rg_ic_arrow_down, "Shrink the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = top))
+            IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = top))
             Transport(state, cb, gap = Spacing.s18, circle = 48.dp, glyph = 26.dp, modifier = Modifier.align(Alignment.Center))
             // A reel has its moments across the top instead of a timeline here.
             if (state.reel == null) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
@@ -1982,11 +2046,36 @@ private const val FULLSCREEN_DRAG_FRACTION = 0.12f
 /** How far into shrinking the mini player is handed the picture: just before it lands. */
 private const val MINI_HANDOVER_AT = 0.92f
 
+/** A step of the swipe down's back gesture, [progress] of the way into the mini player. */
+private fun shrinkEvent(progress: Float) = NavigationEvent(touchX = 0f, touchY = 0f, progress = progress, swipeEdge = NavigationEvent.EDGE_NONE)
+
+/**
+ * When this easing reaches [value]: its inverse, found by halving, for a
+ * curve that only rises. A back gesture's progress is the transition's time;
+ * this turns where the picture should be into that time.
+ */
+private fun Easing.timeFor(value: Float): Float {
+    var low = 0f
+    var high = 1f
+    repeat(24) {
+        val mid = (low + high) / 2f
+        if (transform(mid) < value) low = mid else high = mid
+    }
+    return (low + high) / 2f
+}
+
 /** The film's still fading off its first frame: quick, so it reads as the picture arriving, not a dissolve. */
 private const val STILL_FADE_MS = 160
 
 /** How long a reel's moment shows its name as it starts. */
 private const val REEL_CAPTION_MS = 1_500L
+
+/**
+ * Where the portrait chrome's top glyphs sit in a reel: 12dp lower than a
+ * film's, so the bars at 10dp (3dp tall) have 16dp of picture under them
+ * before the 22dp arrow in its 44dp cell starts.
+ */
+private val REEL_CHROME_TOP = 18.dp
 
 /**
  * How long the Up next card waits before it plays on by itself. Long enough

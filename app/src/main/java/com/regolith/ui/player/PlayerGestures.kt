@@ -3,9 +3,13 @@ package com.regolith.ui.player
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.abs
@@ -30,7 +34,11 @@ interface PlayerGestureCallbacks {
     fun onPressReleased()
     /** A vertical drag began at [xFraction]; brightness on the left, volume on the right, full screen in the middle. */
     fun onDragStart(zone: Zone, xFraction: Float)
-    /** Positive = finger moved down, as a fraction of the layer height. */
+    /**
+     * Positive = finger moved down, as a fraction of the layer's height.
+     * Measured on the window, not on the layer, so it stays true while the
+     * picture the layer sits on moves and shrinks under the finger.
+     */
     fun onDrag(dyFraction: Float)
     /** [flingDown] is a fast downward flick. In the middle zone that is "leave the player". */
     fun onDragEnd(flingDown: Boolean)
@@ -43,67 +51,86 @@ interface PlayerGestureCallbacks {
  * long-press come from Compose's tap detector; single-finger vertical
  * drags and two-finger pinches share a hand-rolled detector because the
  * stock transform detector would swallow the drags.
+ *
+ * A drag is followed on the window rather than on the layer. The swipe down
+ * into the mini player moves and shrinks the picture under the finger, and
+ * measured on the moving layer the finger would hardly seem to move at all.
  */
-fun Modifier.playerGestures(callbacks: PlayerGestureCallbacks): Modifier = this
-    .pointerInput(callbacks) {
-        detectTapGestures(
-            onTap = { callbacks.onTap(zoneOf(it, size)) },
-            onDoubleTap = { callbacks.onDoubleTap(zoneOf(it, size)) },
-            onLongPress = { callbacks.onLongPressStart() },
-            onPress = {
-                tryAwaitRelease()
-                callbacks.onPressReleased()
-            },
-        )
-    }
-    .pointerInput(callbacks) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val slop = viewConfiguration.touchSlop
-            val startY = down.position.y
-            var dragging = false
-            var zooming = false
-            var totalDx = 0f
-            var prevDistance = -1f
-            val velocity = VelocityTracker()
+@Composable
+fun Modifier.playerGestures(callbacks: PlayerGestureCallbacks): Modifier {
+    val layer = remember { LayerPlace() }
+    return this
+        .onPlaced { layer.coordinates = it }
+        .pointerInput(callbacks) {
+            detectTapGestures(
+                onTap = { callbacks.onTap(zoneOf(it, size)) },
+                onDoubleTap = { callbacks.onDoubleTap(zoneOf(it, size)) },
+                onLongPress = { callbacks.onLongPressStart() },
+                onPress = {
+                    tryAwaitRelease()
+                    callbacks.onPressReleased()
+                },
+            )
+        }
+        .pointerInput(callbacks) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val slop = viewConfiguration.touchSlop
+                val start = layer.window(down.position)
+                var last = start
+                var dragging = false
+                var zooming = false
+                var totalDx = 0f
+                var prevDistance = -1f
+                val velocity = VelocityTracker()
 
-            while (true) {
-                val event = awaitPointerEvent()
-                val pressed = event.changes.filter { it.pressed }
-                if (pressed.isEmpty()) break
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val pressed = event.changes.filter { it.pressed }
+                    if (pressed.isEmpty()) break
 
-                if (pressed.size >= 2) {
-                    zooming = true
-                    val d = (pressed[0].position - pressed[1].position).getDistance()
-                    if (prevDistance > 0f && d > 0f) callbacks.onZoom(d / prevDistance)
-                    prevDistance = d
-                    event.changes.forEach { it.consume() }
-                    continue
-                }
-                if (zooming) continue
+                    if (pressed.size >= 2) {
+                        zooming = true
+                        val d = (pressed[0].position - pressed[1].position).getDistance()
+                        if (prevDistance > 0f && d > 0f) callbacks.onZoom(d / prevDistance)
+                        prevDistance = d
+                        event.changes.forEach { it.consume() }
+                        continue
+                    }
+                    if (zooming) continue
 
-                val c = pressed[0]
-                val dy = c.position.y - c.previousPosition.y
-                totalDx += c.position.x - c.previousPosition.x
-                if (!dragging) {
-                    val travelY = c.position.y - startY
-                    if (abs(travelY) > slop && abs(travelY) > abs(totalDx)) {
-                        dragging = true
-                        callbacks.onDragStart(zoneOf(c.position, size), c.position.x / size.width)
+                    val c = pressed[0]
+                    val at = layer.window(c.position)
+                    val dy = at.y - last.y
+                    totalDx += at.x - last.x
+                    last = at
+                    if (!dragging) {
+                        val travelY = at.y - start.y
+                        if (abs(travelY) > slop && abs(travelY) > abs(totalDx)) {
+                            dragging = true
+                            callbacks.onDragStart(zoneOf(c.position, size), c.position.x / size.width)
+                        }
+                    }
+                    if (dragging) {
+                        callbacks.onDrag(dy / size.height)
+                        velocity.addPosition(c.uptimeMillis, at)
+                        c.consume()
                     }
                 }
                 if (dragging) {
-                    callbacks.onDrag(dy / size.height)
-                    velocity.addPosition(c.uptimeMillis, c.position)
-                    c.consume()
+                    val vy = velocity.calculateVelocity().y
+                    callbacks.onDragEnd(flingDown = vy > FLING_DOWN_PX_PER_S)
                 }
             }
-            if (dragging) {
-                val vy = velocity.calculateVelocity().y
-                callbacks.onDragEnd(flingDown = vy > FLING_DOWN_PX_PER_S)
-            }
         }
-    }
+}
+
+/** Where the gesture layer is now, transforms and all: the window's view of a point on it. */
+private class LayerPlace {
+    var coordinates: LayoutCoordinates? = null
+
+    fun window(local: Offset): Offset = coordinates?.takeIf { it.isAttached }?.localToWindow(local) ?: local
+}
 
 private fun zoneOf(offset: Offset, size: IntSize): Zone = when {
     offset.x < size.width * SIDE_ZONE -> Zone.LEFT

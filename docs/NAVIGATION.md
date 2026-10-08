@@ -162,6 +162,10 @@ when the pill slides away or on a pushed page; on a wide window, a card in
 the bottom corner, in the wall's half beside an open page. The player moves
 itself on its own transition (`playerScreen`): its picture shrinks into the
 mini player's spot as the rest of it fades, and the back swipe scrubs that.
+So does the swipe down on the picture, which is the same back gesture sent
+by the app itself (`DirectNavigationEventInput`): the picture follows the
+finger with the page showing through, and letting go finishes or undoes it
+from where it is.
 Tapping the mini player pushes `Player(…, expand = true)`, which grows out
 of it; its ✕ stops the film. A film that has ended or failed stops when the
 player is left, and one that ends in the mini player with nothing after it
