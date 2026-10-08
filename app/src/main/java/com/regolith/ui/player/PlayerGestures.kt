@@ -40,8 +40,11 @@ interface PlayerGestureCallbacks {
      * picture the layer sits on moves and shrinks under the finger.
      */
     fun onDrag(dyFraction: Float)
-    /** [flingDown] is a fast downward flick. In the middle zone that is "leave the player". */
-    fun onDragEnd(flingDown: Boolean)
+    /**
+     * The finger let go, moving at [velocityY] pixels a second (positive is
+     * down): the screen decides what a flick is for each gesture.
+     */
+    fun onDragEnd(velocityY: Float)
     /** Pinch factor since the last event; > 1 spreads (fill), < 1 pinches (fit). */
     fun onZoom(factor: Float)
 }
@@ -118,8 +121,7 @@ fun Modifier.playerGestures(callbacks: PlayerGestureCallbacks): Modifier {
                     }
                 }
                 if (dragging) {
-                    val vy = velocity.calculateVelocity().y
-                    callbacks.onDragEnd(flingDown = vy > FLING_DOWN_PX_PER_S)
+                    callbacks.onDragEnd(velocity.calculateVelocity().y)
                 }
             }
         }
@@ -145,4 +147,5 @@ private fun zoneOf(offset: Offset, size: IntSize): Zone = when {
  */
 const val SIDE_ZONE = 0.15f
 
-private const val FLING_DOWN_PX_PER_S = 4_000f
+/** A flick down that leaves full screen or a finished film, however short the drag. */
+internal const val FLING_DOWN_PX_PER_S = 4_000f

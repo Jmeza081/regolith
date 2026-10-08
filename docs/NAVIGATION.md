@@ -165,7 +165,8 @@ mini player's spot as the rest of it fades, and the back swipe scrubs that.
 So does the swipe down on the picture, which is the same back gesture sent
 by the app itself (`DirectNavigationEventInput`): the picture follows the
 finger with the page showing through, and letting go finishes or undoes it
-from where it is.
+from where it is. A flick decides by its direction; a slow release, by
+whether the picture is past halfway.
 Tapping the mini player pushes `Player(…, expand = true)`, which grows out
 of it; its ✕ stops the film. A film that has ended or failed stops when the
 player is left, and one that ends in the mini player with nothing after it

@@ -339,16 +339,16 @@ fun PlayerScreen(
     val swipeCanShrink by rememberUpdatedState(
         navEvents != null && handoff?.slot != null && !immersive && !flex && !state.ended && state.error == null,
     )
-    // A finger's travel down the window as the put-away's progress: the
-    // picture's top keeping pace with it on its way to the mini player's.
-    // The gesture's progress is the transition's time, so the transition's
-    // own easing is undone first.
-    val shrinkProgress = { fingerPx: Float ->
+    // How far a finger's travel down the window has carried the picture: its
+    // top keeping pace with the finger on the way to the mini player's.
+    val shrinkFraction = { fingerPx: Float ->
         val from = pictureBounds
         val to = handoff?.slot
         val travel = if (from != null && to != null) to.top - from.top else 0f
-        if (travel <= 1f) 0f else FlightEasing.timeFor((fingerPx / travel).coerceIn(0f, 1f))
+        if (travel <= 1f) 0f else (fingerPx / travel).coerceIn(0f, 1f)
     }
+    // A flick: fast enough that it, not where the picture is, decides.
+    val shrinkFlickPxPerS by rememberUpdatedState(with(LocalDensity.current) { SHRINK_FLICK_DP_PER_S.dp.toPx() })
     // While it is on screen the mini player stays away from the picture: one
     // ExoPlayer draws on one surface. Shrinking, it lets go just before it
     // lands — the player's surface holds its last frame under the mini
@@ -528,9 +528,11 @@ fun PlayerScreen(
     // ordinary composable or a scrim drawn over the top.
     val pictureScale = 1f + dragUp * 0.16f - dragDown * 0.14f
     val haptics = LocalHapticFeedback.current
-    // One tick as you cross the point of no return, so you can feel that
-    // letting go now will do something.
-    val past = dragUp >= 1f || dragDown >= 1f
+    // One tick as you cross the point of no return into full screen, so you
+    // can feel that letting go now will do something. Not on the way down:
+    // the swipe into the mini player follows the thumb with no line to
+    // cross, and that is how the owner wants a swipe down to feel.
+    val past = dragUp >= 1f
     LaunchedEffect(past) { if (past) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -638,7 +640,10 @@ fun PlayerScreen(
                         swipeInput.backStarted(shrinkEvent(0f))
                     }
                     if (shrinkSwipe) {
-                        swipeInput.backProgressed(shrinkEvent(shrinkProgress(middleDy * (pictureBounds?.height ?: 0f))))
+                        // The gesture's progress is the transition's time, so the
+                        // transition's own easing is undone first.
+                        val carried = shrinkFraction(middleDy * (pictureBounds?.height ?: 0f))
+                        swipeInput.backProgressed(shrinkEvent(FlightEasing.timeFor(carried)))
                     } else {
                         middleDrag = middleDy
                     }
@@ -649,7 +654,8 @@ fun PlayerScreen(
                 if (d.kind == DragKind.Brightness) viewModel.setBrightness(dragValue) else system.setVolume(dragValue)
                 drag = d.copy(fraction = dragValue)
             }
-            override fun onDragEnd(flingDown: Boolean) {
+            override fun onDragEnd(velocityY: Float) {
+                val flingDown = velocityY > FLING_DOWN_PX_PER_S
                 val ended = zone
                 zone = null
                 drag = null
@@ -663,12 +669,21 @@ fun PlayerScreen(
                 if (ended != Zone.MIDDLE) return
                 val down = middleDy > 0f
                 val committed = abs(middleDy) > FULLSCREEN_DRAG_FRACTION || flingDown
+                val carried = shrinkFraction(middleDy * (pictureBounds?.height ?: 0f))
                 middleDy = 0f
                 if (shrinkSwipe) {
-                    // Let go: the put-away finishes from where the finger left
-                    // it, or the player comes back up if it was not far enough.
+                    // Let go, the way YouTube does it: a flick decides by its
+                    // direction, and otherwise where the picture is does, past
+                    // halfway on to the mini player and short of it back up.
+                    // There is no line to cross before letting go means
+                    // anything, so nothing marks one.
                     shrinkSwipe = false
-                    if (committed && down) swipeInput.backCompleted() else swipeInput.backCancelled()
+                    val finish = when {
+                        velocityY > shrinkFlickPxPerS -> true
+                        velocityY < -shrinkFlickPxPerS -> false
+                        else -> carried >= SHRINK_SETTLE_FRACTION
+                    }
+                    if (finish) swipeInput.backCompleted() else swipeInput.backCancelled()
                     return
                 }
                 if (!committed) return
@@ -2045,6 +2060,12 @@ private const val FULLSCREEN_DRAG_FRACTION = 0.12f
 
 /** How far into shrinking the mini player is handed the picture: just before it lands. */
 private const val MINI_HANDOVER_AT = 0.92f
+
+/** Let go slowly past this much of the way, the swipe down finishes into the mini player; short of it, back up. */
+private const val SHRINK_SETTLE_FRACTION = 0.5f
+
+/** A flick, in dp a second, decides the swipe down by its direction alone. */
+private const val SHRINK_FLICK_DP_PER_S = 1_000
 
 /** A step of the swipe down's back gesture, [progress] of the way into the mini player. */
 private fun shrinkEvent(progress: Float) = NavigationEvent(touchX = 0f, touchY = 0f, progress = progress, swipeEdge = NavigationEvent.EDGE_NONE)
