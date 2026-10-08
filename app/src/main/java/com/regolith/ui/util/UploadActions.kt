@@ -1,18 +1,12 @@
 package com.regolith.ui.util
 
 import com.regolith.data.spoof.SpoofMode
-import com.regolith.data.artwork.PosterRepository
 import com.regolith.data.transfer.UploadRepository
-import com.regolith.domain.artwork.ExistingArtwork
-import com.regolith.domain.artwork.FolderPosterOutcome
-import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.transfer.ConflictPolicy
 import com.regolith.domain.transfer.UploadNames
-import com.regolith.ui.components.PosterQuestion
 import com.regolith.ui.components.UploadQuestion
 import com.regolith.ui.components.UploadSection
 import com.regolith.ui.components.UploadSectionAction
-import com.regolith.ui.components.posterQuestion
 import com.regolith.ui.components.uploadClash
 import com.regolith.ui.components.uploadSection
 import dagger.assisted.Assisted
@@ -26,9 +20,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Sending things from the phone into one folder on a share (P16), and
- * making one picture its poster (P19), for every screen that shows a folder:
- * Browse, and a collection's wall in the Library.
+ * Sending things from the phone into one folder on a share (P16), for every
+ * screen that shows a folder: Browse, and a collection's page in the
+ * Library. A picture picked to be the folder's poster (P19) is not sent from
+ * here: it goes to Set as poster to be framed first (`UploadActionsHost`).
  *
  * The same shape as [FileActions]: each ViewModel makes one for its folder
  * with its own scope ([Factory]), `UploadActionsHost` draws the sheets and
@@ -45,7 +40,6 @@ class UploadActions @AssistedInject constructor(
     @Assisted private val folderId: Long,
     @Assisted private val messages: FileActions,
     private val uploads: UploadRepository,
-    private val posters: PosterRepository,
     private val spoof: SpoofMode,
 ) {
     @AssistedFactory
@@ -61,9 +55,6 @@ class UploadActions @AssistedInject constructor(
 
     /** A pick waiting for its question to be answered. Not UI state: nothing draws it. */
     private var pendingPick: UploadRepository.Prepared? = null
-
-    /** A poster picked for a folder with pictures of its own, while its question is up. Not UI state. */
-    private var pendingPoster: String? = null
 
     init {
         scope.launch {
@@ -150,71 +141,6 @@ class UploadActions @AssistedInject constructor(
         },
     )
 
-    // ── the folder's poster (P19) ──────────────────────────────────────
-    //
-    // One picture, written straight from here the way the poster editor
-    // writes its poster.jpg — a few hundred KB, not a job for the upload
-    // queue. The folder's tiles then redraw through artwork.replaced.
-
-    /**
-     * The photo picker came back with [uri] to be this folder's poster. It
-     * goes straight up, unless the folder has a picture of its own already:
-     * then the one question first, replace it or rename it out of the way.
-     */
-    fun onPosterPicked(uri: String) {
-        val where = destination ?: return
-        scope.launch {
-            val art = try {
-                posters.folderArtwork(folderId, uri)
-            } catch (e: SmbFailure) {
-                messages.say("Couldn't reach ${where.serverName}", failed = true)
-                return@launch
-            } ?: return@launch
-            if (art.existing.isEmpty()) {
-                uploadPoster(uri, ExistingArtwork.KEEP)
-            } else {
-                pendingPoster = uri
-                val question = posterQuestion(
-                    folderId = folderId,
-                    folderName = art.folderName,
-                    serverName = where.serverName,
-                    pickedUri = uri,
-                    existing = art.existing.map { it.name to it.sizeBytes },
-                    keptNames = art.keptNames,
-                    pickedName = art.picked.fileName,
-                )
-                _state.update { it.copy(posterQuestion = question) }
-            }
-        }
-    }
-
-    fun answerPosterQuestion(choice: ExistingArtwork) {
-        val uri = pendingPoster ?: return
-        pendingPoster = null
-        _state.update { it.copy(posterQuestion = null) }
-        scope.launch { uploadPoster(uri, choice) }
-    }
-
-    /** Backed out of the question: nothing is sent and nothing on the share changes. */
-    fun dismissPosterQuestion() {
-        pendingPoster = null
-        _state.update { it.copy(posterQuestion = null) }
-    }
-
-    private suspend fun uploadPoster(uri: String, existing: ExistingArtwork) {
-        val folderName = destination?.folderName ?: "this folder"
-        val server = destination?.serverName ?: "the server"
-        when (posters.uploadFolderPoster(folderId, uri, existing)) {
-            FolderPosterOutcome.SAVED -> messages.say("Poster set for $folderName")
-            FolderPosterOutcome.SAVED_STILL_TOO_BIG -> messages.say("Poster set for $folderName as a still: that GIF is over 8 MB")
-            FolderPosterOutcome.SAVED_STILL_NESTED -> messages.say("Poster set for $folderName as a still: only top-level folder posters move")
-            FolderPosterOutcome.UNREADABLE -> messages.say("Couldn't read that picture", failed = true)
-            FolderPosterOutcome.READ_ONLY -> messages.say("$server is read-only, so the poster can't be saved there", failed = true)
-            FolderPosterOutcome.UNREACHABLE -> messages.say("Couldn't reach $server", failed = true)
-            FolderPosterOutcome.FAILED -> messages.say("The poster couldn't be saved. Try again", failed = true)
-        }
-    }
-
     // ── the section's own controls ─────────────────────────────────────
 
     fun onSectionAction(action: UploadSectionAction) {
@@ -249,8 +175,6 @@ data class UploadActionsState(
     val sheetOpen: Boolean = false,
     /** Names in a pick are taken: the one question, asked before anything is sent. */
     val question: UploadQuestion? = null,
-    /** A poster was picked for a folder that has pictures of its own already: replace or rename them. */
-    val posterQuestion: PosterQuestion? = null,
     /** The uploads into this folder, for the top of the screen's list. Null when there are none. */
     val section: UploadSection? = null,
 )

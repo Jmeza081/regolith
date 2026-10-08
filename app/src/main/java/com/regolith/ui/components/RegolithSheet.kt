@@ -76,6 +76,12 @@ fun RegolithSheet(
      * footer leave, and no more.
      */
     contentScrolls: Boolean = true,
+    /**
+     * Drawn instead of [title] and [subtitle], for a sheet about one thing
+     * that has a picture of its own: the lightbox's More, whose header is the
+     * picture beside its name. [title] still names the sheet for the record.
+     */
+    header: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RegolithTheme.colors
@@ -98,9 +104,13 @@ fun RegolithSheet(
         ) {
             Box38Handle()
             Spacer(Modifier.height(Spacing.s12))
-            DisplayText(title, style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()))
-            if (subtitle != null) {
-                Text(subtitle, style = TextStyles.meta12, color = colors.metadata, modifier = Modifier.padding(top = Spacing.s2))
+            if (header != null) {
+                header()
+            } else {
+                DisplayText(title, style = TextStyles.dialogTitle.copy(fontSize = 14.designSp(), lineHeight = 19.6.designSp()))
+                if (subtitle != null) {
+                    Text(subtitle, style = TextStyles.meta12, color = colors.metadata, modifier = Modifier.padding(top = Spacing.s2))
+                }
             }
             Spacer(Modifier.height(Spacing.s4))
             Column(

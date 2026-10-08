@@ -111,6 +111,22 @@ scan or as soon as its album is opened, so the mosaic is laid out before any
 thumbnail arrives. The thumbnails are made in the background after a scan,
 once the videos' posters are done.
 
+Pictures are looked after where they are. Hold one in the mosaic (or in Browse)
+to start picking, and the pill offers **Move**, **Rename**, **Save**, **Poster**
+and **Delete**: Save copies them into the phone's gallery, under Pictures ›
+Regolith, where any other app can use them; Poster makes the one picked its
+collection's poster. The lightbox has the same at hand: **Set as poster** and
+**More** (Rename, Move to…, Save to phone, Details, Delete from share), up in its
+bar on the inner display. Renaming a video's own picture says it will stop being
+that video's, and deleting a collection's poster says what its tile falls back
+to — another picture of its own, or a mosaic.
+
+**Set as poster** frames the picture 2:3: pinch and drag it behind the box, and
+the crop is saved as `poster.jpg` while the picture itself stays as it is. Or
+**Use whole picture**: a JPEG, PNG, WebP or GIF of 8 MB or less simply becomes
+the poster, renamed `poster.jpg` (or `.png` and so on); a HEIC, or anything
+bigger, is copied as a `poster.jpg` sized for a poster and left as it was.
+
 ### Posters that fly
 
 Tap a poster and it flies to where its page shows it. A video's poster grows
@@ -166,9 +182,16 @@ Don't like the frame a folder picked? "Make a poster from this frame", at the
 foot of the player's Playback settings, opens an editor on the frame you paused
 at: scrub, type a time or step a frame at a time, then drag and pinch the picture
 behind a 2:3 box and save. It is written as `poster.jpg` in the film's folder on
-the share, asking first if one is already there, and becomes that folder's
-poster: every folder is a collection, and its poster is the collection's, even
-when it holds a single film. Every tile showing it picks it up at once.
+the share and becomes that folder's poster: every folder is a collection, and
+its poster is the collection's, even when it holds a single film. Every tile
+showing it picks it up at once.
+
+A poster is never written over. Wherever a new one comes from — a frame, a
+picture on the share, one from the phone — the one there now is kept, renamed
+with the day it stopped being the poster (`poster.jpg` becomes
+`poster (8 Oct).jpg`), and stays in the folder as an ordinary picture under
+Images. A sheet shows both before anything changes: the old poster and the name
+it will keep, beside the new one.
 
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an
@@ -242,10 +265,14 @@ line above the nav pill follows the batch from anywhere else in the app. A
 video that lands is a video in the library at once; a photo or any other file
 lands among the folder's other files in Browse.
 
-A collection in the Library takes new videos the same way. **Add to this
-collection**, in its top bar or beside Play all on a collection's own page,
-offers videos from the gallery or the file picker, and a poster for its tile,
-and the uploads show at the top of its wall.
+A collection in the Library takes new pictures and videos the same way. **Add
+to this collection**, in its top bar or beside Play all on a collection's own
+page, offers photos and videos from the gallery, any picture or video file, and
+a poster for its tile, and the uploads show at the top of its page. Pictures go
+up as they are — a HEIC stays a HEIC — and land under Images once they are
+there. The gallery hides a photo's own name, so a camera shot is named for the
+moment it was taken (`20241008_153212.jpg`), which is the name a Samsung camera
+gave it; the file picker keeps any file's real name.
 
 It is built for the ways uploads go wrong. If the Wi-Fi drops or the NAS
 sleeps, the batch waits and carries on by itself from the bytes already sent —
@@ -257,13 +284,13 @@ or replace — except the same file sent twice, which is simply skipped.
 Nothing half-written ever sits on the share under a real name.
 
 **Folder poster**, the third choice under Upload (**Collection poster** on a
-Library collection), makes one picture the folder's own poster. It is saved as `poster.jpg` — the first name Regolith looks
-for, and one every media server reads — the right way up and as a JPEG,
-whatever the phone took it as, and every tile showing the folder changes at
-once. If the folder already has a picture of its own (a `folder.jpg`, a
-`cover.png`, an older `poster.jpg`), you are asked first: rename the old one
-out of the way — `folder.jpg` becomes `folder (1).jpg`, still there but no
-longer the poster — or replace it.
+Library collection), makes one picture from the phone the folder's own poster.
+It opens in Set as poster to be framed 2:3 first (or used whole), and is saved
+as `poster.jpg` — the first name Regolith looks for, and one every media server
+reads — the right way up and as a JPEG, whatever the phone took it as. Every
+tile showing the folder changes at once. A picture of its own already there (a
+`folder.jpg`, a `cover.png`, an older `poster.jpg`) is kept under the day's
+name, as above.
 
 A GIF can be a poster too. For a top-level folder — a collection on the
 Library's first screen — it moves there: Upload › Folder poster sends it

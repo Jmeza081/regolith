@@ -145,7 +145,9 @@ private fun MosaicPick(picked: Boolean, modifier: Modifier = Modifier) {
         modifier
             .size(20.dp)
             .background(if (picked) colors.ink else colors.overArt, PillShape)
-            .then(if (picked) Modifier else Modifier.border(1.5.dp, colors.onMediaCircleBorder, PillShape)),
+            // Picked, the white circle wears a dark edge, so it still shows
+            // on a white sky or a sheet of paper.
+            .border(1.5.dp, if (picked) colors.ground else colors.onMediaCircleBorder, PillShape),
         contentAlignment = Alignment.Center,
     ) {
         if (picked) Icon(painterResource(R.drawable.rg_ic_check), contentDescription = "Picked", tint = colors.ground, modifier = Modifier.size(12.dp))

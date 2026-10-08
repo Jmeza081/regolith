@@ -10,11 +10,13 @@ import android.util.Log
 import androidx.core.net.toUri
 import com.regolith.domain.fileops.FileNames
 import com.regolith.domain.transfer.PickedFile
+import com.regolith.domain.transfer.UploadNames
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -71,6 +73,7 @@ class ContentPhoneFiles @Inject constructor(
         var name: String? = null
         var size = -1L
         var modified: Long? = null
+        var taken: Long? = null
         // No projection: providers disagree about which columns exist, and
         // asking for one a provider lacks can throw rather than return null.
         resolver.query(address, null, null, null, null)?.use { c ->
@@ -79,13 +82,17 @@ class ContentPhoneFiles @Inject constructor(
                 size = c.longOrNull(OpenableColumns.SIZE) ?: -1L
                 // A document says when it changed (ms); a photo says when it
                 // was taken (ms); a MediaStore row says when it changed, in SECONDS.
+                taken = c.longOrNull(MediaStore.MediaColumns.DATE_TAKEN)
                 modified = c.longOrNull(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
-                    ?: c.longOrNull(MediaStore.MediaColumns.DATE_TAKEN)
+                    ?: taken
                     ?: c.longOrNull(MediaStore.MediaColumns.DATE_MODIFIED)?.times(1000)
             }
         }
         val display = name ?: address.lastPathSegment?.substringAfterLast('/') ?: "upload"
-        PickedFile(uri, FileNames.sanitize(display), size, modified?.takeIf { it > 0 })
+        // The photo picker hides the real name behind a number of its own;
+        // give a camera shot back the name its capture time made (P20).
+        val named = if (uri.startsWith(PHOTO_PICKER)) UploadNames.fromPhotoPicker(display, taken, ZoneId.systemDefault()) else display
+        PickedFile(uri, FileNames.sanitize(named), size, modified?.takeIf { it > 0 })
     } catch (e: SecurityException) {
         Log.w(TAG, "no access to describe $uri", e)
         null
@@ -160,5 +167,8 @@ class ContentPhoneFiles @Inject constructor(
 
     private companion object {
         const val TAG = "Regolith/Upload"
+
+        /** What Android's photo picker hands back: `content://media/picker/0/…`. */
+        const val PHOTO_PICKER = "content://media/picker"
     }
 }

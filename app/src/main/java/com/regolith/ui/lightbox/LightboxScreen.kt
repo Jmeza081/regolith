@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -72,7 +73,11 @@ import com.regolith.ui.components.LocalSpoof
 import com.regolith.ui.components.PictureScrim
 import com.regolith.ui.components.ScrimEdge
 import com.regolith.ui.components.onPicture
+import com.regolith.ui.components.FileActionsHost
 import com.regolith.ui.components.RegolithSheet
+import com.regolith.ui.components.SheetChoice
+import com.regolith.domain.media.PictureSaves
+import com.regolith.ui.util.formatDate
 import com.regolith.ui.components.posterFlight
 import com.regolith.ui.library.PictureTile
 import com.regolith.ui.theme.PillShape
@@ -91,18 +96,23 @@ import com.regolith.ui.components.timeFor
 
 /**
  * The lightbox (the canvas "Images on the Share", Light-Open, Light-Zoom,
- * Light-Inner): one picture at a time on black, flown in from the tile that
- * was tapped and back into it when closed. Swipe sideways for its
- * neighbours, pinch or double-tap to zoom, swipe down to send it back.
+ * Light-Inner, Light-More): one picture at a time on black, flown in from
+ * the tile that was tapped and back into it when closed. Swipe sideways for
+ * its neighbours, pinch or double-tap to zoom, swipe down to send it back.
  *
  * A tap brings the chrome in and out: the name and "3 of 86" at the top,
- * when it was taken and how big it is at the foot. The inner display adds a
- * strip of the album along the bottom, to jump about in it.
+ * when it was taken and how big it is at the foot, with Set as poster and
+ * More (Rename, Move to…, Save to phone, Details, Delete from share). The
+ * inner display puts those in the bar and a strip of the album along the
+ * bottom, to jump about in it.
+ *
+ * [onSetPoster] opens Set as poster for the picture on screen.
  */
 @Composable
 fun LightboxScreen(
     viewModel: LightboxViewModel,
     onClose: () -> Unit,
+    onSetPoster: (folderId: Long, pictureId: Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -114,24 +124,55 @@ fun LightboxScreen(
             LaunchedEffect(Unit) { onClose() }
             return@Box
         }
-        Lightbox(state, viewModel.pictureId, onClose)
+        Lightbox(
+            state, viewModel.pictureId, onClose,
+            actions = PictureActions(
+                onPoster = { onSetPoster(it.folderId, it.pictureId) },
+                onRename = viewModel::rename,
+                onMove = viewModel::move,
+                onSave = viewModel::save,
+                onDelete = viewModel::delete,
+            ),
+        )
     }
+    // The rename prompt, the delete confirm, the move sheet and their
+    // messages: an album's own, for the one picture on screen.
+    FileActionsHost(viewModel.fileActions, tagPrefix = "lightbox")
 }
 
+/** What can be done to the picture on screen, from the bar and from More. */
+private class PictureActions(
+    val onPoster: (PictureTile) -> Unit,
+    val onRename: (PictureTile) -> Unit,
+    val onMove: (PictureTile) -> Unit,
+    val onSave: (PictureTile) -> Unit,
+    val onDelete: (PictureTile) -> Unit,
+)
+
 @Composable
-private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit) {
+private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit, actions: PictureActions) {
     val pictures = state.pictures
     val colors = RegolithTheme.colors
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val wide = LocalWindowShape.current.wide
     val start = remember { pictures.indexOfFirst { it.pictureId == startId }.coerceAtLeast(0) }
-    val pager = rememberPagerState(initialPage = start) { pictures.size }
+    // The pager reads the album through one state, so its page count and its
+    // keys always come from the same list. The album changes while it is open
+    // (a picture renamed, moved or set as the poster), and lambdas that each
+    // captured their own copy disagreed for a frame: a count of 10 asked a
+    // list of 9 for its tenth key.
+    val latest = rememberUpdatedState(pictures)
+    val pager = rememberPagerState(initialPage = start) { latest.value.size }
     val current = pictures.getOrNull(pager.currentPage) ?: pictures.first()
     val zooms = remember { HashMap<Long, PictureZoom>() }
     fun zoomOf(id: Long) = zooms.getOrPut(id) { PictureZoom() }
     var chrome by rememberSaveable { mutableStateOf(true) }
     var details by rememberSaveable { mutableStateOf(false) }
+    var more by rememberSaveable { mutableStateOf(false) }
+    // Spoof mode and the demo library: nothing here can be changed, so the
+    // bar keeps More (for Details) and nothing else.
+    val onPoster = if (state.readOnly == null) ({ actions.onPoster(current) }) else null
     val focus = LocalPictureFocus.current
 
     // --- The swipe down, back into the tile. It drives the very transition
@@ -154,8 +195,9 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit)
     // (PictureFocus), and a picture swiped away goes back to fitted.
     LaunchedEffect(pager) {
         snapshotFlow { pager.settledPage }.collect { page ->
-            focus?.pictureId = pictures.getOrNull(page)?.pictureId
-            pictures.forEachIndexed { i, p -> if (i != page) zooms[p.pictureId]?.reset() }
+            val now = latest.value
+            focus?.pictureId = now.getOrNull(page)?.pictureId
+            now.forEachIndexed { i, p -> if (i != page) zooms[p.pictureId]?.reset() }
         }
     }
 
@@ -179,13 +221,13 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit)
 
         HorizontalPager(
             state = pager,
-            key = { pictures[it].pictureId },
+            key = { page -> latest.value.getOrNull(page)?.pictureId ?: page },
             userScrollEnabled = !currentZoomed && !swiping,
             beyondViewportPageCount = 1,
             pageSpacing = Spacing.s18,
             modifier = Modifier.fillMaxSize().testTag("lightbox_pager"),
         ) { page ->
-            val picture = pictures[page]
+            val picture = latest.value.getOrNull(page) ?: return@HorizontalPager
             val zoom = zoomOf(picture.pictureId)
             val isCurrent = page == pager.currentPage
             val dragState = rememberDraggableState { delta ->
@@ -206,7 +248,7 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit)
                 onTap = { chrome = !chrome },
                 onEdge = { forward ->
                     val next = page + if (forward) 1 else -1
-                    if (next in pictures.indices) scope.launch { pager.animateScrollToPage(next) }
+                    if (next in latest.value.indices) scope.launch { pager.animateScrollToPage(next) }
                 },
                 modifier = Modifier.draggable(
                     state = dragState,
@@ -246,7 +288,8 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit)
                 position = "${pager.currentPage + 1} of ${pictures.size}" + if (state.album.isNotEmpty()) " · ${state.album}" else "",
                 wide = wide,
                 onClose = close,
-                onDetails = { details = true },
+                onPoster = onPoster,
+                onMore = { more = true },
             )
         }
         AnimatedVisibility(
@@ -260,12 +303,27 @@ private fun Lightbox(state: LightboxUiState, startId: Long, onClose: () -> Unit)
                 pictures = pictures,
                 page = pager.currentPage,
                 wide = wide,
-                onDetails = { details = true },
+                onPoster = onPoster,
+                onMore = { more = true },
                 onJump = { scope.launch { pager.animateScrollToPage(it) } },
             )
         }
     }
 
+    if (more) {
+        PictureMoreSheet(
+            picture = current,
+            album = state.album,
+            readOnly = state.readOnly,
+            onDismiss = { more = false },
+            onPoster = { more = false; actions.onPoster(current) },
+            onRename = { more = false; actions.onRename(current) },
+            onMove = { more = false; actions.onMove(current) },
+            onSave = { more = false; actions.onSave(current) },
+            onDetails = { more = false; details = true },
+            onDelete = { more = false; actions.onDelete(current) },
+        )
+    }
     if (details) PictureDetails(current, state.album) { details = false }
 }
 
@@ -348,9 +406,9 @@ private fun WholePicture(picture: PictureTile, pageWidth: Dp, pageHeight: Dp, mo
     AsyncImage(model = request, contentDescription = picture.title, modifier = modifier, contentScale = ContentScale.Fit)
 }
 
-/** The picture's top bar: close, its name, and where it is in the album; on a wide window, Details beside. */
+/** The picture's top bar: close, its name, and where it is in the album; on a wide window, its actions beside. */
 @Composable
-private fun LightboxTopBar(picture: PictureTile, position: String, wide: Boolean, onClose: () -> Unit, onDetails: () -> Unit) {
+private fun LightboxTopBar(picture: PictureTile, position: String, wide: Boolean, onClose: () -> Unit, onPoster: (() -> Unit)?, onMore: () -> Unit) {
     val colors = RegolithTheme.colors
     // A wash dark enough to read over a white sky (PictureScrim).
     PictureScrim(ScrimEdge.TOP) {
@@ -379,7 +437,10 @@ private fun LightboxTopBar(picture: PictureTile, position: String, wide: Boolean
                 modifier = Modifier.testTag("lightbox_position"),
             )
         }
-        if (wide) LightboxAction("Details", LucideR.drawable.lucide_ic_info, onDetails, "lightbox_details_button", inline = true)
+        if (wide) {
+            if (onPoster != null) LightboxAction("Set as poster", R.drawable.rg_ic_set_poster, onPoster, "lightbox_poster_button", inline = true)
+            LightboxAction("More", R.drawable.rg_ic_more, onMore, "lightbox_more_button", inline = true, iconOnly = true)
+        }
     }
     }
 }
@@ -395,7 +456,8 @@ private fun LightboxFoot(
     pictures: List<PictureTile>,
     page: Int,
     wide: Boolean,
-    onDetails: () -> Unit,
+    onPoster: (() -> Unit)?,
+    onMore: () -> Unit,
     onJump: (Int) -> Unit,
 ) {
     val colors = RegolithTheme.colors
@@ -416,7 +478,10 @@ private fun LightboxFoot(
         if (wide) {
             Filmstrip(pictures, page, onJump)
         } else {
-            LightboxAction("Details", LucideR.drawable.lucide_ic_info, onDetails, "lightbox_details_button")
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                if (onPoster != null) LightboxAction("Set as poster", R.drawable.rg_ic_set_poster, onPoster, "lightbox_poster_button")
+                LightboxAction("More", R.drawable.rg_ic_more, onMore, "lightbox_more_button")
+            }
         }
     }
     }
@@ -430,9 +495,20 @@ private fun pictureFacts(picture: PictureTile, withDate: Boolean): String = list
     picture.camera.takeIf { !withDate },
 ).joinToString(" · ")
 
-/** One of the lightbox's actions: a frosted tile with its glyph over its name, or a pill on a wide window's bar ([inline]). */
+/** "Taken 14 Jul 2024 · 4032 × 3024 · 4.2 MB": More's line under the picture's name. */
+private fun moreFacts(picture: PictureTile): String = listOfNotNull(
+    picture.takenAtMs?.let { "Taken ${formatDate(it)}" },
+    if (picture.width != null && picture.height != null) "${picture.width} × ${picture.height}" else null,
+    formatBytes(picture.sizeBytes),
+).joinToString(" · ")
+
+/**
+ * One of the lightbox's actions: a frosted tile with its glyph over its
+ * name, or a pill on a wide window's bar ([inline]) — a circle with the
+ * glyph alone when [iconOnly] (More's three dots).
+ */
 @Composable
-private fun LightboxAction(label: String, icon: Int, onClick: () -> Unit, testTag: String, inline: Boolean = false) {
+private fun LightboxAction(label: String, icon: Int, onClick: () -> Unit, testTag: String, inline: Boolean = false, iconOnly: Boolean = false) {
     val colors = RegolithTheme.colors
     val shape = if (inline) PillShape else RoundedCornerShape(16.dp)
     val base = Modifier
@@ -441,7 +517,11 @@ private fun LightboxAction(label: String, icon: Int, onClick: () -> Unit, testTa
         .border(1.dp, Color.White.copy(alpha = 0.18f), shape)
         .clickable(onClick = onClick)
         .testTag(testTag)
-    if (inline) {
+    if (inline && iconOnly) {
+        Box(base.size(40.dp), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = label, tint = colors.ink, modifier = Modifier.size(18.dp))
+        }
+    } else if (inline) {
         Row(base.height(40.dp).padding(horizontal = Spacing.s12), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
             Icon(painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(16.dp))
             Text(label, style = TextStyles.buttonSmall, color = colors.ink)
@@ -477,6 +557,59 @@ private fun Filmstrip(pictures: List<PictureTile>, page: Int, onJump: (Int) -> U
             ) {
                 ArtworkImage(picture.artwork, Modifier.fillMaxSize(), fallbackLabel = picture.name)
             }
+        }
+    }
+}
+
+/**
+ * More (the canvas's Light-More): the picture's name and facts over
+ * everything else it can do. On a source that cannot be changed, only
+ * Details, and the reason.
+ */
+@Composable
+private fun PictureMoreSheet(
+    picture: PictureTile,
+    album: String,
+    readOnly: String?,
+    onDismiss: () -> Unit,
+    onPoster: () -> Unit,
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onSave: () -> Unit,
+    onDetails: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    RegolithSheet(
+        title = picture.name,
+        onDismiss = onDismiss,
+        testTag = "lightbox_more_sheet",
+        header = {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = Spacing.s12)) {
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))) {
+                    ArtworkImage(picture.artwork, Modifier.fillMaxSize(), fallbackLabel = picture.name)
+                }
+                Column(Modifier.padding(start = Spacing.s12).weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                    Text(picture.name, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(moreFacts(picture), style = TextStyles.meta12, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+        },
+    ) {
+        if (readOnly == null) {
+            SheetChoice(R.drawable.rg_ic_set_poster, "Set as poster", "Frame it 2:3 for ${album.ifEmpty { "this folder" }}", "lightbox_more_poster", onClick = onPoster)
+            SheetChoice(R.drawable.rg_ic_rename, "Rename", picture.name, "lightbox_more_rename", onClick = onRename)
+            SheetChoice(R.drawable.rg_ic_folder_go, "Move to…", "Another collection or folder", "lightbox_more_move", onClick = onMove)
+            SheetChoice(R.drawable.rg_ic_download, "Save to phone", "Into your gallery, ${PictureSaves.PLACE}", "lightbox_more_save", onClick = onSave)
+        } else {
+            Text(readOnly, style = TextStyles.settingMeta, color = colors.metadata, modifier = Modifier.padding(vertical = Spacing.s12).testTag("lightbox_more_read_only"))
+        }
+        SheetChoice(LucideR.drawable.lucide_ic_info, "Details", "Where it lives, the camera and the date", "lightbox_more_details", onClick = onDetails)
+        if (readOnly == null) {
+            Box(Modifier.fillMaxWidth().padding(vertical = Spacing.s4).height(1.dp).background(colors.hairline))
+            // The red belongs to the dialog that decides; here only the glyph.
+            SheetChoice(R.drawable.rg_ic_trash, "Delete from share", "Permanent: it is gone from the share", "lightbox_more_delete", tint = colors.accent, onClick = onDelete)
         }
     }
 }

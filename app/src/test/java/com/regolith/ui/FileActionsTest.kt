@@ -9,10 +9,12 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.db.RegolithDatabase
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareEntity
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.FolderLookup
 import com.regolith.data.transfer.DownloadStore
 import com.regolith.data.transfer.SelectionStore
+import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.media.Companions
 import com.regolith.domain.media.DemoSource
 import com.regolith.domain.smb.ServerAccess
@@ -23,6 +25,7 @@ import com.regolith.domain.transfer.FolderPick
 import com.regolith.testing.FakeSmbGateway
 import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.FileActionsState
+import com.regolith.ui.util.FileOpMessages
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -276,11 +279,96 @@ class FileActionsTest {
         assertEquals(1, target.folderCount)
     }
 
+    // ── a picture by itself: the lightbox (P20) ───────────────────────
+
+    private suspend fun picture(name: String, folderId: Long = filmsId, folderPath: String = "Films"): ShareFileEntity {
+        val relPath = "$folderPath/$name"
+        gateway.addFile("media", relPath, ByteArray(10))
+        val id = db.shareFileDao().insert(ShareFileEntity(shareId = shareId, folderId = folderId, relPath = relPath, name = name, sizeBytes = 10, modifiedAtMs = 1))
+        return db.shareFileDao().byId(id)!!
+    }
+
+    @Test
+    fun `a picture renamed by itself says so, and leaves a running selection alone`() = runTest {
+        val heat = film("Heat.mkv")
+        val shot = picture("IMG_4821.jpg")
+        val actions = actions()
+        pick(heat)
+
+        actions.renameOne(FileOpTarget.other(shot.id))
+        val renaming = actions.awaitState { it.renaming != null }.renaming!!
+        assertTrue(renaming.picture)
+        assertNull(renaming.warning)
+        actions.rename("Lake at dusk")
+
+        assertEquals("Renamed 1 picture", actions.awaitState { it.message != null }.message!!.text)
+        assertTrue(onShare("Films/Lake at dusk.jpg"))
+        assertEquals(setOf(heat.id), selection.snapshot()!!.files.map { it.fileId }.toSet())
+    }
+
+    @Test
+    fun `renaming the poster warns that the collection falls back to its next picture`() = runTest {
+        val poster = picture("poster.jpg")
+        picture("folder.jpg")
+        val actions = actions()
+
+        actions.renameOne(FileOpTarget.other(poster.id))
+
+        val warning = actions.awaitState { it.renaming != null }.renaming!!.warning
+        assertEquals("It’s Films’s poster, so Films wears folder.jpg instead.", warning)
+    }
+
+    @Test
+    fun `renaming a video's own picture warns that it stops being the video's`() = runTest {
+        film("Heat.mkv")
+        val still = picture("Heat.jpg")
+        val actions = actions()
+
+        actions.renameOne(FileOpTarget.other(still.id))
+
+        assertEquals("It’s Heat’s picture: with a new name it stops being that video’s.", actions.awaitState { it.renaming != null }.renaming!!.warning)
+    }
+
+    @Test
+    fun `deleting the only poster says the tile goes back to a mosaic`() = runTest {
+        val poster = picture("poster.jpg")
+        picture("IMG_1.jpg")
+        val actions = actions()
+
+        actions.deleteOne(FileOpTarget.other(poster.id))
+
+        val target = actions.awaitState { it.confirmingDelete != null }.confirmingDelete!!
+        assertEquals("Delete this picture?", FileOpMessages.deleteTitle(target))
+        assertEquals("Delete picture", FileOpMessages.deleteConfirmLabel(target))
+        assertTrue(FileOpMessages.deleteBody(target).endsWith("It’s Films’s poster, so Films shows a mosaic of what’s in it instead."))
+        actions.confirmDelete()
+        assertEquals("Deleted 1 picture", actions.awaitState { it.message != null }.message!!.text)
+        assertFalse(onShare("Films/poster.jpg"))
+    }
+
+    @Test
+    fun `a picture moved by itself goes where it was sent, and can come back`() = runTest {
+        val shot = picture("IMG_1.jpg")
+        val actions = actions()
+
+        actions.moveOne(FileOpTarget.other(shot.id), here = filmsId)
+        actions.awaitState { it.moveSheet != null }
+        actions.moveChoose(archiveId)
+        actions.awaitState { it.moveSheet?.chosenFolderId == archiveId }
+        actions.confirmMove()
+
+        val message = actions.awaitState { it.message != null }.message!!
+        assertEquals("Moved 1 picture to Archive", message.text)
+        assertTrue(onShare("Archive/IMG_1.jpg"))
+        assertNull(selection.snapshot())
+    }
+
     /** The reads FileActions makes, straight off the DAOs. */
     private class DaoLookup(private val db: RegolithDatabase) : FolderLookup {
         override suspend fun folder(folderId: Long) = db.folderDao().byId(folderId)
         override suspend fun file(fileId: Long) = db.mediaFileDao().byId(fileId)
         override suspend fun other(otherId: Long) = db.shareFileDao().byId(otherId)
+        override suspend fun othersIn(folderId: Long) = db.shareFileDao().inFolder(folderId)
         override suspend fun filesUnder(folderId: Long): List<MediaFileEntity> {
             val out = mutableListOf<MediaFileEntity>()
             var frontier = listOf(folderId)

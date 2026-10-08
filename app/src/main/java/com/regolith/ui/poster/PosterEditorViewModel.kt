@@ -1,11 +1,17 @@
 package com.regolith.ui.poster
 
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import com.regolith.data.artwork.PosterRepository
 import com.regolith.domain.artwork.CropRect
+import com.regolith.domain.artwork.FolderPoster
 import com.regolith.domain.artwork.PosterSaveOutcome
+import com.regolith.domain.smb.SmbFailure
+import com.regolith.ui.components.PosterMaking
+import com.regolith.ui.components.PosterSwap
 import com.regolith.player.Media3Frames
 import com.regolith.player.PlaybackSession
 import com.regolith.ui.navigation.RegolithKey
@@ -16,9 +22,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToLong
 
 /**
@@ -93,34 +101,79 @@ class PosterEditorViewModel @AssistedInject constructor(
     /** One frame forward (1) or back (-1). */
     fun stepFrames(frames: Int) = seekBy(frames * _state.value.frameStepMs)
 
+    /** The crop waiting on the sheet's answer, with the frame it was cut from. */
+    private var pending: Pair<Bitmap, CropRect>? = null
+
     /**
-     * Write the poster. [crop] is in the frame's own pixels. With [replace]
-     * false an existing poster.jpg stops the save and raises the confirm
-     * dialog instead; the dialog's Replace calls this again with true.
+     * Write the poster. [crop] is in the frame's own pixels. A folder with a
+     * poster of its own already gets the sheet first ([PosterEditorUiState.swap]):
+     * the old one is kept under a dated name, never written over, and the
+     * sheet says so with both pictures in view.
      */
-    fun save(crop: CropRect, replace: Boolean = false) {
+    fun save(crop: CropRect) {
         val s = _state.value
         val frame = s.frame ?: return
         if (s.saving) return
-        _state.update { it.copy(saving = true, confirmReplace = false, saveError = null) }
+        _state.update { it.copy(saving = true, saveError = null) }
         viewModelScope.launch {
-            val outcome = posters.save(key.fileId, frame, crop, replace)
-            _state.update {
-                when (outcome) {
-                    PosterSaveOutcome.SAVED -> it.copy(saving = false, done = true)
-                    PosterSaveOutcome.EXISTS -> it.copy(saving = false, confirmReplace = true)
-                    PosterSaveOutcome.READ_ONLY -> it.copy(saving = false, saveError = "This share is read-only, so the poster can’t be saved there.")
-                    PosterSaveOutcome.UNREACHABLE -> it.copy(saving = false, saveError = "Couldn’t reach the server. Check the connection and try again.")
-                    PosterSaveOutcome.FAILED -> it.copy(saving = false, saveError = "The poster couldn’t be saved. Try again.")
-                }
+            val kept = try {
+                posters.keptFor(key.fileId)
+            } catch (e: SmbFailure) {
+                _state.update { it.copy(saving = false, saveError = UNREACHABLE) }
+                return@launch
+            }
+            val folderId = posters.folderOf(key.fileId)
+            if (kept.isEmpty() || folderId == null) {
+                write(frame, crop)
+                return@launch
+            }
+            pending = frame to crop
+            val preview = withContext(Dispatchers.Default) { PosterRepository.preview(frame, crop) }
+            val swap = PosterSwap.of(
+                folderId = folderId,
+                folderName = s.target?.folderName ?: "This folder",
+                kept = kept,
+                next = preview.asImageBitmap(),
+                nextName = FolderPoster.NAME,
+                making = PosterMaking.FRAME,
+                source = s.title.ifEmpty { "this film" },
+            )
+            _state.update { it.copy(saving = false, swap = swap) }
+        }
+    }
+
+    /** The sheet's Set as poster. */
+    fun confirmSwap() {
+        val (frame, crop) = pending ?: return
+        if (_state.value.saving) return
+        _state.update { it.copy(saving = true) }
+        viewModelScope.launch { write(frame, crop) }
+    }
+
+    /** The sheet's Cancel: nothing is written. */
+    fun dismissSwap() {
+        pending = null
+        _state.update { it.copy(swap = null) }
+    }
+
+    private suspend fun write(frame: Bitmap, crop: CropRect) {
+        val outcome = posters.save(key.fileId, frame, crop)
+        pending = null
+        _state.update {
+            when (outcome) {
+                PosterSaveOutcome.SAVED -> it.copy(saving = false, swap = null, done = true)
+                PosterSaveOutcome.READ_ONLY -> it.copy(saving = false, swap = null, saveError = "This share is read-only, so the poster can’t be saved there.")
+                PosterSaveOutcome.UNREACHABLE -> it.copy(saving = false, swap = null, saveError = UNREACHABLE)
+                PosterSaveOutcome.FAILED -> it.copy(saving = false, swap = null, saveError = "The poster couldn’t be saved. Try again.")
             }
         }
     }
 
-    /** The confirm dialog's "keep" answer. */
-    fun keepExisting() = _state.update { it.copy(confirmReplace = false) }
-
     override fun onCleared() {
         source.close()
+    }
+
+    private companion object {
+        const val UNREACHABLE = "Couldn’t reach the server. Check the connection and try again."
     }
 }

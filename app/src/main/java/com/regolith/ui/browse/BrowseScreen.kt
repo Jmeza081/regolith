@@ -66,6 +66,7 @@ import androidx.activity.compose.BackHandler
 import com.regolith.ui.util.SelectionUiState
 import com.regolith.ui.components.TopBarAction
 import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.PictureVerbs
 import com.regolith.ui.components.UploadActionsHost
 import com.regolith.ui.components.UploadSection
 import com.regolith.ui.components.UploadSectionView
@@ -123,6 +124,12 @@ fun BrowseScreen(
      * trip back is one it sent the user on.
      */
     onSendingAway: () -> Unit = {},
+    /**
+     * Set as poster for [folderId]: a picture on the share ([pictureId], the
+     * selection's Poster) or one picked on the phone ([uri], the upload
+     * sheet's Folder poster).
+     */
+    onSetPoster: (folderId: Long, pictureId: Long?, uri: String?) -> Unit = { _, _, _ -> },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val offline = state.offlineMessage
@@ -150,7 +157,7 @@ fun BrowseScreen(
                     modifier = Modifier.width(SHARE_TREE_WIDTH).fillMaxHeight().padding(top = TREE_TOP_PADDING, bottom = Spacing.s18),
                 )
             }
-            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, onSendingAway, Modifier.weight(1f))
+            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, onSendingAway, onSetPoster, Modifier.weight(1f))
         }
     }
 }
@@ -168,6 +175,7 @@ private fun BrowseContent(
     selectedFileId: Long?,
     highlightFileId: Long?,
     onSendingAway: () -> Unit,
+    onSetPoster: (folderId: Long, pictureId: Long?, uri: String?) -> Unit,
     modifier: Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -537,6 +545,13 @@ private fun BrowseContent(
             tagPrefix = "browse",
             onDownload = viewModel::downloadSelection,
             onCancel = viewModel::cancelSelection,
+            // Nothing but pictures picked: Save and Poster where Download was.
+            pictureVerbs = remember(viewModel) {
+                PictureVerbs(
+                    onSave = viewModel::savePictures,
+                    onPoster = { viewModel.posterFromSelection { folderId, pictureId -> onSetPoster(folderId, pictureId, null) } },
+                )
+            },
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "browse")
 
@@ -549,6 +564,7 @@ private fun BrowseContent(
                 sources = listOf(UploadSource.GALLERY, UploadSource.FILES, UploadSource.POSTER),
                 posterNoun = "folder",
                 onSendingAway = onSendingAway,
+                onPosterPicked = { uri -> state.currentFolderId?.let { onSetPoster(it, null, uri) } },
             )
         }
     }

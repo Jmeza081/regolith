@@ -1,5 +1,7 @@
 package com.regolith.domain.transfer
 
+import com.regolith.domain.media.MediaFileTypes
+
 /**
  * A multi-selection of things to download, and the rules that govern it.
  *
@@ -55,7 +57,12 @@ data class OtherPick(
     /** The relPath of the folder holding it, as for [FilePick]. */
     val folderRelPath: String,
     val sizeBytes: Long = 0,
-)
+    /** Its file name, which says whether it is a picture ([isPicture]). */
+    val name: String = "",
+) {
+    /** A picture (P20): a selection of nothing else offers Save and Poster rather than Download. */
+    val isPicture: Boolean get() = MediaFileTypes.isPicture(name)
+}
 
 /**
  * What has been picked. An instance of this is one selection session.

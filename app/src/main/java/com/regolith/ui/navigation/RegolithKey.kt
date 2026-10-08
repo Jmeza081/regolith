@@ -135,6 +135,14 @@ sealed interface RegolithKey : NavKey {
      */
     @Serializable data class PosterEditor(val fileId: Long, val positionMs: Long) : RegolithKey
 
+    /**
+     * Set as poster: a picture made into [folderId]'s poster, cut 2:3 or
+     * whole. Either a picture on the share ([pictureId], from the lightbox or
+     * an album's selection) or one picked on the phone ([uri], a content URI
+     * from the photo picker: Upload › Collection poster). Exactly one is set.
+     */
+    @Serializable data class SetPoster(val folderId: Long, val pictureId: Long? = null, val uri: String? = null) : RegolithKey
+
     /** Add Source Server flow (design section 03). Phase 1 fills these in. */
     @Serializable sealed interface AddServer : RegolithKey {
         @Serializable data object Search : AddServer

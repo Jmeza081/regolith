@@ -1,6 +1,7 @@
 package com.regolith.ui.util
 
 import com.regolith.data.db.FolderEntity
+import com.regolith.data.pictures.PictureSaver
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.transfer.SelectionStore
 import com.regolith.data.transfer.TransferRepository
@@ -44,6 +45,8 @@ data class SelectionUiState(
     val excludedFiles: Set<Long> = emptySet(),
     /** Files that are not videos, picked in their own right (Browse lists them). */
     val pickedOthers: Set<Long> = emptySet(),
+    /** Of those, the pictures (P20): an album's Images tab picks nothing else. */
+    val pickedPictures: Set<Long> = emptySet(),
     /** Files that are not videos, taken back out of a picked folder. */
     val excludedOthers: Set<Long> = emptySet(),
     /** What the picked files that are not videos weigh, for the summary. */
@@ -79,9 +82,10 @@ data class SelectionUiState(
     val summary: String
         get() {
             val others = pickedOthers.size
-            val othersPart = when (others) {
-                0 -> null
-                1 -> "1 other file"
+            val othersPart = when {
+                others == 0 -> null
+                pickedPictures.size == others -> if (others == 1) "1 picture" else "$others pictures"
+                others == 1 -> "1 other file"
                 else -> "$others other files"
             }
             return when {
@@ -118,6 +122,9 @@ data class SelectionUiState(
      * a pick of nothing but files that are not videos has nothing to download.
      */
     val canDownload: Boolean get() = itemCount > pickedOthers.size && hasRoom
+
+    /** Nothing but pictures is picked: the pill offers Save and Poster instead of Download ([com.regolith.ui.components.PictureVerbs]). */
+    val onlyPictures: Boolean get() = itemCount > 0 && pickedPictures.size == itemCount
 
     /**
      * How many picks sit strictly below [relPath].
@@ -180,6 +187,7 @@ class SelectionPresenter @Inject constructor(
     private val selection: SelectionStore,
     private val transfers: TransferRepository,
     private val library: LibraryRepository,
+    private val saver: PictureSaver,
 ) {
 
     /** The live selection, totalled. Emits null whenever selection mode is off. */
@@ -258,6 +266,7 @@ class SelectionPresenter @Inject constructor(
                 .groupBy({ it.first }, { it.second }),
             excludedFiles = sel.excludedFiles.map { it.fileId }.toSet(),
             pickedOthers = sel.others.map { it.otherId }.toSet(),
+            pickedPictures = sel.others.filter { it.isPicture }.map { it.otherId }.toSet(),
             excludedOthers = sel.excludedOthers.map { it.otherId }.toSet(),
             otherBytes = sel.others.sumOf { it.sizeBytes },
             excludedFolders = sel.excludedFolders.map { it.folderId }.toSet(),
@@ -288,6 +297,36 @@ class SelectionPresenter @Inject constructor(
     /** Is this row inside one of the picks, rather than a pick itself? */
     fun isCovered(shareId: Long, relPath: String): Boolean =
         selection.snapshot()?.coveredByAncestor(shareId, relPath) == true
+
+    /** The pictures picked (P20), for Save and Poster. */
+    private fun pickedPictures(): List<OtherPick> = selection.snapshot()?.others?.filter { it.isPicture }.orEmpty()
+
+    /**
+     * Save: the picked pictures copied into the phone's gallery (Pictures ›
+     * Regolith). The selection ends at once; the copying carries on without
+     * the screen ([PictureSaver]), and its message comes when it is done.
+     */
+    fun savePictures() {
+        val ids = pickedPictures().map { it.otherId }
+        if (ids.isEmpty()) return
+        saver.save(ids)
+        selection.clear()
+    }
+
+    /**
+     * Poster: the one picture picked and its folder, for Set as poster, and
+     * the selection ends. Null, with the selection left as it is, unless
+     * exactly one picture is picked.
+     */
+    suspend fun posterPick(): PosterPick? {
+        val pick = pickedPictures().singleOrNull() ?: return null
+        val folderId = library.other(pick.otherId)?.folderId ?: return null
+        selection.clear()
+        return PosterPick(folderId, pick.otherId)
+    }
+
+    /** The picture [posterPick] found, and the folder it would be the poster of. */
+    data class PosterPick(val folderId: Long, val pictureId: Long)
 
     fun begin() = selection.begin()
     fun cancel() = selection.clear()

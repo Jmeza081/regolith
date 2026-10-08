@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.domain.transfer.OtherPick
 import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.UploadActions
 import com.regolith.ui.util.SelectionPresenter
@@ -146,7 +147,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val artworkRevisions = MutableStateFlow<Map<ArtworkOwner, Int>>(emptyMap())
 
     init {
-        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[it.filter].orEmpty(), order)) } } }
+        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }
         viewModelScope.launch { prefs.picturesAcross(PicturesAcross.PHONE).collect { n -> _uiState.update { it.copy(picturesAcrossPhone = n) } } }
@@ -225,7 +226,7 @@ class LibraryViewModel @AssistedInject constructor(
             }.collect { built ->
                 unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
-                _uiState.update { it.withWall(built.state, sorted(built.walls[it.filter].orEmpty(), it.order)) }
+                _uiState.update { it.withWall(built.state, sorted(built.walls[wallFilter(built.state, it.filter)].orEmpty(), it.order)) }
                 measureIfNeeded(built.state.profile)
             }
         }
@@ -525,10 +526,17 @@ class LibraryViewModel @AssistedInject constructor(
         when (tile) {
             is LibraryTile.Collection -> selection.toggleFolder(tile.toPick())
             is LibraryTile.Title -> selection.toggleFile(tile.toPick())
-            // Pictures are picked on their own page; see the Images tab.
-            is LibraryTile.Picture -> Unit
+            is LibraryTile.Picture -> selection.toggleOther(tile.picture.toPick())
         }
     }
+
+    /** A hold on a picture in an album's Images tab (P20): picking starts there. */
+    fun beginPictureSelection(picture: PictureTile) {
+        selection.begin()
+        togglePicture(picture)
+    }
+
+    fun togglePicture(picture: PictureTile) = selection.toggleOther(picture.toPick())
 
     /** Everything on this wall, leaving picks made on other screens alone. */
     fun selectAllHere() {
@@ -537,7 +545,22 @@ class LibraryViewModel @AssistedInject constructor(
         selection.addAll(
             folders = tiles.filterIsInstance<LibraryTile.Collection>().map { it.toPick() },
             files = tiles.filterIsInstance<LibraryTile.Title>().map { it.toPick() },
+            others = tiles.filterIsInstance<LibraryTile.Picture>().map { it.picture.toPick() },
         )
+    }
+
+    /** Select all on an album's Images tab: its [pictures], and nothing on the other tabs. */
+    fun selectAllPictures(pictures: List<PictureTile>) {
+        selection.begin()
+        selection.addAll(folders = emptyList(), files = emptyList(), others = pictures.map { it.toPick() })
+    }
+
+    /** Save: the picked pictures into the phone's gallery ([SelectionPresenter.savePictures]). */
+    fun savePictures() = selection.savePictures()
+
+    /** Poster: the one picture picked goes to Set as poster ([open]), and the selection ends. */
+    fun posterFromSelection(open: (folderId: Long, pictureId: Long) -> Unit) {
+        viewModelScope.launch { selection.posterPick()?.let { open(it.folderId, it.pictureId) } }
     }
 
     fun cancelSelection() = selection.cancel()
@@ -559,6 +582,9 @@ class LibraryViewModel @AssistedInject constructor(
 
     private fun LibraryTile.Title.toPick() =
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
+
+    private fun PictureTile.toPick() =
+        OtherPick(otherId = pictureId, shareId = shareId, folderRelPath = relPath.substringBeforeLast('/', ""), sizeBytes = sizeBytes, name = name)
 
     private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, artworkRevision: Int, momentCount: Int = 0): LibraryTile.Title {
         val duration = progress?.durationMs?.takeIf { it > 0 } ?: file.durationMs
@@ -603,7 +629,7 @@ class LibraryViewModel @AssistedInject constructor(
     /** The wall, and a profile's Videos tab: one order for every wall in the Library. */
     fun pickSort(sort: LibrarySort) {
         val next = _uiState.value.order.pick(sort)
-        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted[it.filter].orEmpty(), next)) }
+        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), next)) }
         viewModelScope.launch { prefs.setLibraryOrder(next) }
     }
 
@@ -641,8 +667,18 @@ class LibraryViewModel @AssistedInject constructor(
 
     /** A chip under the tabs: the same wall, showing another kind of thing. */
     fun setFilter(filter: LibraryFilter) {
-        _uiState.update { it.copy(filter = filter, tiles = sorted(unsorted[filter].orEmpty(), it.order)) }
+        _uiState.update { it.copy(filter = filter, tiles = sorted(unsorted[wallFilter(it, filter)].orEmpty(), it.order)) }
     }
+
+    /**
+     * Which wall [state]'s tiles come from. A collection's own page (its
+     * profile) has tabs, not chips: its tiles are always its videos, for the
+     * Videos tab and Play all, whichever chip it was opened from — its
+     * moments and pictures are the other tabs' own lists. [filter] still
+     * says which tab it opened on.
+     */
+    private fun wallFilter(state: LibraryUiState, filter: LibraryFilter): LibraryFilter =
+        if (state.profile != null) LibraryFilter.VIDEOS else filter
 
     /** A profile's Images tab, sorted from its sheet. */
     fun pickPictureSort(sort: PictureSort) {

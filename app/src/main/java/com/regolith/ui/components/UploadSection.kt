@@ -12,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.composables.icons.lucide.R as LucideR
 import com.regolith.R
-import com.regolith.domain.artwork.ExistingArtwork
 import com.regolith.domain.transfer.ConflictPolicy
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -104,8 +103,8 @@ fun UploadSectionView(
 
 /**
  * Where an upload's files come from. Browse offers the gallery, any file and
- * a poster; a Library collection offers videos and a poster, since that is
- * all its wall would show.
+ * a poster; a Library collection offers the gallery, pictures and videos as
+ * files, and a poster, since those are what its pages show (P20).
  */
 enum class UploadSource {
     /** Android's photo picker, photos and videos. */
@@ -117,10 +116,13 @@ enum class UploadSource {
     /** The system's file picker, anything at all. */
     FILES,
 
+    /** The system's file picker, pictures and videos. */
+    MEDIA_FILES,
+
     /** The system's file picker, videos only. */
     VIDEO_FILES,
 
-    /** One picture, to be the folder's own poster (P19). */
+    /** One picture, framed 2:3 to be the folder's own poster (P19, P20). */
     POSTER,
 }
 
@@ -138,12 +140,13 @@ internal fun UploadSourceSheet(
     posterNoun: String,
     onPick: (UploadSource) -> Unit,
     onDismiss: () -> Unit,
+    note: String? = null,
 ) {
     RegolithSheet(title = title, subtitle = detail, onDismiss = onDismiss, testTag = "upload_sheet") {
         for (source in sources) {
             when (source) {
                 UploadSource.GALLERY -> SheetChoice(
-                    LucideR.drawable.lucide_ic_images, "Photos & videos", "From your gallery", "upload_sheet_photos",
+                    LucideR.drawable.lucide_ic_image, "Photos and videos", "From your gallery, pictures and videos together", "upload_sheet_photos",
                 ) { onPick(source) }
                 UploadSource.GALLERY_VIDEOS -> SheetChoice(
                     LucideR.drawable.lucide_ic_film, "Videos", "From your gallery", "upload_sheet_videos",
@@ -151,65 +154,24 @@ internal fun UploadSourceSheet(
                 UploadSource.FILES -> SheetChoice(
                     LucideR.drawable.lucide_ic_file, "Files", "Downloads, documents, anything else", "upload_sheet_files",
                 ) { onPick(source) }
+                UploadSource.MEDIA_FILES -> SheetChoice(
+                    LucideR.drawable.lucide_ic_file, "Files", "Any picture or video file on the phone", "upload_sheet_files",
+                ) { onPick(source) }
                 UploadSource.VIDEO_FILES -> SheetChoice(
                     LucideR.drawable.lucide_ic_file_video_camera, "Video files", "Downloads and other apps", "upload_sheet_video_files",
                 ) { onPick(source) }
                 UploadSource.POSTER -> SheetChoice(
-                    LucideR.drawable.lucide_ic_image_up, "${posterNoun.replaceFirstChar { it.uppercase() }} poster",
-                    "A picture for this $posterNoun's tile, saved as poster.jpg", "upload_sheet_poster",
+                    R.drawable.rg_ic_set_poster, "${posterNoun.replaceFirstChar { it.uppercase() }} poster",
+                    "One picture, framed 2:3 before it is saved", "upload_sheet_poster",
                 ) { onPick(source) }
             }
         }
-    }
-}
-
-/**
- * A poster was picked for a folder that has a picture of its own already
- * (P19). Both are shown — the one the folder has now, as the app draws it,
- * and yours — so the choice is between two things you can see. Rename comes
- * first because it loses nothing; Replace is the one that deletes, so its
- * glyph is the accent, as in [UploadQuestionSheet].
- */
-@Composable
-internal fun PosterQuestionSheet(
-    question: PosterQuestion,
-    onAnswer: (ExistingArtwork) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = RegolithTheme.colors
-    RegolithSheet(title = "${question.folderName} already has a poster", subtitle = question.subtitle, onDismiss = onDismiss, testTag = "poster_question_sheet") {
-        SurfaceCard(
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.s8, bottom = Spacing.s8),
-            contentPadding = PaddingValues(horizontal = Spacing.s12),
-        ) {
-            question.existing.forEachIndexed { index, picture ->
-                ListRow(
-                    title = picture.name,
-                    meta = picture.detail,
-                    // The first is the one the folder shows, and the app has that picture to hand.
-                    leading = if (index == 0) RowLeading.Poster(question.current, picture.name) else RowLeading.Glyph(LucideR.drawable.lucide_ic_image),
-                    trailing = RowTrailing.None,
-                    compact = true,
-                    onClick = {},
-                    testTag = "poster_question_existing",
-                )
-            }
-            ListRow(
-                title = "Your picture",
-                meta = question.pickedNote,
-                leading = RowLeading.Picture(question.picked, LucideR.drawable.lucide_ic_image, poster = true),
-                trailing = RowTrailing.None,
-                compact = true,
-                onClick = {},
-                testTag = "poster_question_picked",
+        if (note != null) {
+            Text(
+                note, style = TextStyles.settingMeta, color = RegolithTheme.colors.metadata,
+                modifier = Modifier.padding(top = Spacing.s12, bottom = Spacing.s8).testTag("upload_sheet_note"),
             )
         }
-        SheetChoice(LucideR.drawable.lucide_ic_copy, question.renameLabel, question.renameNote, "poster_question_rename") {
-            onAnswer(ExistingArtwork.KEEP)
-        }
-        SheetChoice(
-            LucideR.drawable.lucide_ic_replace, question.replaceLabel, question.replaceNote, "poster_question_replace", tint = colors.accent,
-        ) { onAnswer(ExistingArtwork.REPLACE) }
     }
 }
 

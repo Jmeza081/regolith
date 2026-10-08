@@ -10,16 +10,18 @@ import com.regolith.ui.util.UploadActions
 
 /**
  * Everything [UploadActions] puts on screen except the section itself: the
- * "Upload to…" sheet, the system pickers it opens, and the two questions (a
- * name already taken, a folder that already has a poster). The screen draws
- * `UploadSectionView` in its own list, where the files are going.
+ * "Upload to…" sheet, the system pickers it opens, and the question asked
+ * when a name is already taken. The screen draws `UploadSectionView` in its
+ * own list, where the files are going.
  *
  * [sources] are the sheet's choices: Browse offers the gallery, any file and
- * a poster; a Library collection offers videos and a poster. [posterNoun]
- * names what the poster is for. [onSendingAway] runs just before a picker
- * opens: the picker is another app's screen, so Regolith goes to the
- * background, and the app lock needs to know the trip back is one it sent
- * the user on.
+ * a poster; a Library collection offers the gallery, its pictures and
+ * videos as files, and a poster. [posterNoun] names what the poster is for,
+ * and [note] sits under the choices. A picture picked to be the poster goes
+ * to [onPosterPicked] — Set as poster, to be framed 2:3 before anything is
+ * sent. [onSendingAway] runs just before a picker opens: the picker is
+ * another app's screen, so Regolith goes to the background, and the app
+ * lock needs to know the trip back is one it sent the user on.
  */
 @Composable
 fun UploadActionsHost(
@@ -29,6 +31,8 @@ fun UploadActionsHost(
     sources: List<UploadSource>,
     posterNoun: String,
     onSendingAway: () -> Unit,
+    onPosterPicked: (uri: String) -> Unit,
+    note: String? = null,
 ) {
     val state by actions.state.collectAsStateWithLifecycle()
 
@@ -45,7 +49,7 @@ fun UploadActionsHost(
     }
     // One picture, to be the folder's poster (P19): images only, and one.
     val posterPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) actions.onPosterPicked(uri.toString())
+        if (uri != null) onPosterPicked(uri.toString())
     }
 
     if (state.sheetOpen) {
@@ -54,6 +58,7 @@ fun UploadActionsHost(
             detail = detail,
             sources = sources,
             posterNoun = posterNoun,
+            note = note,
             onPick = { source ->
                 actions.dismissSheet()
                 onSendingAway()
@@ -61,6 +66,7 @@ fun UploadActionsHost(
                     UploadSource.GALLERY -> galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                     UploadSource.GALLERY_VIDEOS -> galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                     UploadSource.FILES -> filePicker.launch(arrayOf("*/*"))
+                    UploadSource.MEDIA_FILES -> filePicker.launch(arrayOf("image/*", "video/*"))
                     UploadSource.VIDEO_FILES -> filePicker.launch(arrayOf("video/*"))
                     UploadSource.POSTER -> posterPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 }
@@ -70,8 +76,5 @@ fun UploadActionsHost(
     }
     state.question?.let { question ->
         UploadQuestionSheet(question, onAnswer = actions::answerUploadQuestion, onDismiss = actions::dismissUploadQuestion)
-    }
-    state.posterQuestion?.let { question ->
-        PosterQuestionSheet(question, onAnswer = actions::answerPosterQuestion, onDismiss = actions::dismissPosterQuestion)
     }
 }

@@ -82,6 +82,8 @@ import com.regolith.ui.components.ChromeMessageHost
 import com.regolith.ui.components.LocalAppSnackbar
 import com.regolith.ui.poster.PosterEditorScreen
 import com.regolith.ui.poster.PosterEditorViewModel
+import com.regolith.ui.poster.SetPosterScreen
+import com.regolith.ui.poster.SetPosterViewModel
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavRailInset
@@ -335,7 +337,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // while the message that reports on it is showing: a message needs a
     // host to be shown in, or it holds the queue (see the wide window's host
     // below). The pill itself appears there only as the toolbar, never as a nav.
-    val searchChrome = topKey is RegolithKey.Search && (selecting || messageUp)
+    // The lightbox is the same case without the picking: its Rename, Move and
+    // Delete, and a poster set from it, report in that same message line.
+    val pushedChrome = (topKey is RegolithKey.Search || topKey is RegolithKey.Lightbox) && (selecting || messageUp)
     val pillHere = currentTab != null || selecting
     // Search has no rail beside it, so while the rail is its toolbar it moves
     // over to make room, as the tab screens always have (tabContent).
@@ -401,7 +405,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // A pushed page has no pill: a phone's bar docks to the bottom on its own,
     // and the page stops short of it — as it does short of a wide window's
     // card, which would otherwise sit on the page's last rows.
-    val miniOnPushedPage = miniPlayerShown && currentTab == null && !searchChrome
+    val miniOnPushedPage = miniPlayerShown && currentTab == null && !pushedChrome
     val pushedClearance by animateDpAsState(
         when {
             !miniOnPushedPage -> 0.dp
@@ -533,6 +537,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         val folderId = openUploads ?: return@LaunchedEffect
         openUploadFolder(folderId.takeIf { it >= 0 })
         appViewModel.openedUploads()
+    }
+    // A poster made from a picture (Set as poster closes as it finishes).
+    LaunchedEffect(Unit) {
+        appViewModel.posterNotices.collect { text -> launch { appSnackbar.showMessage(text, kind = MessageKind.DONE) } }
+    }
+    // Save to phone, which carries on after the album is left.
+    LaunchedEffect(Unit) {
+        appViewModel.pictureSaves.collect { saved ->
+            launch { appSnackbar.showMessage(saved.text, kind = if (saved.failed) MessageKind.FAILED else MessageKind.DONE) }
+        }
     }
     // One message per finished batch, wherever the user is by then. "Show"
     // only when they are somewhere else: in the folder, the rows say it all.
@@ -778,6 +792,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                         pictureFocus.pictureId = pictureId
                                         openFromWall(RegolithKey.Lightbox(folderId, pictureId, onWall))
                                     },
+                                    onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
                                 )
                             }
                         }
@@ -817,6 +832,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     onPlayAll = ::playAll,
                                     onSendingAway = appViewModel::sendingAway,
+                                    onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
                                     // The tree restarts the Browse chain instead of pushing onto
                                     // it, so back from a jump leaves Browse rather than walking
                                     // through every folder the tree was used to skip.
@@ -963,6 +979,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     creationCallback = { it.create(key.folderId, key.pictureId, key.onWall) },
                                 ),
                                 onClose = { backStack.removeLastOrNull() },
+                                onSetPoster = { folderId, pictureId -> backStack.add(RegolithKey.SetPoster(folderId, pictureId)) },
+                            )
+                        }
+                        entry<RegolithKey.SetPoster> { key ->
+                            SetPosterScreen(
+                                viewModel = hiltViewModel<SetPosterViewModel, SetPosterViewModel.Factory>(
+                                    creationCallback = { it.create(key) },
+                                ),
+                                onClose = { backStack.removeLastOrNull() },
                             )
                         }
                         entry<RegolithKey.PosterEditor> { key ->
@@ -1019,7 +1044,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // sight it takes its place at once too, with nothing to
                     // slide; after a landing it goes on to where the pill
                     // says, if that is somewhere else.
-                    val pillShowing = navVisible && pillHere && (currentTab != null || searchChrome) && !splash && locked != true
+                    val pillShowing = navVisible && pillHere && (currentTab != null || pushedChrome) && !splash && locked != true
                     val barLanding = handoff.landed != null
                     val barTarget = when {
                         barLanding -> barLandingLift
@@ -1070,7 +1095,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     LockScreen(authenticate = appViewModel::authenticate, onUnlocked = appViewModel::unlocked)
                 }
 
-                if ((currentTab != null || searchChrome) && !splash && locked != true) {
+                if ((currentTab != null || pushedChrome) && !splash && locked != true) {
                     // A wide window's message has no pill to ride above, so it
                     // docks to the bottom of the window instead, clear of the
                     // rail on the start edge. Without this the message was
@@ -1269,11 +1294,11 @@ private val BACKGROUND_WORK_MAX_WIDTH = 420.dp
  * Whether the mini player shows over this screen once the player is put
  * away: not over Shorts, whose clips are a player of their own (it pauses the
  * film as it opens), and not in the full-screen flows — onboarding, adding a
- * server, the poster editor.
+ * server, the poster editor and Set as poster.
  */
 private fun RegolithKey?.hostsMiniPlayer(): Boolean =
     this !is RegolithKey.Shorts && this !is RegolithKey.Onboarding &&
-        this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor &&
+        this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor && this !is RegolithKey.SetPoster &&
         // The lightbox is a picture on black, edge to edge: the film carries on underneath.
         this !is RegolithKey.Lightbox
 

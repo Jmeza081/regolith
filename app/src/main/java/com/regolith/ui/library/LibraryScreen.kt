@@ -73,6 +73,7 @@ import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.PictureVerbs
 import com.regolith.ui.components.UploadActionsHost
 import com.regolith.ui.components.UploadSectionView
 import com.regolith.ui.components.UploadSource
@@ -225,6 +226,12 @@ fun LibraryScreen(
      * wall's own ([onWall]) for a picture lying loose beside albums.
      */
     onOpenPicture: (folderId: Long, pictureId: Long, onWall: Boolean) -> Unit = { _, _, _ -> },
+    /**
+     * Set as poster for [folderId]: a picture on the share ([pictureId], the
+     * selection's Poster) or one picked on the phone ([uri], the upload
+     * sheet's Collection poster).
+     */
+    onSetPoster: (folderId: Long, pictureId: Long?, uri: String?) -> Unit = { _, _, _ -> },
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val uploadActions = viewModel.uploadActions
@@ -694,7 +701,9 @@ fun LibraryScreen(
                         artwork = picture.artwork,
                         aspect = picture.aspect,
                         name = picture.title,
-                        onClick = { openPicture(picture, false) },
+                        onClick = { if (selecting) viewModel.togglePicture(picture) else openPicture(picture, false) },
+                        onLongClick = { viewModel.beginPictureSelection(picture) },
+                        checked = if (selecting) selection.picks(picture) else null,
                         testTag = picture.testTag,
                         poster = picture.poster,
                         gif = picture.gif,
@@ -721,8 +730,9 @@ fun LibraryScreen(
                         title = picture.title,
                         meta = pictureMeta(picture),
                         leading = RowLeading.Thumb(picture.artwork, fallbackLabel = picture.name),
-                        trailing = RowTrailing.None,
-                        onClick = { openPicture(picture, false) },
+                        trailing = if (selecting && selection.picks(picture)) RowTrailing.Checked else RowTrailing.None,
+                        onClick = { if (selecting) viewModel.togglePicture(picture) else openPicture(picture, false) },
+                        onLongClick = { viewModel.beginPictureSelection(picture) },
                         testTag = picture.testTag,
                     )
                 }
@@ -865,7 +875,9 @@ fun LibraryScreen(
         }
         val barGround by animateColorAsState(if (collapsed) colors.ground else colors.ground.copy(alpha = 0f), label = "profile_bar")
         if (selecting) {
-            SelectionBar(selection!!.itemCount, onBack, viewModel::selectAllHere, viewModel::cancelSelection, Modifier.background(colors.ground))
+            // Select all on the Images tab is its pictures; on the others, the wall's tiles.
+            val selectAll = { if (showPictures) viewModel.selectAllPictures(profile.pictures) else viewModel.selectAllHere() }
+            SelectionBar(selection!!.itemCount, onBack, selectAll, viewModel::cancelSelection, Modifier.background(colors.ground))
         } else {
             TopBar(
                 title = if (collapsed) state.title else "",
@@ -908,18 +920,27 @@ fun LibraryScreen(
             tagPrefix = "library",
             onDownload = viewModel::downloadSelection,
             onCancel = viewModel::cancelSelection,
+            // Nothing but pictures picked: Save and Poster where Download was.
+            pictureVerbs = remember(viewModel) {
+                PictureVerbs(
+                    onSave = viewModel::savePictures,
+                    onPoster = { viewModel.posterFromSelection { folderId, pictureId -> onSetPoster(folderId, pictureId, null) } },
+                )
+            },
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "library")
-        // Videos and a poster into this collection, the same flows Browse uses
-        // for a folder; only the choices differ, since the wall shows videos.
+        // Pictures, videos and a poster into this collection, the same flows
+        // Browse uses for a folder; only the choices differ.
         uploadActions?.let { actions ->
             UploadActionsHost(
                 actions = actions,
                 title = "Add to ${state.title}",
                 detail = uploads.serverName?.let { "On $it" },
-                sources = listOf(UploadSource.GALLERY_VIDEOS, UploadSource.VIDEO_FILES, UploadSource.POSTER),
+                sources = listOf(UploadSource.GALLERY, UploadSource.MEDIA_FILES, UploadSource.POSTER),
                 posterNoun = "collection",
                 onSendingAway = onSendingAway,
+                onPosterPicked = { uri -> viewModel.folderId?.let { onSetPoster(it, null, uri) } },
+                note = "Pictures go up as they are, with their names. They land under Images once the upload is done.",
             )
         }
     }
@@ -1073,12 +1094,25 @@ private fun TileView(
                 chip = if (tile.picture.gif) "GIF" else null,
                 fallbackLabel = tile.picture.name,
                 dimmed = dimmed,
-                onClick = { onOpenPicture(tile.picture) },
+                onClick = if (selecting) {
+                    { onToggle(tile) }
+                } else {
+                    { onOpenPicture(tile.picture) }
+                },
+                onLongClick = { onLongPress(tile) },
+                checked = if (selecting) selection.picks(tile.picture) else null,
                 testTag = tile.testTag,
                 flight = tile.artwork.owner,
             )
         }
     }
+}
+
+/** Is [picture] coming in this selection: picked itself, or inside a picked folder and not taken back out. */
+private fun SelectionUiState?.picks(picture: PictureTile): Boolean {
+    val s = this ?: return false
+    return s.pickedOthers.contains(picture.pictureId) ||
+        (s.coversFile(picture.shareId, picture.relPath.substringBeforeLast('/', "")) && !s.excludedOthers.contains(picture.pictureId))
 }
 
 /** A collection's line under its name, in the terms of the chip that is lit: its files, its moments, its pictures. */
@@ -1226,9 +1260,14 @@ private fun TileRow(
             title = tile.name,
             meta = pictureMeta(tile.picture),
             leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.picture.name),
-            trailing = RowTrailing.None,
+            trailing = if (selecting && selection.picks(tile.picture)) RowTrailing.Checked else RowTrailing.None,
             minHeight = 64.scaledDp(),
-            onClick = { onOpenPicture(tile.picture) },
+            onClick = if (selecting) {
+                { onToggle(tile) }
+            } else {
+                { onOpenPicture(tile.picture) }
+            },
+            onLongClick = { onLongPress(tile) },
             testTag = tile.testTag,
             modifier = Modifier.alpha(alpha),
         )

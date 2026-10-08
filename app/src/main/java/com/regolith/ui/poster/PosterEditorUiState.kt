@@ -2,6 +2,7 @@ package com.regolith.ui.poster
 
 import android.graphics.Bitmap
 import com.regolith.domain.artwork.PosterTarget
+import com.regolith.ui.components.PosterSwap
 
 /**
  * Everything the poster editor draws, as one value (the screen's single
@@ -28,8 +29,11 @@ data class PosterEditorUiState(
     /** How far "one frame" moves, from the film's frame rate (24 fps when it does not say). */
     val frameStepMs: Long = DEFAULT_FRAME_STEP_MS,
     val saving: Boolean = false,
-    /** poster.jpg is already in the folder: ask before writing over it. */
-    val confirmReplace: Boolean = false,
+    /**
+     * The folder has a poster already: the sheet that asks first, showing it
+     * and the dated name it will be kept under beside the new one.
+     */
+    val swap: PosterSwap? = null,
     /** Why the last save did not happen, in words for the user. */
     val saveError: String? = null,
     /** Saved: the screen closes itself. */

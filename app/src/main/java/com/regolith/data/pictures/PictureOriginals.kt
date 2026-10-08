@@ -64,8 +64,11 @@ class PictureOriginals @Inject constructor(
     private val locks = ConcurrentHashMap<Long, Mutex>()
 
     /** The whole picture on the phone, fetched first if need be; null when the share cannot hand it over. */
-    suspend fun file(original: PictureOriginal): File? {
-        val row = shareFileDao.byId(original.pictureId) ?: return null
+    suspend fun file(original: PictureOriginal): File? = file(original.pictureId)
+
+    /** The same, for [pictureId] as it is on the share now: what saving it to the phone or making a poster of it reads. */
+    suspend fun file(pictureId: Long): File? {
+        val row = shareFileDao.byId(pictureId) ?: return null
         val file = File(directory, "${row.id}-${row.sizeBytes}-${row.modifiedAtMs}.${MediaFileTypes.extensionOf(row.name)}")
         if (file.exists()) {
             // Most recently used, for the trim below.

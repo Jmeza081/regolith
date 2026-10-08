@@ -76,7 +76,9 @@ search icon pushes `Search`.
 "N downloads ready" row resets the stack to `[Home, Library(onDevice)]`.
 A collection opened under the Moments or Images chip pushes
 `Library(folderId, filter)` with that chip, so its wall keeps it lit and a
-profile opens on the matching tab. A picture pushes `Lightbox`.
+profile opens on the matching tab. A picture pushes `Lightbox`, and Set as
+poster (from the lightbox, a selection's Poster, or Upload › Collection
+poster) pushes `SetPoster` over whatever it came from.
 
 ## Browse is a tab that nests
 
@@ -143,6 +145,7 @@ place the selection's verbs live.
 | `Player(fileId, startMs?, expand?, flies?, reel?)` | TitleDetail and the Continue watching cards (Home's row and its See all), with `flies` set: the picture tapped flies into the player's; a Search point of interest pushes it with `startMs` at the chapter (P9); the mini player pushes it with `expand` set, which picks the film up as it was instead of loading it again; a collection profile's Play moments pushes it with a `reel` (the moments as clips, carried whole like Play all's queue) | 1 |
 | `TitleDetail(fileId)` | Browse, Library, Home "Newly added", Search | 3 |
 | `Lightbox(folderId, pictureId, onWall?)` | A picture in a collection's Images tab, or one lying loose on a Library wall under the Images chip (`onWall`: then in the wall's order, not the tab's). Its picture flies in from the tile and back; the swipe down drives the pop as a back gesture, as the player's swipe down does | P20 |
+| `SetPoster(folderId, pictureId?, uri?)` | Set as poster: the lightbox's bar and its More (`pictureId`), the Poster verb of a selection of one picture in an album or Browse (`pictureId`), and Upload › Collection or Folder poster with the photo picker's answer (`uri`). Pops itself once the poster is up; "Poster set for …" is said on the screen under it | P20 |
 | `Search(poi?)` | Home's and Library's search icon; a chip in Home's Moments section pushes it with `poi` set, which opens it with that moment already picked and the keyboard down; a hit opens `TitleDetail` or `Browse(folderId)`; a point of interest opens `Player(fileId, startMs)` | 4 |
 | `AddServer.Scanning(serverId)` | Share picker "Scan N shares"; "Run in the background" → `[Home]`, "Open the library" → `[Home, Library]` | 4 |
 | `AddServer.Search` | "Add source server" on Home / Library / Settings, Onboarding; a tapped host → `AddServer.Manual(prefill)` | 6 |

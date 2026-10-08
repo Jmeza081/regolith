@@ -2,6 +2,10 @@ package com.regolith.domain.transfer
 
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.model.formatByteSize
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** Where an upload is in its life: [TransferStatus], pointing the other way. */
 enum class UploadStatus {
@@ -147,6 +151,31 @@ object UploadNames {
             n++
         }
     }
+
+    /**
+     * The name a file picked in Android's photo picker goes up as. The
+     * picker hides a file's real name and hands over a number of its own
+     * ("1000012345.jpg"), while a Samsung camera names a shot by the moment
+     * it was taken ("20241008_153212.jpg"). So a bare number with a capture
+     * time ([takenAtMs], read in [zone]) is given that name back — for a
+     * camera shot, the very name it had on the phone. Anything else keeps
+     * the name it came with.
+     */
+    fun fromPhotoPicker(displayName: String, takenAtMs: Long?, zone: ZoneId): String {
+        val dot = displayName.lastIndexOf('.')
+        val base = if (dot > 0) displayName.substring(0, dot) else displayName
+        if (takenAtMs == null || takenAtMs <= 0 || base.isEmpty() || !base.all { it.isDigit() }) return displayName
+        val ext = if (dot > 0) displayName.substring(dot) else ""
+        return CAMERA_NAME.format(Instant.ofEpochMilli(takenAtMs).atZone(zone)) + ext
+    }
+
+    /** Names that clash within one pick (two shots in the same second) numbered apart, as [keepBoth] numbers them against a folder. */
+    fun distinct(names: List<String>): List<String> {
+        val used = HashSet<String>()
+        return names.map { name -> keepBoth(name, used).also { used += it } }
+    }
+
+    private val CAMERA_NAME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss", Locale.ROOT)
 }
 
 /**

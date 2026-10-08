@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /**
  * The upload queue's rules and every sentence it says (P16). Pure, so the
@@ -228,5 +230,32 @@ class UploadsTest {
         val stopped = item(status = UploadStatus.FAILED, cause = UploadCause.CANCELLED)
         assertEquals(BatchMessage("Stopped · 1 of 2 uploaded", false), UploadWording.batchMessage(listOf(done, stopped), "Lisbon 2026"))
         assertEquals(BatchMessage("Uploads stopped", false), UploadWording.batchMessage(listOf(stopped), "Lisbon 2026"))
+    }
+
+    // ── names from the photo picker (P20) ─────────────────────────────
+
+    private val seoul = ZoneId.of("Asia/Seoul")
+
+    @Test
+    fun `a photo picker number is named for when the shot was taken, as a Samsung camera names it`() {
+        // 2024-10-08 15:32:12 in Seoul.
+        val taken = ZonedDateTime.of(2024, 10, 8, 15, 32, 12, 0, seoul).toInstant().toEpochMilli()
+        assertEquals("20241008_153212.jpg", UploadNames.fromPhotoPicker("1000012345.jpg", taken, seoul))
+        assertEquals("20241008_153212.mp4", UploadNames.fromPhotoPicker("82.mp4", taken, seoul))
+    }
+
+    @Test
+    fun `a real name, or a number with no capture time, is kept`() {
+        assertEquals("Snow.jpg", UploadNames.fromPhotoPicker("Snow.jpg", 1_728_000_000_000, seoul))
+        assertEquals("1000012345.jpg", UploadNames.fromPhotoPicker("1000012345.jpg", null, seoul))
+        assertEquals("IMG_2041.HEIC", UploadNames.fromPhotoPicker("IMG_2041.HEIC", 1_728_000_000_000, seoul))
+    }
+
+    @Test
+    fun `shots from the same second are numbered apart within one pick`() {
+        assertEquals(
+            listOf("20241008_153212.jpg", "20241008_153212 (1).jpg", "beach.mp4", "20241008_153212 (2).JPG"),
+            UploadNames.distinct(listOf("20241008_153212.jpg", "20241008_153212.jpg", "beach.mp4", "20241008_153212.JPG")),
+        )
     }
 }
