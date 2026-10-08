@@ -43,6 +43,7 @@ import com.regolith.ui.components.ListRow
 import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.bleedHorizontally
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -182,7 +183,13 @@ internal fun ReelList(reel: ReelState, playing: Float, onClip: (Int) -> Unit, mo
                     null
                 },
                 modifier = Modifier
+                    // The playing row's highlight reaches past the column, as the
+                    // canvas draws it, and every row pads its contents back in
+                    // line: the thumb and the playing mark sit inside the
+                    // highlight's edges rather than on them.
+                    .bleedHorizontally(ROW_INSET)
                     .then(if (current) Modifier.background(colors.raised, RoundedCornerShape(12.dp)) else Modifier)
+                    .padding(horizontal = ROW_INSET)
                     .alpha(if (index < reel.index) PLAYED_ALPHA else 1f),
             )
         }
@@ -200,3 +207,6 @@ private val SEGMENT_TRACK = Color.White.copy(alpha = 0.3f)
 
 /** The moments already played, stepped back in the list. */
 private const val PLAYED_ALPHA = 0.55f
+
+/** How far a row's highlight reaches past the list on each side, and how far its contents sit inside it. */
+private val ROW_INSET = 8.dp

@@ -29,12 +29,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.regolith.R
@@ -43,6 +41,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.ArtworkLight
+import com.regolith.ui.components.bleedHorizontally
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Ghost
@@ -115,7 +114,7 @@ internal fun ProfileHeader(
         // the bottom so the wall below starts on plain black. Darker again
         // at the very top, as Title Detail's hero is: a pale poster would
         // otherwise leave the status bar and the white icons on white.
-        Box(Modifier.matchParentSize().bleed(bleed)) {
+        Box(Modifier.matchParentSize().bleedHorizontally(bleed)) {
             ArtworkLight(profile.light, Modifier.fillMaxSize(), testTag = "library_profile_light")
             Box(
                 Modifier.fillMaxSize().background(
@@ -340,18 +339,6 @@ private fun ProfileActions(
             )
         }
     }
-}
-
-/**
- * Draws this past its parent's horizontal padding by [amount] on each side.
- * A lazy grid lays every item out inside its content padding; the light is
- * the one thing on the page that should not stop there.
- */
-private fun Modifier.bleed(amount: Dp): Modifier = layout { measurable, constraints ->
-    val extra = amount.roundToPx()
-    val width = constraints.maxWidth + extra * 2
-    val placeable = measurable.measure(Constraints.fixed(width, constraints.maxHeight))
-    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(-extra, 0) }
 }
 
 /** Wide enough for the poster to stand beside the name: the inner display with the wall to itself, not beside a title's page. */
