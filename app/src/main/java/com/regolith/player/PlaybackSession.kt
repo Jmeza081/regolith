@@ -467,17 +467,19 @@ class PlaybackSession @Inject constructor(
         (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { group.getTrackFormat(it) }
 
     /**
-     * Load and play a file. Resumes from the saved position unless
+     * Load and play [fileId]. Resumes from the saved position unless
      * [startMs] says otherwise. Safe to call for the file already loaded.
+     * [queue] is an explicit running order (Play all, Shuffle); pass null to
+     * keep whatever queue is running — which is what the autoplay step does,
+     * so walking a queue does not destroy it — and the queue is dropped as
+     * soon as a file outside it is opened.
+     *
+     * [startPlaying] false opens the film without starting it, for a player
+     * whose picture is still flying in; [play] starts it once it has landed.
      */
-    /**
-     * Play [fileId]. [queue] is an explicit running order (Play all, Shuffle);
-     * pass null to keep whatever queue is running — which is what the
-     * autoplay step does, so walking a queue does not destroy it — and the
-     * queue is dropped as soon as a file outside it is opened.
-     */
-    fun load(fileId: Long, startMs: Long? = null, queue: List<Long>? = null) {
+    fun load(fileId: Long, startMs: Long? = null, queue: List<Long>? = null, startPlaying: Boolean = true) {
         Log.d(TAG, "load($fileId, $startMs) current=${_state.value.fileId} queue=${queue?.size ?: activeQueue.size}")
+        holdStart = !startPlaying
         when {
             // An order handed over by Play all / Shuffle. It may already be
             // scrambled, but not by us, so the button reads off: there is no
@@ -496,7 +498,7 @@ class PlaybackSession @Inject constructor(
                 startMs != null -> p.seekTo(startMs)
                 p.playbackState == Player.STATE_ENDED -> p.seekTo(0)
             }
-            if (!p.isPlaying) p.play()
+            if (!holdStart && !p.isPlaying) p.play()
             // A running order handed over now (Play all on the same film) is
             // the order from here on: what plays next follows it.
             if (queue != null) scope.launch { refreshQueueView(fileId) }
@@ -561,6 +563,7 @@ class PlaybackSession @Inject constructor(
      */
     fun loadExternal(uri: android.net.Uri, title: String) {
         Log.d(TAG, "loadExternal($uri)")
+        holdStart = false
         saveProgress()
         userChapterJob?.cancel()
         activeQueue = emptyList()
@@ -749,11 +752,33 @@ class PlaybackSession @Inject constructor(
         p.repeatMode = if (_state.value.repeat == RepeatMode.ONE) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         p.setMediaItem(item, positionMs)
         p.prepare()
-        p.play()
+        // Held, it is prepared all the same: the first frame is drawn paused.
+        if (holdStart) p.pause() else p.play()
+        playerFileId = fileId
         // Read back, not left to the listener: going on from a film that was
         // playing, play() changes nothing and reports nothing, and the fresh
         // state load() made would say paused while the next film plays.
         _state.update { it.copy(playWhenReady = p.playWhenReady) }
+    }
+
+    /** A film opened with `startPlaying = false` waits for [play]. */
+    private var holdStart = false
+
+    /** The film the player was last handed ([startPlayer]); null for one from another app. */
+    private var playerFileId: Long? = null
+
+    /**
+     * Start the film [load] opened held, now that its picture has landed.
+     * If the film is still being looked up, the hold is lifted and it starts
+     * as soon as it is handed to the player; the player itself is not told
+     * yet, since it may still hold the film before.
+     */
+    fun play() {
+        holdStart = false
+        if (playerFileId != _state.value.fileId) return
+        val p = _player.value ?: return
+        if (p.playbackState == Player.STATE_ENDED) p.seekTo(0)
+        p.play()
     }
 
     /**
@@ -927,6 +952,8 @@ class PlaybackSession @Inject constructor(
         currentFile = null
         currentUri = null
         currentArt = null
+        playerFileId = null
+        holdStart = false
         _scrubThumbnails.value.close()
         _scrubThumbnails.value = ScrubThumbnails.None
         _state.value = PlaybackState(speed = 1f, hardwareDecoding = _state.value.hardwareDecoding)

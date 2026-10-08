@@ -207,6 +207,8 @@ fun HomeScreen(
                                     onClick = { onPlay(item.fileId, item.positionMs) },
                                     testTag = item.testTag,
                                     modifier = Modifier.width(resumeWidth),
+                                    // Its picture flies into the player it opens.
+                                    flight = item.artwork.owner,
                                 )
                             }
                             item {

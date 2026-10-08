@@ -699,7 +699,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onEnterAddress = { backStack.add(RegolithKey.AddServer.Manual()) },
                                     onSearch = { backStack.add(RegolithKey.Search()) },
                                     onOpenTitle = { openTitle(it) },
-                                    onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
+                                    // Only the Continue watching cards play from Home, and their
+                                    // pictures fly into the player.
+                                    onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs, flies = true)) },
                                     onOpenDevice = { backStack.clear(); backStack.add(RegolithKey.Home); backStack.add(RegolithKey.Library(onDevice = true)) },
                                     onOpenContinueWatching = { backStack.add(RegolithKey.ContinueWatching) },
                                     // A name in the Moments section: Search, with it already picked.
@@ -733,7 +735,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             ContinueWatchingScreen(
                                 viewModel = hiltViewModel(),
                                 onBack = { backStack.removeLastOrNull() },
-                                onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs)) },
+                                onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs, flies = true)) },
                             )
                         }
                         entry<RegolithKey.Search> { key ->
@@ -788,7 +790,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     creationCallback = { it.create(key.fileId) },
                                 ),
                                 onBack = { backStack.removeLastOrNull() },
-                                onPlay = { backStack.add(RegolithKey.Player(it)) },
+                                // The hero's picture flies into the player.
+                                onPlay = { backStack.add(RegolithKey.Player(it, flies = true)) },
                                 inPane = LocalBesideWall.current,
                             )
                         }
@@ -900,6 +903,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onBack = { backStack.removeLastOrNull() },
                                 onMakePoster = { fileId, ms -> backStack.add(RegolithKey.PosterEditor(fileId, ms)) },
                                 expandFromMini = key.expand,
+                                fliesIn = key.flies,
                             )
                         }
                         entry<RegolithKey.PosterEditor> { key ->

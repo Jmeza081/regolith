@@ -1,11 +1,13 @@
 package com.regolith.ui.components
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.dp
 import com.regolith.domain.artwork.ArtworkOwner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,6 +57,24 @@ class FlightLaunchesTest {
         clock += 2_000_000L
         assertFalse(launches.launching)
         assertNull(launches.claim(heat))
+    }
+
+    @Test
+    fun `a claim carries the tapped picture's corners and which picture it was`() {
+        // A title page's hero is square-cornered and a Continue watching card
+        // is 14dp; the flight straightens from those, and only the one tapped
+        // steps aside while its copy is in the air.
+        val hero = Any()
+        launches.launched(heat, tile, poster = null, corner = 0.dp, source = hero)
+        val launch = launches.claim(heat)!!
+        assertEquals(0.dp, launch.corner)
+        assertSame(hero, launch.source)
+    }
+
+    @Test
+    fun `a tile that says nothing about its corners has a tile's`() {
+        launches.launched(heat, tile, poster = null)
+        assertEquals(12.dp, launches.claim(heat)!!.corner)
     }
 
     @Test

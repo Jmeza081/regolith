@@ -63,6 +63,7 @@ import coil3.compose.SubcomposeAsyncImageContent
 import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.ui.theme.CardCorner
 import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
@@ -384,6 +385,10 @@ fun ProgressEdge(fraction: Float, modifier: Modifier = Modifier) {
  * Home's resume card (design section 04): 186dp wide, 16:9 at 14dp
  * corners, a 42dp frosted play circle in the middle, "15m left" top-right,
  * the bar along the bottom; name at 500 13/17, meta at 400 11/1.4.
+ *
+ * [flight] is whose picture it shows: a tap flies the picture into the
+ * player it opens (a flight by hand, [rememberFlightLaunchPad]). Null for a
+ * card whose picture lands nowhere.
  */
 @Composable
 fun ResumeCard(
@@ -395,10 +400,26 @@ fun ResumeCard(
     onClick: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier,
+    flight: ArtworkOwner? = null,
 ) {
     val colors = RegolithTheme.colors
-    Column(modifier.clickable(interactionSource = null, indication = null, onClick = onClick).testTag(testTag)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(CardShape).background(colors.surface)) {
+    val pad = rememberFlightLaunchPad(flight, artwork, corner = CardCorner)
+    Column(
+        modifier
+            .clickable(interactionSource = null, indication = null) {
+                pad?.launch()
+                onClick()
+            }
+            .testTag(testTag),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                .then(pad?.modifier ?: Modifier)
+                .clip(CardShape)
+                .background(colors.surface)
+                // Steps aside while its copy flies into the player.
+                .graphicsLayer { alpha = if (pad?.hidden == true) 0f else 1f },
+        ) {
             ArtworkImage(artwork, Modifier.fillMaxSize(), fallbackLabel = title)
             Box(
                 Modifier.align(Alignment.Center).size(42.scaledDp()).background(Color(0x24FFFFFF), PillShape).border(1.dp, Color(0x47FFFFFF), PillShape),

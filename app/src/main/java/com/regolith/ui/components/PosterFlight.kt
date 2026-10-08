@@ -41,6 +41,7 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -58,7 +59,8 @@ import kotlin.math.roundToInt
  * 2:3 poster grows into the title page's wide picture, uncropping as it goes;
  * a collection's poster moves and grows into the poster on its profile. Back
  * flies it home again, and on a phone the Back swipe holds it under your
- * thumb (Navigation 3 seeks the same transition).
+ * thumb (Navigation 3 seeks the same transition). Play flies the page's
+ * picture, or a Continue watching card's, into the player, one way only.
  *
  * Built on Compose's shared elements: both ends mark their picture with the
  * same key ([posterFlight]), and when a screen change takes one away
@@ -76,8 +78,11 @@ import kotlin.math.roundToInt
  * ordinary picture.
  *
  * The flight by hand is the one into a page beside the wall on a wide window
- * (`WallScene`). There the tile never leaves the screen — the wall it is on
- * stays, at a new width — so nothing is taken away for Compose to fly from:
+ * (`WallScene`), and the one into the player. Beside a wall the tile never
+ * leaves the screen — the wall it is on stays, at a new width — so nothing is
+ * taken away for Compose to fly from; into the player, a shared key on a
+ * Continue watching card would meet the same film's poster in Newly added,
+ * and two pictures with one key on one screen is a flight from either. So:
  * the tile reports where it was when tapped ([rememberFlightLaunchPad]), the
  * page reports where its picture goes ([rememberFlightLanding]), and the
  * layout draws the picture between the two over everything.
@@ -97,8 +102,19 @@ class PosterFlights internal constructor(internal val scope: SharedTransitionSco
     val launching: Boolean get() = launches.launching
 }
 
-/** A tapped tile: whose picture, where it was on screen ([from], in the window), the picture it showed, and when. */
-internal class Launch(val owner: ArtworkOwner, val from: Rect, val poster: ArtworkRequest?, val atNanos: Long)
+/**
+ * A tapped tile: whose picture, where it was on screen ([from], in the
+ * window), the picture it showed, its corners, when, and which tile it was
+ * ([source]: the one picture that steps aside while its copy is in the air).
+ */
+internal class Launch(
+    val owner: ArtworkOwner,
+    val from: Rect,
+    val poster: ArtworkRequest?,
+    val atNanos: Long,
+    val corner: Dp = TILE_CORNER,
+    val source: Any? = null,
+)
 
 /**
  * The last tile tapped, until a page claims it or it goes stale: a page that
@@ -108,8 +124,8 @@ internal class Launch(val owner: ArtworkOwner, val from: Rect, val poster: Artwo
 internal class FlightLaunches(private val now: () -> Long = System::nanoTime) {
     private var last: Launch? = null
 
-    fun launched(owner: ArtworkOwner, from: Rect, poster: ArtworkRequest?) {
-        last = Launch(owner, from, poster, now())
+    fun launched(owner: ArtworkOwner, from: Rect, poster: ArtworkRequest?, corner: Dp = TILE_CORNER, source: Any? = null) {
+        last = Launch(owner, from, poster, now(), corner, source)
     }
 
     /** A tap has just happened that a page may yet claim. */
@@ -123,10 +139,19 @@ internal class FlightLaunches(private val now: () -> Long = System::nanoTime) {
 
 /**
  * A picture flying by hand from [from] to wherever its page reports ([to]):
- * [poster] (the tile's picture) cross-fading into [picture] as it goes.
+ * [poster] (the tile's picture) cross-fading into [picture] as it goes, its
+ * corners straightening from the tile's [corner].
  */
 @Stable
-internal class Flight(val owner: ArtworkOwner, val from: Rect, val poster: ArtworkRequest?, val picture: ArtworkRequest?, val placeholder: ArtworkRequest?) {
+internal class Flight(
+    val owner: ArtworkOwner,
+    val from: Rect,
+    val poster: ArtworkRequest?,
+    val picture: ArtworkRequest?,
+    val placeholder: ArtworkRequest?,
+    val corner: Dp = TILE_CORNER,
+    val source: Any? = null,
+) {
     var to: Rect? by mutableStateOf(null)
 
     /** True once it has arrived: the page draws its own picture from then on. */
@@ -241,6 +266,7 @@ class FlightLaunchPad internal constructor(
     private val flights: PosterFlights,
     private val owner: ArtworkOwner,
     private val poster: ArtworkRequest?,
+    private val corner: Dp,
 ) {
     private var coordinates: LayoutCoordinates? = null
 
@@ -249,19 +275,23 @@ class FlightLaunchPad internal constructor(
 
     fun launch() {
         val at = coordinates?.takeIf { it.isAttached } ?: return
-        flights.launches.launched(owner, at.boundsInRoot(), poster)
+        flights.launches.launched(owner, at.boundsInRoot(), poster, corner, source = this)
     }
 
     /** True while this tile's picture is flying by hand. */
-    val hidden: Boolean get() = flights.flight?.let { it.owner == owner && !it.landed } == true
+    val hidden: Boolean get() = flights.flight?.let { it.source === this && !it.landed } == true
 }
 
-/** A [FlightLaunchPad] for a tile showing [poster], the picture of [owner]; null where nothing can fly. */
+/**
+ * A [FlightLaunchPad] for a tile showing [poster], the picture of [owner],
+ * with corners of [corner] (a tile's 12dp unless said otherwise); null where
+ * nothing can fly.
+ */
 @Composable
-fun rememberFlightLaunchPad(owner: ArtworkOwner?, poster: ArtworkRequest?): FlightLaunchPad? {
+fun rememberFlightLaunchPad(owner: ArtworkOwner?, poster: ArtworkRequest?, corner: Dp = TILE_CORNER): FlightLaunchPad? {
     val flights = LocalPosterFlights.current ?: return null
     if (owner == null) return null
-    return remember(flights, owner, poster) { FlightLaunchPad(flights, owner, poster) }
+    return remember(flights, owner, poster, corner) { FlightLaunchPad(flights, owner, poster, corner) }
 }
 
 /**
@@ -271,8 +301,8 @@ fun rememberFlightLaunchPad(owner: ArtworkOwner?, poster: ArtworkRequest?): Flig
  * Put [modifier] on the box the picture fills: it reports where that is,
  * and keeps it empty until the flight has landed.
  *
- * Only for a page beside a wall ([enabled]); everywhere else Compose's
- * shared elements fly the poster ([posterFlight]).
+ * Only where [enabled]: a page beside a wall, and the player. Between
+ * other pages Compose's shared elements fly the poster ([posterFlight]).
  */
 @Stable
 class FlightLanding internal constructor(internal val flight: Flight?) {
@@ -283,24 +313,29 @@ class FlightLanding internal constructor(internal val flight: Flight?) {
             .onGloballyPositioned { flight.to = it.boundsInRoot() }
             .graphicsLayer { alpha = if (flight.landed) 1f else 0f }
     }
+
+    /** Nothing is flying in, or it has arrived: the page's own picture is showing. */
+    val landed: Boolean get() = flight?.landed ?: true
 }
 
 /**
  * A [FlightLanding] for the picture of [owner] on a page, landing [picture]
  * (with [placeholder] while it loads); a plain one, with nothing flying in,
  * unless [enabled] and a tile showing that picture was tapped a moment ago.
+ * A null [picture] keeps the tile's own picture in the air all the way, for
+ * a landing that is not sure yet which of its pictures it will show.
  */
 @Composable
 fun rememberFlightLanding(
-    owner: ArtworkOwner,
+    owner: ArtworkOwner?,
     picture: ArtworkRequest?,
     placeholder: ArtworkRequest?,
     enabled: Boolean,
 ): FlightLanding {
     val flights = LocalPosterFlights.current
     val landing = remember(flights, owner, enabled) {
-        val launch = if (enabled) flights?.launches?.claim(owner) else null
-        FlightLanding(launch?.let { Flight(owner, it.from, it.poster, picture, placeholder) })
+        val launch = if (enabled && owner != null) flights?.launches?.claim(owner) else null
+        FlightLanding(launch?.let { Flight(it.owner, it.from, it.poster, picture, placeholder, it.corner, it.source) })
     }
     // Into the air once this page is composed, not while it is: the layout
     // that draws the flight has already been composed this frame.
@@ -310,7 +345,7 @@ fun rememberFlightLanding(
 
 /**
  * The flight made by hand, drawn over everything: a box from the tile's
- * place to the page's, its corners straightening from the tile's 12dp, the
+ * place to the page's, its corners straightening from the tile's, the
  * tile's picture fading into the page's wide one, which uncrops as the box
  * widens (both are cropped to the box as it goes). Then the page's own
  * picture takes over and this fades away.
@@ -336,7 +371,7 @@ private fun FlightByHand(flight: Flight, onDone: () -> Unit) {
     val t = progress.value
     val box = lerp(flight.from, to, t).translate(-origin)
     val density = LocalDensity.current
-    val corner = with(density) { lerp(TILE_CORNER.toPx(), 0f, t).toDp() }
+    val corner = with(density) { lerp(flight.corner.toPx(), 0f, t).toDp() }
     Box(
         Modifier
             .fillMaxSize()
@@ -350,10 +385,12 @@ private fun FlightByHand(flight: Flight, onDone: () -> Unit) {
                 .clip(RoundedCornerShape(corner))
                 .testTag("poster_flight"),
         ) {
-            ArtworkImage(flight.picture, Modifier.fillMaxSize(), placeholder = flight.placeholder)
+            // A landing that names no picture of its own takes the tile's all the way.
+            val picture = flight.picture ?: flight.poster
+            ArtworkImage(picture, Modifier.fillMaxSize(), placeholder = flight.placeholder)
             // The tile's own picture on top, gone by the time the box has
             // grown enough for the wide one to read as the same picture.
-            if (flight.poster != null) {
+            if (flight.poster != null && flight.poster != picture) {
                 ArtworkImage(flight.poster, Modifier.fillMaxSize().graphicsLayer { alpha = 1f - (t / POSTER_FADE_END).coerceAtMost(1f) })
             }
         }
@@ -373,4 +410,4 @@ private const val FLIGHT_HANDOVER_MS = 120
 private const val POSTER_FADE_END = 0.6f
 
 /** A tile's corner radius ([com.regolith.ui.theme.TileShape]), which a flight straightens out. */
-private val TILE_CORNER = 12.dp
+internal val TILE_CORNER = 12.dp

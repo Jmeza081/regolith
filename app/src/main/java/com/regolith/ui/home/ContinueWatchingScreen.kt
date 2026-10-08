@@ -76,6 +76,8 @@ fun ContinueWatchingScreen(
                     onClick = { onPlay(item.fileId, item.positionMs) },
                     testTag = "continue_watching_${item.fileId}",
                     modifier = Modifier.padding(bottom = Spacing.s2),
+                    // Its picture flies into the player it opens.
+                    flight = item.artwork.owner,
                 )
             }
         }
