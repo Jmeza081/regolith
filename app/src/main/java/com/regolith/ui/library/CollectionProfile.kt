@@ -76,6 +76,12 @@ import com.regolith.ui.util.formatDurationShort
 internal enum class ProfileTab { VIDEOS, MOMENTS }
 
 /**
+ * The Moments tab's own Play and Shuffle: the reel its moments make
+ * (PlaybackSession.loadReel), and roughly how long it runs ("1 min").
+ */
+internal class MomentsPlay(val length: String, val onPlay: () -> Unit, val onShuffle: () -> Unit)
+
+/**
  * The top of a profile: the collection's poster lighting the page from
  * behind ([ArtworkLight]), the poster itself, what the collection sits in
  * and its name, a strip of stats, and Play all, Shuffle and Add.
@@ -88,6 +94,8 @@ internal enum class ProfileTab { VIDEOS, MOMENTS }
  * [bleed] is the wall's own side padding: the light reaches past it to the
  * window's edges, where padding would have stopped it in a straight line.
  * [onAdd] is null where nothing can be added (the demo, a phone folder).
+ * [moments] is set while the Moments tab shows: Play and Shuffle then play
+ * the moments as a reel instead of the videos.
  */
 @Composable
 internal fun ProfileHeader(
@@ -98,6 +106,7 @@ internal fun ProfileHeader(
     onAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     bleed: Dp = Spacing.s18,
+    moments: MomentsPlay? = null,
 ) {
     val colors = RegolithTheme.colors
     Box(modifier.fillMaxWidth().testTag("library_profile_header")) {
@@ -126,7 +135,7 @@ internal fun ProfileHeader(
                             DisplayText(name, style = TextStyles.detailTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         StatStrip(profile, Modifier.widthIn(max = PROFILE_STATS_MAX_WIDTH).fillMaxWidth())
-                        ProfileActions(onPlay, onShuffle, onAdd, playWidth = PROFILE_PLAY_WIDTH)
+                        ProfileActions(onPlay, onShuffle, onAdd, playWidth = PROFILE_PLAY_WIDTH, moments = moments)
                     }
                 }
             } else {
@@ -141,7 +150,7 @@ internal fun ProfileHeader(
                     Spacer(Modifier.height(Spacing.s18))
                     StatStrip(profile, Modifier.fillMaxWidth())
                     Spacer(Modifier.height(Spacing.s18))
-                    ProfileActions(onPlay, onShuffle, onAdd, playWidth = null, modifier = Modifier.fillMaxWidth())
+                    ProfileActions(onPlay, onShuffle, onAdd, playWidth = null, modifier = Modifier.fillMaxWidth(), moments = moments)
                 }
             }
         }
@@ -296,6 +305,8 @@ private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier)
  * Play all, Shuffle, and Add. Play all is the one red on the page and plays
  * the wall in the order it is showing; Shuffle plays the same videos
  * scrambled; Add is the collection's Add sheet, where uploads are allowed.
+ * On the Moments tab ([moments]) the first two play the moments as a reel,
+ * in the tab's order or scrambled, and Play says how long it runs.
  */
 @Composable
 private fun ProfileActions(
@@ -305,12 +316,21 @@ private fun ProfileActions(
     /** Play all's own width, or null to take whatever the row leaves. */
     playWidth: Dp?,
     modifier: Modifier = Modifier,
+    moments: MomentsPlay? = null,
 ) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-        PlayAllButton(onPlay, if (playWidth != null) Modifier.width(playWidth) else Modifier.weight(1f))
+        PlayAllButton(
+            moments?.onPlay ?: onPlay,
+            if (playWidth != null) Modifier.width(playWidth) else Modifier.weight(1f),
+            text = moments?.let { "Play moments · ${it.length}" } ?: "Play all",
+            testTag = if (moments != null) "library_play_moments_button" else "play_all_button",
+        )
         // The same height as the compact Play all beside them.
         IconCircleButton(
-            painterResource(R.drawable.rg_ic_shuffle), "Shuffle", onShuffle, "library_profile_shuffle_button",
+            painterResource(R.drawable.rg_ic_shuffle),
+            if (moments != null) "Shuffle the moments" else "Shuffle",
+            moments?.onShuffle ?: onShuffle,
+            if (moments != null) "library_shuffle_moments_button" else "library_profile_shuffle_button",
             size = 42.scaledDp(),
         )
         if (onAdd != null) {

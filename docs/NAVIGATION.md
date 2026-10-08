@@ -137,7 +137,7 @@ place the selection's verbs live.
 | `AddServer.Manual(prefill?)` | "Enter an address" on the finder and Home; a found host arrives as `prefill` | 1, 6 |
 | `AddServer.Shares(serverId)` | Manual entry, after a successful connect | 1 |
 | `AddServer.Folders(shareId, relPath)` | A share's chevron on Choose a share, and its own rows going deeper; one key per level, Done pops them all | P1 |
-| `Player(fileId, startMs?, expand?, flies?)` | TitleDetail and the Continue watching cards (Home's row and its See all), with `flies` set: the picture tapped flies into the player's; a Search point of interest pushes it with `startMs` at the chapter (P9); the mini player pushes it with `expand` set, which picks the film up as it was instead of loading it again | 1 |
+| `Player(fileId, startMs?, expand?, flies?, reel?)` | TitleDetail and the Continue watching cards (Home's row and its See all), with `flies` set: the picture tapped flies into the player's; a Search point of interest pushes it with `startMs` at the chapter (P9); the mini player pushes it with `expand` set, which picks the film up as it was instead of loading it again; a collection profile's Play moments pushes it with a `reel` (the moments as clips, carried whole like Play all's queue) | 1 |
 | `TitleDetail(fileId)` | Browse, Library, Home "Newly added", Search | 3 |
 | `Search(poi?)` | Home's and Library's search icon; a chip in Home's Moments section pushes it with `poi` set, which opens it with that moment already picked and the keyboard down; a hit opens `TitleDetail` or `Browse(folderId)`; a point of interest opens `Player(fileId, startMs)` | 4 |
 | `AddServer.Scanning(serverId)` | Share picker "Scan N shares"; "Run in the background" → `[Home]`, "Open the library" → `[Home, Library]` | 4 |

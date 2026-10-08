@@ -1,6 +1,7 @@
 package com.regolith.ui.navigation
 
 import androidx.navigation3.runtime.NavKey
+import com.regolith.domain.playback.ReelClip
 import kotlinx.serialization.Serializable
 
 /**
@@ -84,12 +85,29 @@ sealed interface RegolithKey : NavKey {
          * loads while it is in the air and starts playing once it has landed.
          */
         val flies: Boolean = false,
+        /**
+         * A Moments reel instead of one film (a profile's Play moments):
+         * [fileId] is then its first clip's video. Carried whole, as Play
+         * all's queue is, so it survives the process being killed.
+         */
+        val reel: Reel? = null,
     ) : RegolithKey {
         companion object {
             /** No row has this id; it marks a key whose film came from outside the library. */
             const val EXTERNAL = -1L
 
             fun external(uri: String, title: String) = Player(fileId = EXTERNAL, externalUri = uri, externalTitle = title)
+
+            /** The player on a reel of [clips], called [title] (the collection's name). */
+            fun reel(title: String, clips: List<ReelClip>) =
+                Player(fileId = clips.first().fileId, reel = Reel(title, clips.map { Reel.Clip(it.fileId, it.startMs, it.endMs, it.name, it.videoName) }))
+        }
+
+        /** A reel as a route carries it: [ReelClip]s, in the order they play. */
+        @Serializable data class Reel(val title: String, val clips: List<Clip>) {
+            @Serializable data class Clip(val fileId: Long, val startMs: Long, val endMs: Long, val name: String, val videoName: String)
+
+            fun toClips(): List<ReelClip> = clips.map { ReelClip(it.fileId, it.startMs, it.endMs, it.name, it.videoName) }
         }
     }
 

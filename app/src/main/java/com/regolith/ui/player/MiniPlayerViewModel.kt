@@ -45,6 +45,10 @@ class MiniPlayerViewModel @Inject constructor(
     /** Previous, Next, and the step on to the next film in a queue. */
     fun play(fileId: Long) = session.load(fileId)
 
+    /** A Moments reel's previous and next moments, for the card's buttons while one plays small. */
+    fun reelPrevious() = session.reelPrevious()
+    fun reelNext() = session.reelNext()
+
     /** The close button: the film stops, its place is saved, and the mini player goes. */
     fun close() = session.stop()
 }

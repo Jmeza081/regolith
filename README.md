@@ -72,6 +72,14 @@ chapter you have named in those videos, each with the frame at its time, and
 plays from there. A collection with collections inside stays a wall: only the
 last one down a branch gets a page.
 
+On the Moments tab, **Play moments** plays them as a reel: ten seconds of each
+(less when the next one in the same video comes sooner), one after another with
+no wait between, in the tab's order, or scrambled with the shuffle beside it.
+Bars across the top of the picture show where you are, each moment's name comes
+up as it starts, and **Watch from here** leaves the reel for the whole video,
+carrying on from that moment. A reel isn't watching: it leaves no resume points
+and adds nothing to Continue watching.
+
 ### Posters that fly
 
 Tap a poster and it flies to where its page shows it. A video's poster grows

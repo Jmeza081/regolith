@@ -189,6 +189,9 @@ fun PlayerScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val player by viewModel.player.collectAsStateWithLifecycle()
+    // A Moments reel instead of one film (Reel.kt): its moments take the
+    // timeline's place, and Previous and Next step between them.
+    val reel = state.reel
     // The timeline and the clocks run off this rather than off
     // state.positionMs, which is only refreshed four times a second.
     val smooth = rememberSmoothProgress(player)
@@ -377,8 +380,20 @@ fun PlayerScreen(
     // while a film opens from the share. Not when grown out of the mini
     // player, whose live picture it would interrupt.
     val presentation = rememberPresentationState(player)
-    val stillShown = still != null && !expandFromMini && (!surfaceUp || presentation.coverSurface)
+    // A reel's still is its moment's own frame, which the Moments tab has
+    // already made: the clip opens on it.
+    val reelFrame = reel?.clip?.let { ArtworkRequest(ArtworkOwner.Moment(it.fileId, it.startMs), ArtworkKind.THUMB) }
+    val stillShown = (reelFrame ?: still) != null && !expandFromMini && (!surfaceUp || presentation.coverSurface)
     val stillAlpha by animateFloatAsState(if (stillShown) 1f else 0f, tween(STILL_FADE_MS), label = "playerStill")
+    // Between a reel's moments: the next one's name over the picture for a
+    // moment and a half (the canvas's question 9), then the picture alone.
+    var reelCaption by remember { mutableStateOf(false) }
+    LaunchedEffect(reel?.index, reel?.clip) {
+        if (reel == null) return@LaunchedEffect
+        reelCaption = true
+        delay(REEL_CAPTION_MS)
+        reelCaption = false
+    }
 
     // Everything but the picture: gone well before the picture lands, so the
     // page underneath is what it lands on; flown into, it fades in.
@@ -624,8 +639,8 @@ fun PlayerScreen(
         onFullscreen = { fullscreen = !fullscreen },
         // Null greys the button out rather than removing it: a transport row
         // that changes width as you walk a folder is worse than a dead key.
-        onPrevious = state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
-        onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
+        onPrevious = if (reel != null) viewModel::reelPrevious else state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
+        onNext = if (reel != null) reel.takeIf { it.hasNext }?.let { { viewModel.reelNext() } } else upNext?.let { n -> { viewModel.playNext(n.fileId) } },
         onChapters = { if (draft == null) sheet = Sheet.Chapters },
         onCycleRotation = {
             viewModel.setOrientation(PlayerOrientation.entries[(orientation.ordinal + 1) % PlayerOrientation.entries.size])
@@ -637,6 +652,9 @@ fun PlayerScreen(
         onShuffle = viewModel::toggleShuffle,
         onRepeat = viewModel::cycleRepeat,
         chaptersOpenable = chaptersOpenable,
+        onReelClip = { viewModel.reelTo(it); controlsVisible = true },
+        onWatchFromHere = viewModel::watchFromHere,
+        onReelShuffle = viewModel::toggleReelShuffle,
     )
     // The rotation lock, where locking would do anything (see [rotationLockable]).
     val lockable = rotationLockable()
@@ -679,14 +697,18 @@ fun PlayerScreen(
                     if (fill) ContentScale.Crop else ContentScale.Fit,
                 )
             }
-            if (still != null && stillAlpha > 0f) {
+            if ((reelFrame ?: still) != null && stillAlpha > 0f) {
                 Box(
                     Modifier.fillMaxSize()
                         .then(landing.modifier)
                         .graphicsLayer { alpha = stillAlpha }
                         .testTag("player_still"),
                 ) {
-                    ArtworkImage(still, Modifier.fillMaxSize(), contentScale = if (fill) ContentScale.Crop else ContentScale.Fit, placeholder = stillThumb)
+                    ArtworkImage(
+                        reelFrame ?: still, Modifier.fillMaxSize(),
+                        contentScale = if (fill) ContentScale.Crop else ContentScale.Fit,
+                        placeholder = if (reelFrame != null) null else stillThumb,
+                    )
                 }
             }
             Box(Modifier.fillMaxSize().playerGestures(gestures).testTag("player_gesture_layer"))
@@ -709,6 +731,30 @@ fun PlayerScreen(
                     FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft, smooth = smooth)
                 } else {
                     PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft, smooth)
+                }
+                if (reel != null) {
+                    // Always there, as a film's timeline would be with the controls.
+                    // Over, the last bar stays full: the timeline's own reading stops at the end.
+                    ReelSegments(
+                        reel, { if (state.ended) 1f else smooth.fraction() },
+                        Modifier.align(Alignment.TopCenter).padding(start = 10.dp, end = 10.dp, top = 10.dp),
+                    )
+                    // The moment's name for its first moments, and with the
+                    // controls; full screen has its own title for that.
+                    AnimatedVisibility(
+                        visible = reelCaption || (controlsVisible && drag == null && !immersive),
+                        enter = fadeIn(), exit = fadeOut(),
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                    ) {
+                        // On its own dark foot: white type over a bright frame would vanish.
+                        Box(
+                            Modifier.fillMaxWidth()
+                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB8000000))))
+                                .padding(start = 12.dp, end = 12.dp, top = 28.dp, bottom = 12.dp),
+                        ) {
+                            ReelCaption(reel.clip, large = windowShape.wide)
+                        }
+                    }
                 }
                 if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
                 drag?.let { DragRail(it) }
@@ -823,7 +869,7 @@ fun PlayerScreen(
                         .graphicsLayer { alpha = (1f - maxOf(dragUp, dragDown)) * pageAlpha }
                         .testTag("player_up_next_column"),
                 ) {
-                    NextInFolder(state, viewModel::playNext, emptyState = true)
+                    if (reel != null) ReelList(reel, state.reelProgress(), chromeCallbacks.onReelClip) else NextInFolder(state, viewModel::playNext, emptyState = true)
                     Spacer(Modifier.height(Spacing.s30))
                 }
             }
@@ -992,6 +1038,12 @@ private class ChromeCallbacks(
      * same flag threaded through three chrome signatures and [PillRow].
      */
     val chaptersOpenable: Boolean = true,
+    /** A reel's moment picked from its list (Reel.kt). */
+    val onReelClip: (Int) -> Unit = {},
+    /** Leave the reel for the whole video, carrying on from here. */
+    val onWatchFromHere: () -> Unit = {},
+    /** Shuffle what is left of the reel, or put it back in order. */
+    val onReelShuffle: () -> Unit = {},
 )
 
 /** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
@@ -1020,7 +1072,8 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
             IconCell(R.drawable.rg_ic_arrow_down, "Shrink the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
             IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
             Transport(state, cb, gap = Spacing.s18, circle = 48.dp, glyph = 26.dp, modifier = Modifier.align(Alignment.Center))
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
+            // A reel has its moments across the top instead of a timeline here.
+            if (state.reel == null) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
                 scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.eyebrow.copy(letterSpacing = 0.sp), colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
@@ -1106,7 +1159,8 @@ private fun BoxScope.FullChrome(
                         )
                     }
                     scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    // A reel has its moments across the top instead of a timeline.
+                    if (state.reel == null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                         PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
                         Scrubber(
                             progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
@@ -1129,7 +1183,7 @@ private fun BoxScope.FullChrome(
                     // which read as part of the film's identity; down here they
                     // are what they are — the controls for the thing the
                     // timeline is scrubbing.
-                    PillRow(state, cb, onMedia = true, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
+                    if (state.reel == null) PillRow(state, cb, onMedia = true, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -1467,7 +1521,9 @@ private fun PlayerDetails(
             .testTag(if (chapterEditor != null) "player_chapter_editor_panel" else if (loop != null) "player_loop_panel" else "player_details"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s12),
     ) {
+        val reel = state.reel
         when {
+            reel != null -> ReelDetails(reel, cb.onWatchFromHere, cb.onReelShuffle)
             chapterEditor != null -> chapterEditor()
             loop != null -> AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = cb.onLoopClear)
             else -> {
@@ -1476,8 +1532,10 @@ private fun PlayerDetails(
             }
         }
         // The folder still follows a loop — the loop is about this film, not
-        // about what comes after it.
-        if (showNext) NextInFolder(state, onPlayNext)
+        // about what comes after it. A reel lists its moments instead.
+        if (showNext) {
+            if (reel != null) ReelList(reel, state.reelProgress(), cb.onReelClip) else NextInFolder(state, onPlayNext)
+        }
         Spacer(Modifier.height(Spacing.s30))
     }
 }
@@ -1926,6 +1984,9 @@ private const val MINI_HANDOVER_AT = 0.92f
 
 /** The film's still fading off its first frame: quick, so it reads as the picture arriving, not a dissolve. */
 private const val STILL_FADE_MS = 160
+
+/** How long a reel's moment shows its name as it starts. */
+private const val REEL_CAPTION_MS = 1_500L
 
 /**
  * How long the Up next card waits before it plays on by itself. Long enough

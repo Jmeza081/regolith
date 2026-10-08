@@ -728,6 +728,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onSendingAway = appViewModel::sendingAway,
                                     // A moment on a collection's profile plays from its time, as in Search.
                                     onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
+                                    // Its moments as a reel, from the profile's Moments tab.
+                                    onPlayMoments = { title, clips -> backStack.add(RegolithKey.Player.reel(title, clips)) },
                                 )
                             }
                         }
@@ -935,8 +937,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             hazeState = hazeState,
                             onExpand = ::expandPlayer,
                             onTogglePlay = miniPlayer::togglePlayPause,
-                            onPrevious = playback.upPrevious?.let { p -> { miniPlayer.play(p.fileId) } },
-                            onNext = playback.upNext?.let { n -> { miniPlayer.play(n.fileId) } },
+                            // A reel steps between its moments, as the player's own buttons do.
+                            onPrevious = playback.reel?.let { { miniPlayer.reelPrevious() } }
+                                ?: playback.upPrevious?.let { p -> { miniPlayer.play(p.fileId) } },
+                            onNext = playback.reel?.let { r -> r.takeIf { it.hasNext }?.let { { miniPlayer.reelNext() } } }
+                                ?: playback.upNext?.takeIf { playback.reel == null }?.let { n -> { miniPlayer.play(n.fileId) } },
                             onClose = miniPlayer::close,
                         )
                     }

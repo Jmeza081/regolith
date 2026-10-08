@@ -58,6 +58,9 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
+import com.regolith.domain.playback.Reel
+import com.regolith.domain.playback.ReelClip
+import com.regolith.domain.playback.ReelMoment
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.SortChoice
@@ -196,6 +199,8 @@ fun LibraryScreen(
      * tab opens the player there, as a point of interest does in Search.
      */
     onPlayAt: (fileId: Long, startMs: Long) -> Unit = { _, _ -> },
+    /** A profile's Play moments: its moments as a reel, called by the collection's [title]. */
+    onPlayMoments: ((title: String, clips: List<ReelClip>) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val uploadActions = viewModel.uploadActions
@@ -513,6 +518,24 @@ fun LibraryScreen(
         // is the same height at any width, so it stays where it was.
         val leadingItems = (if (profile != null) 2 else 0) +
             (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (showScanLine) 1 else 0)
+        // In the order the wall shows their videos, so sorting one sorts both.
+        val moments = remember(profile?.moments, state.tiles, state.momentOrder) { profile?.moments.orEmpty().inOrder(state.momentOrder, state.tiles) }
+        val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
+        // The reel those moments make, in the tab's order: ten seconds of each,
+        // or up to the next mark in the same video (Reel.clips).
+        val reelClips = remember(moments, state.tiles) {
+            val lengths = state.tiles.filterIsInstance<LibraryTile.Title>().associate { it.fileId to it.durationMs }
+            Reel.clips(moments.map { ReelMoment(it.fileId, it.startMs, it.title, it.videoName) }, lengths)
+        }
+        val momentsPlay = if (showMoments && reelClips.isNotEmpty() && onPlayMoments != null) {
+            MomentsPlay(
+                length = Reel.roughLength(Reel.lengthMs(reelClips)),
+                onPlay = { onPlayMoments(state.title, reelClips) },
+                onShuffle = { onPlayMoments(state.title, reelClips.shuffled()) },
+            )
+        } else {
+            null
+        }
         // The profile's header and tabs, the first two items of either layout.
         val playableIds = { state.tiles.filterIsInstance<LibraryTile.Title>().map { it.fileId } }
         val profileHeader = @Composable { p: CollectionProfile ->
@@ -523,14 +546,12 @@ fun LibraryScreen(
                 onShuffle = { onPlayAll?.invoke(playableIds(), true) },
                 onAdd = if (uploads.canUpload) ({ uploadActions?.openSheet() }) else null,
                 modifier = Modifier.onSizeChanged { profileHeaderPx = it.height },
+                moments = momentsPlay,
             )
         }
         val profileTabs = @Composable { p: CollectionProfile ->
             ProfileTabs(p, profileTab, { profileTab = it }, Modifier.padding(bottom = Spacing.s8))
         }
-        // In the order the wall shows their videos, so sorting one sorts both.
-        val moments = remember(profile?.moments, state.tiles, state.momentOrder) { profile?.moments.orEmpty().inOrder(state.momentOrder, state.tiles) }
-        val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
         val uploadSection = @Composable { section: com.regolith.ui.components.UploadSection ->
             UploadSectionView(
                 section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) },
