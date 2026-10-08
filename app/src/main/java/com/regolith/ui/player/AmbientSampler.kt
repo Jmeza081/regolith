@@ -4,9 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
-import android.view.TextureView
 import android.view.View
-import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -38,8 +36,9 @@ import kotlin.math.abs
  * exists: a surface can only be read back if it is a `TextureView`, and a
  * TextureView is a real step down from a `SurfaceView` — the video goes
  * through the view hierarchy's own drawing instead of straight to the
- * compositor. With the light off the player keeps its SurfaceView and none
- * of this runs.
+ * compositor. With the light off none of this runs, and the player keeps a
+ * SurfaceView full screen (the windowed player is a TextureView whatever the
+ * setting, since its picture moves; see PlayerScreen's video slot).
  *
  * Both live lights read the same surface on the same clock; they differ in
  * what they keep. Mirror keeps the picture (a blended 32×18); Color bleed
@@ -195,34 +194,3 @@ private suspend fun sampleEdges(root: View, edges: Bitmap, pixels: IntArray, emi
 
 /** How far the picture's shape may drift before its zones are laid out again. */
 private const val ASPECT_SLACK = 0.01f
-
-/**
- * True while the surface has drawn nothing yet. A TextureView with no frame
- * on it reads back fully transparent, and letting that through would blink
- * the light off every time a file loads. A genuinely black shot is opaque
- * and passes, which is right — the room should go dark with the film.
- */
-private fun Bitmap.isBlank(): Boolean {
-    // Four corners and the middle: enough to tell "nothing drawn" from "a
-    // dark shot", and cheaper than reading 576 pixels on every sample.
-    val probes = intArrayOf(
-        getPixel(0, 0), getPixel(width - 1, 0), getPixel(0, height - 1),
-        getPixel(width - 1, height - 1), getPixel(width / 2, height / 2),
-    )
-    return probes.all { (it ushr 24) == 0 }
-}
-
-/**
- * The player's video surface, found by walking down from the Compose root.
- *
- * Media3's `ContentFrame` owns the view and does not hand it out, and its
- * sizing and content-scaling are worth more than a handle would be — so the
- * view is located instead of constructed. The player screen has exactly one
- * TextureView, so there is nothing to disambiguate, and a null (a Media3
- * that stops using one) costs the static backdrop, not a crash.
- */
-private fun View.findTextureView(): TextureView? = when {
-    this is TextureView -> this
-    this is ViewGroup -> (0 until childCount).firstNotNullOfOrNull { getChildAt(it).findTextureView() }
-    else -> null
-}

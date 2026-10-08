@@ -1,6 +1,12 @@
 package com.regolith.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -10,6 +16,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.regolith.player.PlaybackState
+import com.regolith.ui.player.LandedFrame
+import com.regolith.ui.player.LandedPicture
 import com.regolith.ui.player.MiniPlayerBar
 import com.regolith.ui.player.MiniPlayerCard
 import com.regolith.ui.theme.RegolithTheme
@@ -22,7 +30,8 @@ import org.junit.Test
  * The mini player's two shapes (MiniPlayer.kt) with no film behind them: the
  * phone's bar and the wide window's card say what is playing and where it
  * lives, their buttons do what they say, a finished film offers Play rather
- * than Pause, and the card greys out a direction with nowhere to go.
+ * than Pause, and the card greys out a direction with nowhere to go. And the
+ * frame a picture lands with: held, then gone, and gone for good either way.
  */
 class MiniPlayerTest {
 
@@ -103,5 +112,31 @@ class MiniPlayerTest {
         rule.onNodeWithTag("mini_player_expand").performClick()
         assertEquals(1, nexts)
         assertEquals(1, expanded)
+    }
+
+    private val landed = LandedFrame(ImageBitmap(16, 9), ContentScale.Fit)
+    private val slot = Rect(0f, 0f, 160f, 90f)
+
+    @Test
+    fun aLandedFrameIsHeldWhileTheMiniPlayerFadesInThenFadesAndIsDone() {
+        var done = 0
+        rule.mainClock.autoAdvance = false
+        rule.setContent { RegolithTheme { LandedPicture(landed, slot, wide = true, fadeMs = 120) { done++ } } }
+        rule.mainClock.advanceTimeBy(100)
+        assertEquals(0, done)
+        rule.mainClock.advanceTimeBy(300)
+        assertEquals(1, done)
+    }
+
+    @Test
+    fun aLandedFrameTakenOffTheScreenEarlyIsDoneToo() {
+        var done = 0
+        var shown by mutableStateOf(true)
+        rule.mainClock.autoAdvance = false
+        rule.setContent { RegolithTheme { if (shown) LandedPicture(landed, slot, wide = false, fadeMs = 120) { done++ } } }
+        rule.mainClock.advanceTimeBy(50)
+        shown = false
+        rule.mainClock.advanceTimeBy(50)
+        assertEquals(1, done)
     }
 }

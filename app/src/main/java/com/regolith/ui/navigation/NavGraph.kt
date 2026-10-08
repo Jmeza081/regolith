@@ -98,6 +98,9 @@ import com.regolith.ui.player.MiniPlayerHandoff
 import com.regolith.ui.player.LocalMiniPlayerHandoff
 import com.regolith.ui.player.miniBarPictureRect
 import com.regolith.ui.player.miniCardPictureRect
+import com.regolith.ui.player.LandedPicture
+import com.regolith.ui.player.videoFrame
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.toSize
@@ -137,6 +140,7 @@ import com.regolith.ui.onboarding.SplashContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -189,6 +193,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // What the player and the mini player tell each other as the film passes
     // between them: where it lands, and when to take it (MiniPlayerHandoff).
     val handoff = remember { MiniPlayerHandoff() }
+    // A frame kept for a hand-over is a few MB; none is wanted once the film is gone.
+    LaunchedEffect(playback.loaded) {
+        if (!playback.loaded) {
+            handoff.frame = null
+            handoff.landed = null
+        }
+    }
+    // The Compose root, which the video surfaces hang under (videoFrame).
+    val rootView = LocalView.current
     // The window, measured by the root: where the mini player's picture is
     // worked out from, in the same coordinates the player measures itself in.
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
@@ -529,6 +542,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // The mini player opens the player again on the film it is playing,
     // which picks it up as it was rather than loading it afresh (`expand`).
     fun expandPlayer() {
+        // The film's frame off the mini player's surface, for the player's
+        // picture to show as it grows out of it until its own surface has
+        // drawn one (MiniPlayerHandoff.frame). A mini player that has drawn
+        // nothing yet, a film put away paused, still has the frame it landed with.
+        handoff.frame = rootView.videoFrame() ?: handoff.frame
         val s = playback
         backStack.add(
             RegolithKey.Player(
@@ -923,11 +941,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                 // The mini player off the nav's own group: a wide window's card,
                 // in the bottom corner away from the rail, and a phone's bar on a
                 // pushed page, which has no pill to ride above (MiniPlayer.kt).
+                // It fades in and out, but goes at once when the player opens:
+                // the player's picture grows out of the mini player's, and a
+                // copy of it fading where it was would trail the one growing.
+                val miniExit = if (playerOnStack) ExitTransition.None else fadeOut(tween(MINI_ARRIVE_MS))
                 if (windowShape.wide) {
                     AnimatedVisibility(
                         visible = miniPlayerDrawn,
                         enter = fadeIn(tween(MINI_ARRIVE_MS)),
-                        exit = fadeOut(tween(MINI_ARRIVE_MS)),
+                        exit = miniExit,
                         modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
                             .padding(end = miniCardEnd, bottom = Spacing.s18),
                     ) {
@@ -957,7 +979,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     AnimatedVisibility(
                         visible = miniPlayerDrawn,
                         enter = fadeIn(tween(MINI_ARRIVE_MS)),
-                        exit = fadeOut(tween(MINI_ARRIVE_MS)),
+                        exit = miniExit,
                         modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                             .padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s8 + barLift),
                     ) {
@@ -969,6 +991,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onTogglePlay = miniPlayer::togglePlayPause,
                             onClose = miniPlayer::close,
                         )
+                    }
+                }
+                // The picture that has just landed, held over the mini player
+                // while the rest of it fades in around the picture (LandedPicture).
+                val landed = handoff.landed
+                val landedAt = handoff.slot
+                if (landed != null && landedAt != null && miniPlayerDrawn) {
+                    LandedPicture(landed, landedAt, windowShape.wide, MINI_ARRIVE_MS) {
+                        if (handoff.landed === landed) handoff.landed = null
                     }
                 }
 
@@ -1184,5 +1215,9 @@ private fun RegolithKey?.hostsMiniPlayer(): Boolean =
     this !is RegolithKey.Shorts && this !is RegolithKey.Onboarding &&
         this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor
 
-/** How long the mini player takes to fade in under a picture that has just shrunk into it, or out. */
+/**
+ * How long the mini player takes to fade in, around a picture that has just
+ * landed in it or on its own, and to fade out; also how long the landed
+ * picture is held over it, and then takes to fade off it.
+ */
 private const val MINI_ARRIVE_MS = 120

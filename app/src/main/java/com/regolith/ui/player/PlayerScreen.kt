@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -309,6 +310,10 @@ fun PlayerScreen(
     // transition, so the picture follows the thumb.
     val handoff = LocalMiniPlayerHandoff.current
     val screen = LocalNavAnimatedContentScope.current
+    // Pinched to fill its box (onZoom) rather than fitted in it; how the picture lands, too.
+    var fill by remember { mutableStateOf(false) }
+    // The Compose root, which the video surface hangs under (videoFrame).
+    val rootView = LocalView.current
     val away by screen.transition.animateFloat(
         transitionSpec = { tween(PLAYER_MOTION_MS, easing = FlightEasing) },
         label = "playerAway",
@@ -351,8 +356,7 @@ fun PlayerScreen(
     val shrinkFlickPxPerS by rememberUpdatedState(with(LocalDensity.current) { SHRINK_FLICK_DP_PER_S.dp.toPx() })
     // While it is on screen the mini player stays away from the picture: one
     // ExoPlayer draws on one surface. Shrinking, it lets go just before it
-    // lands — the player's surface holds its last frame under the mini
-    // player's while that one takes the film over.
+    // lands, and hands over the frame it is showing with the film.
     DisposableEffect(handoff) {
         handoff?.playerShowing = true
         onDispose {
@@ -369,6 +373,13 @@ fun PlayerScreen(
         // it may let go short of the mini player and bring the picture back,
         // and a picture already handed over would stay black.
         snapshotFlow { away >= MINI_HANDOVER_AT && backGesture is NavigationEventTransitionState.Idle }.first { it }
+        // The frame on this surface now, for the mini player to show until its
+        // own surface has drawn one, and to hold over itself as it fades in
+        // (MiniPlayerHandoff): a new surface is empty for a frame or several,
+        // and that was the black box behind the picture as it landed.
+        val frame = rootView.videoFrame()
+        handoff.frame = frame
+        handoff.landed = frame?.let { LandedFrame(it, if (fill) ContentScale.Crop else ContentScale.Fit) }
         handoff.playerShowing = false
     }
     // The picture's way into the slot and out of it: from where it sits on the
@@ -424,6 +435,13 @@ fun PlayerScreen(
     // already made: the clip opens on it.
     val reelFrame = reel?.clip?.let { ArtworkRequest(ArtworkOwner.Moment(it.fileId, it.startMs), ArtworkKind.THUMB) }
     val stillShown = (reelFrame ?: still) != null && !expandFromMini && (!surfaceUp || presentation.coverSurface)
+    // Grown out of the mini player: the frame it was showing, which it handed
+    // over (MiniPlayerHandoff.frame), under this surface until the surface has
+    // drawn one of its own. A new surface is empty for a frame or several.
+    val handedFrame = handoff?.frame?.takeIf { expandFromMini && presentation.coverSurface }
+    LaunchedEffect(presentation.coverSurface) {
+        if (expandFromMini && !presentation.coverSurface) handoff?.frame = null
+    }
     val stillAlpha by animateFloatAsState(if (stillShown) 1f else 0f, tween(STILL_FADE_MS), label = "playerStill")
     // Between a reel's moments: the next one's name over the picture for a
     // moment and a half (the canvas's question 9), then the picture alone.
@@ -550,7 +568,6 @@ fun PlayerScreen(
     LaunchedEffect(sheet, state.fileId, state.durationMs) {
         if (sheet == Sheet.Chapters) viewModel.requestChapterFrames()
     }
-    var fill by remember { mutableStateOf(false) }
     var drag by remember { mutableStateOf<DragOverlay?>(null) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
@@ -759,18 +776,30 @@ fun PlayerScreen(
         // layout's to fill, which is how the letterbox bars pick up the glow
         // instead of being black.
         Box(Modifier.fillMaxSize()) {
+            // An empty TextureView draws nothing, so this shows through it.
+            handedFrame?.let {
+                Image(it, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = if (fill) ContentScale.Crop else ContentScale.Fit)
+            }
             // Floating, the picture-in-picture window has the film (one
             // ExoPlayer draws on one surface); this takes it back after.
             player?.takeUnless { inPip }?.takeIf { surfaceUp }?.let { p ->
                 // A SurfaceView goes straight to the compositor and cannot be
                 // read back; a TextureView draws through the view hierarchy and
-                // can. That is the whole trade behind the Ambient light setting,
-                // so the surface type follows it rather than being a constant —
-                // and both live lights read the picture, so both need it.
+                // can. That is the trade behind the Ambient light setting, and
+                // both live lights read the picture, so both need a TextureView.
+                // The windowed player needs one whatever the setting: its
+                // picture moves (into the mini player, out of it, under a
+                // thumb), and a SurfaceView moving on a real display shows its
+                // black background in a box around the picture and tears.
+                // Full screen, where nothing moves, keeps the setting's choice.
+                // No shutter: Media3's is a black box over a new surface until
+                // its first frame, which is exactly the box that flashed; what
+                // is under the surface shows through it instead.
                 ContentFrame(
                     p, Modifier.fillMaxSize(),
-                    if (ambientLight.live) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
+                    if (ambientLight.live || !immersive) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
                     if (fill) ContentScale.Crop else ContentScale.Fit,
+                    shutter = {},
                 )
             }
             if ((reelFrame ?: still) != null && stillAlpha > 0f) {
@@ -2058,8 +2087,12 @@ private fun AmbientGlow(
  */
 private const val FULLSCREEN_DRAG_FRACTION = 0.12f
 
-/** How far into shrinking the mini player is handed the picture: just before it lands. */
-private const val MINI_HANDOVER_AT = 0.92f
+/**
+ * How far into shrinking the mini player is handed the picture: within 1% of
+ * its spot, about 60ms before the end, which leaves the mini player time to be
+ * drawn before the player is gone. Sooner and the two pictures stood apart.
+ */
+private const val MINI_HANDOVER_AT = 0.99f
 
 /** Let go slowly past this much of the way, the swipe down finishes into the mini player; short of it, back up. */
 private const val SHRINK_SETTLE_FRACTION = 0.5f
