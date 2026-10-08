@@ -181,6 +181,10 @@ private suspend fun sampleEdges(root: View, edges: Bitmap, pixels: IntArray, emi
             }
             edges.getPixels(pixels, 0, EDGE_W, 0, 0, EDGE_W, EDGE_H)
             val colors = ColorBleed.colors(pixels, EDGE_W, EDGE_H, zones)
+            // The view's own place and size: right while the picture is still,
+            // but a picture its Compose parent draws scaled down is still its
+            // full size here, so PlayerScreen turns the light off while the
+            // picture moves (bleedPaused).
             texture.getLocationInWindow(at)
             val picture = Rect(at[0], at[1], at[0] + texture.width, at[1] + texture.height)
             val before = last

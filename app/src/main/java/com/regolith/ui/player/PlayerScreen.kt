@@ -207,7 +207,6 @@ fun PlayerScreen(
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val ambientLight by viewModel.ambientLight.collectAsStateWithLifecycle()
-    val ambientSample by rememberAmbientLight(light = ambientLight, key = state.fileId)
     val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
@@ -545,6 +544,18 @@ fun PlayerScreen(
     // everything that needs to FADE (the details, the ground) is either an
     // ordinary composable or a scrim drawn over the top.
     val pictureScale = 1f + dragUp * 0.16f - dragDown * 0.14f
+    // Color bleed hangs its light on the picture where the sampler last found
+    // it on screen: eight times a second, and at the picture's full size, since
+    // the view underneath is not told it is drawn scaled. While the picture
+    // moves (into the mini player or out of it, sliding away, under the middle
+    // drag) that was a dark box edged with light, the picture's old place,
+    // trailing it as it shrank: the black box the owner saw. So the light is
+    // out from the moment the picture moves, and samples afresh once it is still.
+    val bleedPaused = ambientLight == AmbientLight.COLOR_BLEED && (away > 0f || pictureScale != 1f)
+    val sampled by rememberAmbientLight(light = if (bleedPaused) AmbientLight.OFF else ambientLight, key = state.fileId)
+    // Out in the very frame the picture first moves: the sampler only lets go
+    // of its last sample on the frame after.
+    val ambientSample = sampled.takeUnless { bleedPaused }
     val haptics = LocalHapticFeedback.current
     // One tick as you cross the point of no return into full screen, so you
     // can feel that letting go now will do something. Not on the way down:
