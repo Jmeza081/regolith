@@ -38,6 +38,7 @@ import com.regolith.domain.playback.ChapterMarks
 import com.regolith.domain.playback.ChapterSource
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
+import com.regolith.domain.playback.ReelClip
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -62,6 +63,23 @@ import javax.inject.Singleton
 
 /** One entry of "Next in this folder". */
 data class NextItem(val fileId: Long, val name: String, val sizeBytes: Long, val durationMs: Long?)
+
+/**
+ * A Moments reel as it plays ([PlaybackSession.loadReel]): its name (the
+ * collection's), its clips in the order they play, the one playing, and
+ * whether what is left is shuffled ([original] is the order to put it back in).
+ */
+data class ReelState(
+    val title: String,
+    val clips: List<ReelClip>,
+    val index: Int,
+    val shuffled: Boolean = false,
+    val original: List<ReelClip> = clips,
+) {
+    val clip: ReelClip get() = clips[index]
+    val hasPrevious: Boolean get() = index > 0
+    val hasNext: Boolean get() = index < clips.lastIndex
+}
 
 /** What the Player screen draws. */
 data class PlaybackState(
@@ -139,6 +157,8 @@ data class PlaybackState(
      */
     val chaptersScanned: Boolean = false,
     val error: String? = null,
+    /** A Moments reel playing instead of one film ([PlaybackSession.loadReel]); null the rest of the time. */
+    val reel: ReelState? = null,
 ) {
     /**
      * Where you can jump to. The container's own markers when it has them,
@@ -388,6 +408,21 @@ class PlaybackSession @Inject constructor(
     }
 
     private val listener = object : Player.Listener {
+        // A reel moving on to its next clip: the clip is the film now, as far
+        // as anything showing the session is concerned.
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val reel = _state.value.reel ?: return
+            val index = _player.value?.currentMediaItemIndex ?: return
+            val clip = reel.clips.getOrNull(index) ?: return
+            playerFileId = clip.fileId
+            _state.update {
+                it.copy(
+                    fileId = clip.fileId, title = clip.name, sourceLabel = clip.videoName,
+                    positionMs = 0, durationMs = clip.durationMs, reel = reel.copy(index = index),
+                )
+            }
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             Log.d(TAG, "isPlaying=$isPlaying pos=${_player.value?.currentPosition}")
             _state.update { it.copy(isPlaying = isPlaying) }
@@ -488,7 +523,9 @@ class PlaybackSession @Inject constructor(
             // A file from outside the queue ends the queue, and with it the shuffle.
             !activeQueue.contains(fileId) -> { activeQueue = emptyList(); shuffledHere = false }
         }
-        if (_state.value.fileId == fileId && _state.value.error == null) {
+        // A reel's clip is the same file but not the same thing loaded: Watch
+        // from here wants the whole video, from the top of its own timeline.
+        if (_state.value.reel == null && _state.value.fileId == fileId && _state.value.error == null) {
             // Already loaded — the mini player keeps a film here after its
             // screen has gone, so this is the common case now, not a corner.
             // Asked for a time (a moment), go there; finished, start again;
@@ -506,6 +543,7 @@ class PlaybackSession @Inject constructor(
         }
         saveProgress()
         redrawOnNewSurface = false
+        reelItems = emptyMap()
         _state.value = PlaybackState(loaded = true, fileId = fileId, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding)
         followUserChapters(fileId)
         scope.launch {
@@ -537,7 +575,7 @@ class PlaybackSession @Inject constructor(
                 )
             }
             currentUri = uri
-            currentArt = artFor(fileId)
+            currentArt = artFor(ArtworkOwner.File(fileId))
             startPlayer(fileId, file, resume)
             // After the player is started: the header read is worth a second
             // of latency on a sheet nobody has opened yet, and never worth
@@ -548,6 +586,127 @@ class PlaybackSession @Inject constructor(
             }
             setScrubThumbnails(prefs.scrubThumbnails.first())
         }
+    }
+
+    /**
+     * Play a Moments reel: [clips] one after another, [title] being the
+     * collection's name. They go to the player as one playlist of clipped
+     * items, so the next clip loads while this one plays and there is no wait
+     * between them. A reel is not watching: nothing is saved ([saveProgress]),
+     * and the folder's Next and Keep playing do not apply.
+     */
+    fun loadReel(title: String, clips: List<ReelClip>, startIndex: Int = 0) {
+        if (clips.isEmpty()) return
+        Log.d(TAG, "loadReel($title, ${clips.size} clips)")
+        saveProgress()
+        holdStart = false
+        redrawOnNewSurface = false
+        activeQueue = emptyList()
+        shuffledHere = false
+        userChapterJob?.cancel()
+        currentFile = null
+        currentUri = null
+        currentArt = null
+        val index = startIndex.coerceIn(clips.indices)
+        val first = clips[index]
+        _state.value = PlaybackState(
+            loaded = true, fileId = first.fileId, title = first.name, sourceLabel = first.videoName,
+            durationMs = first.durationMs, speed = _state.value.speed, hardwareDecoding = _state.value.hardwareDecoding,
+            reel = ReelState(title, clips, index),
+        )
+        scope.launch {
+            val hardware = prefs.hardwareDecoding.first()
+            if (hardware != _state.value.hardwareDecoding) {
+                _state.update { it.copy(hardwareDecoding = hardware) }
+                _player.value?.release()
+                _player.value = null
+            }
+            discreet = prefs.appLock.first()
+            val items = clips.associateWith { reelItem(it) }
+            // Replaced while its items were being made: the newer one plays.
+            val reel = _state.value.reel?.takeIf { it.clips == clips } ?: return@launch
+            reelItems = items
+            startReel(reel, positionMs = 0)
+        }
+    }
+
+    /** The reel's clips as the player's items, made once ([loadReel]), so reordering never looks them up again. */
+    private var reelItems: Map<ReelClip, MediaItem> = emptyMap()
+
+    private suspend fun reelItem(clip: ReelClip): MediaItem = MediaItem.Builder()
+        .setUri(resolver.playableUriFor(clip.fileId))
+        .setMediaId("reel:${clip.fileId}:${clip.startMs}")
+        .setClippingConfiguration(
+            MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.startMs).setEndPositionMs(clip.endMs).build(),
+        )
+        // The lock screen names the moment, and pictures it with its own frame.
+        .setMediaMetadata(clipMetadata(clip, artFor(ArtworkOwner.Moment(clip.fileId, clip.startMs))))
+        .build()
+
+    /** Hand [reel]'s clips to the player, at the one playing and [positionMs] into it. */
+    private fun startReel(reel: ReelState, positionMs: Long) {
+        val p = current()
+        p.repeatMode = Player.REPEAT_MODE_OFF
+        p.setMediaItems(reel.clips.mapNotNull { reelItems[it] }, reel.index, positionMs)
+        p.prepare()
+        p.play()
+        playerFileId = reel.clip.fileId
+        _state.update { it.copy(playWhenReady = p.playWhenReady) }
+    }
+
+    /** Go to the reel's clip at [index], from its start, playing. */
+    fun reelTo(index: Int) {
+        val reel = _state.value.reel ?: return
+        if (index !in reel.clips.indices) return
+        val p = current()
+        p.seekTo(index, 0)
+        if (!p.playWhenReady) p.play()
+    }
+
+    /** The reel's next moment. */
+    fun reelNext() {
+        _state.value.reel?.takeIf { it.hasNext }?.let { reelTo(it.index + 1) }
+    }
+
+    /** The reel's previous moment; on the first, that moment from its start. */
+    fun reelPrevious() {
+        _state.value.reel?.let { reelTo((it.index - 1).coerceAtLeast(0)) }
+    }
+
+    /**
+     * Shuffle what is left of the reel, or put it back in its order. The clip
+     * playing carries on, and so does what was played: only the rest is
+     * reordered, in the player's own list, so nothing stops to load again.
+     */
+    fun setReelShuffle(on: Boolean) {
+        val reel = _state.value.reel ?: return
+        if (reel.shuffled == on) return
+        val p = _player.value ?: return
+        val played = reel.clips.take(reel.index + 1)
+        val rest = if (on) reel.clips.drop(reel.index + 1).shuffled() else reel.original.filterNot { it in played }
+        if (p.mediaItemCount > reel.index + 1) p.removeMediaItems(reel.index + 1, p.mediaItemCount)
+        p.addMediaItems(rest.mapNotNull { reelItems[it] })
+        _state.update { it.copy(reel = reel.copy(clips = played + rest, shuffled = on)) }
+    }
+
+    /**
+     * Watch from here: leave the reel for the whole video its clip is from,
+     * carrying on from this very moment, with a resume point again.
+     */
+    fun watchReelFromHere() {
+        val reel = _state.value.reel ?: return
+        val intoClip = _player.value?.currentPosition ?: 0L
+        load(reel.clip.fileId, startMs = reel.clip.startMs + intoClip)
+    }
+
+    /** A reel's clip on the lock screen: the moment's name over its video's, and its frame. */
+    private fun clipMetadata(clip: ReelClip, art: ByteArray?): MediaMetadata {
+        if (discreet) return MediaMetadata.Builder().setTitle("Regolith").setArtist("Playing").build()
+        return MediaMetadata.Builder()
+            .setTitle(clip.name)
+            .setArtist(clip.videoName)
+            .apply { art?.let { setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) } }
+            .build()
     }
 
     /**
@@ -798,14 +957,15 @@ class PlaybackSession @Inject constructor(
     }
 
     /**
-     * [fileId]'s thumb as bytes, for the notification's picture, or null in
-     * spoof mode or before it has been made. Bytes rather than the file's
+     * [owner]'s thumb as bytes (a film's, or the frame of a reel's moment),
+     * for the notification's picture, or null in spoof mode or before it has
+     * been made. Bytes rather than the file's
      * address: the notification is drawn by the system, which cannot open a
      * file inside the app's own storage.
      */
-    private suspend fun artFor(fileId: Long): ByteArray? {
+    private suspend fun artFor(owner: ArtworkOwner): ByteArray? {
         if (spoof.current != null) return null
-        val thumb = artwork.fileFor(artwork.relPathFor(ArtworkOwner.File(fileId), ArtworkKind.THUMB))
+        val thumb = artwork.fileFor(artwork.relPathFor(owner, ArtworkKind.THUMB))
         return withContext(Dispatchers.IO) { thumb.takeIf { it.exists() }?.readBytes() }
     }
 
@@ -827,7 +987,11 @@ class PlaybackSession @Inject constructor(
         // Decide on intent, not on isPlaying: during a rebuffer isPlaying is
         // false but the user has not paused, and a tap then must pause.
         when {
-            p.playbackState == Player.STATE_ENDED -> { p.seekTo(0); p.play() }
+            p.playbackState == Player.STATE_ENDED -> {
+                // A finished reel starts again from its first clip, not its last.
+                if (_state.value.reel != null) p.seekTo(0, 0) else p.seekTo(0)
+                p.play()
+            }
             p.playWhenReady -> p.pause()
             else -> p.play()
         }
@@ -899,7 +1063,11 @@ class PlaybackSession @Inject constructor(
         old?.release()
         _player.value = null
         _state.update { it.copy(hardwareDecoding = hardware, isPlaying = false) }
-        if (fileId != null) startPlayer(fileId, currentFile, position)
+        val reel = _state.value.reel
+        when {
+            reel != null -> startReel(reel, position)
+            fileId != null -> startPlayer(fileId, currentFile, position)
+        }
     }
 
     // --- A–B loop
@@ -924,6 +1092,8 @@ class PlaybackSession @Inject constructor(
 
     /** Persist the current position now (screen leaving, app backgrounded). */
     fun saveProgress() {
+        // A reel is not watching: no resume points, nothing for Continue watching.
+        if (_state.value.reel != null) return
         val fileId = _state.value.fileId ?: return
         val p = _player.value ?: return
         val position = p.currentPosition
@@ -954,6 +1124,7 @@ class PlaybackSession @Inject constructor(
         currentArt = null
         playerFileId = null
         holdStart = false
+        reelItems = emptyMap()
         _scrubThumbnails.value.close()
         _scrubThumbnails.value = ScrubThumbnails.None
         _state.value = PlaybackState(speed = 1f, hardwareDecoding = _state.value.hardwareDecoding)

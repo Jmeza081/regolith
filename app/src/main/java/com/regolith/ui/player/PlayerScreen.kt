@@ -6,6 +6,14 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.NavigationEventTransitionState
+import androidx.navigationevent.NavigationEvent
+import androidx.navigationevent.DirectNavigationEventInput
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.collectAsState
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -67,6 +75,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -189,13 +198,15 @@ fun PlayerScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val player by viewModel.player.collectAsStateWithLifecycle()
+    // A Moments reel instead of one film (Reel.kt): its moments take the
+    // timeline's place, and Previous and Next step between them.
+    val reel = state.reel
     // The timeline and the clocks run off this rather than off
     // state.positionMs, which is only refreshed four times a second.
     val smooth = rememberSmoothProgress(player)
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val ambientLight by viewModel.ambientLight.collectAsStateWithLifecycle()
-    val ambientSample by rememberAmbientLight(light = ambientLight, key = state.fileId)
     val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
@@ -298,6 +309,10 @@ fun PlayerScreen(
     // transition, so the picture follows the thumb.
     val handoff = LocalMiniPlayerHandoff.current
     val screen = LocalNavAnimatedContentScope.current
+    // Pinched to fill its box (onZoom) rather than fitted in it; how the picture lands, too.
+    var fill by remember { mutableStateOf(false) }
+    // The Compose root, which the video surface hangs under (videoFrame).
+    val rootView = LocalView.current
     val away by screen.transition.animateFloat(
         transitionSpec = { tween(PLAYER_MOTION_MS, easing = FlightEasing) },
         label = "playerAway",
@@ -309,10 +324,38 @@ fun PlayerScreen(
     val shrinks = slot != null && !immersive && !flex && (leaving || expandFromMini) &&
         !state.ended && state.error == null
     var pictureBounds by remember { mutableStateOf<Rect?>(null) }
+    // --- The swipe down into the mini player, the way YouTube does it: the
+    // finger carries the picture down into the mini player's spot while the
+    // player's ground fades off the page underneath, and letting go finishes
+    // the same motion from where it is. The swipe drives the very transition
+    // Back plays, which the system's back swipe already scrubs, through a
+    // back gesture of the app's own. It used to shrink the picture in place
+    // and spring back as the put-away began: the jolt.
+    val navEvents = LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher
+    val swipeInput = remember { DirectNavigationEventInput() }
+    DisposableEffect(navEvents) {
+        navEvents?.addInput(swipeInput)
+        onDispose { navEvents?.removeInput(swipeInput) }
+    }
+    val noGesture = remember { MutableStateFlow<NavigationEventTransitionState>(NavigationEventTransitionState.Idle) }
+    val backGesture by (navEvents?.transitionState ?: noGesture).collectAsState()
+    // Where a swipe down is the put-away: wherever Back would shrink the picture.
+    val swipeCanShrink by rememberUpdatedState(
+        navEvents != null && handoff?.slot != null && !immersive && !flex && !state.ended && state.error == null,
+    )
+    // How far a finger's travel down the window has carried the picture: its
+    // top keeping pace with the finger on the way to the mini player's.
+    val shrinkFraction = { fingerPx: Float ->
+        val from = pictureBounds
+        val to = handoff?.slot
+        val travel = if (from != null && to != null) to.top - from.top else 0f
+        if (travel <= 1f) 0f else (fingerPx / travel).coerceIn(0f, 1f)
+    }
+    // A flick: fast enough that it, not where the picture is, decides.
+    val shrinkFlickPxPerS by rememberUpdatedState(with(LocalDensity.current) { SHRINK_FLICK_DP_PER_S.dp.toPx() })
     // While it is on screen the mini player stays away from the picture: one
     // ExoPlayer draws on one surface. Shrinking, it lets go just before it
-    // lands — the player's surface holds its last frame under the mini
-    // player's while that one takes the film over.
+    // lands, and hands over the frame it is showing with the film.
     DisposableEffect(handoff) {
         handoff?.playerShowing = true
         onDispose {
@@ -325,7 +368,17 @@ fun PlayerScreen(
     // player shown before then would only flash up empty-handed.
     LaunchedEffect(handoff, leaving, shrinks) {
         if (!leaving || !shrinks || handoff == null) return@LaunchedEffect
-        snapshotFlow { away >= MINI_HANDOVER_AT }.first { it }
+        // Not while a finger still holds the swipe (the app's or the system's):
+        // it may let go short of the mini player and bring the picture back,
+        // and a picture already handed over would stay black.
+        snapshotFlow { away >= MINI_HANDOVER_AT && backGesture is NavigationEventTransitionState.Idle }.first { it }
+        // The frame on this surface now, for the mini player to show until its
+        // own surface has drawn one, and to hold over itself as it fades in
+        // (MiniPlayerHandoff): a new surface is empty for a frame or several,
+        // and that was the black box behind the picture as it landed.
+        val frame = rootView.videoFrame()
+        handoff.frame = frame
+        handoff.landed = LandedFrame(frame, if (fill) ContentScale.Crop else ContentScale.Fit)
         handoff.playerShowing = false
     }
     // The picture's way into the slot and out of it: from where it sits on the
@@ -377,8 +430,27 @@ fun PlayerScreen(
     // while a film opens from the share. Not when grown out of the mini
     // player, whose live picture it would interrupt.
     val presentation = rememberPresentationState(player)
-    val stillShown = still != null && !expandFromMini && (!surfaceUp || presentation.coverSurface)
+    // A reel's still is its moment's own frame, which the Moments tab has
+    // already made: the clip opens on it.
+    val reelFrame = reel?.clip?.let { ArtworkRequest(ArtworkOwner.Moment(it.fileId, it.startMs), ArtworkKind.THUMB) }
+    val stillShown = (reelFrame ?: still) != null && !expandFromMini && (!surfaceUp || presentation.coverSurface)
+    // Grown out of the mini player: the frame it was showing, which it handed
+    // over (MiniPlayerHandoff.frame), under this surface until the surface has
+    // drawn one of its own. A new surface is empty for a frame or several.
+    val handedFrame = handoff?.frame?.takeIf { expandFromMini && presentation.coverSurface }
+    LaunchedEffect(presentation.coverSurface) {
+        if (expandFromMini && !presentation.coverSurface) handoff?.frame = null
+    }
     val stillAlpha by animateFloatAsState(if (stillShown) 1f else 0f, tween(STILL_FADE_MS), label = "playerStill")
+    // Between a reel's moments: the next one's name over the picture for a
+    // moment and a half (the canvas's question 9), then the picture alone.
+    var reelCaption by remember { mutableStateOf(false) }
+    LaunchedEffect(reel?.index, reel?.clip) {
+        if (reel == null) return@LaunchedEffect
+        reelCaption = true
+        delay(REEL_CAPTION_MS)
+        reelCaption = false
+    }
 
     // Everything but the picture: gone well before the picture lands, so the
     // page underneath is what it lands on; flown into, it fades in.
@@ -472,10 +544,24 @@ fun PlayerScreen(
     // everything that needs to FADE (the details, the ground) is either an
     // ordinary composable or a scrim drawn over the top.
     val pictureScale = 1f + dragUp * 0.16f - dragDown * 0.14f
+    // Color bleed hangs its light on the picture where the sampler last found
+    // it on screen: eight times a second, and at the picture's full size, since
+    // the view underneath is not told it is drawn scaled. While the picture
+    // moves (into the mini player or out of it, sliding away, under the middle
+    // drag) that was a dark box edged with light, the picture's old place,
+    // trailing it as it shrank: the black box the owner saw. So the light is
+    // out from the moment the picture moves, and samples afresh once it is still.
+    val bleedPaused = ambientLight == AmbientLight.COLOR_BLEED && (away > 0f || pictureScale != 1f)
+    val sampled by rememberAmbientLight(light = if (bleedPaused) AmbientLight.OFF else ambientLight, key = state.fileId)
+    // Out in the very frame the picture first moves: the sampler only lets go
+    // of its last sample on the frame after.
+    val ambientSample = sampled.takeUnless { bleedPaused }
     val haptics = LocalHapticFeedback.current
-    // One tick as you cross the point of no return, so you can feel that
-    // letting go now will do something.
-    val past = dragUp >= 1f || dragDown >= 1f
+    // One tick as you cross the point of no return into full screen, so you
+    // can feel that letting go now will do something. Not on the way down:
+    // the swipe into the mini player follows the thumb with no line to
+    // cross, and that is how the owner wants a swipe down to feel.
+    val past = dragUp >= 1f
     LaunchedEffect(past) { if (past) haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
 
     var controlsVisible by remember { mutableStateOf(true) }
@@ -493,7 +579,6 @@ fun PlayerScreen(
     LaunchedEffect(sheet, state.fileId, state.durationMs) {
         if (sheet == Sheet.Chapters) viewModel.requestChapterFrames()
     }
-    var fill by remember { mutableStateOf(false) }
     var drag by remember { mutableStateOf<DragOverlay?>(null) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
@@ -528,6 +613,8 @@ fun PlayerScreen(
             private var dragValue = 0f
             private var zone: Zone? = null
             private var middleDy = 0f
+            /** This drag is the put-away itself, scrubbed by the finger (see swipeCanShrink). */
+            private var shrinkSwipe = false
             override fun onTap(zone: Zone) {
                 if (zone == Zone.MIDDLE) {
                     controlsVisible = !controlsVisible
@@ -561,6 +648,7 @@ fun PlayerScreen(
                 if (zone == Zone.MIDDLE) {
                     // No rail: the picture itself is the readout.
                     middleDy = 0f
+                    shrinkSwipe = false
                     middleDragging = true
                     middleDrag = 0f
                     return
@@ -572,7 +660,21 @@ fun PlayerScreen(
             override fun onDrag(dyFraction: Float) {
                 if (zone == Zone.MIDDLE) {
                     middleDy += dyFraction
-                    middleDrag = middleDy
+                    // Down where Back would shrink the picture: the drag is that
+                    // put-away from its first moment, not a preview of it.
+                    if (!shrinkSwipe && middleDy > 0f && swipeCanShrink) {
+                        shrinkSwipe = true
+                        middleDrag = 0f
+                        swipeInput.backStarted(shrinkEvent(0f))
+                    }
+                    if (shrinkSwipe) {
+                        // The gesture's progress is the transition's time, so the
+                        // transition's own easing is undone first.
+                        val carried = shrinkFraction(middleDy * (pictureBounds?.height ?: 0f))
+                        swipeInput.backProgressed(shrinkEvent(FlightEasing.timeFor(carried)))
+                    } else {
+                        middleDrag = middleDy
+                    }
                     return
                 }
                 val d = drag ?: return
@@ -580,7 +682,8 @@ fun PlayerScreen(
                 if (d.kind == DragKind.Brightness) viewModel.setBrightness(dragValue) else system.setVolume(dragValue)
                 drag = d.copy(fraction = dragValue)
             }
-            override fun onDragEnd(flingDown: Boolean) {
+            override fun onDragEnd(velocityY: Float) {
+                val flingDown = velocityY > FLING_DOWN_PX_PER_S
                 val ended = zone
                 zone = null
                 drag = null
@@ -594,7 +697,23 @@ fun PlayerScreen(
                 if (ended != Zone.MIDDLE) return
                 val down = middleDy > 0f
                 val committed = abs(middleDy) > FULLSCREEN_DRAG_FRACTION || flingDown
+                val carried = shrinkFraction(middleDy * (pictureBounds?.height ?: 0f))
                 middleDy = 0f
+                if (shrinkSwipe) {
+                    // Let go, the way YouTube does it: a flick decides by its
+                    // direction, and otherwise where the picture is does, past
+                    // halfway on to the mini player and short of it back up.
+                    // There is no line to cross before letting go means
+                    // anything, so nothing marks one.
+                    shrinkSwipe = false
+                    val finish = when {
+                        velocityY > shrinkFlickPxPerS -> true
+                        velocityY < -shrinkFlickPxPerS -> false
+                        else -> carried >= SHRINK_SETTLE_FRACTION
+                    }
+                    if (finish) swipeInput.backCompleted() else swipeInput.backCancelled()
+                    return
+                }
                 if (!committed) return
                 when {
                     !canToggleFullscreen -> if (down) onBack()
@@ -624,8 +743,8 @@ fun PlayerScreen(
         onFullscreen = { fullscreen = !fullscreen },
         // Null greys the button out rather than removing it: a transport row
         // that changes width as you walk a folder is worse than a dead key.
-        onPrevious = state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
-        onNext = upNext?.let { n -> { viewModel.playNext(n.fileId) } },
+        onPrevious = if (reel != null) viewModel::reelPrevious else state.upPrevious?.let { p -> { viewModel.playNext(p.fileId) } },
+        onNext = if (reel != null) reel.takeIf { it.hasNext }?.let { { viewModel.reelNext() } } else upNext?.let { n -> { viewModel.playNext(n.fileId) } },
         onChapters = { if (draft == null) sheet = Sheet.Chapters },
         onCycleRotation = {
             viewModel.setOrientation(PlayerOrientation.entries[(orientation.ordinal + 1) % PlayerOrientation.entries.size])
@@ -637,6 +756,9 @@ fun PlayerScreen(
         onShuffle = viewModel::toggleShuffle,
         onRepeat = viewModel::cycleRepeat,
         chaptersOpenable = chaptersOpenable,
+        onReelClip = { viewModel.reelTo(it); controlsVisible = true },
+        onWatchFromHere = viewModel::watchFromHere,
+        onReelShuffle = viewModel::toggleReelShuffle,
     )
     // The rotation lock, where locking would do anything (see [rotationLockable]).
     val lockable = rotationLockable()
@@ -665,28 +787,44 @@ fun PlayerScreen(
         // layout's to fill, which is how the letterbox bars pick up the glow
         // instead of being black.
         Box(Modifier.fillMaxSize()) {
+            // An empty TextureView draws nothing, so this shows through it.
+            handedFrame?.let {
+                Image(it, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = if (fill) ContentScale.Crop else ContentScale.Fit)
+            }
             // Floating, the picture-in-picture window has the film (one
             // ExoPlayer draws on one surface); this takes it back after.
             player?.takeUnless { inPip }?.takeIf { surfaceUp }?.let { p ->
                 // A SurfaceView goes straight to the compositor and cannot be
                 // read back; a TextureView draws through the view hierarchy and
-                // can. That is the whole trade behind the Ambient light setting,
-                // so the surface type follows it rather than being a constant —
-                // and both live lights read the picture, so both need it.
+                // can. That is the trade behind the Ambient light setting, and
+                // both live lights read the picture, so both need a TextureView.
+                // The windowed player needs one whatever the setting: its
+                // picture moves (into the mini player, out of it, under a
+                // thumb), and a SurfaceView moving on a real display shows its
+                // black background in a box around the picture and tears.
+                // Full screen, where nothing moves, keeps the setting's choice.
+                // No shutter: Media3's is a black box over a new surface until
+                // its first frame, which is exactly the box that flashed; what
+                // is under the surface shows through it instead.
                 ContentFrame(
                     p, Modifier.fillMaxSize(),
-                    if (ambientLight.live) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
+                    if (ambientLight.live || !immersive) SURFACE_TYPE_TEXTURE_VIEW else SURFACE_TYPE_SURFACE_VIEW,
                     if (fill) ContentScale.Crop else ContentScale.Fit,
+                    shutter = {},
                 )
             }
-            if (still != null && stillAlpha > 0f) {
+            if ((reelFrame ?: still) != null && stillAlpha > 0f) {
                 Box(
                     Modifier.fillMaxSize()
                         .then(landing.modifier)
                         .graphicsLayer { alpha = stillAlpha }
                         .testTag("player_still"),
                 ) {
-                    ArtworkImage(still, Modifier.fillMaxSize(), contentScale = if (fill) ContentScale.Crop else ContentScale.Fit, placeholder = stillThumb)
+                    ArtworkImage(
+                        reelFrame ?: still, Modifier.fillMaxSize(),
+                        contentScale = if (fill) ContentScale.Crop else ContentScale.Fit,
+                        placeholder = if (reelFrame != null) null else stillThumb,
+                    )
                 }
             }
             Box(Modifier.fillMaxSize().playerGestures(gestures).testTag("player_gesture_layer"))
@@ -709,6 +847,30 @@ fun PlayerScreen(
                     FullChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, canCollapse = !forcedFullscreen, orientation = pillOrientation, transfer = transfer, draft = draft, smooth = smooth)
                 } else {
                     PortraitChrome(state, controlsVisible && drag == null, scrubPreviewMs, scrubFrame, chromeCallbacks, draft, smooth)
+                }
+                if (reel != null) {
+                    // Always there, as a film's timeline would be with the controls.
+                    // Over, the last bar stays full: the timeline's own reading stops at the end.
+                    ReelSegments(
+                        reel, { if (state.ended) 1f else smooth.fraction() },
+                        Modifier.align(Alignment.TopCenter).padding(start = 10.dp, end = 10.dp, top = 10.dp),
+                    )
+                    // The moment's name for its first moments, and with the
+                    // controls; full screen has its own title for that.
+                    AnimatedVisibility(
+                        visible = reelCaption || (controlsVisible && drag == null && !immersive),
+                        enter = fadeIn(), exit = fadeOut(),
+                        modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                    ) {
+                        // On its own dark foot: white type over a bright frame would vanish.
+                        Box(
+                            Modifier.fillMaxWidth()
+                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB8000000))))
+                                .padding(start = 12.dp, end = 12.dp, top = 28.dp, bottom = 12.dp),
+                        ) {
+                            ReelCaption(reel.clip, large = windowShape.wide)
+                        }
+                    }
                 }
                 if (state.loop != null && !immersive) LoopingPill(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 10.dp))
                 drag?.let { DragRail(it) }
@@ -823,7 +985,7 @@ fun PlayerScreen(
                         .graphicsLayer { alpha = (1f - maxOf(dragUp, dragDown)) * pageAlpha }
                         .testTag("player_up_next_column"),
                 ) {
-                    NextInFolder(state, viewModel::playNext, emptyState = true)
+                    if (reel != null) ReelList(reel, state.reelProgress(), chromeCallbacks.onReelClip) else NextInFolder(state, viewModel::playNext, emptyState = true)
                     Spacer(Modifier.height(Spacing.s30))
                 }
             }
@@ -992,6 +1154,12 @@ private class ChromeCallbacks(
      * same flag threaded through three chrome signatures and [PillRow].
      */
     val chaptersOpenable: Boolean = true,
+    /** A reel's moment picked from its list (Reel.kt). */
+    val onReelClip: (Int) -> Unit = {},
+    /** Leave the reel for the whole video, carrying on from here. */
+    val onWatchFromHere: () -> Unit = {},
+    /** Shuffle what is left of the reel, or put it back in order. */
+    val onReelShuffle: () -> Unit = {},
 )
 
 /** The design's picture overlays: a soft highlight and a top-dark / bottom-dark gradient under the chrome. */
@@ -1017,10 +1185,14 @@ private fun BoxScope.PortraitChrome(state: PlaybackState, visible: Boolean, scru
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
             ChromeScrim(landscape = false)
-            IconCell(R.drawable.rg_ic_arrow_down, "Shrink the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp))
-            IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 6.dp))
+            // A reel's bars run across the top (Reel.kt): the two ways out drop
+            // under them with the canvas's 16dp between, rather than touching.
+            val top = if (state.reel != null) REEL_CHROME_TOP else 6.dp
+            IconCell(R.drawable.rg_ic_arrow_down, "Shrink the player", 22.dp, cb.onBack, "player_back_button", Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = top))
+            IconCell(R.drawable.rg_ic_fullscreen, "Full screen", 18.dp, cb.onFullscreen, "player_fullscreen_button", Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = top))
             Transport(state, cb, gap = Spacing.s18, circle = 48.dp, glyph = 26.dp, modifier = Modifier.align(Alignment.Center))
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
+            // A reel has its moments across the top instead of a timeline here.
+            if (state.reel == null) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 2.dp)) {
                 scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                     PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.eyebrow.copy(letterSpacing = 0.sp), colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
@@ -1106,7 +1278,8 @@ private fun BoxScope.FullChrome(
                         )
                     }
                     scrubPreviewMs?.let { ms -> ScrubPreview(ms, scrubFrame, if (state.durationMs > 0) (ms.toFloat() / state.durationMs).coerceIn(0f, 1f) else 0f, state.chapterLabelAt(ms)) }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+                    // A reel has its moments across the top instead of a timeline.
+                    if (state.reel == null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                         PositionClock({ scrubPreviewMs ?: smooth.clockMs() }, TextStyles.buttonSmall, colors.ink, Modifier.testTag("player_position"), reserveForMs = state.durationMs)
                         Scrubber(
                             progress = smooth::fraction, durationMs = state.durationMs, buffered = smooth::buffered,
@@ -1129,7 +1302,7 @@ private fun BoxScope.FullChrome(
                     // which read as part of the film's identity; down here they
                     // are what they are — the controls for the thing the
                     // timeline is scrubbing.
-                    PillRow(state, cb, onMedia = true, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
+                    if (state.reel == null) PillRow(state, cb, onMedia = true, orientation = orientation, transfer = transfer, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -1467,7 +1640,9 @@ private fun PlayerDetails(
             .testTag(if (chapterEditor != null) "player_chapter_editor_panel" else if (loop != null) "player_loop_panel" else "player_details"),
         verticalArrangement = Arrangement.spacedBy(Spacing.s12),
     ) {
+        val reel = state.reel
         when {
+            reel != null -> ReelDetails(reel, cb.onWatchFromHere, cb.onReelShuffle)
             chapterEditor != null -> chapterEditor()
             loop != null -> AbLoopSheetContent(loop = loop, positionMs = state.positionMs, durationMs = state.durationMs, onNudgeA = onNudgeA, onNudgeB = onNudgeB, onClear = cb.onLoopClear)
             else -> {
@@ -1476,8 +1651,10 @@ private fun PlayerDetails(
             }
         }
         // The folder still follows a loop — the loop is about this film, not
-        // about what comes after it.
-        if (showNext) NextInFolder(state, onPlayNext)
+        // about what comes after it. A reel lists its moments instead.
+        if (showNext) {
+            if (reel != null) ReelList(reel, state.reelProgress(), cb.onReelClip) else NextInFolder(state, onPlayNext)
+        }
         Spacer(Modifier.height(Spacing.s30))
     }
 }
@@ -1921,11 +2098,49 @@ private fun AmbientGlow(
  */
 private const val FULLSCREEN_DRAG_FRACTION = 0.12f
 
-/** How far into shrinking the mini player is handed the picture: just before it lands. */
-private const val MINI_HANDOVER_AT = 0.92f
+/**
+ * How far into shrinking the mini player is handed the picture: within 1% of
+ * its spot, about 60ms before the end, which leaves the mini player time to be
+ * drawn before the player is gone. Sooner and the two pictures stood apart.
+ */
+private const val MINI_HANDOVER_AT = 0.99f
+
+/** Let go slowly past this much of the way, the swipe down finishes into the mini player; short of it, back up. */
+private const val SHRINK_SETTLE_FRACTION = 0.5f
+
+/** A flick, in dp a second, decides the swipe down by its direction alone. */
+private const val SHRINK_FLICK_DP_PER_S = 1_000
+
+/** A step of the swipe down's back gesture, [progress] of the way into the mini player. */
+private fun shrinkEvent(progress: Float) = NavigationEvent(touchX = 0f, touchY = 0f, progress = progress, swipeEdge = NavigationEvent.EDGE_NONE)
+
+/**
+ * When this easing reaches [value]: its inverse, found by halving, for a
+ * curve that only rises. A back gesture's progress is the transition's time;
+ * this turns where the picture should be into that time.
+ */
+private fun Easing.timeFor(value: Float): Float {
+    var low = 0f
+    var high = 1f
+    repeat(24) {
+        val mid = (low + high) / 2f
+        if (transform(mid) < value) low = mid else high = mid
+    }
+    return (low + high) / 2f
+}
 
 /** The film's still fading off its first frame: quick, so it reads as the picture arriving, not a dissolve. */
 private const val STILL_FADE_MS = 160
+
+/** How long a reel's moment shows its name as it starts. */
+private const val REEL_CAPTION_MS = 1_500L
+
+/**
+ * Where the portrait chrome's top glyphs sit in a reel: 12dp lower than a
+ * film's, so the bars at 10dp (3dp tall) have 16dp of picture under them
+ * before the 22dp arrow in its 44dp cell starts.
+ */
+private val REEL_CHROME_TOP = 18.dp
 
 /**
  * How long the Up next card waits before it plays on by itself. Long enough

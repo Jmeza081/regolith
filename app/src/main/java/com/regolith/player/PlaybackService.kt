@@ -27,9 +27,20 @@ class PlaybackService : MediaSessionService() {
     @Inject lateinit var playback: PlaybackSession
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val session = playback.mediaSession
+        if (session == null) {
+            // Nothing to publish (asked for with no film loaded): go again
+            // rather than sit in the background empty-handed.
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         // A session made outside the service is published by adding it.
-        playback.mediaSession?.let { if (!isSessionAdded(it)) addSession(it) }
-        return super.onStartCommand(intent, flags, startId)
+        if (!isSessionAdded(session)) addSession(session)
+        super.onStartCommand(intent, flags, startId)
+        // Not to be brought back by Android if the process dies: the film went
+        // with it, and a service started again would have nothing to play,
+        // only an empty process to keep alive.
+        return START_NOT_STICKY
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = playback.mediaSession

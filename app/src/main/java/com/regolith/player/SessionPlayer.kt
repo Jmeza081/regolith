@@ -15,8 +15,10 @@ import com.google.common.util.concurrent.ListenableFuture
  * ExoPlayer only ever holds the one film: [PlaybackSession] loads the next
  * itself, so the order can be a folder, a Play all or a repeat. Left alone,
  * the session would grey Next out and make Previous restart the film.
- * Everything else passes straight through to the ExoPlayer underneath. Web
- * analogy: a proxy in front of the real player that rewrites two routes.
+ * Everything else passes straight through to the ExoPlayer underneath, and
+ * so do Previous and Next while a Moments reel plays: its clips are real
+ * items in ExoPlayer's list. Web analogy: a proxy in front of the real player
+ * that rewrites two routes.
  *
  * @param steps what plays before and after this film, read fresh each time.
  * @param go opens a film, as the player's own Previous and Next do.
@@ -30,6 +32,7 @@ internal class SessionPlayer(
 
     override fun getState(): State {
         val state = super.getState()
+        if (steps().reel != null) return state
         val back = steps().upPrevious != null
         val on = steps().upNext != null
         val commands = state.availableCommands.buildUpon()
@@ -41,6 +44,7 @@ internal class SessionPlayer(
     }
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+        if (steps().reel != null) return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
         val to = when (seekCommand) {
             NEXT, NEXT_ITEM -> steps().upNext
             PREVIOUS, PREVIOUS_ITEM -> steps().upPrevious

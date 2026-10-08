@@ -199,6 +199,8 @@ fun IconCircleButton(
      * smaller, different kind of control. The Shorts panel's sound button.
      */
     width: Dp = size,
+    /** The glyph's colour when it says something is on (a shuffle that is shuffling); null for the usual. */
+    tint: Color? = null,
 ) {
     val colors = RegolithTheme.colors
     Box(
@@ -211,7 +213,7 @@ fun IconCircleButton(
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(testTag),
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = if (onMedia) colors.ink else colors.inkSoft, modifier = Modifier.size(iconSize))
+        Icon(icon, contentDescription = contentDescription, tint = tint ?: if (onMedia) colors.ink else colors.inkSoft, modifier = Modifier.size(iconSize))
     }
 }
 

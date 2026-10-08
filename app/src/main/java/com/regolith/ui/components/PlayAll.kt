@@ -46,13 +46,19 @@ import com.regolith.ui.util.formatDurationShort
  * Web analogy: the primary action button on a playlist page.
  */
 @Composable
-fun PlayAllButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PlayAllButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** What it plays: a collection's Moments tab plays its moments ("Play moments · 1 min"). */
+    text: String = "Play all",
+    testTag: String = "play_all_button",
+) {
     PrimaryButton(
-        text = "Play all",
+        text = text,
         onClick = onClick,
         compact = true,
         leadingIcon = painterResource(R.drawable.rg_ic_play),
-        testTag = "play_all_button",
+        testTag = testTag,
         modifier = modifier.fillMaxWidth(),
     )
 }

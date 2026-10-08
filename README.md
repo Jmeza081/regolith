@@ -49,8 +49,9 @@ of the next clips are fetched in the background while you are elsewhere in the a
 
 Put the player away (back, a swipe down, or its arrow) and the film shrinks into
 a bar above the nav on a phone, or a card in the corner of the inner display,
-and keeps playing while you browse. Tap it to bring the player back, or ✕ to
-stop. A queue, a repeat or Keep playing goes on to the next film by itself while
+and keeps playing while you browse. It lands whole, as the player showed it,
+so an upright phone video stays upright rather than cropped. Tap it to bring
+the player back, or ✕ to stop. A queue, a repeat or Keep playing goes on to the next film by itself while
 it is small; a film with nothing after it closes the bar when it ends.
 
 Leave Regolith while a film plays and it carries on in a small window over your
@@ -71,6 +72,14 @@ Shuffle, and two tabs. **Videos** is the wall you know. **Moments** lists every
 chapter you have named in those videos, each with the frame at its time, and
 plays from there. A collection with collections inside stays a wall: only the
 last one down a branch gets a page.
+
+On the Moments tab, **Play moments** plays them as a reel: ten seconds of each
+(less when the next one in the same video comes sooner), one after another with
+no wait between, in the tab's order, or scrambled with the shuffle beside it.
+Bars across the top of the picture show where you are, each moment's name comes
+up as it starts, and **Watch from here** leaves the reel for the whole video,
+carrying on from that moment. A reel isn't watching: it leaves no resume points
+and adds nothing to Continue watching.
 
 ### Posters that fly
 

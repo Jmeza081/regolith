@@ -486,11 +486,13 @@ class PlayerViewModel @AssistedInject constructor(
         }
         session.playerScreenOpened()
         val external = key.externalUri
+        val reel = key.reel
         when {
             // Opened from the mini player: the film is already here, playing or
             // paused as it was left, and loading it again would unpause it.
             key.expand -> Unit
             external != null -> session.loadExternal(android.net.Uri.parse(external), key.externalTitle.orEmpty())
+            reel != null -> session.loadReel(reel.title, reel.toClips())
             else -> session.load(key.fileId, key.startMs, key.queue.ifEmpty { null }, startPlaying = !heldForFlight)
         }
     }
@@ -534,6 +536,19 @@ class PlayerViewModel @AssistedInject constructor(
     fun nudgeLoopB(deltaMs: Long = AbLoop.NUDGE_MS) = session.nudgeLoopB(deltaMs)
     fun clearLoop() = session.clearLoop()
     fun playNext(fileId: Long) = session.load(fileId)
+
+    // --- A Moments reel (PlaybackSession.loadReel).
+
+    /** The reel's moment at [index] in the list, from its start. */
+    fun reelTo(index: Int) = session.reelTo(index)
+    fun reelNext() = session.reelNext()
+    fun reelPrevious() = session.reelPrevious()
+
+    /** Shuffle what is left of the reel, or put it back in order. */
+    fun toggleReelShuffle() = session.setReelShuffle(state.value.reel?.shuffled != true)
+
+    /** Leave the reel for the whole video its moment is from, carrying on from here. */
+    fun watchFromHere() = session.watchReelFromHere()
 
     /** The screen's surface is back (from the floating window): a finished film's last frame, drawn again. */
     fun redrawIfEnded() = session.redrawIfEnded()
