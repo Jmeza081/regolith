@@ -26,10 +26,11 @@ import androidx.compose.ui.unit.dp
  * stretched a 427x640 photograph to fill the screen, which is what made it
  * look soft.
  *
- * Geometry is `res/drawable/rg_wedge_white.xml` to the number, in that
- * file's 100x100 viewport, so the launcher icon and this stay the same
- * mark. Width and height scale independently, exactly as the drawable does
- * at its natural 58x78.
+ * The same mark as the launcher icon (`res/drawable/ic_launcher_foreground.xml`):
+ * that wedge and its five bands, white with the second and fourth at 62%,
+ * here in a 100x100 viewport of its own that the wedge fills edge to edge
+ * (the icon's sits inside an adaptive icon's safe zone). Width and height
+ * scale independently; the natural size is 58x78.
  *
  * Web analogy: inline SVG whose `<rect>`s you can transform, rather than an
  * `<img>` you can only fade.

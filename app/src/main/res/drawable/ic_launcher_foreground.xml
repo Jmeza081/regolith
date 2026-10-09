@@ -4,27 +4,32 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <!--
-        The Strata Wedge: point right, concave back edge, cut into five
-        bands of rock.
+        The Strata Wedge in black and white: point right, concave back
+        edge, cut into five bands of rock, white on the launcher's #0A0A0A
+        ground. Bands one, three and five are solid white; two and four are
+        62% white, the rhythm the mark has wherever it is monochrome (the
+        app's own StrataWedge, the loaders, ic_notification).
 
-        The bands are separated, not stacked. Butted edge to edge they
+        One drawable, three jobs: the launcher icon's foreground, its themed
+        (monochrome) layer, and the system splash's icon. The splash hands
+        over to the app's own drawing of this mark, so the icon you tap, the
+        splash and the first frame of the app all show the same thing.
+
+        The bands are separated, not stacked. Butted edge to edge they would
         read as one striped triangle; the gaps are what make them strata,
-        and they let the #0A0A0A background through as the bedding plane
-        between them. The rhythm is the splash wedge's
-        (the wordmark wedge) at half scale, so the launcher icon and
-        the splash are the same mark: band, gap, band, at roughly three
-        parts ink to one part gap.
+        and they let the ground through as the bedding plane between them,
+        at roughly three parts ink to one part gap.
 
         Bands run the full width and are clipped to the wedge, so each one
-        picks up the taper without any per-band geometry.
+        picks up the taper without any per-band geometry. The wedge sits
+        inside the adaptive icon's 66dp safe zone, so no launcher mask cuts it.
     -->
     <group android:name="wedge">
         <clip-path android:pathData="M36,30 L80,54 L36,78 Q46,54 36,30 Z" />
-        <!-- Strata, top to bottom. The red is the middle band, on the wedge's axis. -->
-        <path android:fillColor="#EDEDED" android:pathData="M0,28 H108 V37 H0 Z" />
-        <path android:fillColor="#A0A0A0" android:pathData="M0,40.5 H108 V47.5 H0 Z" />
-        <path android:fillColor="#E11B17" android:pathData="M0,50.5 H108 V59.5 H0 Z" />
-        <path android:fillColor="#6E6E6E" android:pathData="M0,63 H108 V69.5 H0 Z" />
-        <path android:fillColor="#2E2E2E" android:pathData="M0,72.5 H108 V80 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,28 H108 V37 H0 Z" />
+        <path android:fillColor="#9EFFFFFF" android:pathData="M0,40.5 H108 V47.5 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,50.5 H108 V59.5 H0 Z" />
+        <path android:fillColor="#9EFFFFFF" android:pathData="M0,63 H108 V69.5 H0 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M0,72.5 H108 V80 H0 Z" />
     </group>
 </vector>

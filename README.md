@@ -1,4 +1,11 @@
 <p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/monogram-white.svg">
+    <img src="docs/images/monogram-black.svg" alt="Regolith's mark: a wedge cut into five bands" width="72">
+  </picture>
+</p>
+
+<p align="center">
   <img src="docs/images/banner.png" alt="Regolith — your SMB share, as a video library" width="100%">
 </p>
 
