@@ -28,13 +28,23 @@ service that gets told what your files are.
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/images/library.png" alt="The library wall, showing four collections with their posters"></td>
-    <td width="33%"><img src="docs/images/detail.png" alt="A title page with artwork, technical detail and file actions"></td>
-    <td width="33%"><img src="docs/images/selection.png" alt="Browse with a file selected; the nav pill has become a toolbar"></td>
+    <td width="33%"><img src="docs/images/library.jpg" alt="The Library: the share's collections as posters, under Videos, Moments and Images chips"></td>
+    <td width="33%"><img src="docs/images/collection.jpg" alt="A collection's own page: its poster lighting the top, its figures, Play all, and its videos"></td>
+    <td width="33%"><img src="docs/images/pictures.jpg" alt="An album's pictures as a mosaic, each at its own shape"></td>
   </tr>
   <tr>
     <td align="center"><sub>The library, built from the share</sub></td>
-    <td align="center"><sub>A title, and what it really is</sub></td>
+    <td align="center"><sub>A collection with a page of its own</sub></td>
+    <td align="center"><sub>An album, each picture its own shape</sub></td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/images/story.jpg" alt="An album playing as a story, a bar of segments along the top"></td>
+    <td width="33%"><img src="docs/images/player.jpg" alt="The player with Color bleed: the film's own colours glowing out around it"></td>
+    <td width="33%"><img src="docs/images/selection.jpg" alt="Videos picked on a collection's page; the nav pill has become a toolbar"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>An album plays as a story</sub></td>
+    <td align="center"><sub>Color bleed lights the room</sub></td>
     <td align="center"><sub>Select, and the nav becomes a toolbar</sub></td>
   </tr>
 </table>
@@ -49,13 +59,62 @@ is a collection in the Library, with its own poster, even one that holds a
 single video, since you may add more later. Playback is a custom
 Media3 data source reading SMB directly, so a file starts without being copied
 first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
-Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
-of the next clips are fetched in the background while you are elsewhere in the app.
+
+A wall shows as posters or as rows, sorted by name, date added, file size,
+runtime or resolution (tap the sort in use again to reverse it), and **Play all**
+on a collection plays it in order or shuffled. A video's own page shows its
+picture, its resolution, HDR and codec, **Resume** or **Play**, **Keep on this
+device**, where it lives and what its video and audio are, with Rename and
+Delete from share underneath.
 
 A Library wall sorted by name, A to Z, with more than ten tiles gets the same
 A–Z rail as the move sheet down its edge: slide a thumb down it to jump from
 letter to letter, and the poster you land on gives a small nudge. On a
 collection's page the rail comes once the top of the page has scrolled away.
+
+### Home and Search
+
+Home picks up where you were. **Continue watching** has a card for each film you
+have started, with the time it has left (**See all** lists every one), **Newly
+added** the twelve newest files, **On this device** what you have downloaded, and
+**Moments** every name you have given a mark (see Chapters, below). Pull Home
+down to read every share again.
+
+Search finds titles, filenames and folders as you type, and the moments you
+have named, each shown with the frame at its time: tap one and the film opens
+there. Chips narrow the results to **Unwatched** or **4K**, and **Moment** picks one
+name from all of the library's. Results come as rows or a grid, and your last
+eight searches wait under **Recent**.
+
+### Shorts
+
+Shorts is the library's upright clips as a feed: every video on your shares that
+is taller than it is wide and no longer than **Settings › Shorts › Longest clip**
+(30, 60 or 90 seconds). Swipe up for the next, tap to pause, and hold the right
+half of the screen for double speed. Each visit deals a fresh shuffle, and
+tapping the tab again deals another. The buttons down the side pick a folder to
+play from, turn shuffle and auto-advance on or off, show the clip in Browse,
+keep it on the phone, and set the sound and brightness. On Wi-Fi the first few
+seconds of the next clips are fetched in the background while you are elsewhere
+in the app, so Shorts opens on a clip that is already playing.
+
+### A player run by your thumb
+
+The controls stay out of the way until you want them. Tap to show them,
+double-tap the middle to pause, double-tap either side to jump ten seconds (keep
+tapping and the jumps add up), and hold for double speed for as long as your
+finger stays down. Drag the left edge for brightness and the right edge for
+volume, swipe up for full screen and down to leave it or put the player away,
+and pinch to fill the screen or fit the picture. The first time you go full
+screen sideways, it shows where those zones are.
+
+Under the picture sit **Chapters**, an **A–B loop** that repeats a stretch until
+you clear it, a rotation lock, **Keep on this device**, and **Playback**: speed
+(0.75× to 2×), the hardware or software decoder, scrub thumbnails, Ambient light,
+and **Keep playing**, which goes on to the next video in the folder after a
+ten-second Up next card, or at once with **Don't ask first**. Full screen adds
+shuffle and repeat (all, or one). A film you stopped part-way opens where you left
+it, until you have seen nearly all of it.
 
 ### Keeps playing while you look around
 
@@ -77,14 +136,14 @@ carries on; leaving the app with picture-in-picture off pauses it too.
 ### Collections with a page of their own
 
 Open a collection that holds videos or pictures, and no collections, and it
-opens as its own page rather than a plain wall. Its poster lights the top of
-the page, the way the player lights the room around a film. Under it: how many
-videos and pictures it holds, how long they run, how much space they take and
-how many you have watched, then Play all, Shuffle, and its tabs. **Videos** is
-the wall you know. **Moments** lists every chapter you have named in those
-videos, each with the frame at its time, and plays from there. **Images** is
-its pictures (below). A collection with collections inside stays a wall: only
-the last one down a branch gets a page.
+opens as its own page rather than a plain wall. Its poster lights the top of the
+page, the way the player lights the room around a film. Under it, up to four
+figures (how many videos and pictures it holds, how long they run, how much
+space they take, how many you have watched), then Play all, Shuffle, and its
+tabs. **Videos** is the wall you know. **Moments** lists every chapter you have
+named in those videos, each with the frame at its time, and plays from there.
+**Images** is its pictures (below). A collection with collections inside stays a
+wall: only the last one down a branch gets a page.
 
 On the Moments tab, **Play moments** plays them as a reel: ten seconds of each
 (less when the next one in the same video comes sooner), one after another with
@@ -148,9 +207,10 @@ swipe down to close. Each picture stays
 for the time set in **Settings › Playback › Picture stories** — 3, 5 or 8
 seconds — and a moving GIF plays through once, however long that takes. A long
 album's bar shows the twenty around the picture up and slides along. On a phone
-a tall picture fills the screen; a wide one, and every picture on the inner
-display, is shown whole over a blurred copy of itself. The next picture is
-fetched while this one shows, so none arrives late.
+a picture about the screen's own shape (an upright 9:16 shot, say) fills it; any
+other, and every picture on the inner display, is shown whole over a blurred
+copy of itself. The next picture is fetched while this one shows, so none
+arrives late.
 
 ### Posters that fly
 
@@ -191,7 +251,9 @@ Every file has chapters: the container's own markers, or an even split. The
 player's chapter sheet has a pencil — mark a place at the playhead, name it, drag
 its handle — and those become the film's chapters. Save writes a small
 `mkvmerge`-format text file beside the video on the share, so the work is
-readable by other tools and survives a reinstall. Search finds chapter names and
+readable by other tools and survives a reinstall; **Settings › Chapters** can keep
+a share's chapters on the phone instead, share by share, and clears them all.
+Search finds chapter names and
 opens the film at that moment — and each result shows the frame *at* that moment,
 so two marks in the same film are two different pictures rather than the film's
 poster twice.
@@ -221,8 +283,8 @@ it will keep, beside the new one.
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an
 `Arrival.2016.jpg` beside `Arrival.2016.mkv`, and the app makes the tile again the
-next time it lists that folder: when you open it, pull to refresh, or rescan. One
-uploaded from the phone is noticed as soon as the upload lands.
+next time it lists that folder: when you open it, pull Home down, or scan the
+share. One uploaded from the phone is noticed as soon as the upload lands.
 
 ### Manages the files, not just the library
 
@@ -272,7 +334,8 @@ and pick what to move or delete. Download leaves the un-picked part out by itsel
 The same toolbar queues downloads. Picking a folder takes everything inside it,
 including folders the app has never scanned, which it walks over SMB as the
 download runs. A foreground notification carries progress across the whole batch;
-the copies live under **Library › On this device**.
+the copies live under **Library › On this device**, and **Settings › Downloads**
+says what is still arriving and how much room the copies take.
 
 A copy belongs to the phone, not to the share it came from. Disconnecting a
 server takes its media list away and leaves everything already downloaded
@@ -281,14 +344,15 @@ chapters you wrote — the file keeps its identity, so nothing about it resets.
 
 ### Sends files the other way
 
-Inside any folder on a share, **Upload** (beside rows/tiles) sends things from the
-phone into it: photos and videos from the gallery, through Android's own photo
-picker, or any other file through the system's file picker — no permission
-asked either way. Picking is the whole confirmation. The files appear at the
-top of the folder with their own thumbnails, each saying where it stands, and a
-line above the nav pill follows the batch from anywhere else in the app. A
-video that lands is a video in the library at once; a photo or any other file
-lands among the folder's other files in Browse.
+Inside any folder on a share, **Upload to this folder** (the arrow in Browse's
+top bar) sends things from the phone into it: **Photos and videos** from the
+gallery, through Android's own photo picker, or **Files** of any kind through
+the system's file picker — no permission asked either way. Picking is the whole
+confirmation. The files appear at the top of the folder with their own
+thumbnails, each saying where it stands, and a line above the nav pill follows
+the batch from anywhere else in the app. A video that lands is a video in the
+library at once; a photo or any other file lands among the folder's other files
+in Browse.
 
 A collection in the Library takes new pictures and videos the same way. **Add
 to this collection**, in its top bar or beside Play all on a collection's own
@@ -335,11 +399,18 @@ off. Nothing is moved or copied: the app asks for Android's video permission
 from that tab, and "Select videos" works too. Phone videos get resume points,
 scrub thumbnails, chapters and Search like everything else. From Title Detail
 they can be hidden from Regolith, or deleted from the phone through Android's
-own confirmation.
+own confirmation. Other apps can hand a video over too: Regolith is in Android's
+"Open with" list as **Play in Regolith**.
 
 ### Opens out on a foldable
 
-The inner display gets its own layouts: a nav rail that retracts to a spine, and
+<p align="center">
+  <img src="docs/images/foldable.jpg" alt="Home on the Fold's inner display: the nav rail, Continue watching, a five-across Newly added wall and the Moments chips" width="480">
+</p>
+
+The inner display gets its own layouts: a nav rail that retracts to a spine
+(**Settings › Display › Auto-hide the navigation**, after 5, 10 or 30 seconds
+untouched; on a phone it tucks the pill away while you scroll down), and
 library and browse walls that fill the screen until you open a title, whose page
 then opens beside the wall, its poster flying in, and slides away again when
 you close it. The
@@ -363,10 +434,12 @@ on, the lock screen and the notification say only "Regolith · Playing".
 
 ## Try it without a share
 
-**Settings › Demo › Load** writes a pretend NAS — four collections, 18 titles, a
-few part-watched, a folder of vertical phone clips for Shorts, and **Photos**,
-three albums of painted pictures (one with a poster of its own) — and copies
-five bundled test clips onto the device, painting the pictures as it goes. Everything
+**Settings › Demo › Load** writes a pretend NAS — Films, Series, Documentaries
+and Home videos, 26 videos in all, four of them part-watched and six of them
+upright phone clips for Shorts, and **Photos**, three albums of painted pictures
+(one with a poster of its own), with four more pictures among the phone clips —
+and copies five bundled test clips onto the device, painting the pictures as it
+goes. Everything
 plays, scrubs and shows real frame-grab posters with no network at all, which is
 what makes the app reviewable on a train. **Remove** deletes it; nothing else is
 touched. Nothing in it can be moved, renamed or deleted: there is no share
@@ -497,17 +570,26 @@ confirmed by eye only on real hardware.
 </details>
 
 <details>
-<summary><strong>Naming a server, and choosing folders inside a share</strong></summary>
+<summary><strong>A server's name, its addresses, and the folders it brings</strong></summary>
 
 A server added by address is called by that address — `192.168.4.73` reads the
 same as every other box on the network. After connecting, **Name this server**
 offers a better one; leave it blank to keep what the app worked out (`TOWER` for
-`tower.local`, the address itself for an IP). You can change it later in
-**Settings › Shares**. The name is only a label — nothing is keyed to it, so
-renaming touches no media, no progress and no downloads.
+`tower.local`, the address itself for an IP). You can change it later on the
+server's own page (tap it in **Settings**, then **Rename**). The name is only a
+label — nothing is keyed to it, so renaming touches no media, no progress and no
+downloads.
+
+The same page holds everything else about that server: **How to reach it** lists
+its addresses (add another, such as a VPN name for when you are away, and
+**Automatic** tries them all at once and uses whichever answers first), **Shares
+and folders** changes what is in the library, and **Scan** and **Artwork** read
+the share again or make its pictures. **Disconnect** takes its media list away
+and leaves your downloads on the phone.
 
 "Choose a share" takes whole shares; the chevron on each share opens **Choose
-folders**, where you pick the folders you actually want in the library. In each
+folders** (later, **Shares and folders** on the server's page), where you pick
+the folders you actually want in the library. In each
 row the box picks the folder and the rest of the row opens it, so you can walk
 down and pick at any depth — `Films` at the top and `Series/Severance/Season 02`
 three levels in, with nothing chosen in between. An unpicked folder says how many
@@ -531,13 +613,16 @@ Personal plan (6 users, unlimited devices, MagicDNS) covers this with room to
 spare. Nothing is exposed to the public internet, which matters: an SMB share
 on a forwarded port is not a thing to do.
 
-**Add the server by its tailnet name, and use that name at home too.** A
-server is keyed by `host` ([`ServerEntity`](app/src/main/java/com/regolith/data/db/Entities.kt)),
-so adding `192.168.x.x` at home and `box.tailnet.ts.net` away makes *two*
-servers — two scans, two libraries, two sets of artwork, and chapters and
-resume points that do not follow you between them. One name avoids all of it,
-and costs nothing at home: Tailscale connects two devices on the same network
-directly, so the LAN path is still the LAN path.
+**Give the server its tailnet name as a second address.** On the server's page,
+**How to reach it › Add another address** takes `box.tailnet.ts.net` beside the
+LAN address, and **Automatic** tries every address at once and uses whichever
+answers first: the LAN at home, the tailnet away. It stays one server — one
+scan, one library, one set of artwork, and chapters and resume points that
+follow you — where adding the tailnet name as a server of its own would make a
+second library with nothing carried over
+([`ServerAddressEntity`](app/src/main/java/com/regolith/data/db/Entities.kt)
+says why). Tailscale connects two devices on the same network directly, so the
+tailnet name costs nothing at home either.
 
 Check that the connection is **direct** before blaming anything else. Tailscale
 guarantees your devices can always reach each other; it does not guarantee they
@@ -547,13 +632,18 @@ relay, and every packet takes a detour through another city. The Tailscale app
 says *Direct* or *Relayed* per peer; `tailscale status` shows a relay name
 instead of an address when it is relayed.
 
-That distinction matters more here than raw bandwidth, because SMB was built
-for a LAN and is extremely chatty: a scan is thousands of small round trips, so
-150 ms of extra latency is multiplied by thousands rather than paid once.
-Relayed, expect scanning and artwork to crawl; on Wi-Fi with a direct path they
-behave like they do at home. Streaming survives a relay far better than
-scanning does — it is bulk sequential reads with read-ahead, so latency is paid
-once and amortised — but it is still limited by the relay's throughput.
+That distinction matters more here than raw bandwidth, because SMB was built for
+a LAN and is extremely chatty: a scan is thousands of small round trips, so 150
+ms of extra latency is multiplied by thousands rather than paid once. Relayed,
+expect scanning and artwork to crawl; on Wi-Fi with a direct path they behave
+like they do at home. The app holds back on its own: when a faster way in exists
+but cannot be reached from where you are, the server's page says **Waiting for a
+faster way in**, with how long reading the whole share would take from here, and
+scans and artwork wait until you are somewhere faster or tap **Read it anyway**.
+Playing and downloading carry on regardless. Streaming survives a relay far
+better than scanning does — it is bulk sequential reads with read-ahead, so
+latency is paid once and amortised — but it is still limited by the relay's
+throughput.
 
 What actually limits a direct connection is **your home upload speed**, not the
 VPN. Every byte leaves the house over your upstream. A 1080p file at 8–15 Mbps is
@@ -582,7 +672,8 @@ walks the share when its scan finishes and makes them all up front, showing a
 progress notification you can stop. One frame grab writes all three sizes.
 
 A library scanned before this existed has no walk queued for it: tap **Settings ›
-Media › Prepare artwork**, or rescan the share.
+Media › Prepare artwork**, or rescan the share. **Artwork cache**, above it, says
+how much room the pictures take and clears them.
 
 Points of interest are made ahead of time too. After the folders, the walk grabs the
 frame at every *named* mark (the only kind Search shows), before it moves on to the
