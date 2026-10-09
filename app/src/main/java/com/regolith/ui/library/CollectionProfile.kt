@@ -276,6 +276,10 @@ private fun ProfilePoster(poster: ArtworkRequest, name: String, modifier: Modifi
  * The runtime cell is left out until every video's length is known, for the
  * reason Play all's sheet gives: a total that is quietly short is worse than
  * none.
+ *
+ * Four cells read as one line on a phone. In the narrow wall beside a
+ * title's page on the inner display they would cut their labels short
+ * ("PICTUR"), so there the strip folds into rows of two ([statsPerRow]).
  */
 @Composable
 private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier) {
@@ -290,9 +294,8 @@ private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier)
         // An album: when its pictures were taken, in place of what a video has.
         if (profile.videoCount == 0) picturesSpan(profile.pictures)?.let { add(it to "Taken") }
     }.take(PROFILE_STATS_MAX)
-    Row(
+    BoxWithConstraints(
         modifier
-            .height(IntrinsicSize.Min)
             .drawBehind {
                 val hairline = 1.dp.toPx()
                 drawRect(colors.hairline, size = size.copy(height = hairline))
@@ -300,19 +303,34 @@ private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier)
             }
             .testTag("library_profile_stats"),
     ) {
-        stats.forEachIndexed { index, (value, label) ->
-            if (index > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(colors.hairline))
-            Column(
-                Modifier.weight(1f).padding(vertical = Spacing.s12),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-            ) {
-                Text(value, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(label.uppercase(), style = TextStyles.fieldLabel, color = colors.navIdle, maxLines = 1)
+        val perRow = statsPerRow(maxWidth, stats.size)
+        Column {
+            stats.chunked(perRow).forEachIndexed { rowIndex, row ->
+                if (rowIndex > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    row.forEachIndexed { index, (value, label) ->
+                        if (index > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(colors.hairline))
+                        Column(
+                            Modifier.weight(1f).padding(vertical = Spacing.s12),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        ) {
+                            Text(value, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(label.uppercase(), style = TextStyles.fieldLabel, color = colors.navIdle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+/**
+ * How many of [count] stat cells share a row in [width]: all of them when
+ * each gets [STAT_CELL_MIN], two at a time when they would not.
+ */
+internal fun statsPerRow(width: Dp, count: Int): Int =
+    if (count <= 2 || width >= STAT_CELL_MIN * count) count.coerceAtLeast(1) else 2
 
 /**
  * Play all, Shuffle, and Add. Play all is the one red on the page and plays
@@ -366,6 +384,9 @@ private fun ProfileActions(
 
 /** Four cells read as one line on a phone; past that the Watched cell gives way, as the canvas drew a collection with pictures. */
 private const val PROFILE_STATS_MAX = 4
+
+/** The narrowest a stat cell can be with its label whole: "PICTURES", "WATCHED". */
+private val STAT_CELL_MIN = 80.dp
 
 /**
  * When an album's pictures were taken, as one cell: "2024", or "2019–2024",
