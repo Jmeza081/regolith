@@ -1,10 +1,5 @@
 package com.regolith.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -34,14 +29,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.ui.theme.BoxShape
@@ -154,7 +144,7 @@ fun MoveToSheet(
     LaunchedEffect(nudges) {
         // Forgotten once it has played: rows come and go as the list
         // scrolls, and a row scrolled back into view must not nudge again.
-        delay(NUDGE_FORGET_MS)
+        delay(RAIL_NUDGE_FORGET_MS)
         nudged = null
     }
 
@@ -328,23 +318,11 @@ private fun DestinationRow(
     nudge: Int = 0,
 ) {
     val colors = RegolithTheme.colors
-    val shove = remember { Animatable(0f) }
-    // Toward the rail, which is on the END side: the left in right-to-left.
-    val towardRail = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
-    LaunchedEffect(nudge) {
-        if (nudge == 0) {
-            shove.animateTo(0f)
-        } else {
-            shove.animateTo(1f, tween(NUDGE_OUT_MS, easing = FastOutSlowInEasing))
-            shove.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
-        }
-    }
+    val nudged = rememberRailNudge(nudge)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 64.dp)
-            // Read in the draw phase: the nudge moves the row without
-            // recomposing it, frame after frame.
-            .graphicsLayer { translationX = shove.value * towardRail * NudgeDistance.toPx() }
+            .railNudge(nudged)
             .testTag(testTag),
     ) {
         Row(
@@ -392,32 +370,5 @@ private fun DestinationRow(
     }
 }
 
-/**
- * Lays this out [by] wider than it is offered, reaching past its end edge
- * into the sheet's gutter, while telling its parent it is exactly the width
- * it was given — so nothing around it moves. Placed with `placeRelative`,
- * so in a right-to-left layout it reaches left, which is the end there.
- */
-private fun Modifier.bleedEnd(by: Dp) = layout { measurable, constraints ->
-    if (!constraints.hasBoundedWidth) {
-        val placeable = measurable.measure(constraints)
-        return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
-    }
-    val extra = by.roundToPx()
-    val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra))
-    layout(placeable.width - extra, placeable.height) { placeable.placeRelative(0, 0) }
-}
-
-/** More folders than this, and the list gets an [AlphabetRail]: the owner's line between a list you read and one you hunt through. */
-internal const val RAIL_AFTER = 10
-
 /** The rows above the first folder: "here" and "New folder". A rail position is a folder's; the list's is this much further down. */
 private const val LEAD_ROWS = 2
-
-/** How far a nudged row travels before it springs back. */
-private val NudgeDistance = 12.dp
-
-private const val NUDGE_OUT_MS = 110
-
-/** Long enough for the spring to settle; after that the nudge is history. */
-private const val NUDGE_FORGET_MS = 900L

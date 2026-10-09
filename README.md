@@ -45,6 +45,11 @@ first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 Shorts opens on a clip that is already playing: on Wi-Fi, the first few seconds
 of the next clips are fetched in the background while you are elsewhere in the app.
 
+A Library wall sorted by name, A to Z, with more than ten tiles gets the same
+A–Z rail as the move sheet down its edge: slide a thumb down it to jump from
+letter to letter, and the poster you land on gives a small nudge. On a
+collection's page the rail comes once the top of the page has scrolled away.
+
 ### Keeps playing while you look around
 
 Put the player away (back, a swipe down, or its arrow) and the film shrinks into
