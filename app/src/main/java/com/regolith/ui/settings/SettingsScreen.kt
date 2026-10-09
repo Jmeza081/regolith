@@ -467,8 +467,7 @@ fun SettingsScreen(
                     }
                 }
             }
-            if (BuildConfig.DEMO_LIBRARY) {
-                // Privacy (P11): the app lock. The switch is only usable when
+            // Privacy (P11): the app lock. The switch is only usable when
             // the device has something to check against; the note says which
             // way it is short so the answer is not "it just does nothing".
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
@@ -546,7 +545,10 @@ fun SettingsScreen(
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
+            // Only the Demo section is behind the flag: a store build loses
+            // the pretend NAS and spoof mode, never the lock or the chapters.
+            if (BuildConfig.DEMO_LIBRARY) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
                     Eyebrow("Demo", muted = true)
                     SurfaceCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                         Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
@@ -556,7 +558,7 @@ fun SettingsScreen(
                                     when {
                                         state.demoWorking && state.demoInstalled -> "Removing…"
                                         state.demoWorking -> "Writing files…"
-                                        state.demoInstalled -> "A pretend NAS with 18 titles · ${formatBytes(state.demoBytes)}"
+                                        state.demoInstalled -> "A pretend NAS of films, series, home videos and photos · ${formatBytes(state.demoBytes)}"
                                         else -> "A pretend NAS you can browse and play with no network"
                                     },
                                     style = TextStyles.settingMeta, color = colors.metadata,

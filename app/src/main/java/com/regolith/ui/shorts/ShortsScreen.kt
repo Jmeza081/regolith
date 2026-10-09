@@ -715,7 +715,7 @@ private fun EmptyFeed(state: ShortsUiState) {
     EmptyState(
         title = if (state.measuringLine != null) "Still measuring your share" else "No vertical clips yet",
         body = state.measuringLine?.let { "Clips show up here as each file is measured. Nothing extra to run." }
-            ?: "Shorts collects videos that are taller than they are wide and a minute or less.",
+            ?: "Shorts collects videos that are taller than they are wide and no longer than Settings › Shorts › Longest clip.",
         ghost = Ghost.Clips,
         modifier = Modifier.statusBarsPadding().padding(horizontal = Spacing.s18).padding(top = Spacing.s40),
         testTag = "shorts_empty",

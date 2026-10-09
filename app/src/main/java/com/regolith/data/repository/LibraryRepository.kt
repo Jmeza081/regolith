@@ -380,7 +380,8 @@ class LibraryRepository @Inject constructor(
 
     /**
      * The Shorts feed: every measured file on these shares that is vertical
-     * and a minute or less, newest first.
+     * and no longer than [maxDurationMs] (Settings › Shorts › Longest clip),
+     * newest first.
      *
      * Rows only exist for paths a scan walked, so this needs no `share_roots`
      * test of its own -- a folder outside the chosen roots has no files here

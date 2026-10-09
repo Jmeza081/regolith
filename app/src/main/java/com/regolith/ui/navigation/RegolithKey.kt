@@ -40,7 +40,7 @@ sealed interface RegolithKey : NavKey {
      * idea which file you came for.
      */
     @Serializable data class Browse(val folderId: Long? = null, val highlightFileId: Long? = null) : RegolithKey
-    /** The vertical feed: every portrait clip of a minute or less, across every enabled share. */
+    /** The vertical feed: every portrait clip up to the Longest clip setting, across every enabled share. */
     @Serializable data object Shorts : RegolithKey
     @Serializable data object Settings : RegolithKey
 
