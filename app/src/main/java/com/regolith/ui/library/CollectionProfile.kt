@@ -71,14 +71,16 @@ import com.regolith.ui.util.formatDurationShort
  * header scrolls away with the videos instead of standing over them.
  */
 
-/** Which half of a profile's page is showing: the wall of its videos, or the moments in them. */
-internal enum class ProfileTab { VIDEOS, MOMENTS }
+/** Which part of a profile's page is showing: the wall of its videos, the moments in them, or its pictures. */
+internal enum class ProfileTab { VIDEOS, MOMENTS, IMAGES }
 
 /**
- * The Moments tab's own Play and Shuffle: the reel its moments make
- * (PlaybackSession.loadReel), and roughly how long it runs ("1 min").
+ * A tab's own Play and Shuffle, in place of Play all: the Moments tab's
+ * reel (PlaybackSession.loadReel) or the Images tab's story (P20), named
+ * for what plays ([noun]: "moments", "pictures") with roughly how long it
+ * runs ("1 min").
  */
-internal class MomentsPlay(val length: String, val onPlay: () -> Unit, val onShuffle: () -> Unit)
+internal class TabPlay(val noun: String, val length: String, val onPlay: () -> Unit, val onShuffle: () -> Unit)
 
 /**
  * The top of a profile: the collection's poster lighting the page from
@@ -93,19 +95,21 @@ internal class MomentsPlay(val length: String, val onPlay: () -> Unit, val onShu
  * [bleed] is the wall's own side padding: the light reaches past it to the
  * window's edges, where padding would have stopped it in a straight line.
  * [onAdd] is null where nothing can be added (the demo, a phone folder).
- * [moments] is set while the Moments tab shows: Play and Shuffle then play
- * the moments as a reel instead of the videos.
+ * [tab] is set while the Moments or Images tab shows: Play and Shuffle then
+ * play its moments as a reel, or its pictures as a story, instead of the
+ * videos. [onPlay] and [onShuffle] are null where there are no videos: an
+ * album of pictures alone, which plays its pictures.
  */
 @Composable
 internal fun ProfileHeader(
     profile: CollectionProfile,
     name: String,
-    onPlay: () -> Unit,
-    onShuffle: () -> Unit,
+    onPlay: (() -> Unit)?,
+    onShuffle: (() -> Unit)?,
     onAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     bleed: Dp = Spacing.s18,
-    moments: MomentsPlay? = null,
+    tab: TabPlay? = null,
 ) {
     val colors = RegolithTheme.colors
     Box(modifier.fillMaxWidth().testTag("library_profile_header")) {
@@ -134,7 +138,7 @@ internal fun ProfileHeader(
                             DisplayText(name, style = TextStyles.detailTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                         StatStrip(profile, Modifier.widthIn(max = PROFILE_STATS_MAX_WIDTH).fillMaxWidth())
-                        ProfileActions(onPlay, onShuffle, onAdd, playWidth = PROFILE_PLAY_WIDTH, moments = moments)
+                        ProfileActions(onPlay, onShuffle, onAdd, playWidth = PROFILE_PLAY_WIDTH, tab = tab)
                     }
                 }
             } else {
@@ -149,7 +153,7 @@ internal fun ProfileHeader(
                     Spacer(Modifier.height(Spacing.s18))
                     StatStrip(profile, Modifier.fillMaxWidth())
                     Spacer(Modifier.height(Spacing.s18))
-                    ProfileActions(onPlay, onShuffle, onAdd, playWidth = null, modifier = Modifier.fillMaxWidth(), moments = moments)
+                    ProfileActions(onPlay, onShuffle, onAdd, playWidth = null, modifier = Modifier.fillMaxWidth(), tab = tab)
                 }
             }
         }
@@ -157,20 +161,26 @@ internal fun ProfileHeader(
 }
 
 /**
- * The Videos / Moments switch under the header: the same control as the
- * Library's Network / On this device. Moments carries no count when there
- * are none, so an empty tab does not announce itself with a zero.
+ * The Videos / Moments / Images switch under the header: the same control as
+ * the Library's Network / On this device. Only the tabs the collection has
+ * ([CollectionProfile.tabs]): an album of pictures alone has none, and shows
+ * its pictures straight away. Moments carries no count when there are none,
+ * so an empty tab does not announce itself with a zero.
  */
 @Composable
 internal fun ProfileTabs(profile: CollectionProfile, tab: ProfileTab, onTab: (ProfileTab) -> Unit, modifier: Modifier = Modifier) {
+    val tabs = profile.tabs
     BoxWithConstraints(modifier.fillMaxWidth()) {
         SegmentedTabs(
-            segments = listOf(
-                Segment("Videos", "library_profile_tab_videos", count = profile.videoCount),
-                Segment("Moments", "library_profile_tab_moments", count = profile.moments.size.takeIf { it > 0 }),
-            ),
-            selected = tab.ordinal,
-            onSelect = { onTab(ProfileTab.entries[it]) },
+            segments = tabs.map { t ->
+                when (t) {
+                    ProfileTab.VIDEOS -> Segment("Videos", "library_profile_tab_videos", count = profile.videoCount)
+                    ProfileTab.MOMENTS -> Segment("Moments", "library_profile_tab_moments", count = profile.moments.size.takeIf { it > 0 })
+                    ProfileTab.IMAGES -> Segment("Images", "library_profile_tab_images", count = profile.pictures.size)
+                }
+            },
+            selected = tabs.indexOf(tab).coerceAtLeast(0),
+            onSelect = { onTab(tabs[it]) },
             // Beside the header on a wide window, not across the whole of it:
             // two words do not need 900dp between them.
             modifier = if (maxWidth >= PROFILE_SIDE_BY_SIDE_MIN) Modifier.widthIn(max = PROFILE_TABS_MAX_WIDTH) else Modifier,
@@ -266,19 +276,26 @@ private fun ProfilePoster(poster: ArtworkRequest, name: String, modifier: Modifi
  * The runtime cell is left out until every video's length is known, for the
  * reason Play all's sheet gives: a total that is quietly short is worse than
  * none.
+ *
+ * Four cells read as one line on a phone. In the narrow wall beside a
+ * title's page on the inner display they would cut their labels short
+ * ("PICTUR"), so there the strip folds into rows of two ([statsPerRow]).
  */
 @Composable
 private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier) {
     val colors = RegolithTheme.colors
+    val pictures = profile.pictures.size
     val stats = buildList {
-        add(profile.videoCount.toString() to if (profile.videoCount == 1) "Video" else "Videos")
-        profile.runtimeMs?.let { add(formatDurationShort(it) to "Runtime") }
-        add(formatBytes(profile.sizeBytes) to "Size")
-        add("${profile.watchedCount} of ${profile.videoCount}" to "Watched")
-    }
-    Row(
+        if (profile.videoCount > 0) add(profile.videoCount.toString() to if (profile.videoCount == 1) "Video" else "Videos")
+        if (pictures > 0) add(pictures.toString() to if (pictures == 1) "Picture" else "Pictures")
+        if (profile.videoCount > 0) profile.runtimeMs?.let { add(formatDurationShort(it) to "Runtime") }
+        add(formatBytes(profile.sizeBytes + profile.pictureBytes) to "Size")
+        if (profile.videoCount > 0) add("${profile.watchedCount} of ${profile.videoCount}" to "Watched")
+        // An album: when its pictures were taken, in place of what a video has.
+        if (profile.videoCount == 0) picturesSpan(profile.pictures)?.let { add(it to "Taken") }
+    }.take(PROFILE_STATS_MAX)
+    BoxWithConstraints(
         modifier
-            .height(IntrinsicSize.Min)
             .drawBehind {
                 val hairline = 1.dp.toPx()
                 drawRect(colors.hairline, size = size.copy(height = hairline))
@@ -286,19 +303,34 @@ private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier)
             }
             .testTag("library_profile_stats"),
     ) {
-        stats.forEachIndexed { index, (value, label) ->
-            if (index > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(colors.hairline))
-            Column(
-                Modifier.weight(1f).padding(vertical = Spacing.s12),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-            ) {
-                Text(value, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(label.uppercase(), style = TextStyles.fieldLabel, color = colors.navIdle, maxLines = 1)
+        val perRow = statsPerRow(maxWidth, stats.size)
+        Column {
+            stats.chunked(perRow).forEachIndexed { rowIndex, row ->
+                if (rowIndex > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    row.forEachIndexed { index, (value, label) ->
+                        if (index > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(colors.hairline))
+                        Column(
+                            Modifier.weight(1f).padding(vertical = Spacing.s12),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        ) {
+                            Text(value, style = TextStyles.rowLabel, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(label.uppercase(), style = TextStyles.fieldLabel, color = colors.navIdle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+/**
+ * How many of [count] stat cells share a row in [width]: all of them when
+ * each gets [STAT_CELL_MIN], two at a time when they would not.
+ */
+internal fun statsPerRow(width: Dp, count: Int): Int =
+    if (count <= 2 || width >= STAT_CELL_MIN * count) count.coerceAtLeast(1) else 2
 
 /**
  * Play all, Shuffle, and Add. Play all is the one red on the page and plays
@@ -309,29 +341,38 @@ private fun StatStrip(profile: CollectionProfile, modifier: Modifier = Modifier)
  */
 @Composable
 private fun ProfileActions(
-    onPlay: () -> Unit,
-    onShuffle: () -> Unit,
+    onPlay: (() -> Unit)?,
+    onShuffle: (() -> Unit)?,
     onAdd: (() -> Unit)?,
     /** Play all's own width, or null to take whatever the row leaves. */
     playWidth: Dp?,
     modifier: Modifier = Modifier,
-    moments: MomentsPlay? = null,
+    tab: TabPlay? = null,
 ) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
-        PlayAllButton(
-            moments?.onPlay ?: onPlay,
-            if (playWidth != null) Modifier.width(playWidth) else Modifier.weight(1f),
-            text = moments?.let { "Play moments · ${it.length}" } ?: "Play all",
-            testTag = if (moments != null) "library_play_moments_button" else "play_all_button",
-        )
+    val play = tab?.onPlay ?: onPlay
+    val shuffle = tab?.onShuffle ?: onShuffle
+    // Nothing to play (an album of pictures alone): Add stands on its own,
+    // where the row's middle is on a phone.
+    val arrangement = if (play == null) Arrangement.spacedBy(Spacing.s8, Alignment.CenterHorizontally) else Arrangement.spacedBy(Spacing.s8)
+    Row(modifier, horizontalArrangement = arrangement, verticalAlignment = Alignment.CenterVertically) {
+        if (play != null) {
+            PlayAllButton(
+                play,
+                if (playWidth != null) Modifier.width(playWidth) else Modifier.weight(1f),
+                text = tab?.let { "Play ${it.noun} · ${it.length}" } ?: "Play all",
+                testTag = tab?.let { "library_play_${it.noun}_button" } ?: "play_all_button",
+            )
+        }
         // The same height as the compact Play all beside them.
-        IconCircleButton(
-            painterResource(R.drawable.rg_ic_shuffle),
-            if (moments != null) "Shuffle the moments" else "Shuffle",
-            moments?.onShuffle ?: onShuffle,
-            if (moments != null) "library_shuffle_moments_button" else "library_profile_shuffle_button",
-            size = 42.scaledDp(),
-        )
+        if (shuffle != null) {
+            IconCircleButton(
+                painterResource(R.drawable.rg_ic_shuffle),
+                tab?.let { "Shuffle the ${it.noun}" } ?: "Shuffle",
+                shuffle,
+                tab?.let { "library_shuffle_${it.noun}_button" } ?: "library_profile_shuffle_button",
+                size = 42.scaledDp(),
+            )
+        }
         if (onAdd != null) {
             IconCircleButton(
                 painterResource(R.drawable.rg_ic_upload), "Add to this collection", onAdd, "library_profile_add_button",
@@ -339,6 +380,24 @@ private fun ProfileActions(
             )
         }
     }
+}
+
+/** Four cells read as one line on a phone; past that the Watched cell gives way, as the canvas drew a collection with pictures. */
+private const val PROFILE_STATS_MAX = 4
+
+/** The narrowest a stat cell can be with its label whole: "PICTURES", "WATCHED". */
+private val STAT_CELL_MIN = 80.dp
+
+/**
+ * When an album's pictures were taken, as one cell: "2024", or "2019–2024",
+ * from each picture's own date, or its file's where it does not say.
+ */
+private fun picturesSpan(pictures: List<PictureTile>): String? {
+    if (pictures.isEmpty()) return null
+    val years = pictures.map { java.time.Instant.ofEpochMilli(it.takenAtMs ?: it.modifiedAtMs).atZone(java.time.ZoneId.systemDefault()).year }
+    val first = years.min()
+    val last = years.max()
+    return if (first == last) "$first" else "$first–$last"
 }
 
 /** Wide enough for the poster to stand beside the name: the inner display with the wall to itself, not beside a title's page. */

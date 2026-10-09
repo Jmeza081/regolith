@@ -6,15 +6,34 @@ import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentOrder
 import com.regolith.domain.library.MomentSort
+import com.regolith.domain.library.PictureOrder
 import com.regolith.domain.library.SortDirection
 import com.regolith.domain.library.SortKeys
 import com.regolith.domain.library.comparator
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.PhoneAccess
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
 import com.regolith.ui.util.SelectionUiState
+
+/**
+ * Which kind of thing a wall shows: the chips under the Library's tabs
+ * (Videos · Moments · Images). A collection opened from a wall opens on the
+ * same one: a profile on that tab, a wall of collections with that chip lit.
+ * Rides on the route ([com.regolith.ui.navigation.RegolithKey.Library]).
+ */
+enum class LibraryFilter(val label: String) {
+    /** Collections and the videos in them: the wall as it always was. */
+    VIDEOS("Videos"),
+
+    /** Collections whose videos have named moments, opening on their Moments tab. */
+    MOMENTS("Moments"),
+
+    /** Albums, the folders that hold pictures, and any pictures lying loose on the wall. */
+    IMAGES("Images"),
+}
 
 /** One poster on the wall. Its [SortKeys] let the wall be ordered without knowing the tile kind. */
 sealed interface LibraryTile : SortKeys {
@@ -42,6 +61,11 @@ sealed interface LibraryTile : SortKeys {
         val directFileCount: Int = 0,
         val directByteCount: Long = 0,
         val listed: Boolean = true,
+        /** Named moments in the videos beneath it: the Moments chip's "6 moments". */
+        val momentCount: Int = 0,
+        /** Pictures beneath it, and how many of the folders directly in it hold any: the Images chip's line. */
+        val pictureCount: Int = 0,
+        val albumCount: Int = 0,
     ) : LibraryTile {
         override val testTag get() = "library_collection_$folderId"
     }
@@ -69,8 +93,26 @@ sealed interface LibraryTile : SortKeys {
         val shareId: Long = 0,
         /** The folder holding it, so a selection can tell if an ancestor is picked. */
         val folderRelPath: String = "",
+        /** Named moments in it, which is what puts it on the Moments chip's wall. */
+        val momentCount: Int = 0,
     ) : LibraryTile {
         override val testTag get() = "library_title_$fileId"
+    }
+
+    /**
+     * A picture lying loose on a wall, beside the albums, under the Images
+     * chip: cut to the wall's 2:3 like a poster. Opens the lightbox over the
+     * pictures of the folder it is in.
+     */
+    data class Picture(val picture: PictureTile) : LibraryTile {
+        override val testTag get() = picture.testTag
+        override val artwork get() = picture.artwork
+        override val name get() = picture.title
+        override val addedAtMs get() = picture.addedAtMs ?: picture.modifiedAtMs
+        override val fileDateMs get() = picture.takenAtMs ?: picture.modifiedAtMs
+        override val sizeBytes get() = picture.sizeBytes
+        override val durationMs: Long? get() = null
+        override val height get() = picture.height
     }
 }
 
@@ -80,6 +122,14 @@ data class LibraryUiState(
     /** "TOWER · media · 1,284 files" */
     val meta: String? = null,
     val tiles: List<LibraryTile> = emptyList(),
+    /** The chip lit on a wall ([LibraryFilter]); a profile opens on the matching tab instead. */
+    val filter: LibraryFilter = LibraryFilter.VIDEOS,
+    /**
+     * Which chips have anything behind them on this wall. A library with no
+     * moments and no pictures shows no chips at all: there is nothing to
+     * choose between.
+     */
+    val filtersWithTiles: Set<LibraryFilter> = setOf(LibraryFilter.VIDEOS),
     /**
      * Set when this wall is a leaf collection's and so opens as its profile
      * page: videos only, no collections inside. Null on every other wall.
@@ -88,6 +138,13 @@ data class LibraryUiState(
     val order: LibraryOrder = LibraryOrder(),
     /** A collection profile's Moments tab; its own list, so its own order. */
     val momentOrder: MomentOrder = MomentOrder(),
+    /** A profile's Images tab, and the lightbox over it: newest taken first to start. */
+    val pictureOrder: PictureOrder = PictureOrder(),
+    /** How many columns the Images tab's mosaic has on a phone, and on a wide window ([com.regolith.domain.display.PicturesAcross]). */
+    val picturesAcrossPhone: Int = 3,
+    val picturesAcrossWide: Int = 5,
+    /** Settings › Playback › Picture stories, for how long Play pictures says it runs. */
+    val storyPace: StoryPace = StoryPace.DEFAULT,
     /** Open over whichever list is on screen: it shows that list's choices ([LibraryScreen]). */
     val sortSheetOpen: Boolean = false,
     /** Poster wall or rows. Remembered across launches. */
@@ -281,6 +338,7 @@ fun LibraryUiState.withWall(built: LibraryUiState, sortedTiles: List<LibraryTile
     title = built.title,
     meta = built.meta,
     tiles = sortedTiles,
+    filtersWithTiles = built.filtersWithTiles,
     profile = built.profile,
     loaded = built.loaded,
     noSource = built.noSource,
@@ -325,12 +383,12 @@ fun DeviceUiState.inOrder(next: LibraryOrder = order): DeviceUiState {
 /**
  * A leaf collection's page, read as a profile (the canvas "Collection View
  * Refinements", boards C + A): its poster lighting the top of the page, a
- * line of stats, Play all, and Videos / Moments tabs over the wall.
+ * line of stats, Play all, and Videos / Moments / Images tabs over the wall.
  *
- * Only a collection whose wall would hold videos and no collections gets
- * one ([collectionProfile]): a collection inside a collection is a stop on
- * the way, and only the last stop is a profile (the owner's rule,
- * 2026-10-06).
+ * Only a collection holding videos or pictures and no collections gets one
+ * ([collectionProfile]): a collection inside a collection is a stop on the
+ * way, and only the last stop is a profile (the owner's rule, 2026-10-06).
+ * A folder of pictures alone is one too: an album.
  */
 data class CollectionProfile(
     /** What it sits in, for the line over its name: "Home videos", or the share's name at the top of one. */
@@ -347,7 +405,22 @@ data class CollectionProfile(
     val watchedCount: Int,
     /** The named chapters in its videos, by video in name order and then by time ([inOrder] re-orders them). */
     val moments: List<CollectionMoment>,
-)
+    /** The pictures in it, the poster and the videos' own among them, in no particular order ([inOrder] orders them). */
+    val pictures: List<PictureTile> = emptyList(),
+) {
+    /** Its tabs, in order: Videos and Moments where it holds videos, Images where it holds pictures. */
+    internal val tabs: List<ProfileTab>
+        get() = buildList {
+            if (videoCount > 0) {
+                add(ProfileTab.VIDEOS)
+                add(ProfileTab.MOMENTS)
+            }
+            if (pictures.isNotEmpty()) add(ProfileTab.IMAGES)
+        }
+
+    /** Every picture's size added up, for the Size cell beside the videos'. */
+    val pictureBytes: Long get() = pictures.sumOf { it.sizeBytes }
+}
 
 /** One point of interest on a profile's Moments tab: a chapter someone named, played from where it starts. */
 data class CollectionMoment(
@@ -365,14 +438,16 @@ data class CollectionMoment(
 
 /**
  * The profile for a collection's wall, or null when the page stays a wall:
- * a wall holding any collection is not a leaf, and a wall with no video on
- * it has nothing to show a profile of.
+ * a wall holding any collection is not a leaf ([hasCollections]: under any
+ * chip), and a collection with no video and no picture in it has nothing to
+ * show a profile of.
  *
  * [tiles] are the wall's tiles as built (names already made unique), so a
  * moment names its video exactly as the video's tile does. [completed] is
  * the ids of videos played to the end. [marks] are the named chapters in the
  * folder; only those on the wall's own videos are kept, since a hidden or
- * vanished video's marks have nothing to play.
+ * vanished video's marks have nothing to play. [pictures] are the pictures
+ * directly in it.
  */
 internal fun collectionProfile(
     tiles: List<LibraryTile>,
@@ -380,10 +455,12 @@ internal fun collectionProfile(
     poster: ArtworkRequest,
     completed: Set<Long>,
     marks: List<ChapterMatch>,
+    pictures: List<PictureTile> = emptyList(),
+    hasCollections: Boolean = tiles.any { it is LibraryTile.Collection },
 ): CollectionProfile? {
-    if (tiles.any { it is LibraryTile.Collection }) return null
+    if (hasCollections) return null
     val videos = tiles.filterIsInstance<LibraryTile.Title>()
-    if (videos.isEmpty()) return null
+    if (videos.isEmpty() && pictures.isEmpty()) return null
     val names = videos.associate { it.fileId to it.name }
     val durations = videos.map { it.durationMs }
     return CollectionProfile(
@@ -397,6 +474,7 @@ internal fun collectionProfile(
         moments = marks.mapNotNull { mark ->
             names[mark.fileId]?.let { name -> CollectionMoment(mark.fileId, mark.startMs, mark.title, name, mark.namedAtMs) }
         },
+        pictures = pictures,
     )
 }
 

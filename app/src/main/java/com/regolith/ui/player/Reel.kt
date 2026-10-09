@@ -1,6 +1,5 @@
 package com.regolith.ui.player
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,14 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
@@ -43,6 +36,7 @@ import com.regolith.ui.components.ListRow
 import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.SecondaryButton
+import com.regolith.ui.components.StorySegments
 import com.regolith.ui.components.bleedHorizontally
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -59,32 +53,21 @@ import com.regolith.ui.util.formatClock
  */
 
 /**
- * The reel's place, across the top of the picture: one short bar per moment,
- * full for those played and filling for the one playing, the way a story
- * shows it on a phone, so "how many more" never needs a number. [progress]
- * is the playing moment's, read as it is drawn, so playing recomposes nothing.
+ * The reel's place, across the top of the picture: one short bar per moment
+ * ([StorySegments], which a picture story shares). Every moment has its bar,
+ * however many: a reel is a collection's named moments, rarely past a dozen.
  */
 @Composable
 internal fun ReelSegments(reel: ReelState, progress: () -> Float, modifier: Modifier = Modifier) {
-    Canvas(
-        modifier.fillMaxWidth().height(3.dp)
-            .semantics { contentDescription = "Moment ${reel.index + 1} of ${reel.clips.size}" }
-            .testTag("player_reel_segments"),
-    ) {
-        val count = reel.clips.size
-        // The gaps narrow as a long reel's bars do, so the bars stay bars.
-        val gap = minOf(4.dp.toPx(), size.width / (count * 4f))
-        val width = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1f)
-        val corner = CornerRadius(size.height / 2)
-        for (i in 0 until count) {
-            val x = i * (width + gap)
-            drawRoundRect(if (i < reel.index) Color.White else SEGMENT_TRACK, Offset(x, 0f), Size(width, size.height), corner)
-            if (i == reel.index) {
-                val filled = progress().coerceIn(0f, 1f)
-                if (filled > 0f) drawRoundRect(Color.White, Offset(x, 0f), Size(width * filled, size.height), corner)
-            }
-        }
-    }
+    StorySegments(
+        count = reel.clips.size,
+        index = reel.index,
+        progress = progress,
+        description = "Moment ${reel.index + 1} of ${reel.clips.size}",
+        testTag = "player_reel_segments",
+        modifier = modifier,
+        max = reel.clips.size,
+    )
 }
 
 /**
@@ -209,7 +192,6 @@ internal fun PlaybackState.reelProgress(): Float {
 }
 
 /** An upcoming moment's bar: the played ones and the filling part are white over this. */
-private val SEGMENT_TRACK = Color.White.copy(alpha = 0.3f)
 
 /** The moments already played, stepped back in the list. */
 private const val PLAYED_ALPHA = 0.55f

@@ -14,9 +14,12 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.regolith.R
 import com.regolith.data.RegolithNotifications
+import com.regolith.data.db.ShareFileDao
 import com.regolith.data.db.UserChapterDao
+import com.regolith.data.pictures.PictureRepository
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.media.MediaFileTypes
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
@@ -49,11 +52,18 @@ class ArtworkWorker @AssistedInject constructor(
     private val library: LibraryRepository,
     private val artwork: ArtworkRepository,
     private val chapters: UserChapterDao,
+    private val shareFiles: ShareFileDao,
+    private val pictures: PictureRepository,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         val shareId = inputData.getLong(KEY_SHARE_ID, -1)
         if (shareId < 0) return Result.failure()
+
+        // Every picture's shape and date first: a few milliseconds each, and
+        // what lets an album's mosaic lay itself out before any thumbnail
+        // below exists (PictureRepository).
+        if (!pictures.measureShare(shareId)) return Result.retry()
 
         val owners = ownersOf(shareId)
         if (owners.isEmpty()) return Result.success()
@@ -125,7 +135,9 @@ class ArtworkWorker @AssistedInject constructor(
      * leave Search grabbing them live for an hour. Then the files, newest
      * first, because that is the order Home shows them in — so the screens
      * someone is likeliest to open next fill in before the deep back
-     * catalogue.
+     * catalogue. Then the pictures (schema v17), newest first too, after the
+     * videos so a share that has both keeps the order its walls always
+     * filled in: an album opened before its turn makes its own on demand.
      */
     private suspend fun ownersOf(shareId: Long): List<ArtworkOwner> {
         val folders = library.observeFoldersInShares(listOf(shareId)).first()
@@ -135,7 +147,11 @@ class ArtworkWorker @AssistedInject constructor(
             .sortedByDescending { it.addedAtMs }
             .map { ArtworkOwner.File(it.id) }
         val marks = chapters.namedInShare(shareId).map { ArtworkOwner.Moment(it.fileId, it.startMs) }
-        return folders + marks + files
+        val pictures = shareFiles.inShare(shareId)
+            .filter { MediaFileTypes.isPicture(it.name) }
+            .sortedByDescending { it.takenAtMs ?: it.modifiedAtMs }
+            .map { ArtworkOwner.Picture(it.id) }
+        return folders + marks + files + pictures
     }
 
     private suspend fun report(done: Int, total: Int) {

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
@@ -54,11 +56,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
+import com.composables.icons.lucide.R as LucideR
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.playback.Reel
+import com.regolith.domain.playback.Story
 import com.regolith.domain.playback.ReelClip
 import com.regolith.domain.playback.ReelMoment
 import com.regolith.domain.library.LibrarySort
@@ -72,6 +76,7 @@ import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.FileActionsHost
+import com.regolith.ui.components.PictureVerbs
 import com.regolith.ui.components.UploadActionsHost
 import com.regolith.ui.components.UploadSectionView
 import com.regolith.ui.components.UploadSource
@@ -145,13 +150,39 @@ import com.regolith.ui.components.WallPinchPill
 import com.regolith.ui.components.rememberWallPinch
 import com.regolith.ui.components.wallPinch
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.ui.adaptive.LocalWindowShape
+import com.regolith.ui.components.AlphabetIndex
+import com.regolith.ui.components.AlphabetRail
+import com.regolith.ui.components.AlphabetRailWidth
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.runtime.SideEffect
+import com.regolith.domain.display.PicturesAcross
+import com.regolith.domain.library.PictureSort
+import com.regolith.ui.components.PictureMosaicGap
+import com.regolith.ui.components.PictureMosaicTile
+import com.regolith.ui.components.RAIL_AFTER
+import com.regolith.ui.components.RAIL_NUDGE_FORGET_MS
+import com.regolith.ui.components.bleedEnd
+import com.regolith.ui.components.picturesFitting
+import com.regolith.ui.components.railNudge
+import com.regolith.ui.components.rememberRailNudge
+import com.regolith.ui.lightbox.LocalPictureFocus
+import com.regolith.ui.util.formatCount
+import com.regolith.ui.util.formatDate
 
 private enum class LibraryTab { NETWORK, ON_DEVICE }
 
@@ -169,7 +200,8 @@ private enum class LibraryTab { NETWORK, ON_DEVICE }
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onBack: (() -> Unit)?,
-    onOpenCollection: (folderId: Long) -> Unit,
+    /** A collection tile: its wall or its profile, opening with the chip lit here ([LibraryFilter]). */
+    onOpenCollection: (folderId: Long, filter: LibraryFilter) -> Unit,
     onOpenTitle: (fileId: Long) -> Unit,
     onSearch: () -> Unit,
     onAddServer: () -> Unit,
@@ -201,6 +233,20 @@ fun LibraryScreen(
     onPlayAt: (fileId: Long, startMs: Long) -> Unit = { _, _ -> },
     /** A profile's Play moments: its moments as a reel, called by the collection's [title]. */
     onPlayMoments: ((title: String, clips: List<ReelClip>) -> Unit)? = null,
+    /**
+     * A picture: the lightbox over the pictures of [folderId], starting at
+     * [pictureId], in the order they were showing: the Images tab's, or the
+     * wall's own ([onWall]) for a picture lying loose beside albums.
+     */
+    onOpenPicture: (folderId: Long, pictureId: Long, onWall: Boolean) -> Unit = { _, _, _ -> },
+    /**
+     * Set as poster for [folderId]: a picture on the share ([pictureId], the
+     * selection's Poster) or one picked on the phone ([uri], the upload
+     * sheet's Collection poster).
+     */
+    onSetPoster: (folderId: Long, pictureId: Long?, uri: String?) -> Unit = { _, _, _ -> },
+    /** A profile's Play pictures: [folderId]'s pictures as a story, in the tab's order or [shuffle]d. */
+    onPlayPictures: ((folderId: Long, shuffle: Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val uploadActions = viewModel.uploadActions
@@ -229,13 +275,46 @@ fun LibraryScreen(
     // lighting the page, its stats, and Videos / Moments tabs over the wall.
     // Network tab only: the device tab is a different page sharing this screen.
     val profile = state.profile.takeIf { onBack != null && tab == LibraryTab.NETWORK }
-    var profileTab by rememberSaveable { mutableStateOf(ProfileTab.VIDEOS) }
+    // It opens on the tab the chip it was opened from names (LibraryFilter);
+    // a tab the collection does not have gives way to its first.
+    var chosenTab by rememberSaveable { mutableStateOf(state.filter.profileTab()) }
+    val profileTab = profile?.tabs?.let { tabs -> if (chosenTab in tabs) chosenTab else tabs.firstOrNull() } ?: chosenTab
+    // An album's pictures, a mosaic in place of the wall (PictureMosaic.kt).
+    val showPictures = profile != null && profileTab == ProfileTab.IMAGES
     // The wall's scroll positions. Up here, not beside the wall, because a
     // profile's top bar floats over the wall and fills in once the header
     // has scrolled up behind it, which it reads from these.
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
+    val mosaicState = rememberLazyStaggeredGridState()
+    // Switching between the Videos grid and the Images mosaic swaps the lazy
+    // container under the header: the new one starts where the old one was,
+    // so the tabs stay where the finger left them. Applied at the next
+    // layout (requestScrollToItem), so no frame shows the top of the page.
+    val wasShowingPictures = remember { booleanArrayOf(showPictures) }
+    SideEffect {
+        if (wasShowingPictures[0] == showPictures) return@SideEffect
+        wasShowingPictures[0] = showPictures
+        if (state.viewMode != ViewMode.GRID) return@SideEffect
+        val (index, offset) = if (showPictures) gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset else mosaicState.firstVisibleItemIndex to mosaicState.firstVisibleItemScrollOffset
+        // Past the tabs, the other list has nothing at that index: it starts with its tabs at the top.
+        val (toIndex, toOffset) = if (index <= 1) index to offset else 1 to 0
+        if (showPictures) mosaicState.requestScrollToItem(toIndex, toOffset) else gridState.requestScrollToItem(toIndex, toOffset)
+    }
     var profileHeaderPx by remember { mutableIntStateOf(0) }
+    // A profile's header has scrolled up behind its floating top bar: the bar
+    // fills in and takes the collection's name, and the A–Z rail may come,
+    // the header's own buttons at the wall's edge having gone with it.
+    val collapseAt = (profileHeaderPx - with(LocalDensity.current) { profileBarHeight().roundToPx() }).coerceAtLeast(1)
+    val headerCollapsed by remember(collapseAt, state.viewMode, showPictures) {
+        derivedStateOf {
+            when {
+                showPictures && state.viewMode == ViewMode.GRID -> mosaicState.firstVisibleItemIndex > 0 || mosaicState.firstVisibleItemScrollOffset >= collapseAt
+                state.viewMode == ViewMode.GRID -> gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset >= collapseAt
+                else -> listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset >= collapseAt
+            }
+        }
+    }
 
     // A pinch on the wall steps how many posters sit across it (WallPinch),
     // from what the wall shows to as many as fit, and keeps the answer as
@@ -249,6 +328,18 @@ fun LibraryScreen(
         onStep = viewModel::setPostersPerRow,
     )
     val pinchable = LocalWindowShape.current.wide && selectedFileId == null
+    // An album's mosaic pinches on every screen, phone included, in a range
+    // of its own and kept apart from the posters (PicturesAcross).
+    val mosaicScreen = PicturesAcross.of(LocalWindowShape.current.wide)
+    val mosaicFit = picturesFitting(wallWidth).coerceAtLeast(mosaicScreen.fewest)
+    val mosaicAcross = mosaicScreen.clamp(if (mosaicScreen == PicturesAcross.WIDE) state.picturesAcrossWide else state.picturesAcrossPhone).coerceAtMost(mosaicFit)
+    val mosaicPinch = rememberWallPinch(
+        shown = mosaicAcross,
+        most = mosaicFit,
+        onStep = { viewModel.setPicturesAcross(mosaicScreen, it) },
+        fewest = mosaicScreen.fewest,
+        top = mosaicScreen.most,
+    )
     // Where the poster wall starts on screen, for the pill to sit just inside it.
     var wallTopPx by remember { mutableIntStateOf(0) }
 
@@ -307,6 +398,8 @@ fun LibraryScreen(
                 SortSheet(LibrarySort.entries, state.device.order.sort, state.device.order.direction, viewModel::pickDeviceSort, close)
             profile != null && profileTab == ProfileTab.MOMENTS ->
                 SortSheet(MomentSort.entries, state.momentOrder.sort, state.momentOrder.direction, viewModel::pickMomentSort, close)
+            showPictures ->
+                SortSheet(PictureSort.entries, state.pictureOrder.sort, state.pictureOrder.direction, viewModel::pickPictureSort, close)
             else -> SortSheet(LibrarySort.entries, state.order.sort, state.order.direction, viewModel::pickSort, close)
         }
     }
@@ -324,6 +417,8 @@ fun LibraryScreen(
             ).joinToString(" · ")
             tab == LibraryTab.ON_DEVICE -> "${formatBytes(state.device.usedBytes)} of ${formatBytes(state.device.totalBytes)} · plays with no network"
             unreachable.isNotEmpty() -> "${unreachable.first().name} unreachable · $readyCount file${if (readyCount == 1) "" else "s"} playable here"
+            // Inside a collection the line counts what the lit chip shows.
+            onBack != null && state.filter != LibraryFilter.VIDEOS -> wallCount(state.tiles, state.filter)
             else -> state.meta
         }
         val devicePickCount = state.device.picked?.size
@@ -385,11 +480,21 @@ fun LibraryScreen(
             )
         }
 
+        // What the wall is OF (LibraryFilter): videos, the moments in them, or
+        // pictures. Only where there is a choice to make, and never on a
+        // profile, whose own tabs say the same thing.
+        if (tab == LibraryTab.NETWORK && profile == null && (state.filtersWithTiles.size > 1 || state.filter != LibraryFilter.VIDEOS)) {
+            FilterChips(
+                state.filter, viewModel::setFilter,
+                Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12, top = if (onBack == null) 0.dp else Spacing.s8),
+            )
+        }
+
         // The collection's own CTA. Titles only: a Collection tile is a folder
         // of folders and has no single file to start with, so a wall of them
         // has nothing to play in order.
         val playable = state.tiles.filterIsInstance<LibraryTile.Title>()
-        if (onPlayAll != null && tab == LibraryTab.NETWORK && playable.isNotEmpty() && profile == null) {
+        if (onPlayAll != null && tab == LibraryTab.NETWORK && playable.isNotEmpty() && profile == null && state.filter == LibraryFilter.VIDEOS) {
             PlayAllButton(
                 onClick = { playAllOpen = true },
                 modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
@@ -507,7 +612,7 @@ fun LibraryScreen(
             NoSource(onAddServer)
             return
         }
-        val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, rows = state.viewMode != ViewMode.GRID, onScan = viewModel::scanAll) }
+        val emptyBlock = @Composable { EmptyWall(scannedOnce = state.scannedOnce, rows = state.viewMode != ViewMode.GRID, onScan = viewModel::scanAll, filter = state.filter) }
 
         // A page opening beside the wall reflows it — five across become two
         // on the inner display — and a keyed grid keeps its FIRST visible
@@ -528,10 +633,23 @@ fun LibraryScreen(
             Reel.clips(moments.map { ReelMoment(it.fileId, it.startMs, it.title, it.videoName) }, lengths)
         }
         val momentsPlay = if (showMoments && reelClips.isNotEmpty() && onPlayMoments != null) {
-            MomentsPlay(
+            TabPlay(
+                noun = "moments",
                 length = Reel.roughLength(Reel.lengthMs(reelClips)),
                 onPlay = { onPlayMoments(state.title, reelClips) },
                 onShuffle = { onPlayMoments(state.title, reelClips.shuffled()) },
+            )
+        } else {
+            null
+        }
+        // The Images tab plays its pictures as a story, at the pace Settings sets.
+        val albumId = viewModel.folderId
+        val picturesPlay = if (showPictures && profile?.pictures.orEmpty().isNotEmpty() && onPlayPictures != null && albumId != null) {
+            TabPlay(
+                noun = "pictures",
+                length = Reel.roughLength(Story.lengthMs(profile?.pictures.orEmpty().size, state.storyPace)),
+                onPlay = { onPlayPictures(albumId, false) },
+                onShuffle = { onPlayPictures(albumId, true) },
             )
         } else {
             null
@@ -542,21 +660,48 @@ fun LibraryScreen(
             ProfileHeader(
                 profile = p,
                 name = state.title,
-                onPlay = { onPlayAll?.invoke(playableIds(), false) },
-                onShuffle = { onPlayAll?.invoke(playableIds(), true) },
+                // An album of pictures alone has no videos to play.
+                onPlay = if (p.videoCount > 0) ({ onPlayAll?.invoke(playableIds(), false) }) else null,
+                onShuffle = if (p.videoCount > 0) ({ onPlayAll?.invoke(playableIds(), true) }) else null,
                 onAdd = if (uploads.canUpload) ({ uploadActions?.openSheet() }) else null,
                 modifier = Modifier.onSizeChanged { profileHeaderPx = it.height },
-                moments = momentsPlay,
+                tab = momentsPlay ?: picturesPlay,
             )
         }
         val profileTabs = @Composable { p: CollectionProfile ->
-            ProfileTabs(p, profileTab, { profileTab = it }, Modifier.padding(bottom = Spacing.s8))
+            // An album of pictures alone has one thing to show, and no tabs.
+            if (p.tabs.size > 1) ProfileTabs(p, profileTab, { chosenTab = it }, Modifier.padding(bottom = Spacing.s8))
         }
+        // An album's pictures in the order its tab shows them, the lightbox's too.
+        val pictures = remember(profile?.pictures, state.pictureOrder) { profile?.pictures.orEmpty().inOrder(state.pictureOrder) }
+        val openPicture = { picture: PictureTile, onWall: Boolean -> onOpenPicture(picture.folderId, picture.pictureId, onWall) }
+        // A collection opens on the chip lit here.
+        val openCollection = { folderId: Long -> onOpenCollection(folderId, state.filter) }
         val uploadSection = @Composable { section: com.regolith.ui.components.UploadSection ->
             UploadSectionView(
                 section, { uploadActions?.onSectionAction(it) }, { uploadActions?.retry(it) }, { uploadActions?.remove(it) },
                 modifier = Modifier.padding(bottom = Spacing.s8), tagPrefix = "library",
             )
+        }
+        // Back from the lightbox, the picture it was showing has its tile
+        // brought into view before the first frame is drawn, so the picture
+        // flies home into it (PictureFocus); a tile already near the screen
+        // is left where it is, rather than jumped to the top.
+        val focus = LocalPictureFocus.current
+        val focusId = focus?.pictureId
+        SideEffect {
+            val id = focusId ?: return@SideEffect
+            focus.pictureId = null
+            if (state.viewMode != ViewMode.GRID) return@SideEffect
+            if (showPictures) {
+                val index = pictures.indexOfFirst { it.pictureId == id }.takeIf { it >= 0 } ?: return@SideEffect
+                val item = 2 + (if (uploads.section != null) 1 else 0) + index
+                if (!mosaicState.near(item, mosaicAcross)) mosaicState.requestScrollToItem(item)
+            } else {
+                val index = state.tiles.indexOfFirst { it is LibraryTile.Picture && it.picture.pictureId == id }.takeIf { it >= 0 } ?: return@SideEffect
+                val item = leadingItems + index
+                if (!gridState.near(item)) gridState.requestScrollToItem(item)
+            }
         }
         LaunchedEffect(selectedFileId) {
             val id = selectedFileId ?: return@LaunchedEffect
@@ -571,66 +716,83 @@ fun LibraryScreen(
             }
         }
 
-        if (state.viewMode == ViewMode.GRID) {
-            LazyVerticalGrid(
-                // Posters per row is the owner's (Settings › Display); see wallColumns.
-                // A moment is a 16:9 frame with a name under it, so the Moments
-                // tab takes Search's columns for those instead.
-                columns = if (showMoments) ThumbCells else WallCells(LocalWindowShape.current.wide, state.postersPerRow.count, wallFullWidth()),
-                state = gridState,
+        // The A–Z rail, as the move sheet has it ([AlphabetRail]), on a wall
+        // that takes one ([wallTakesRail]). The wall makes room for it at its
+        // end edge whenever it is offered, so nothing moves sideways as it
+        // comes and goes, and a profile's header and tabs reach back into
+        // that room to stay centred. On a profile it waits until the header
+        // has scrolled up behind the top bar ([headerCollapsed]): the
+        // header's own buttons sit at that edge.
+        val railLetters = remember(state.tiles) { AlphabetIndex(state.tiles.map { it.name }) }
+        val railRoom = !showMoments && !showPictures && wallTakesRail(state.order, state.tiles.size, railLetters)
+        val wallEnd = if (railRoom) AlphabetRailWidth else Spacing.s18
+        val reclaim = wallEnd - Spacing.s18
+        // The tile a jump landed on, and a count so the same letter twice nudges it again.
+        var railNudged by remember { mutableStateOf<String?>(null) }
+        var railNudges by remember { mutableIntStateOf(0) }
+        LaunchedEffect(railNudges) {
+            delay(RAIL_NUDGE_FORGET_MS)
+            railNudged = null
+        }
+        val railTop = (if (profile != null) profileBarHeight() else 0.dp) + Spacing.s8
+        val railBottom = LocalNavPillInsets.current.calculateBottomPadding()
+        val railScope = rememberCoroutineScope()
+        val wallRail: @Composable BoxScope.(scrolls: Boolean, amongTiles: Boolean, jump: suspend (Int) -> Unit) -> Unit = { scrolls, amongTiles, jump ->
+            if (railRoom && scrolls && amongTiles) {
+                AlphabetRail(
+                    index = railLetters,
+                    onJump = { _, position ->
+                        // A jump, not a glide, as in the move sheet: a finger
+                        // can cross five letters while a smooth scroll does one.
+                        railScope.launch { jump(leadingItems + position) }
+                        railNudged = state.tiles.getOrNull(position)?.testTag
+                        railNudges++
+                    },
+                    testTag = "library_rail",
+                    modifier = Modifier.matchParentSize().padding(top = railTop, bottom = railBottom),
+                )
+            }
+        }
+        val nudgeOf = { tile: LibraryTile -> if (tile.testTag == railNudged) railNudges else 0 }
+
+        if (showPictures && profile != null && state.viewMode == ViewMode.GRID) {
+            // The Images tab: the album's pictures, each at its own shape, down
+            // columns a pinch adds or takes away (PicturesAcross).
+            LazyVerticalStaggeredGrid(
+                columns = StaggeredGridCells.Fixed(mosaicAcross),
+                state = mosaicState,
                 modifier = Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { wallTopPx = it.positionInParent().y.roundToInt() }
-                    // Posters only: Moments are 16:9 frames on Search's columns.
-                    .wallPinch(pinch.takeIf { pinchable && !showMoments }, gridState)
-                    .testTag("library_grid"),
+                    .wallPinch(mosaicPinch, mosaicState)
+                    .testTag("library_mosaic"),
                 contentPadding = PaddingValues(
                     start = Spacing.s18, end = Spacing.s18,
                     bottom = LocalNavPillInsets.current.calculateBottomPadding(),
                 ),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                verticalItemSpacing = PictureMosaicGap,
+                horizontalArrangement = Arrangement.spacedBy(PictureMosaicGap),
             ) {
-                if (profile != null) {
-                    item(key = "library_profile_header", span = { GridItemSpan(maxLineSpan) }) { profileHeader(profile) }
-                    item(key = "library_profile_tabs", span = { GridItemSpan(maxLineSpan) }) { profileTabs(profile) }
-                    if (showMoments) {
-                        if (moments.isEmpty()) {
-                            item(key = "library_moments_empty", span = { GridItemSpan(maxLineSpan) }) { NoMoments(rows = false) }
-                        } else {
-                            items(moments, key = { it.testTag }) { moment -> MomentTile(moment, onPlayAt) }
-                        }
-                        return@LazyVerticalGrid
-                    }
-                }
-                // Only the Network tab is affected by a share going away (design:
-                // "the message lives there rather than over files that play fine").
-                if (showUnreachable) item(span = { GridItemSpan(maxLineSpan) }) { unreachableBlock() }
-                // At the top: the videos on their way are what the user just did.
-                uploads.section?.let { section -> item(key = "library_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) } }
-                if (showSkeletons) {
-                    items(9) { SkeletonTile() }
-                    return@LazyVerticalGrid
-                }
-                if (showEmpty) {
-                    item(span = { GridItemSpan(maxLineSpan) }) { emptyBlock() }
-                    return@LazyVerticalGrid
-                }
-                if (showScanLine) item(span = { GridItemSpan(maxLineSpan) }) { ScanLine() }
-                items(state.tiles, key = { it.testTag }) { tile ->
-                    TileView(
-                        tile, dimmed = unreachable.isNotEmpty(),
-                        selected = !selecting && tile.isSelected(selectedFileId),
-                        selection = selection,
-                        onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle,
-                        onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                item(key = "library_profile_header", span = StaggeredGridItemSpan.FullLine) { profileHeader(profile) }
+                item(key = "library_profile_tabs", span = StaggeredGridItemSpan.FullLine) { profileTabs(profile) }
+                uploads.section?.let { section -> item(key = "library_uploads", span = StaggeredGridItemSpan.FullLine) { uploadSection(section) } }
+                items(pictures, key = { it.testTag }) { picture ->
+                    PictureMosaicTile(
+                        artwork = picture.artwork,
+                        aspect = picture.aspect,
+                        name = picture.title,
+                        onClick = { if (selecting) viewModel.togglePicture(picture) else openPicture(picture, false) },
+                        onLongClick = { viewModel.beginPictureSelection(picture) },
+                        checked = if (selecting) selection.picks(picture) else null,
+                        testTag = picture.testTag,
+                        poster = picture.poster,
+                        gif = picture.gif,
+                        videoName = picture.videoName,
                     )
                 }
             }
-        } else {
-            // Rows: no card frame here. A wall can hold a thousand titles, and
-            // the design's cards are for short grouped lists (Browse, Settings);
-            // a hairline between rows is what keeps a long list readable.
+        } else if (showPictures && profile != null) {
+            // The same pictures as rows: the thumbnail small, the date and size beside the name.
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize().testTag("library_rows"),
@@ -639,42 +801,143 @@ fun LibraryScreen(
                     bottom = LocalNavPillInsets.current.calculateBottomPadding(),
                 ),
             ) {
-                if (profile != null) {
-                    item(key = "library_profile_header") { profileHeader(profile) }
-                    item(key = "library_profile_tabs") { profileTabs(profile) }
-                    if (showMoments) {
-                        if (moments.isEmpty()) {
-                            item(key = "library_moments_empty") { NoMoments(rows = true) }
-                        } else {
-                            itemsIndexed(moments, key = { _, moment -> moment.testTag }) { index, moment ->
-                                if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                                MomentRow(moment, onPlayAt)
-                            }
-                        }
-                        return@LazyColumn
-                    }
-                }
-                if (showUnreachable) item { unreachableBlock() }
+                item(key = "library_profile_header") { profileHeader(profile) }
+                item(key = "library_profile_tabs") { profileTabs(profile) }
                 uploads.section?.let { section -> item(key = "library_uploads") { uploadSection(section) } }
-                if (showSkeletons) {
-                    items(6) { SkeletonRow() }
-                    return@LazyColumn
-                }
-                if (showEmpty) {
-                    item { emptyBlock() }
-                    return@LazyColumn
-                }
-                if (showScanLine) item { Box(Modifier.padding(bottom = Spacing.s8)) { ScanLine() } }
-                itemsIndexed(state.tiles, key = { _, tile -> tile.testTag }) { index, tile ->
+                itemsIndexed(pictures, key = { _, picture -> picture.testTag }) { index, picture ->
                     if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                    TileRow(
-                        tile, dimmed = unreachable.isNotEmpty(),
-                        selected = !selecting && tile.isSelected(selectedFileId),
-                        selection = selection,
-                        onOpenCollection = onOpenCollection, onOpenTitle = onOpenTitle,
-                        onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                    ListRow(
+                        title = picture.title,
+                        meta = pictureMeta(picture),
+                        leading = RowLeading.Thumb(picture.artwork, fallbackLabel = picture.name),
+                        trailing = if (selecting && selection.picks(picture)) RowTrailing.Checked else RowTrailing.None,
+                        onClick = { if (selecting) viewModel.togglePicture(picture) else openPicture(picture, false) },
+                        onLongClick = { viewModel.beginPictureSelection(picture) },
+                        testTag = picture.testTag,
                     )
                 }
+            }
+        } else if (state.viewMode == ViewMode.GRID) {
+            // The wall, and the A–Z rail over its end edge.
+            Box(Modifier.fillMaxSize().onGloballyPositioned { wallTopPx = it.positionInParent().y.roundToInt() }) {
+                LazyVerticalGrid(
+                    // Posters per row is the owner's (Settings › Display); see wallColumns.
+                    // A moment is a 16:9 frame with a name under it, so the Moments
+                    // tab takes Search's columns for those instead.
+                    columns = if (showMoments) ThumbCells else WallCells(LocalWindowShape.current.wide, state.postersPerRow.count, wallFullWidth()),
+                    state = gridState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // Posters only: Moments are 16:9 frames on Search's columns.
+                        .wallPinch(pinch.takeIf { pinchable && !showMoments }, gridState)
+                        .testTag("library_grid"),
+                    contentPadding = PaddingValues(
+                        start = Spacing.s18, end = wallEnd,
+                        bottom = LocalNavPillInsets.current.calculateBottomPadding(),
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                ) {
+                    if (profile != null) {
+                        item(key = "library_profile_header", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleedEnd(reclaim)) { profileHeader(profile) } }
+                        item(key = "library_profile_tabs", span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.bleedEnd(reclaim)) { profileTabs(profile) } }
+                        if (showMoments) {
+                            if (moments.isEmpty()) {
+                                item(key = "library_moments_empty", span = { GridItemSpan(maxLineSpan) }) { NoMoments(rows = false) }
+                            } else {
+                                items(moments, key = { it.testTag }) { moment -> MomentTile(moment, onPlayAt) }
+                            }
+                            return@LazyVerticalGrid
+                        }
+                    }
+                    // Only the Network tab is affected by a share going away (design:
+                    // "the message lives there rather than over files that play fine").
+                    if (showUnreachable) item(span = { GridItemSpan(maxLineSpan) }) { unreachableBlock() }
+                    // At the top: the videos on their way are what the user just did.
+                    uploads.section?.let { section -> item(key = "library_uploads", span = { GridItemSpan(maxLineSpan) }) { uploadSection(section) } }
+                    if (showSkeletons) {
+                        items(9) { SkeletonTile() }
+                        return@LazyVerticalGrid
+                    }
+                    if (showEmpty) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { emptyBlock() }
+                        return@LazyVerticalGrid
+                    }
+                    if (showScanLine) item(span = { GridItemSpan(maxLineSpan) }) { ScanLine() }
+                    items(state.tiles, key = { it.testTag }) { tile ->
+                        val nudge = nudgeOf(tile)
+                        // No further than the gap: a poster nudged into the next one would slide under it.
+                        Box(Modifier.railNudge(if (nudge > 0) rememberRailNudge(nudge) else null, distance = Spacing.s8 - Spacing.s2)) {
+                            TileView(
+                                tile, dimmed = unreachable.isNotEmpty(),
+                                selected = !selecting && tile.isSelected(selectedFileId),
+                                selection = selection,
+                                onOpenCollection = openCollection, onOpenTitle = onOpenTitle,
+                                onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                                filter = state.filter,
+                                onOpenPicture = { openPicture(it, true) },
+                            )
+                        }
+                    }
+                }
+                wallRail(gridState.canScrollForward || gridState.canScrollBackward, profile == null || headerCollapsed) { gridState.scrollToItem(it) }
+            }
+        } else {
+            // Rows: no card frame here. A wall can hold a thousand titles, and
+            // the design's cards are for short grouped lists (Browse, Settings);
+            // a hairline between rows is what keeps a long list readable.
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize().testTag("library_rows"),
+                    contentPadding = PaddingValues(
+                        start = Spacing.s18, end = wallEnd,
+                        bottom = LocalNavPillInsets.current.calculateBottomPadding(),
+                    ),
+                ) {
+                    if (profile != null) {
+                        item(key = "library_profile_header") { Box(Modifier.bleedEnd(reclaim)) { profileHeader(profile) } }
+                        item(key = "library_profile_tabs") { Box(Modifier.bleedEnd(reclaim)) { profileTabs(profile) } }
+                        if (showMoments) {
+                            if (moments.isEmpty()) {
+                                item(key = "library_moments_empty") { NoMoments(rows = true) }
+                            } else {
+                                itemsIndexed(moments, key = { _, moment -> moment.testTag }) { index, moment ->
+                                    if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                                    MomentRow(moment, onPlayAt)
+                                }
+                            }
+                            return@LazyColumn
+                        }
+                    }
+                    if (showUnreachable) item { unreachableBlock() }
+                    uploads.section?.let { section -> item(key = "library_uploads") { uploadSection(section) } }
+                    if (showSkeletons) {
+                        items(6) { SkeletonRow() }
+                        return@LazyColumn
+                    }
+                    if (showEmpty) {
+                        item { emptyBlock() }
+                        return@LazyColumn
+                    }
+                    if (showScanLine) item { Box(Modifier.padding(bottom = Spacing.s8)) { ScanLine() } }
+                    itemsIndexed(state.tiles, key = { _, tile -> tile.testTag }) { index, tile ->
+                        if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                        val nudge = nudgeOf(tile)
+                        Box(Modifier.railNudge(if (nudge > 0) rememberRailNudge(nudge) else null)) {
+                            TileRow(
+                                tile, dimmed = unreachable.isNotEmpty(),
+                                selected = !selecting && tile.isSelected(selectedFileId),
+                                selection = selection,
+                                onOpenCollection = openCollection, onOpenTitle = onOpenTitle,
+                                onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                                filter = state.filter,
+                                onOpenPicture = { openPicture(it, true) },
+                            )
+                        }
+                    }
+                }
+                wallRail(listState.canScrollForward || listState.canScrollBackward, profile == null || headerCollapsed) { listState.scrollToItem(it) }
             }
         }
     }
@@ -684,6 +947,7 @@ fun LibraryScreen(
     // at the top of the screen, beneath that bar).
     val pillTopPx = wallTopPx + with(LocalDensity.current) { ((if (profile != null) profileBarHeight() else 0.dp) + Spacing.s8).roundToPx() }
     WallPinchPill(pinch, Modifier.align(Alignment.TopCenter).offset { IntOffset(0, pillTopPx) })
+    WallPinchPill(mosaicPinch, Modifier.align(Alignment.TopCenter).offset { IntOffset(0, pillTopPx) })
 
     // A profile's top bar floats over the page, so the poster's light runs
     // up under it. It fills in with the page's ground, and takes the
@@ -691,17 +955,12 @@ fun LibraryScreen(
     // selection's bar takes its place, solid from the start, so starting
     // one moves nothing on the page.
     if (profile != null) {
-        val barPx = with(LocalDensity.current) { profileBarHeight().roundToPx() }
-        val collapseAt = (profileHeaderPx - barPx).coerceAtLeast(1)
-        val collapsed by remember(collapseAt, state.viewMode) {
-            derivedStateOf {
-                if (state.viewMode == ViewMode.GRID) gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset >= collapseAt
-                else listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset >= collapseAt
-            }
-        }
+        val collapsed = headerCollapsed
         val barGround by animateColorAsState(if (collapsed) colors.ground else colors.ground.copy(alpha = 0f), label = "profile_bar")
         if (selecting) {
-            SelectionBar(selection!!.itemCount, onBack, viewModel::selectAllHere, viewModel::cancelSelection, Modifier.background(colors.ground))
+            // Select all on the Images tab is its pictures; on the others, the wall's tiles.
+            val selectAll = { if (showPictures) viewModel.selectAllPictures(profile.pictures) else viewModel.selectAllHere() }
+            SelectionBar(selection!!.itemCount, onBack, selectAll, viewModel::cancelSelection, Modifier.background(colors.ground))
         } else {
             TopBar(
                 title = if (collapsed) state.title else "",
@@ -744,18 +1003,27 @@ fun LibraryScreen(
             tagPrefix = "library",
             onDownload = viewModel::downloadSelection,
             onCancel = viewModel::cancelSelection,
+            // Nothing but pictures picked: Save and Poster where Download was.
+            pictureVerbs = remember(viewModel) {
+                PictureVerbs(
+                    onSave = viewModel::savePictures,
+                    onPoster = { viewModel.posterFromSelection { folderId, pictureId -> onSetPoster(folderId, pictureId, null) } },
+                )
+            },
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "library")
-        // Videos and a poster into this collection, the same flows Browse uses
-        // for a folder; only the choices differ, since the wall shows videos.
+        // Pictures, videos and a poster into this collection, the same flows
+        // Browse uses for a folder; only the choices differ.
         uploadActions?.let { actions ->
             UploadActionsHost(
                 actions = actions,
                 title = "Add to ${state.title}",
                 detail = uploads.serverName?.let { "On $it" },
-                sources = listOf(UploadSource.GALLERY_VIDEOS, UploadSource.VIDEO_FILES, UploadSource.POSTER),
+                sources = listOf(UploadSource.GALLERY, UploadSource.MEDIA_FILES, UploadSource.POSTER),
                 posterNoun = "collection",
                 onSendingAway = onSendingAway,
+                onPosterPicked = { uri -> viewModel.folderId?.let { onSetPoster(it, null, uri) } },
+                note = "Pictures go up as they are, with their names. They land under Images once the upload is done.",
             )
         }
     }
@@ -792,6 +1060,30 @@ private val NoUploads: kotlinx.coroutines.flow.StateFlow<UploadActionsState> = k
 private fun LibraryTile.isSelected(selectedFileId: Long?): Boolean =
     selectedFileId != null && this is LibraryTile.Title && fileId == selectedFileId
 
+/**
+ * Is item [index] on screen, or close enough to it that bringing it in is
+ * not worth moving the wall: read from where the wall starts, since a
+ * restored grid has laid nothing out yet when this is asked.
+ */
+private fun LazyGridState.near(index: Int): Boolean {
+    val visible = layoutInfo.visibleItemsInfo
+    if (visible.isNotEmpty()) return visible.any { it.index == index }
+    return index in firstVisibleItemIndex..(firstVisibleItemIndex + NEAR_ITEMS)
+}
+
+/** The same for a mosaic of [across] columns. */
+private fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState.near(index: Int, across: Int): Boolean {
+    val visible = layoutInfo.visibleItemsInfo
+    if (visible.isNotEmpty()) return visible.any { it.index == index }
+    return index in firstVisibleItemIndex..(firstVisibleItemIndex + across * NEAR_ROWS)
+}
+
+/** How many tiles past the first visible one still count as near ([near]): about a screen of posters. */
+private const val NEAR_ITEMS = 12
+
+/** The same in rows of a mosaic: a picture is about a third of a screen tall. */
+private const val NEAR_ROWS = 3
+
 /** Is grid item [index] on screen from its top edge to its bottom one? */
 private fun LazyGridState.showsWhole(index: Int): Boolean {
     val info = layoutInfo
@@ -811,6 +1103,8 @@ private fun TileView(
     onOpenTitle: (Long) -> Unit,
     onToggle: (LibraryTile) -> Unit = {},
     onLongPress: (LibraryTile) -> Unit = {},
+    filter: LibraryFilter = LibraryFilter.VIDEOS,
+    onOpenPicture: (PictureTile) -> Unit = {},
 ) {
     val selecting = selection != null
     when (tile) {
@@ -826,9 +1120,10 @@ private fun TileView(
                 artwork = tile.artwork,
                 kind = ArtworkKind.POSTER,
                 title = tile.name,
-                meta = if (out > 0) "All but $out" else formatFileCount(tile.fileCount),
-                count = tile.fileCount,
-                chip = tile.resolutionLabel.ifEmpty { null },
+                meta = if (out > 0) "All but $out" else collectionMeta(tile, filter),
+                count = collectionCount(tile, filter),
+                // A resolution is a video's fact; an album of pictures has none.
+                chip = tile.resolutionLabel.ifEmpty { null }.takeIf { filter != LibraryFilter.IMAGES },
                 dimmed = dimmed,
                 onClick = { onOpenCollection(tile.folderId) },
                 onLongClick = { onLongPress(tile) },
@@ -871,6 +1166,111 @@ private fun TileView(
                 flight = tile.artwork.owner,
             )
         }
+        is LibraryTile.Picture -> {
+            // A picture loose on a wall, cut to the wall's 2:3: it opens the
+            // lightbox, and flies into it.
+            MediaTile(
+                artwork = tile.artwork,
+                kind = ArtworkKind.POSTER,
+                title = tile.name,
+                meta = pictureMeta(tile.picture),
+                chip = if (tile.picture.gif) "GIF" else null,
+                fallbackLabel = tile.picture.name,
+                dimmed = dimmed,
+                onClick = if (selecting) {
+                    { onToggle(tile) }
+                } else {
+                    { onOpenPicture(tile.picture) }
+                },
+                onLongClick = { onLongPress(tile) },
+                checked = if (selecting) selection.picks(tile.picture) else null,
+                testTag = tile.testTag,
+                flight = tile.artwork.owner,
+            )
+        }
+    }
+}
+
+/** Is [picture] coming in this selection: picked itself, or inside a picked folder and not taken back out. */
+private fun SelectionUiState?.picks(picture: PictureTile): Boolean {
+    val s = this ?: return false
+    return s.pickedOthers.contains(picture.pictureId) ||
+        (s.coversFile(picture.shareId, picture.relPath.substringBeforeLast('/', "")) && !s.excludedOthers.contains(picture.pictureId))
+}
+
+/** A collection's line under its name, in the terms of the chip that is lit: its files, its moments, its pictures. */
+private fun collectionMeta(tile: LibraryTile.Collection, filter: LibraryFilter): String = when (filter) {
+    LibraryFilter.VIDEOS -> formatFileCount(tile.fileCount)
+    LibraryFilter.MOMENTS -> formatCount(tile.momentCount, "moment")
+    // "3 albums" for a folder of albums, "86 pictures" for an album.
+    LibraryFilter.IMAGES -> if (tile.albumCount > 0) formatCount(tile.albumCount, "album") else formatCount(tile.pictureCount, "picture")
+}
+
+/** The count on a collection's badge, in the same terms. */
+private fun collectionCount(tile: LibraryTile.Collection, filter: LibraryFilter): Int = when (filter) {
+    LibraryFilter.VIDEOS -> tile.fileCount
+    LibraryFilter.MOMENTS -> tile.momentCount
+    LibraryFilter.IMAGES -> tile.pictureCount
+}
+
+/**
+ * What a collection's wall holds under Moments or Images, for the line under
+ * its name: "2 albums · 1 picture", "3 collections · 1 video".
+ */
+private fun wallCount(tiles: List<LibraryTile>, filter: LibraryFilter): String {
+    val collections = tiles.count { it is LibraryTile.Collection }
+    val pictures = tiles.count { it is LibraryTile.Picture }
+    val videos = tiles.count { it is LibraryTile.Title }
+    return listOfNotNull(
+        collections.takeIf { it > 0 }?.let { formatCount(it, if (filter == LibraryFilter.IMAGES) "album" else "collection") },
+        pictures.takeIf { it > 0 }?.let { formatCount(it, "picture") },
+        videos.takeIf { it > 0 }?.let { formatCount(it, "video") },
+    ).joinToString(" · ").ifEmpty { "Nothing here" }
+}
+
+/**
+ * Whether a wall of [count] tiles in [order] gets the A–Z rail: sorted A to
+ * Z, longer than [RAIL_AFTER], and under more than one letter, or there is
+ * nowhere to jump. Not Z to A: the rail reads A to Z down the edge whatever
+ * the order, so on that wall a finger sliding down the letters would move
+ * the wall the other way.
+ */
+internal fun wallTakesRail(order: LibraryOrder, count: Int, letters: AlphabetIndex): Boolean =
+    order == LibraryOrder(LibrarySort.NAME, SortDirection.ASCENDING) && count > RAIL_AFTER && letters.present.size > 1
+
+/** A picture's line: when it was taken (its file's date when it does not say), then its size. */
+internal fun pictureMeta(picture: PictureTile): String =
+    listOf(formatDate(picture.takenAtMs ?: picture.modifiedAtMs), formatBytes(picture.sizeBytes)).joinToString(" · ")
+
+/** The tab a profile opens on when it is opened with [this] chip lit. */
+private fun LibraryFilter.profileTab(): ProfileTab = when (this) {
+    LibraryFilter.VIDEOS -> ProfileTab.VIDEOS
+    LibraryFilter.MOMENTS -> ProfileTab.MOMENTS
+    LibraryFilter.IMAGES -> ProfileTab.IMAGES
+}
+
+/**
+ * The chips under the Library's tabs (design: Lib-Filter): Videos, Moments,
+ * Images, the lit one white. The same [FilterChip] Search uses, in its
+ * quieter white, since these choose what a wall is of rather than narrow it.
+ */
+@Composable
+private fun FilterChips(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("library_filter_chips"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (f in LibraryFilter.entries) {
+            FilterChip(
+                text = f.label,
+                selected = f == filter,
+                onClick = { onFilter(f) },
+                testTag = "library_filter_${f.name.lowercase()}",
+                icon = when (f) {
+                    LibraryFilter.VIDEOS -> LucideR.drawable.lucide_ic_square_play
+                    LibraryFilter.MOMENTS -> LucideR.drawable.lucide_ic_bookmark
+                    LibraryFilter.IMAGES -> LucideR.drawable.lucide_ic_image
+                },
+                ink = true,
+            )
+        }
     }
 }
 
@@ -890,6 +1290,8 @@ private fun TileRow(
     onOpenTitle: (Long) -> Unit,
     onToggle: (LibraryTile) -> Unit = {},
     onLongPress: (LibraryTile) -> Unit = {},
+    filter: LibraryFilter = LibraryFilter.VIDEOS,
+    onOpenPicture: (PictureTile) -> Unit = {},
 ) {
     val selecting = selection != null
     val alpha = if (dimmed) 0.45f else 1f
@@ -902,10 +1304,10 @@ private fun TileRow(
             val out = selection?.leftOutInside(tile.shareId, tile.relPath) ?: 0
             ListRow(
                 title = tile.name,
-                meta = if (out > 0) {
-                    "All but $out"
-                } else {
-                    listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · ")
+                meta = when {
+                    out > 0 -> "All but $out"
+                    filter != LibraryFilter.VIDEOS -> collectionMeta(tile, filter)
+                    else -> listOfNotNull(formatFileCount(tile.fileCount), tile.resolutionLabel.ifEmpty { null }).joinToString(" · ")
                 },
                 // While selecting the poster gives way to the pick box, so the
                 // row has a target that picks and a target that opens.
@@ -947,6 +1349,21 @@ private fun TileRow(
                 modifier = selectedBg.alpha(alpha),
             )
         }
+        is LibraryTile.Picture -> ListRow(
+            title = tile.name,
+            meta = pictureMeta(tile.picture),
+            leading = RowLeading.Poster(tile.artwork, fallbackLabel = tile.picture.name),
+            trailing = if (selecting && selection.picks(tile.picture)) RowTrailing.Checked else RowTrailing.None,
+            minHeight = 64.scaledDp(),
+            onClick = if (selecting) {
+                { onToggle(tile) }
+            } else {
+                { onOpenPicture(tile.picture) }
+            },
+            onLongClick = { onLongPress(tile) },
+            testTag = tile.testTag,
+            modifier = Modifier.alpha(alpha),
+        )
     }
 }
 
@@ -1010,10 +1427,16 @@ private fun RemoveCopiesDialog(count: Int, onConfirm: () -> Unit, onKeep: () -> 
  * it stands in for: posters, or poster rows when the wall is in [rows] mode.
  */
 @Composable
-private fun EmptyWall(scannedOnce: Boolean, rows: Boolean, onScan: () -> Unit) {
+private fun EmptyWall(scannedOnce: Boolean, rows: Boolean, onScan: () -> Unit, filter: LibraryFilter = LibraryFilter.VIDEOS) {
+    val (title, body) = when {
+        !scannedOnce -> "Nothing scanned yet" to "Regolith reads the share once to know what is on it. Nothing is copied off it."
+        filter == LibraryFilter.MOMENTS -> "No moments here yet" to "Name a chapter while a video plays, and its collection shows up here, opening on its moments."
+        filter == LibraryFilter.IMAGES -> "No pictures here yet" to "Folders of photos on the share show up here as albums, and pictures beside your videos join them."
+        else -> "Nothing here yet" to "The scan found nothing Regolith can play here."
+    }
     EmptyState(
-        title = if (scannedOnce) "Nothing here yet" else "Nothing scanned yet",
-        body = if (scannedOnce) "The scan found nothing Regolith can play here." else "Regolith reads the share once to know what is on it. Nothing is copied off it.",
+        title = title,
+        body = body,
         ghost = if (rows) Ghost.PosterRows(count = 4) else Ghost.Posters(rows = 2),
         action = if (scannedOnce) null else EmptyAction("Scan now", onScan, "library_scan_button"),
         modifier = Modifier.padding(top = Spacing.s12),

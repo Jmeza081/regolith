@@ -111,18 +111,21 @@ class UploadRepository @Inject constructor(
                 }
             }
         }
+        // Two shots from the same second would both be named for it: apart before anything is asked.
+        val names = UploadNames.distinct(files.map { it.name })
+        val picked = files.mapIndexed { i, file -> file.copy(name = names[i]) }
         val clashes = try {
             val folder = folders.byId(folderId) ?: return null
             val share = shares.byId(folder.shareId) ?: return null
             val existing = gateway.list(access.hostFor(share.serverId), access.credentialsFor(share.serverId), share.name, folder.relPath)
                 .filterNot { it.isDirectory }
                 .associateBy { it.name.lowercase() }
-            files.mapNotNull { file -> existing[file.name.lowercase()]?.let { Clash(file, it.sizeBytes) } }
+            picked.mapNotNull { file -> existing[file.name.lowercase()]?.let { Clash(file, it.sizeBytes) } }
         } catch (e: SmbFailure) {
             Log.i(TAG, "could not check ${destination.folderName} for clashes: ${e.message}")
             emptyList()
         }
-        return Prepared(destination, files, unreadable, clashes)
+        return Prepared(destination, picked, unreadable, clashes)
     }
 
     /**

@@ -92,14 +92,21 @@ fun FilterChip(
      * (ellipsis) on a chip too long for its row, so the count stays legible.
      */
     trailing: String? = null,
+    /**
+     * Lit in white rather than red: the Library's Videos · Moments · Images,
+     * which pick what a wall is OF rather than narrow a search, and sit on
+     * pages whose one red is Play all.
+     */
+    ink: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     val textStyle = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp())
+    val onColor = if (ink) colors.ground else Color.White
     Box(
         modifier
             .height(34.scaledDp())
             .clip(PillShape)
-            .background(if (selected) colors.accent else colors.frostBg)
+            .background(if (selected) (if (ink) colors.ink else colors.accent) else colors.frostBg)
             .then(if (selected) Modifier else Modifier.border(1.dp, colors.frostBorder, PillShape))
             .clickable(interactionSource = null, indication = null, onClick = onClick)
             .padding(horizontal = Spacing.s12)
@@ -110,7 +117,7 @@ fun FilterChip(
             if (icon != null) {
                 Icon(
                     painterResource(icon), contentDescription = null,
-                    tint = if (selected) Color.White else colors.inkSoft,
+                    tint = if (selected) onColor else colors.inkSoft,
                     modifier = Modifier.size(14.scaledDp()),
                 )
                 Spacer(Modifier.width(Spacing.s4))
@@ -118,7 +125,7 @@ fun FilterChip(
             Text(
                 text,
                 style = textStyle,
-                color = if (selected) Color.White else colors.inkSoft,
+                color = if (selected) onColor else colors.inkSoft,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // Only beside a count: Search's row scrolls sideways, so its
@@ -131,7 +138,7 @@ fun FilterChip(
                 Text(
                     trailing,
                     style = textStyle,
-                    color = if (selected) Color.White.copy(alpha = 0.72f) else colors.navIdle,
+                    color = if (selected) onColor.copy(alpha = 0.72f) else colors.navIdle,
                     maxLines = 1,
                 )
             }

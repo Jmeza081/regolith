@@ -13,6 +13,7 @@ import android.app.Activity
 import com.regolith.data.security.BiometricGate
 import com.regolith.domain.security.AuthResult
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.playback.AmbientLight
@@ -132,6 +133,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
         viewModelScope.launch { prefs.postersPerRow.collect { v -> _uiState.update { it.copy(postersPerRow = v) } } }
         viewModelScope.launch { prefs.shortsLength.collect { v -> _uiState.update { it.copy(shortsLength = v) } } }
+        viewModelScope.launch { prefs.storyPace.collect { v -> _uiState.update { it.copy(storyPace = v) } } }
         viewModelScope.launch { spoof.state.collect { s -> _uiState.update { it.copy(spoofMode = s != null) } } }
         viewModelScope.launch {
             demo.installed.collect { installed ->
@@ -300,6 +302,8 @@ class SettingsViewModel @Inject constructor(
 
     /** Settings › Shorts: the longest a clip may be and still reach the feed. */
     fun setShortsLength(length: ShortsLength) = viewModelScope.launch { prefs.setShortsLength(length) }.let { }
+
+    fun setStoryPace(pace: StoryPace) = viewModelScope.launch { prefs.setStoryPace(pace) }.let { }
 
     /**
      * Settings › Demo library. Installing replaces whatever was there, so

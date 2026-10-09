@@ -221,6 +221,8 @@ class LibraryRepository @Inject constructor(
                 others += ShareFileEntity(
                     shareId = share.id, folderId = folder.id, relPath = relPath, name = e.name,
                     sizeBytes = e.sizeBytes, modifiedAtMs = e.modifiedAtMs,
+                    // Kept from the first listing that found it (replaceInFolder).
+                    addedAtMs = now,
                 )
             }
         }
@@ -364,6 +366,13 @@ class LibraryRepository @Inject constructor(
     fun observeFilesByIds(ids: List<Long>): Flow<List<MediaFileEntity>> =
         if (ids.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeByIds(ids)
 
+    /** The files in one folder that are not videos, live: the lightbox keeps the pictures. */
+    fun observeOtherFilesIn(folderId: Long): Flow<List<ShareFileEntity>> = shareFileDao.observeInFolder(folderId)
+
+    /** Every file in these shares that is not a video; the Library keeps the pictures (schema v17). */
+    fun observeOtherFilesInShares(shareIds: List<Long>): Flow<List<ShareFileEntity>> =
+        if (shareIds.isEmpty()) flowOf(emptyList()) else shareFileDao.observeInShares(shareIds)
+
     fun observeFilesInShares(shareIds: List<Long>): Flow<List<MediaFileEntity>> =
         if (shareIds.isEmpty()) flowOf(emptyList()) else mediaFileDao.observeInShares(shareIds)
 
@@ -371,7 +380,8 @@ class LibraryRepository @Inject constructor(
 
     /**
      * The Shorts feed: every measured file on these shares that is vertical
-     * and a minute or less, newest first.
+     * and no longer than [maxDurationMs] (Settings › Shorts › Longest clip),
+     * newest first.
      *
      * Rows only exist for paths a scan walked, so this needs no `share_roots`
      * test of its own -- a folder outside the chosen roots has no files here
@@ -508,6 +518,8 @@ class LibraryRepository @Inject constructor(
     override suspend fun file(fileId: Long): MediaFileEntity? = mediaFileDao.byId(fileId)
 
     override suspend fun other(otherId: Long): ShareFileEntity? = shareFileDao.byId(otherId)
+
+    override suspend fun othersIn(folderId: Long): List<ShareFileEntity> = shareFileDao.inFolder(folderId)
 
     /**
      * How many companion files ([Companions]) go with [fileIds] when they go

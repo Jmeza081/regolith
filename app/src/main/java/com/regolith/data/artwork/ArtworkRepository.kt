@@ -1,7 +1,9 @@
 package com.regolith.data.artwork
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ImageDecoder
 import androidx.core.graphics.createBitmap
 import android.util.Log
 import coil3.ImageLoader
@@ -11,7 +13,10 @@ import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
 import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ShareDao
+import com.regolith.data.db.ShareFileDao
 import com.regolith.data.db.UserChapterDao
+import com.regolith.data.pictures.PictureRepository
+import com.regolith.domain.media.LocalSource
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.AnimatedPoster
@@ -33,6 +38,7 @@ import kotlinx.coroutines.delay
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +54,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -79,6 +86,8 @@ class ArtworkRepository @Inject constructor(
     private val durations: DurationProbe,
     private val grabber: FrameGrabber,
     private val chapterDao: UserChapterDao,
+    private val shareFileDao: ShareFileDao,
+    private val pictures: PictureRepository,
     /**
      * Lazy, because the loader is built FROM this repository ([ArtworkFetcher]);
      * asking for it directly would be a loop the container cannot resolve.
@@ -166,7 +175,12 @@ class ArtworkRepository @Inject constructor(
         // one, so it is never written alongside the stills — it has its own
         // key, its own in-flight entry and its own trip through the source
         // order, run for the one title you opened.
-        val kinds = if (request.kind == ArtworkKind.BACKDROP) BACKDROP_ONLY else ArtworkKind.stills
+        val kinds = when {
+            // A picture has one image, its own thumbnail, whatever was asked for.
+            request.owner is ArtworkOwner.Picture -> PICTURE_ONLY
+            request.kind == ArtworkKind.BACKDROP -> BACKDROP_ONLY
+            else -> ArtworkKind.stills
+        }
         val key = request.owner to (request.kind == ArtworkKind.BACKDROP)
         joinOrStart(key) { extractionSlots.withPermit { resolveOwner(request.owner, kinds) } }
         return cached(request)
@@ -225,7 +239,8 @@ class ArtworkRepository @Inject constructor(
                 }
             }
         }
-        if (ArtworkKind.entries.all { cached(ArtworkRequest(owner, it)) != null }) return true
+        val kinds = if (owner is ArtworkOwner.Picture) PICTURE_ONLY else VIDEO_KINDS
+        if (kinds.all { cached(ArtworkRequest(owner, it)) != null }) return true
         return joinOrStart(owner to false) {
             prefetchSlots.withPermit {
                 extractionSlots.withPermit {
@@ -235,7 +250,7 @@ class ArtworkRepository @Inject constructor(
                     // leave it here holding the permits, and the next item
                     // would wait on them for ever. Cancelling from in here
                     // unwinds the `withPermit` frames and hands the slots back.
-                    withTimeoutOrNull(OWNER_TIMEOUT_MS) { resolveOwner(owner, ArtworkKind.entries) }
+                    withTimeoutOrNull(OWNER_TIMEOUT_MS) { resolveOwner(owner, kinds) }
                         ?: run {
                             Log.w(TAG, "$owner gave up after ${OWNER_TIMEOUT_MS / 1000}s; moving on")
                             // True, not false: false means "the share went
@@ -318,7 +333,8 @@ class ArtworkRepository @Inject constructor(
      * same frame, every listing.
      */
     override suspend fun onFolderListed(folderId: Long, entries: List<SmbEntry>) {
-        if (entries.any { !it.isDirectory && MediaFileTypes.isVideo(it.name) }) forgetFolderPlaceholders(folderId)
+        // Videos to take frames from, or pictures to make an album's cover of.
+        if (entries.any { !it.isDirectory && (MediaFileTypes.isVideo(it.name) || MediaFileTypes.isPicture(it.name)) }) forgetFolderPlaceholders(folderId)
         val folder = folderDao.byId(folderId) ?: return
         // The freshest listing there is. The resolver's own copy would
         // otherwise be up to five minutes older than the one this check used,
@@ -328,7 +344,7 @@ class ArtworkRepository @Inject constructor(
         val files = mediaFileDao.inFolder(folderId)
         val cached = artworkDao.forFolderAndItsFiles(folderId).mapNotNull { row -> row.asCachedPicture() }
         val stale = ArtworkFreshness.staleOwners(folderId, files.map { it.id to it.name }, entries, cached)
-            .filterNot { it is ArtworkOwner.File && local.file(it.id) != null }
+            .filterNot { it is ArtworkOwner.File && local.file(it.id) != null } + stalePictures(folderId)
         if (stale.isEmpty()) return
         for (owner in stale) {
             artworkDao.deleteOwner(owner.typeName, owner.id)
@@ -336,6 +352,20 @@ class ArtworkRepository @Inject constructor(
         }
         announceReplaced(stale)
         Log.i(TAG, "the share's pictures changed for $stale in ${folder.relPath.ifEmpty { "/" }}; they will be made again")
+    }
+
+    /**
+     * The pictures in [folderId] whose thumbnail was made from a different
+     * file than the one there now: the same name, a new size or date. The
+     * listing has just written the rows ([ShareFileDao.replaceInFolder]), so
+     * each is compared with its thumbnail's [ArtworkFreshness.pictureStamp].
+     */
+    private suspend fun stalePictures(folderId: Long): List<ArtworkOwner> {
+        val rows = shareFileDao.inFolder(folderId).associateBy { it.id }
+        return artworkDao.picturesIn(folderId)
+            .filter { thumb -> rows[thumb.ownerId]?.let { thumb.sourceStamp != ArtworkFreshness.pictureStamp(it.sizeBytes, it.modifiedAtMs) } == true }
+            .map { ArtworkOwner.Picture(it.ownerId) }
+            .distinct()
     }
 
     /**
@@ -506,6 +536,7 @@ class ArtworkRepository @Inject constructor(
                 is ArtworkOwner.File -> resolveFile(owner, kinds)
                 is ArtworkOwner.Folder -> resolveFolder(owner, kinds)
                 is ArtworkOwner.Moment -> resolveMoments(owner, kinds)
+                is ArtworkOwner.Picture -> resolvePicture(owner)
             }
             true
         } catch (e: SmbFailure) {
@@ -828,7 +859,11 @@ class ArtworkRepository @Inject constructor(
         // Null while the share cannot be listed: a mosaic made from local
         // copies then carries no stamp, and the next real listing judges it.
         var stamp: String? = null
-        try {
+        // The demo library has no share to list: its albums' pictures are on
+        // the phone, its own poster among them.
+        if (isLocal(folder.shareId)) {
+            if (localSidecar(folder.id, owner, kinds)) return
+        } else try {
             locate(folder.shareId)?.let { location ->
                 val entries = listing(location, folder.shareId, folder.relPath)
                 val candidates = ArtworkCandidates.forFolder(entries)
@@ -848,6 +883,8 @@ class ArtworkRepository @Inject constructor(
         // No picture of its own any more, so nothing to move either.
         keepAnimated(owner, folder.relPath, null, kinds)
         if (mosaic(owner, kinds, stamp)) return
+        // An album: no videos to take frames from, so its own pictures.
+        if (unreachable == null && pictureCover(owner, kinds, stamp)) return
         unreachable?.let { throw it }
         placeholder(owner, kinds, stamp)
     }
@@ -975,8 +1012,12 @@ class ArtworkRepository @Inject constructor(
         return any
     }
 
-    /** [stamp] is [ArtworkFreshness.stamp] of the owner's share images as this picture was made, or null when unknown. */
-    private suspend fun record(owner: ArtworkOwner, kind: ArtworkKind, source: ArtworkSource, stamp: String? = null) {
+    /**
+     * [stamp] is [ArtworkFreshness.stamp] of the owner's share images as this
+     * picture was made, or null when unknown. [size] is the image's own size
+     * where it is not its kind's: a picture's thumbnail keeps its shape.
+     */
+    private suspend fun record(owner: ArtworkOwner, kind: ArtworkKind, source: ArtworkSource, stamp: String? = null, size: Pair<Int, Int>? = null) {
         artworkDao.upsert(
             ArtworkEntity(
                 ownerType = owner.typeName,
@@ -985,8 +1026,8 @@ class ArtworkRepository @Inject constructor(
                 kind = kind.name,
                 source = source.name,
                 relPath = store.relPathFor(owner, kind),
-                width = kind.width,
-                height = kind.height,
+                width = size?.first ?: kind.width,
+                height = size?.second ?: kind.height,
                 updatedAtMs = System.currentTimeMillis(),
                 sourceStamp = stamp,
             ),
@@ -1012,12 +1053,177 @@ class ArtworkRepository @Inject constructor(
         }
     }
 
+    // --- pictures (schema v17)
+
+    /**
+     * A picture's own thumbnail: the whole file read once, decoded straight to
+     * the small size ([ArtworkKind.PICTURE]) with the phone's own decoder —
+     * which reads HEIC and AVIF, turns the picture the way its EXIF or HEIF
+     * says, and decodes only what it needs to for a smaller size — then kept
+     * at its own shape. Its header is noted on the way, if it had not been
+     * read yet ([PictureRepository.noteFrom]).
+     */
+    private suspend fun resolvePicture(owner: ArtworkOwner.Picture) {
+        val row = shareFileDao.byId(owner.id) ?: return
+        val stamp = ArtworkFreshness.pictureStamp(row.sizeBytes, row.modifiedAtMs)
+        if (!MediaFileTypes.isPicture(row.name) || row.sizeBytes > MAX_PICTURE_BYTES) {
+            placeholder(owner, PICTURE_ONLY, stamp)
+            return
+        }
+        // The demo library's pictures are on the phone; every other one is read off its share.
+        val bytes = local.picture(row.id)?.let { runCatching { it.readBytes() }.getOrNull() } ?: run {
+            val location = locate(row.shareId) ?: return
+            readImage(location, row.relPath, MAX_PICTURE_BYTES)
+        }
+        if (bytes == null) {
+            placeholder(owner, PICTURE_ONLY, stamp)
+            return
+        }
+        pictures.noteFrom(row, bytes)
+        val bitmap = decodeFitted(bytes, ArtworkKind.PICTURE)
+        if (bitmap == null) {
+            Log.w(TAG, "${row.name}: the decoder could not read it")
+            placeholder(owner, PICTURE_ONLY, stamp)
+            return
+        }
+        try {
+            val size = store.saveFitted(bitmap, owner, ArtworkKind.PICTURE)
+            if (size != null) record(owner, ArtworkKind.PICTURE, ArtworkSource.PICTURE, stamp, size) else placeholder(owner, PICTURE_ONLY, stamp)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    /**
+     * [bytes] decoded at no more than [kind]'s box. ImageDecoder rather than
+     * BitmapFactory because it is the one that applies a JPEG's EXIF turn and
+     * a HEIF's `irot` by itself. Software memory: the result is compressed
+     * again on the CPU, which a hardware bitmap cannot be read for.
+     */
+    private fun decodeFitted(bytes: ByteArray, kind: ArtworkKind): Bitmap? = runCatching {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
+            val scale = minOf(1f, kind.width.toFloat() / info.size.width, kind.height.toFloat() / info.size.height)
+            decoder.setTargetSize((info.size.width * scale).roundToInt().coerceAtLeast(1), (info.size.height * scale).roundToInt().coerceAtLeast(1))
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    }.getOrNull()
+
+    /**
+     * An album's cover, when it has no picture of its own and no videos to
+     * take frames from: its four newest pictures in a 2×2 grid, the way a
+     * folder of videos gets four frames ([mosaic]), or the newest alone when
+     * it holds fewer than four. Made from the pictures' own thumbnails,
+     * which are made first where they do not exist yet.
+     */
+    private suspend fun pictureCover(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
+        val picks = coverPictures(owner.id)
+        if (picks.isEmpty()) return false
+        val cells = mutableListOf<Bitmap>()
+        try {
+            for (id in picks) pictureThumb(ArtworkOwner.Picture(id))?.let { cells += it }
+            if (cells.isEmpty()) return false
+            var wrote = false
+            for (kind in kinds) {
+                val saved = if (cells.size < ArtworkCandidates.MOSAIC_CELLS) {
+                    store.save(cells.first(), owner, kind)
+                } else {
+                    val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
+                    val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
+                    val grid = createBitmap(kind.width, kind.height)
+                    try {
+                        val canvas = Canvas(grid)
+                        cells.take(ArtworkCandidates.MOSAIC_CELLS).forEachIndexed { i, picture ->
+                            val cell = ArtworkStore.centerCrop(picture, cellW, cellH)
+                            canvas.drawBitmap(cell, (i % ArtworkCandidates.MOSAIC_COLUMNS * cellW).toFloat(), (i / ArtworkCandidates.MOSAIC_COLUMNS * cellH).toFloat(), null)
+                            if (cell !== picture) cell.recycle()
+                        }
+                        store.saveExact(grid, owner, kind)
+                    } finally {
+                        grid.recycle()
+                    }
+                }
+                if (saved) {
+                    record(owner, kind, ArtworkSource.MOSAIC, stamp)
+                    wrote = true
+                }
+            }
+            if (wrote) Log.d(TAG, "cover for album ${owner.id} from ${cells.size} picture(s)")
+            return wrote
+        } finally {
+            cells.forEach { it.recycle() }
+        }
+    }
+
+    /**
+     * Up to four pictures for an album's cover, newest first: the folder's
+     * own, then its subfolders' as [mosaicFiles] walks them, so a folder of
+     * albums gets a cover too.
+     */
+    private suspend fun coverPictures(folderId: Long): List<Long> {
+        val out = mutableListOf<Long>()
+        val queue = ArrayDeque(listOf(folderId))
+        var visited = 0
+        while (queue.isNotEmpty() && out.size < ArtworkCandidates.MOSAIC_CELLS && visited < MOSAIC_MAX_FOLDERS) {
+            val id = queue.removeFirst()
+            visited++
+            out += shareFileDao.inFolder(id)
+                .filter { MediaFileTypes.isPicture(it.name) && !ArtworkCandidates.isSidecarName(it.name) }
+                .sortedByDescending { it.takenAtMs ?: it.modifiedAtMs }
+                .take(ArtworkCandidates.MOSAIC_CELLS - out.size)
+                .map { it.id }
+            if (out.size < ArtworkCandidates.MOSAIC_CELLS) queue += folderDao.children(id).map { it.id }
+        }
+        return out
+    }
+
+    /**
+     * A picture's thumbnail as a bitmap, made first if need be. Resolved
+     * directly rather than through [resolve]: this runs inside a folder's
+     * resolution, which already holds an extraction slot, and waiting on a
+     * second one from inside the first is how two slots deadlock.
+     */
+    private suspend fun pictureThumb(owner: ArtworkOwner.Picture): Bitmap? {
+        val request = ArtworkRequest(owner, ArtworkKind.PICTURE)
+        val row = cached(request) ?: run {
+            resolveOwner(owner, PICTURE_ONLY)
+            cached(request)
+        } ?: return null
+        if (row.source == ArtworkSource.PLACEHOLDER.name) return null
+        return BitmapFactory.decodeFile(store.fileFor(row.relPath).path)
+    }
+
     // --- share access
 
     /** The in-flight key for "grabbing this film's marks" (see [inFlight]). */
     private data class MomentBatch(val fileId: Long)
 
     private data class Location(val host: SmbHost, val credentials: SmbCredentials, val share: String)
+
+    /** A share with nothing behind it to list: the demo library, or the phone's own videos. */
+    private suspend fun isLocal(shareId: Long): Boolean {
+        val share = shareDao.byId(shareId) ?: return false
+        val server = serverDao.byId(share.serverId) ?: return false
+        return LocalSource.isLocal(server.host)
+    }
+
+    /**
+     * A folder whose pictures are on the phone (the demo library's albums):
+     * the picture it wears, chosen by the share's own rules
+     * ([ArtworkCandidates.forFolder]) from its rows rather than a listing.
+     */
+    private suspend fun localSidecar(folderId: Long, owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>): Boolean {
+        val rows = shareFileDao.inFolder(folderId).filter { local.picture(it.id) != null }
+        if (rows.isEmpty()) return false
+        val entries = rows.map { SmbEntry(it.name, isDirectory = false, sizeBytes = it.sizeBytes, modifiedAtMs = it.modifiedAtMs) }
+        val candidates = ArtworkCandidates.forFolder(entries)
+        val stamp = ArtworkFreshness.stamp(candidates, entries)
+        for (candidate in candidates) {
+            val row = rows.firstOrNull { it.name == candidate.name } ?: continue
+            val bytes = local.picture(row.id)?.let { runCatching { it.readBytes() }.getOrNull() } ?: continue
+            if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) return true
+        }
+        return false
+    }
 
     private suspend fun locate(shareId: Long): Location? {
         val share = shareDao.byId(shareId) ?: return null
@@ -1035,10 +1241,14 @@ class ArtworkRepository @Inject constructor(
         return entries
     }
 
-    /** Whole image file, or null if it is unreadable. Sizes were already capped by the candidate rules. */
-    private fun readImage(location: Location, relPath: String): ByteArray? = try {
+    /**
+     * Whole image file, or null if it is unreadable or bigger than [maxBytes].
+     * A sidecar's size was already capped by the candidate rules; a picture's
+     * is capped here ([MAX_PICTURE_BYTES]).
+     */
+    private fun readImage(location: Location, relPath: String, maxBytes: Long = ArtworkCandidates.MAX_IMAGE_BYTES): ByteArray? = try {
         gateway.open(location.host, location.credentials, location.share, relPath).use { src ->
-            if (src.size > ArtworkCandidates.MAX_IMAGE_BYTES) return null
+            if (src.size > maxBytes) return null
             val out = ByteArrayOutputStream(src.size.toInt().coerceAtLeast(0))
             val buffer = ByteArray(64 * 1024)
             var position = 0L
@@ -1108,5 +1318,16 @@ class ArtworkRepository @Inject constructor(
         const val MOMENT_FRAME_MAX_HEIGHT = 360
         val BACKDROP_ONLY = listOf(ArtworkKind.BACKDROP)
         val THUMB_ONLY = listOf(ArtworkKind.THUMB)
+        val PICTURE_ONLY = listOf(ArtworkKind.PICTURE)
+
+        /** What the background walk makes for a video or a folder: every kind but a picture's own. */
+        val VIDEO_KINDS = ArtworkKind.entries - ArtworkKind.PICTURE
+
+        /**
+         * The biggest picture made into a thumbnail: a 50 MP phone photo is
+         * 15–25 MB, and a panorama more. Past this it shows as a placeholder in
+         * the mosaic (the lightbox still opens it).
+         */
+        const val MAX_PICTURE_BYTES = 64L * 1024 * 1024
     }
 }

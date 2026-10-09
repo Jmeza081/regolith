@@ -60,9 +60,10 @@ abstract class ArtworkModule {
          * the phone's own thumbnail of a file on its way to a share.
          *
          * The animated decoder plays a GIF instead of drawing its first frame.
-         * Only a top-level folder's moving poster reaches Coil as a GIF
-         * ([com.regolith.domain.artwork.AnimatedPoster]): every other picture
-         * here is a JPEG, or a bitmap the phone made, so nothing else moves.
+         * Two things reach Coil as a GIF: a top-level folder's moving poster
+         * ([com.regolith.domain.artwork.AnimatedPoster]), and a picture opened
+         * whole in the lightbox ([com.regolith.data.pictures.PictureOriginal]).
+         * Every other picture here is a JPEG the app made, so nothing else moves.
          */
         @Provides
         @Singleton
@@ -74,6 +75,8 @@ abstract class ArtworkModule {
             uploadThumbKeyer: UploadThumbKeyer,
             spoofImages: SpoofImageFetcher.Factory,
             spoofImageKeyer: SpoofImageKeyer,
+            pictureOriginals: com.regolith.data.pictures.PictureOriginalFetcher.Factory,
+            pictureOriginalKeyer: com.regolith.data.pictures.PictureOriginalKeyer,
         ): ImageLoader = ImageLoader.Builder(context)
             .components {
                 add(keyer)
@@ -84,6 +87,10 @@ abstract class ArtworkModule {
                 // comes off the internet rather than the artwork directory.
                 add(spoofImageKeyer)
                 add(spoofImages)
+                // A picture whole, for the lightbox (PictureOriginals): the one
+                // model that is not a small, still JPEG, so a GIF there moves.
+                add(pictureOriginalKeyer)
+                add(pictureOriginals)
                 add(AnimatedImageDecoder.Factory())
             }
             .diskCache(null)

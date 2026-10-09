@@ -82,6 +82,8 @@ import com.regolith.ui.components.ChromeMessageHost
 import com.regolith.ui.components.LocalAppSnackbar
 import com.regolith.ui.poster.PosterEditorScreen
 import com.regolith.ui.poster.PosterEditorViewModel
+import com.regolith.ui.poster.SetPosterScreen
+import com.regolith.ui.poster.SetPosterViewModel
 import com.regolith.ui.components.LocalSelectionChrome
 import com.regolith.ui.components.LocalNavChromeVisible
 import com.regolith.ui.components.LocalNavRailInset
@@ -136,6 +138,12 @@ import com.regolith.ui.home.ContinueWatchingScreen
 import com.regolith.ui.home.HomeScreen
 import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.library.LibraryViewModel
+import com.regolith.ui.lightbox.LightboxScreen
+import com.regolith.ui.lightbox.LightboxViewModel
+import com.regolith.ui.story.StoryScreen
+import com.regolith.ui.story.StoryViewModel
+import com.regolith.ui.lightbox.LocalPictureFocus
+import com.regolith.ui.lightbox.PictureFocus
 import com.regolith.ui.search.SearchScreen
 import com.regolith.ui.search.SearchViewModel
 import com.regolith.ui.onboarding.OnboardingScreen
@@ -165,6 +173,7 @@ import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlin.random.Random
 
 /**
  * The router. One back stack (a list of [RegolithKey]), one [NavDisplay]
@@ -206,6 +215,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     }
     // The Compose root, which the video surfaces hang under (videoFrame).
     val rootView = LocalView.current
+    // The picture the lightbox is showing, for the album it closes back onto.
+    val pictureFocus = remember { PictureFocus() }
     // How high the phone's bar sits where the player is being put away to,
     // as the slot below was worked out: where the bar lands (barLift).
     var barLandingLift by remember { mutableStateOf(0.dp) }
@@ -329,7 +340,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // while the message that reports on it is showing: a message needs a
     // host to be shown in, or it holds the queue (see the wide window's host
     // below). The pill itself appears there only as the toolbar, never as a nav.
-    val searchChrome = topKey is RegolithKey.Search && (selecting || messageUp)
+    // The lightbox is the same case without the picking: its Rename, Move and
+    // Delete, and a poster set from it, report in that same message line.
+    val pushedChrome = (topKey is RegolithKey.Search || topKey is RegolithKey.Lightbox) && (selecting || messageUp)
     val pillHere = currentTab != null || selecting
     // Search has no rail beside it, so while the rail is its toolbar it moves
     // over to make room, as the tab screens always have (tabContent).
@@ -395,7 +408,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // A pushed page has no pill: a phone's bar docks to the bottom on its own,
     // and the page stops short of it — as it does short of a wide window's
     // card, which would otherwise sit on the page's last rows.
-    val miniOnPushedPage = miniPlayerShown && currentTab == null && !searchChrome
+    val miniOnPushedPage = miniPlayerShown && currentTab == null && !pushedChrome
     val pushedClearance by animateDpAsState(
         when {
             !miniOnPushedPage -> 0.dp
@@ -528,6 +541,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         openUploadFolder(folderId.takeIf { it >= 0 })
         appViewModel.openedUploads()
     }
+    // A poster made from a picture (Set as poster closes as it finishes).
+    LaunchedEffect(Unit) {
+        appViewModel.posterNotices.collect { text -> launch { appSnackbar.showMessage(text, kind = MessageKind.DONE) } }
+    }
+    // Save to phone, which carries on after the album is left.
+    LaunchedEffect(Unit) {
+        appViewModel.pictureSaves.collect { saved ->
+            launch { appSnackbar.showMessage(saved.text, kind = if (saved.failed) MessageKind.FAILED else MessageKind.DONE) }
+        }
+    }
     // One message per finished batch, wherever the user is by then. "Show"
     // only when they are somewhere else: in the folder, the rows say it all.
     LaunchedEffect(Unit) {
@@ -643,6 +666,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         LocalNavPillInsets provides pillInsets,
         LocalMiniPlayerClearance provides pushedClearance,
         LocalMiniPlayerHandoff provides handoff,
+        LocalPictureFocus provides pictureFocus,
         LocalInPictureInPicture provides inPip,
         LocalNavRailInset provides railInset,
         // The same answer the pill acts on, published for screens that float
@@ -748,10 +772,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             tabContent {
                                 LibraryScreen(
                                     viewModel = hiltViewModel<LibraryViewModel, LibraryViewModel.Factory>(
-                                        creationCallback = { it.create(key.folderId) },
+                                        creationCallback = { it.create(key.folderId, key.filter) },
                                     ),
                                     onBack = if (key.folderId == null) null else ({ leaveWall(key) }),
-                                    onOpenCollection = { openFromWall(RegolithKey.Library(it)) },
+                                    // Opens with the chip lit here: a profile on that tab.
+                                    onOpenCollection = { folderId, filter -> openFromWall(RegolithKey.Library(folderId, filter = filter)) },
                                     onOpenTitle = { openTitle(it) },
                                     onSearch = { backStack.add(RegolithKey.Search()) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
@@ -765,6 +790,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                                     // Its moments as a reel, from the profile's Moments tab.
                                     onPlayMoments = { title, clips -> backStack.add(RegolithKey.Player.reel(title, clips)) },
+                                    // A picture opens the lightbox, its picture flying out of the tile.
+                                    onOpenPicture = { folderId, pictureId, onWall ->
+                                        pictureFocus.pictureId = pictureId
+                                        openFromWall(RegolithKey.Lightbox(folderId, pictureId, onWall))
+                                    },
+                                    onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
+                                    // Play pictures and its Shuffle, on a profile's Images tab.
+                                    onPlayPictures = { folderId, shuffle ->
+                                        backStack.add(RegolithKey.Story(folderId, shuffleSeed = if (shuffle) Random.nextLong() else null))
+                                    },
                                 )
                             }
                         }
@@ -804,6 +839,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     onPlayAll = ::playAll,
                                     onSendingAway = appViewModel::sendingAway,
+                                    onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
                                     // The tree restarts the Browse chain instead of pushing onto
                                     // it, so back from a jump leaves Browse rather than walking
                                     // through every folder the tree was used to skip.
@@ -943,6 +979,34 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 fliesIn = key.flies,
                             )
                         }
+                        // The lightbox: a picture flies into it, and back (lightboxScreen).
+                        entry<RegolithKey.Lightbox>(metadata = lightboxScreen) { key ->
+                            LightboxScreen(
+                                viewModel = hiltViewModel<LightboxViewModel, LightboxViewModel.Factory>(
+                                    creationCallback = { it.create(key.folderId, key.pictureId, key.onWall) },
+                                ),
+                                onClose = { backStack.removeLastOrNull() },
+                                onSetPoster = { folderId, pictureId -> backStack.add(RegolithKey.SetPoster(folderId, pictureId)) },
+                                onPlayFrom = { folderId, pictureId -> backStack.add(RegolithKey.Story(folderId, startPictureId = pictureId, onWall = key.onWall)) },
+                            )
+                        }
+                        // A collection's pictures as a story: on black over where it was played from, as the lightbox is.
+                        entry<RegolithKey.Story>(metadata = lightboxScreen) { key ->
+                            StoryScreen(
+                                viewModel = hiltViewModel<StoryViewModel, StoryViewModel.Factory>(
+                                    creationCallback = { it.create(key) },
+                                ),
+                                onClose = { backStack.removeLastOrNull() },
+                            )
+                        }
+                        entry<RegolithKey.SetPoster> { key ->
+                            SetPosterScreen(
+                                viewModel = hiltViewModel<SetPosterViewModel, SetPosterViewModel.Factory>(
+                                    creationCallback = { it.create(key) },
+                                ),
+                                onClose = { backStack.removeLastOrNull() },
+                            )
+                        }
                         entry<RegolithKey.PosterEditor> { key ->
                             PosterEditorScreen(
                                 viewModel = hiltViewModel<PosterEditorViewModel, PosterEditorViewModel.Factory>(
@@ -997,7 +1061,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     // sight it takes its place at once too, with nothing to
                     // slide; after a landing it goes on to where the pill
                     // says, if that is somewhere else.
-                    val pillShowing = navVisible && pillHere && (currentTab != null || searchChrome) && !splash && locked != true
+                    val pillShowing = navVisible && pillHere && (currentTab != null || pushedChrome) && !splash && locked != true
                     val barLanding = handoff.landed != null
                     val barTarget = when {
                         barLanding -> barLandingLift
@@ -1048,7 +1112,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     LockScreen(authenticate = appViewModel::authenticate, onUnlocked = appViewModel::unlocked)
                 }
 
-                if ((currentTab != null || searchChrome) && !splash && locked != true) {
+                if ((currentTab != null || pushedChrome) && !splash && locked != true) {
                     // A wide window's message has no pill to ride above, so it
                     // docks to the bottom of the window instead, clear of the
                     // rail on the start edge. Without this the message was
@@ -1247,11 +1311,13 @@ private val BACKGROUND_WORK_MAX_WIDTH = 420.dp
  * Whether the mini player shows over this screen once the player is put
  * away: not over Shorts, whose clips are a player of their own (it pauses the
  * film as it opens), and not in the full-screen flows — onboarding, adding a
- * server, the poster editor.
+ * server, the poster editor and Set as poster.
  */
 private fun RegolithKey?.hostsMiniPlayer(): Boolean =
     this !is RegolithKey.Shorts && this !is RegolithKey.Onboarding &&
-        this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor
+        this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor && this !is RegolithKey.SetPoster &&
+        // The lightbox and a story are pictures on black, edge to edge: the film carries on underneath.
+        this !is RegolithKey.Lightbox && this !is RegolithKey.Story
 
 /**
  * How long the mini player takes to fade in, around a picture that has just

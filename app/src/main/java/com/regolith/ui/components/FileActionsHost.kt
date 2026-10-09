@@ -40,7 +40,7 @@ fun FileActionsHost(actions: FileActions, tagPrefix: String) {
             title = when (target.target.kind) {
                 FileOpTarget.Kind.FOLDER -> "Rename folder"
                 FileOpTarget.Kind.FILE -> "Rename video"
-                FileOpTarget.Kind.OTHER -> "Rename file"
+                FileOpTarget.Kind.OTHER -> if (target.picture) "Rename picture" else "Rename file"
             },
             label = "Name",
             initialValue = if (target.isFolder) target.name else FileNames.baseOf(target.name),
@@ -48,7 +48,7 @@ fun FileActionsHost(actions: FileActions, tagPrefix: String) {
             onConfirm = actions::rename,
             onCancel = actions::cancelRename,
             testTag = "${tagPrefix}_rename",
-            note = FileOpMessages.forRenameNote(target.target.kind, ext, target.companions),
+            note = FileOpMessages.forRenameNote(target.target.kind, ext, target.companions, target.warning),
             maxLength = FileNames.MAX_BASE,
         )
     }
@@ -111,10 +111,22 @@ fun FileActionsHost(actions: FileActions, tagPrefix: String) {
 }
 
 /**
+ * What a selection of nothing but pictures offers instead of Download (P20,
+ * the canvas's Edit-Select): [onSave] puts them in the phone's gallery, and
+ * [onPoster] makes the one picked its collection's poster.
+ */
+class PictureVerbs(val onSave: () -> Unit, val onPoster: () -> Unit)
+
+/**
  * Turn the nav pill into [selection]'s toolbar while one is running:
  * Download, Move, Rename and Delete, the same four in the same order on every
  * screen that picks things, each greyed when [FileActions] says it cannot
  * work. Cancel is drawn by the pill itself, in the cell where Home sits.
+ *
+ * A selection of nothing but pictures, on a screen that passes
+ * [pictureVerbs], has Move, Rename, Save, Poster and Delete instead: a
+ * picture is saved to the gallery rather than downloaded, and Poster works
+ * on one at a time, as Rename does.
  *
  * [here] is the folder on screen, where the move sheet opens (null on a wall
  * with no folder of its own). The verbs' test tags are
@@ -128,28 +140,46 @@ fun FileSelectionChrome(
     tagPrefix: String,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
+    pictureVerbs: PictureVerbs? = null,
 ) {
     val verbs by actions.state.collectAsStateWithLifecycle()
     val chrome = LocalSelectionChrome.current
-    DisposableEffect(selection, verbs.verbs, here) {
+    DisposableEffect(selection, verbs.verbs, here, pictureVerbs) {
         val live = selection
         if (live == null) {
             chrome.clear()
         } else {
             val can = verbs.verbs
+            val pictureMode = pictureVerbs != null && live.onlyPictures
+            val move = SelectionVerb("Move", R.drawable.rg_ic_folder_go, { actions.startMove(here) }, "${tagPrefix}_select_move", enabled = can.canMove)
+            val rename = SelectionVerb("Rename", R.drawable.rg_ic_rename, actions::startRename, "${tagPrefix}_select_rename", enabled = can.canRename)
+            val delete = SelectionVerb("Delete", R.drawable.rg_ic_trash, actions::startDelete, "${tagPrefix}_select_delete", enabled = can.canDelete, destructive = true)
             chrome.show(
                 SelectionChromeState(
-                    verbs = listOf(
-                        SelectionVerb("Download", R.drawable.rg_ic_download, onDownload, "${tagPrefix}_select_download", enabled = live.canDownload),
-                        SelectionVerb("Move", R.drawable.rg_ic_folder_go, { actions.startMove(here) }, "${tagPrefix}_select_move", enabled = can.canMove),
-                        SelectionVerb("Rename", R.drawable.rg_ic_rename, actions::startRename, "${tagPrefix}_select_rename", enabled = can.canRename),
-                        SelectionVerb("Delete", R.drawable.rg_ic_trash, actions::startDelete, "${tagPrefix}_select_delete", enabled = can.canDelete, destructive = true),
-                    ),
+                    verbs = if (pictureMode && pictureVerbs != null) {
+                        listOf(
+                            move,
+                            rename,
+                            SelectionVerb("Save", R.drawable.rg_ic_download, pictureVerbs.onSave, "${tagPrefix}_select_save", enabled = can.canSave),
+                            // One picture, on a share that takes writes: Rename's own test.
+                            SelectionVerb("Poster", R.drawable.rg_ic_set_poster, pictureVerbs.onPoster, "${tagPrefix}_select_poster", enabled = can.canRename),
+                            delete,
+                        )
+                    } else {
+                        listOf(
+                            SelectionVerb("Download", R.drawable.rg_ic_download, onDownload, "${tagPrefix}_select_download", enabled = live.canDownload),
+                            move,
+                            rename,
+                            delete,
+                        )
+                    },
                     onCancel = onCancel,
                     summary = live.summary,
                     // The hint explains a GREY verb, so it outranks the
-                    // selection's own qualifier when both apply.
-                    detail = can.hint ?: live.detail,
+                    // selection's own qualifier when both apply. Pictures
+                    // have two verbs that take one at a time, and say so.
+                    detail = (if (pictureMode && can.canMove && !can.canRename) "Rename and Poster work on one picture at a time" else can.hint)
+                        ?: live.detail,
                 ),
             )
         }

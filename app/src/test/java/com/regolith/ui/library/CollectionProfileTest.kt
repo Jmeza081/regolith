@@ -55,6 +55,38 @@ class CollectionProfileTest {
         assertNull(profileOf(emptyList()))
     }
 
+    private fun picture(id: Long, name: String) = PictureTile(
+        pictureId = id, folderId = 7, shareId = 1, relPath = "Lake/$name", name = name, width = null, height = null,
+        takenAtMs = null, modifiedAtMs = 0, addedAtMs = null, sizeBytes = 500, camera = null,
+    )
+
+    @Test
+    fun `a folder of pictures alone is a profile too, an album with one tab`() {
+        val profile = collectionProfile(emptyList(), parentName = null, poster = poster, completed = emptySet(), marks = emptyList(), pictures = listOf(picture(1, "a.jpg")))
+        assertNotNull(profile)
+        assertEquals(listOf(ProfileTab.IMAGES), profile?.tabs)
+        assertEquals(500L, profile?.pictureBytes)
+    }
+
+    @Test
+    fun `videos and pictures together get all three tabs`() {
+        val profile = collectionProfile(
+            listOf(video(1, "Cake")), parentName = null, poster = poster, completed = emptySet(), marks = emptyList(),
+            pictures = listOf(picture(2, "a.jpg")),
+        )
+        assertEquals(listOf(ProfileTab.VIDEOS, ProfileTab.MOMENTS, ProfileTab.IMAGES), profile?.tabs)
+    }
+
+    @Test
+    fun `an album inside a collection keeps it a wall, whatever chip is lit`() {
+        assertNull(
+            collectionProfile(
+                listOf(video(1, "Cake")), parentName = null, poster = poster, completed = emptySet(), marks = emptyList(),
+                pictures = listOf(picture(2, "a.jpg")), hasCollections = true,
+            ),
+        )
+    }
+
     @Test
     fun `stats add up the wall and count what was played to the end`() {
         val profile = profileOf(

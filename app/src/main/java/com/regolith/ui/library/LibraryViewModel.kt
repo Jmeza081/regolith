@@ -6,6 +6,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileEntity
+import com.regolith.data.db.ShareFileEntity
+import com.regolith.data.pictures.PictureRepository
+import com.regolith.domain.display.PicturesAcross
+import com.regolith.domain.library.PictureSort
+import com.regolith.domain.media.MediaFileTypes
 import com.regolith.data.db.PlaybackProgressEntity
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.prefs.AppPreferences
@@ -55,9 +60,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
+import com.regolith.domain.transfer.OtherPick
 import com.regolith.ui.util.FileActions
 import com.regolith.ui.util.UploadActions
 import com.regolith.ui.util.SelectionPresenter
+
+/**
+ * What a video's tile is called. A home video's name is the one its owner
+ * gave it: "Birthday cake", "GH010423". Only a name that parsed into a title
+ * (a year, an episode) wears the cleaned-up version. The lightbox names a
+ * video's own picture by it too, so the two say the same words.
+ */
+internal fun MediaFileEntity.tileName(): String {
+    val parsed = ParsedName(titleParsed ?: name.substringBeforeLast('.'), year, season, episode)
+    return if (parsed.matched) parsed.display else name.substringBeforeLast('.')
+}
 
 /**
  * The poster wall (design section 05). Reads only from Room; the scan
@@ -77,6 +94,8 @@ import com.regolith.ui.util.SelectionPresenter
 class LibraryViewModel @AssistedInject constructor(
     /** The collection this wall is, or null for the Library's first wall. */
     @Assisted val folderId: Long?,
+    /** The chip it opens with: the one lit on the wall it was opened from. */
+    @Assisted initialFilter: LibraryFilter,
     private val library: LibraryRepository,
     private val sources: SourceRepository,
     private val scans: ScanRepository,
@@ -87,21 +106,26 @@ class LibraryViewModel @AssistedInject constructor(
     private val artwork: ArtworkRepository,
     private val chapters: UserChapterRepository,
     private val spoof: SpoofMode,
+    private val pictures: PictureRepository,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
 
     @AssistedFactory
     interface Factory {
-        fun create(folderId: Long?): LibraryViewModel
+        fun create(folderId: Long?, filter: LibraryFilter = LibraryFilter.VIDEOS): LibraryViewModel
     }
 
     private var showAllFailed = false
 
-    private val _uiState = MutableStateFlow(LibraryUiState())
+    private val _uiState = MutableStateFlow(LibraryUiState(filter = initialFilter))
     val uiState: StateFlow<LibraryUiState> = _uiState
 
-    private var unsorted: List<LibraryTile> = emptyList()
+    /** Every chip's wall as built, before the wall's order is applied. */
+    private var unsorted: Map<LibraryFilter, List<LibraryTile>> = emptyMap()
+
+    /** The album's pictures being measured, so the page does not start a second pass over the same ones. */
+    private var measuring: kotlinx.coroutines.Job? = null
 
     /**
      * Rename, move and delete for the picks, the same as Browse's: a
@@ -123,8 +147,12 @@ class LibraryViewModel @AssistedInject constructor(
     private val artworkRevisions = MutableStateFlow<Map<ArtworkOwner, Int>>(emptyMap())
 
     init {
-        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted, order)) } } }
+        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
+        viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }
+        viewModelScope.launch { prefs.picturesAcross(PicturesAcross.PHONE).collect { n -> _uiState.update { it.copy(picturesAcrossPhone = n) } } }
+        viewModelScope.launch { prefs.picturesAcross(PicturesAcross.WIDE).collect { n -> _uiState.update { it.copy(picturesAcrossWide = n) } } }
+        viewModelScope.launch { prefs.storyPace.collect { pace -> _uiState.update { it.copy(storyPace = pace) } } }
         viewModelScope.launch { prefs.deviceOrder.collect { order -> _uiState.update { it.copy(device = it.device.inOrder(order)) } } }
         viewModelScope.launch { prefs.libraryViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         viewModelScope.launch { prefs.postersPerRow.collect { perRow -> _uiState.update { it.copy(postersPerRow = perRow) } } }
@@ -168,8 +196,11 @@ class LibraryViewModel @AssistedInject constructor(
             // The named chapters in this collection's videos, for its profile's
             // Moments tab. The first wall is no collection and has none.
             val marks = if (folderId == null) flowOf(emptyList()) else chapters.observeNamedInFolder(folderId).spoofed(spoof) { matches(it) }
+            // The pictures (schema v17) and the named moments, for the chips.
+            val others = parents.flatMapLatest { ps -> library.observeOtherFilesInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { otherFiles(it) }
+            val momentCounts = parents.flatMapLatest { ps -> chapters.observeNamedCounts(ps.map { it.shareId }.distinct()) }
 
-            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks) { values ->
+            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val shareList = values[0] as List<com.regolith.domain.model.Share>
                 @Suppress("UNCHECKED_CAST")
@@ -188,11 +219,16 @@ class LibraryViewModel @AssistedInject constructor(
                 val revisions = values[7] as Map<ArtworkOwner, Int>
                 @Suppress("UNCHECKED_CAST")
                 val markList = values[8] as List<ChapterMatch>
-                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList)
-            }.collect { state ->
-                unsorted = state.tiles
+                @Suppress("UNCHECKED_CAST")
+                val otherList = values[9] as List<ShareFileEntity>
+                @Suppress("UNCHECKED_CAST")
+                val momentMap = values[10] as Map<Long, Int>
+                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap)
+            }.collect { built ->
+                unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
-                _uiState.update { it.withWall(state, sorted(state.tiles, it.order)) }
+                _uiState.update { it.withWall(built.state, sorted(built.walls[wallFilter(built.state, it.filter)].orEmpty(), it.order)) }
+                measureIfNeeded(built.state.profile)
             }
         }
         viewModelScope.launch {
@@ -324,6 +360,9 @@ class LibraryViewModel @AssistedInject constructor(
         )
     }
 
+    /** What one build makes: the page, and every chip's wall, unsorted ([LibraryFilter]). */
+    private class Built(val state: LibraryUiState, val walls: Map<LibraryFilter, List<LibraryTile>>)
+
     private fun build(
         shares: List<com.regolith.domain.model.Share>,
         servers: List<com.regolith.domain.model.Server>,
@@ -334,30 +373,41 @@ class LibraryViewModel @AssistedInject constructor(
         runs: List<ScanRunEntity>,
         revisions: Map<ArtworkOwner, Int>,
         marks: List<ChapterMatch> = emptyList(),
-    ): LibraryUiState {
+        others: List<ShareFileEntity> = emptyList(),
+        momentCounts: Map<Long, Int> = emptyMap(),
+    ): Built {
         val byFolder = allFiles.groupBy { it.folderId }
         val byParent = children.filter { it.parentId != null }.groupBy { it.parentId }
         val progressById = progress.associateBy { it.fileId }
-        val tiles = mutableListOf<LibraryTile>()
+        // Pictures only (schema v17): the rest of a folder's other files are Browse's.
+        val picturesByFolder = others.filter { MediaFileTypes.isPicture(it.name) }.groupBy { it.folderId }
 
-        // Files beneath a folder, walking the in-memory tree (no extra queries).
-        fun filesUnder(folder: FolderEntity): List<MediaFileEntity> {
-            val out = mutableListOf<MediaFileEntity>()
+        // Everything beneath a folder, walking the in-memory tree (no extra queries).
+        fun subtree(folder: FolderEntity): List<Long> {
+            val out = mutableListOf<Long>()
             val queue = ArrayDeque<Long>().apply { add(folder.id) }
             while (queue.isNotEmpty()) {
                 val id = queue.removeFirst()
-                out += byFolder[id].orEmpty()
+                out += id
                 queue.addAll(byParent[id].orEmpty().map { it.id })
             }
             return out
         }
 
+        val walls = LibraryFilter.entries.associateWith { mutableListOf<LibraryTile>() }
         for (parent in parents) {
             for (folder in byParent[parent.id].orEmpty()) {
                 val kind = folder.kind?.let { runCatching { FolderKind.valueOf(it) }.getOrNull() }
-                val beneath = filesUnder(folder)
-                if (beneath.isEmpty() && kind != FolderKind.COLLECTION && kind != FolderKind.SHOW) continue
-                tiles += LibraryTile.Collection(
+                val inside = subtree(folder)
+                val beneath = inside.flatMap { byFolder[it].orEmpty() }
+                val pictures = inside.sumOf { picturesByFolder[it]?.size ?: 0 }
+                val moments = beneath.sumOf { momentCounts[it.id] ?: 0 }
+                // A folder of folders with nothing in them yet still shows, as
+                // it always has; one that turned out to hold only pictures is
+                // an album, and lives under Images instead.
+                val onVideos = beneath.isNotEmpty() || ((kind == FolderKind.COLLECTION || kind == FolderKind.SHOW) && pictures == 0)
+                if (!onVideos && moments == 0 && pictures == 0) continue
+                val tile = LibraryTile.Collection(
                     folderId = folder.id,
                     name = folder.name,
                     fileCount = beneath.size,
@@ -378,26 +428,52 @@ class LibraryViewModel @AssistedInject constructor(
                     directFileCount = folder.fileCount,
                     directByteCount = folder.byteCount,
                     listed = folder.lastListedAtMs != null,
+                    momentCount = moments,
+                    pictureCount = pictures,
+                    albumCount = byParent[folder.id].orEmpty().count { child -> subtree(child).any { picturesByFolder.containsKey(it) } },
                 )
+                if (onVideos) walls.getValue(LibraryFilter.VIDEOS) += tile
+                if (moments > 0) walls.getValue(LibraryFilter.MOMENTS) += tile
+                if (pictures > 0) walls.getValue(LibraryFilter.IMAGES) += tile
             }
             for (file in byFolder[parent.id].orEmpty()) {
-                tiles += titleTile(file, progressById[file.id], revisions[ArtworkOwner.File(file.id)] ?: 0)
+                val tile = titleTile(file, progressById[file.id], revisions[ArtworkOwner.File(file.id)] ?: 0, momentCounts[file.id] ?: 0)
+                walls.getValue(LibraryFilter.VIDEOS) += tile
+                if (tile.momentCount > 0) walls.getValue(LibraryFilter.MOMENTS) += tile
             }
         }
+        // A leaf under every chip, or a wall: an album inside it is a collection too.
+        val hasCollections = walls.values.any { tiles -> tiles.any { it is LibraryTile.Collection } }
+        // Pictures lying loose on a wall of collections sit beside its albums
+        // under Images. On a leaf's own page they are its Images tab instead.
+        if (folderId == null || hasCollections) {
+            val shown = walls.getValue(LibraryFilter.VIDEOS).filterIsInstance<LibraryTile.Title>().associate { it.fileName to it.name }
+            for (parent in parents) {
+                walls.getValue(LibraryFilter.IMAGES) += pictureTiles(picturesByFolder[parent.id].orEmpty(), shown).map { LibraryTile.Picture(it) }
+            }
+        }
+        val uniqueWalls = walls.mapValues { (_, tiles) -> tiles.withUniqueTitles() }
+        val wall = uniqueWalls.getValue(LibraryFilter.VIDEOS)
 
         val shareIds = shares.map { it.id }.toSet()
         val fileCount = allFiles.count { it.shareId in shareIds }
         val serverNames = servers.filter { s -> shares.any { it.serverId == s.id } }.map { it.name }
         val parentTitle = if (folderId != null) parents.firstOrNull()?.name ?: "" else "Library"
         val meta = if (folderId != null) {
-            if (tiles.size == 1) "1 title" else "${tiles.size} titles"
+            if (wall.size == 1) "1 title" else "${wall.size} titles"
         } else {
             (serverNames + shares.map { it.name }.distinct()).joinToString(" · ") + " · " + "%,d".format(fileCount) + " files"
         }
-        val wall = tiles.withUniqueTitles()
         // Only this collection's own page can be a profile: the first wall is
         // every share's root, which is no collection at all.
-        val profile = parents.takeIf { folderId != null }?.firstOrNull()?.let { here ->
+        val here = parents.takeIf { folderId != null }?.firstOrNull()
+        // Its own pictures: the videos named as their tiles name them, so a
+        // video's picture says whose it is in the same words.
+        val ownPictures = here?.let { folder ->
+            val shown = wall.filterIsInstance<LibraryTile.Title>().associate { it.fileName to it.name }
+            pictureTiles(picturesByFolder[folder.id].orEmpty(), shown)
+        }.orEmpty()
+        val profile = here?.let {
             val parent = children.firstOrNull { it.id == here.parentId }
             collectionProfile(
                 tiles = wall,
@@ -417,12 +493,15 @@ class LibraryViewModel @AssistedInject constructor(
                 ),
                 completed = progress.filter { it.completed }.mapTo(HashSet()) { it.fileId },
                 marks = marks,
+                pictures = ownPictures,
+                hasCollections = hasCollections,
             )
         }
-        return LibraryUiState(
+        val state = LibraryUiState(
             title = parentTitle,
             meta = meta.takeIf { shares.isNotEmpty() },
             tiles = wall,
+            filtersWithTiles = uniqueWalls.filterValues { it.isNotEmpty() }.keys,
             profile = profile,
             loaded = true,
             noSource = shares.isEmpty(),
@@ -431,6 +510,7 @@ class LibraryViewModel @AssistedInject constructor(
             unreachable = servers.filter { s -> s.unreachableSinceMs != null && shares.any { it.serverId == s.id } }
                 .map { UnreachableServer(it.id, it.name, it.lastSeenAtMs) },
         )
+        return Built(state, uniqueWalls)
     }
 
     // ── Multi-selection ────────────────────────────────────────────────
@@ -447,8 +527,17 @@ class LibraryViewModel @AssistedInject constructor(
         when (tile) {
             is LibraryTile.Collection -> selection.toggleFolder(tile.toPick())
             is LibraryTile.Title -> selection.toggleFile(tile.toPick())
+            is LibraryTile.Picture -> selection.toggleOther(tile.picture.toPick())
         }
     }
+
+    /** A hold on a picture in an album's Images tab (P20): picking starts there. */
+    fun beginPictureSelection(picture: PictureTile) {
+        selection.begin()
+        togglePicture(picture)
+    }
+
+    fun togglePicture(picture: PictureTile) = selection.toggleOther(picture.toPick())
 
     /** Everything on this wall, leaving picks made on other screens alone. */
     fun selectAllHere() {
@@ -457,7 +546,22 @@ class LibraryViewModel @AssistedInject constructor(
         selection.addAll(
             folders = tiles.filterIsInstance<LibraryTile.Collection>().map { it.toPick() },
             files = tiles.filterIsInstance<LibraryTile.Title>().map { it.toPick() },
+            others = tiles.filterIsInstance<LibraryTile.Picture>().map { it.picture.toPick() },
         )
+    }
+
+    /** Select all on an album's Images tab: its [pictures], and nothing on the other tabs. */
+    fun selectAllPictures(pictures: List<PictureTile>) {
+        selection.begin()
+        selection.addAll(folders = emptyList(), files = emptyList(), others = pictures.map { it.toPick() })
+    }
+
+    /** Save: the picked pictures into the phone's gallery ([SelectionPresenter.savePictures]). */
+    fun savePictures() = selection.savePictures()
+
+    /** Poster: the one picture picked goes to Set as poster ([open]), and the selection ends. */
+    fun posterFromSelection(open: (folderId: Long, pictureId: Long) -> Unit) {
+        viewModelScope.launch { selection.posterPick()?.let { open(it.folderId, it.pictureId) } }
     }
 
     fun cancelSelection() = selection.cancel()
@@ -480,15 +584,14 @@ class LibraryViewModel @AssistedInject constructor(
     private fun LibraryTile.Title.toPick() =
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
 
-    private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, artworkRevision: Int): LibraryTile.Title {
-        val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
+    private fun PictureTile.toPick() =
+        OtherPick(otherId = pictureId, shareId = shareId, folderRelPath = relPath.substringBeforeLast('/', ""), sizeBytes = sizeBytes, name = name)
+
+    private fun titleTile(file: MediaFileEntity, progress: PlaybackProgressEntity?, artworkRevision: Int, momentCount: Int = 0): LibraryTile.Title {
         val duration = progress?.durationMs?.takeIf { it > 0 } ?: file.durationMs
         return LibraryTile.Title(
             fileId = file.id,
-            // A home video's name is the one its owner gave it: "Birthday
-            // cake", "GH010423". Only a name that parsed into a title (a year,
-            // an episode) wears the cleaned-up version.
-            name = if (parsed.matched) parsed.display else file.name.substringBeforeLast('.'),
+            name = file.tileName(),
             resolutionLabel = VideoInfo.resolutionLabelFor(file.width, file.height),
             unwatched = progress == null || (progress.positionMs == 0L && !progress.completed),
             fileName = file.name,
@@ -502,6 +605,7 @@ class LibraryViewModel @AssistedInject constructor(
             height = file.height,
             shareId = file.shareId,
             folderRelPath = file.relPath.substringBeforeLast('/', ""),
+            momentCount = momentCount,
         )
     }
 
@@ -526,7 +630,7 @@ class LibraryViewModel @AssistedInject constructor(
     /** The wall, and a profile's Videos tab: one order for every wall in the Library. */
     fun pickSort(sort: LibrarySort) {
         val next = _uiState.value.order.pick(sort)
-        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted, next)) }
+        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), next)) }
         viewModelScope.launch { prefs.setLibraryOrder(next) }
     }
 
@@ -560,6 +664,47 @@ class LibraryViewModel @AssistedInject constructor(
      */
     fun setPostersPerRow(count: Int) {
         viewModelScope.launch { prefs.setPostersPerRow(PostersPerRow.ofCount(count)) }
+    }
+
+    /** A chip under the tabs: the same wall, showing another kind of thing. */
+    fun setFilter(filter: LibraryFilter) {
+        _uiState.update { it.copy(filter = filter, tiles = sorted(unsorted[wallFilter(it, filter)].orEmpty(), it.order)) }
+    }
+
+    /**
+     * Which wall [state]'s tiles come from. A collection's own page (its
+     * profile) has tabs, not chips: its tiles are always its videos, for the
+     * Videos tab and Play all, whichever chip it was opened from — its
+     * moments and pictures are the other tabs' own lists. [filter] still
+     * says which tab it opened on.
+     */
+    private fun wallFilter(state: LibraryUiState, filter: LibraryFilter): LibraryFilter =
+        if (state.profile != null) LibraryFilter.VIDEOS else filter
+
+    /** A profile's Images tab, sorted from its sheet. */
+    fun pickPictureSort(sort: PictureSort) {
+        val next = _uiState.value.pictureOrder.pick(sort)
+        _uiState.update { it.copy(pictureOrder = next, sortSheetOpen = false) }
+        viewModelScope.launch { prefs.setPictureOrder(next) }
+    }
+
+    /** A pinch's step on an album's mosaic: [count] columns, kept for this kind of screen. */
+    fun setPicturesAcross(screen: PicturesAcross, count: Int) {
+        viewModelScope.launch { prefs.setPicturesAcross(screen, count) }
+    }
+
+    /**
+     * Pictures in this album whose header has not been read: read them now
+     * (PictureRepository), so the mosaic takes its shape from them rather
+     * than drawing squares until the background walk comes round. Once per
+     * batch: the rows it writes rebuild the page, which asks again, and
+     * finds nothing left to do.
+     */
+    private fun measureIfNeeded(profile: CollectionProfile?) {
+        val id = folderId ?: return
+        if (profile == null || profile.pictures.none { it.width == null }) return
+        if (measuring?.isActive == true) return
+        measuring = viewModelScope.launch { pictures.measureFolder(id) }
     }
 
     /** "Scan first" nudge and pull-to-refresh both land here. */

@@ -79,6 +79,8 @@ class AppViewModel @Inject constructor(
     private val uploads: UploadRepository,
     library: LibraryRepository,
     spoofMode: com.regolith.data.spoof.SpoofMode,
+    posters: com.regolith.data.artwork.PosterRepository,
+    pictureSaver: com.regolith.data.pictures.PictureSaver,
 ) : ViewModel() {
 
     /**
@@ -295,6 +297,16 @@ class AppViewModel @Inject constructor(
             UploadTier(tally, folder?.folderName, server?.serverName)
         }
         .distinctUntilChanged()
+
+    /**
+     * "Poster set for Lake house 2024", once a poster made from a picture is
+     * up. Set as poster has closed by then, so the nav graph says it on
+     * whatever screen is under it.
+     */
+    val posterNotices: SharedFlow<String> = posters.notices
+
+    /** How Save to phone went, once a batch of pictures is in the gallery: said wherever the user is by then. */
+    val pictureSaves: SharedFlow<com.regolith.domain.media.PictureSaves.Message> = pictureSaver.notices
 
     /** A batch of uploads that just finished: what the capsule says, and where "Show" goes. */
     data class UploadNotice(val text: String, val failed: Boolean, val folderId: Long)

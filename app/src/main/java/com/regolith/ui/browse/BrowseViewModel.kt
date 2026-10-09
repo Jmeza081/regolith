@@ -237,6 +237,14 @@ class BrowseViewModel @AssistedInject constructor(
         viewModelScope.launch { selection.download() }
     }
 
+    /** Save: the picked pictures into the phone's gallery ([SelectionPresenter.savePictures]). */
+    fun savePictures() = selection.savePictures()
+
+    /** Poster: the one picture picked goes to Set as poster ([open]), and the selection ends. */
+    fun posterFromSelection(open: (folderId: Long, pictureId: Long) -> Unit) {
+        viewModelScope.launch { selection.posterPick()?.let { open(it.folderId, it.pictureId) } }
+    }
+
     // Rename, move and delete live in [fileActions], shared with the Library.
 
     private fun BrowseRow.FolderRow.toPick() =
@@ -246,7 +254,7 @@ class BrowseViewModel @AssistedInject constructor(
         FilePick(fileId = fileId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
 
     private fun BrowseRow.OtherRow.toPick() =
-        OtherPick(otherId = otherId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes)
+        OtherPick(otherId = otherId, shareId = shareId, folderRelPath = folderRelPath, sizeBytes = sizeBytes, name = name)
 
     private fun BrowseItem.toRow(revisions: Map<ArtworkOwner, Int>): BrowseRow = when (this) {
         is BrowseItem.Folder -> BrowseRow.FolderRow(

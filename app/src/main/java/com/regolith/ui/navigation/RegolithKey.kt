@@ -2,6 +2,7 @@ package com.regolith.ui.navigation
 
 import androidx.navigation3.runtime.NavKey
 import com.regolith.domain.playback.ReelClip
+import com.regolith.ui.library.LibraryFilter
 import kotlinx.serialization.Serializable
 
 /**
@@ -21,8 +22,15 @@ sealed interface RegolithKey : NavKey {
     // --- The five tabs. Exactly one is at the top of the stack when the
     // nav pill is visible.
     @Serializable data object Home : RegolithKey
-    /** The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab). */
-    @Serializable data class Library(val folderId: Long? = null, val onDevice: Boolean = false) : RegolithKey
+    /**
+     * The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab).
+     * [filter] is the chip it opens with (Videos · Moments · Images): the one lit on the wall it was opened from.
+     */
+    @Serializable data class Library(
+        val folderId: Long? = null,
+        val onDevice: Boolean = false,
+        val filter: LibraryFilter = LibraryFilter.VIDEOS,
+    ) : RegolithKey
     /**
      * [highlightFileId] is a file to scroll to and ring once on arrival —
      * Shorts' Locate, which answers "where does this clip actually live".
@@ -32,7 +40,7 @@ sealed interface RegolithKey : NavKey {
      * idea which file you came for.
      */
     @Serializable data class Browse(val folderId: Long? = null, val highlightFileId: Long? = null) : RegolithKey
-    /** The vertical feed: every portrait clip of a minute or less, across every enabled share. */
+    /** The vertical feed: every portrait clip up to the Longest clip setting, across every enabled share. */
     @Serializable data object Shorts : RegolithKey
     @Serializable data object Settings : RegolithKey
 
@@ -112,11 +120,44 @@ sealed interface RegolithKey : NavKey {
     }
 
     /**
+     * The lightbox: the pictures of [folderId], one at a time, opened on
+     * [pictureId]. In the order the screen it was opened from showed them:
+     * an album's Images tab's, or the wall's own for a picture lying loose
+     * beside albums ([onWall]). The order is the settings', so it survives
+     * the process being killed as the key does.
+     */
+    @Serializable data class Lightbox(val folderId: Long, val pictureId: Long, val onWall: Boolean = false) : RegolithKey
+
+    /**
+     * A collection's pictures played as a story: one at a time, full screen,
+     * each for the time Settings › Playback › Picture stories says, a bar of
+     * segments across the top. In the Images tab's order, or the wall's
+     * ([onWall], as the lightbox has it), from [startPictureId] (the
+     * lightbox's Play from here) or the first; shuffled by [shuffleSeed] when
+     * there is one (Shuffle beside Play pictures), the same seed playing the
+     * same order when the app brings the story back.
+     */
+    @Serializable data class Story(
+        val folderId: Long,
+        val startPictureId: Long? = null,
+        val onWall: Boolean = false,
+        val shuffleSeed: Long? = null,
+    ) : RegolithKey
+
+    /**
      * The poster editor: pick a frame of [fileId], frame it in a 2:3 box, and
      * save it as poster.jpg in the film's folder. Opened from the player,
      * starting on the frame the player was paused at ([positionMs]).
      */
     @Serializable data class PosterEditor(val fileId: Long, val positionMs: Long) : RegolithKey
+
+    /**
+     * Set as poster: a picture made into [folderId]'s poster, cut 2:3 or
+     * whole. Either a picture on the share ([pictureId], from the lightbox or
+     * an album's selection) or one picked on the phone ([uri], a content URI
+     * from the photo picker: Upload › Collection poster). Exactly one is set.
+     */
+    @Serializable data class SetPoster(val folderId: Long, val pictureId: Long? = null, val uri: String? = null) : RegolithKey
 
     /** Add Source Server flow (design section 03). Phase 1 fills these in. */
     @Serializable sealed interface AddServer : RegolithKey {

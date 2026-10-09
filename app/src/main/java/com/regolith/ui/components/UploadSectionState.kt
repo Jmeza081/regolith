@@ -1,9 +1,5 @@
 package com.regolith.ui.components
 
-import com.regolith.domain.artwork.ArtworkKind
-import com.regolith.domain.artwork.ArtworkOwner
-import com.regolith.domain.artwork.ArtworkRequest
-import com.regolith.domain.artwork.FolderPoster
 import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.transfer.UploadItem
 import com.regolith.domain.transfer.UploadStatus
@@ -113,66 +109,6 @@ data class UploadQuestion(
     val replaceNote: String
         get() = if (different == 1) "The one on $serverName is overwritten" else "The ones on $serverName are overwritten"
 }
-
-/**
- * The question asked when a folder poster is picked for a folder that has
- * pictures of its own already (P19): replace them, or rename them out of the
- * way, where they stop counting as its artwork. Asked before anything is sent.
- *
- * [current] is the folder's picture as the app shows it now, [picked] the
- * new one, so the choice is between two things you can see. [pickedName] is
- * what the new one is called on the share: `poster.gif` for a GIF that
- * moves, otherwise `poster.jpg`.
- */
-data class PosterQuestion(
-    val folderName: String,
-    val serverName: String,
-    val current: ArtworkRequest,
-    val picked: UploadThumb,
-    val existing: List<ExistingPicture>,
-    val pickedName: String = FolderPoster.NAME,
-) {
-    private val one: Boolean get() = existing.size == 1
-
-    /** "folder.jpg is there now" or "3 pictures are there now". */
-    val subtitle: String
-        get() = if (one) "${existing.single().name} is there now" else "${existing.size} pictures are there now"
-
-    val renameLabel: String get() = if (one) "Rename the old one" else "Rename the old ones"
-
-    /** "folder.jpg becomes folder (1).jpg". */
-    val renameNote: String
-        get() = existing.singleOrNull()?.let { "${it.name} becomes ${it.keptName}" } ?: "Each gets a number, and stays in the folder"
-
-    val replaceLabel: String get() = if (one) "Replace it" else "Replace them"
-
-    val replaceNote: String
-        get() = if (one) "${existing.single().name} is deleted from $serverName" else "They're deleted from $serverName"
-
-    /** What the new picture is called on the share. */
-    val pickedNote: String get() = "Saved as $pickedName"
-}
-
-/** A picture already acting as the folder's artwork: its name, its size, and what renaming it would call it. */
-data class ExistingPicture(val name: String, val detail: String, val keptName: String)
-
-/** The [PosterQuestion] for [folderId], from what was found there and what was picked. */
-fun posterQuestion(
-    folderId: Long,
-    folderName: String,
-    serverName: String,
-    pickedUri: String,
-    existing: List<Pair<String, Long>>,
-    keptNames: Map<String, String>,
-    pickedName: String = FolderPoster.NAME,
-): PosterQuestion = PosterQuestion(
-    folderName = folderName,
-    serverName = serverName,
-    current = ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.POSTER),
-    picked = UploadThumb(pickedUri),
-    existing = existing.map { (name, size) -> ExistingPicture(name, formatBytes(size), keptNames[name] ?: name) },
-    pickedName = pickedName,
-)
 
 /**
  * One taken name in the question. [keptName] is what keeping both would call

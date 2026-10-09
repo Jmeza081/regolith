@@ -27,3 +27,24 @@ fun Modifier.bleedHorizontally(amount: Dp): Modifier = layout { measurable, cons
     val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
     layout(constraints.maxWidth, placeable.height) { placeable.place(-extra, 0) }
 }
+
+/**
+ * Lays this out [by] wider than it is offered, reaching past its END edge
+ * into the padding there, while telling its parent it is exactly the width
+ * it was given, so nothing around it moves. Placed with `placeRelative`, so
+ * in a right-to-left layout it reaches left, which is the end there.
+ *
+ * For what should keep its place when a list makes room at its end edge for
+ * an [AlphabetRail]: the move sheet's rail reaching into the sheet's gutter,
+ * and a collection profile's header and tabs, which stay centred while the
+ * wall under them makes room.
+ */
+fun Modifier.bleedEnd(by: Dp): Modifier = layout { measurable, constraints ->
+    if (!constraints.hasBoundedWidth) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+    }
+    val extra = by.roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra))
+    layout(placeable.width - extra, placeable.height) { placeable.placeRelative(0, 0) }
+}

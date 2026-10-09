@@ -18,9 +18,6 @@ data class PosterTarget(
 enum class PosterSaveOutcome {
     SAVED,
 
-    /** poster.jpg is already there and the user has not said to replace it. */
-    EXISTS,
-
     /** The share or the account will not take writes. */
     READ_ONLY,
 

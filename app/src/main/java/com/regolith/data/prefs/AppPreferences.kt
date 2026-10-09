@@ -8,11 +8,14 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.regolith.domain.display.NavHideAfter
+import com.regolith.domain.display.PicturesAcross
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentOrder
 import com.regolith.domain.library.MomentSort
+import com.regolith.domain.library.PictureOrder
+import com.regolith.domain.library.PictureSort
 import com.regolith.domain.library.SortDirection
 import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
@@ -20,6 +23,7 @@ import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
 import androidx.datastore.preferences.core.edit
 import com.regolith.domain.media.ShortsLength
+import com.regolith.domain.playback.StoryPace
 import com.regolith.domain.security.LockAfter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -47,6 +51,10 @@ class AppPreferences @Inject constructor(
         val deviceSortDirection = stringPreferencesKey("device_sort_direction")
         val momentSort = stringPreferencesKey("moment_sort")
         val momentSortDirection = stringPreferencesKey("moment_sort_direction")
+        val pictureSort = stringPreferencesKey("picture_sort")
+        val pictureSortDirection = stringPreferencesKey("picture_sort_direction")
+        val picturesAcrossPhone = intPreferencesKey("pictures_across_phone")
+        val picturesAcrossWide = intPreferencesKey("pictures_across_wide")
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
@@ -72,6 +80,7 @@ class AppPreferences @Inject constructor(
         val appLockAfter = stringPreferencesKey("app_lock_after")
         val shortsAutoAdvance = booleanPreferencesKey("shorts_auto_advance")
         val shortsLength = stringPreferencesKey("shorts_length")
+        val storyPace = stringPreferencesKey("story_pace")
         val hiddenPhoneFolders = stringSetPreferencesKey("hidden_phone_folders")
         val hiddenPhoneFiles = stringSetPreferencesKey("hidden_phone_files")
     }
@@ -169,6 +178,17 @@ class AppPreferences @Inject constructor(
 
     suspend fun setShortsLength(length: ShortsLength) {
         store.edit { it[Keys.shortsLength] = length.name }
+    }
+
+    /**
+     * Settings › Playback › Picture stories: how long each picture stays
+     * when a collection's pictures play as a story. By name, as Shorts'
+     * length is, so the offered set can change.
+     */
+    val storyPace: Flow<StoryPace> = store.data.map { StoryPace.of(it[Keys.storyPace]) }
+
+    suspend fun setStoryPace(pace: StoryPace) {
+        store.edit { it[Keys.storyPace] = pace.name }
     }
 
     /** Settings › Playback › Scrub thumbnails. Consumed in Phase 3. */
@@ -392,6 +412,32 @@ class AppPreferences @Inject constructor(
             it[Keys.momentSort] = order.sort.name
             it[Keys.momentSortDirection] = order.direction.name
         }
+    }
+
+    /** A collection's Images tab and the pictures loose on a wall: one order for all of them, newest taken first to start. */
+    val pictureOrder: Flow<PictureOrder> = store.data.map { p ->
+        val sort = p[Keys.pictureSort]?.let { runCatching { PictureSort.valueOf(it) }.getOrNull() } ?: PictureSort.DATE_TAKEN
+        val direction = p[Keys.pictureSortDirection]?.let { runCatching { SortDirection.valueOf(it) }.getOrNull() } ?: sort.natural
+        PictureOrder(sort, direction)
+    }
+
+    suspend fun setPictureOrder(order: PictureOrder) {
+        store.edit {
+            it[Keys.pictureSort] = order.sort.name
+            it[Keys.pictureSortDirection] = order.direction.name
+        }
+    }
+
+    /**
+     * How many columns an album's mosaic has on [screen], kept by pinching
+     * it ([PicturesAcross]); each screen keeps its own, in its own range.
+     */
+    fun picturesAcross(screen: PicturesAcross): Flow<Int> = store.data.map { p ->
+        screen.clamp(p[if (screen == PicturesAcross.WIDE) Keys.picturesAcrossWide else Keys.picturesAcrossPhone] ?: screen.default)
+    }
+
+    suspend fun setPicturesAcross(screen: PicturesAcross, count: Int) {
+        store.edit { it[if (screen == PicturesAcross.WIDE) Keys.picturesAcrossWide else Keys.picturesAcrossPhone] = screen.clamp(count) }
     }
 
     /**

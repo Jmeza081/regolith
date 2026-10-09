@@ -5,6 +5,7 @@ import com.regolith.data.artwork.ArtworkStore
 import com.regolith.data.db.ArtworkDao
 import com.regolith.data.db.FolderDao
 import com.regolith.data.db.MediaFileDao
+import com.regolith.data.db.ShareFileDao
 import com.regolith.data.db.TransferDao
 import com.regolith.data.transfer.DownloadStore
 import kotlinx.coroutines.flow.first
@@ -43,6 +44,7 @@ class StorageSweeper @Inject constructor(
     private val artworkDao: ArtworkDao,
     private val mediaFileDao: MediaFileDao,
     private val folderDao: FolderDao,
+    private val shareFileDao: ShareFileDao,
     private val downloads: DownloadStore,
     private val artwork: ArtworkStore,
     private val deviceLibrary: DeviceLibrary,
@@ -121,6 +123,7 @@ class StorageSweeper @Inject constructor(
         if (!root.isDirectory) return Triple(orphans.size, 0, bytes)
         val fileIds = mediaFileDao.allIds().toSet()
         val folderIds = folderDao.allIds().toSet()
+        val pictureIds = shareFileDao.allIds().toSet()
         var dirs = 0
         for (typeDir in root.listFiles().orEmpty()) {
             if (!typeDir.isDirectory) continue
@@ -128,6 +131,8 @@ class StorageSweeper @Inject constructor(
             val live = when (typeDir.name) {
                 "file", "moment" -> fileIds
                 "folder" -> folderIds
+                // A picture's own thumbnail, keyed by its `share_files` row.
+                "picture" -> pictureIds
                 else -> continue
             }
             for (ownerDir in typeDir.listFiles().orEmpty()) {

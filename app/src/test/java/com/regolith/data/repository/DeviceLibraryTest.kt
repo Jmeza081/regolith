@@ -57,7 +57,7 @@ class DeviceLibraryTest {
         artwork.root.deleteRecursively()
         device = DeviceLibrary(db.serverDao(), db.shareDao(), db.folderDao(), db.mediaFileDao(), db.transferDao(), downloads)
         sweeper = StorageSweeper(
-            db.transferDao(), db.artworkDao(), db.mediaFileDao(), db.folderDao(), downloads, artwork, device,
+            db.transferDao(), db.artworkDao(), db.mediaFileDao(), db.folderDao(), db.shareFileDao(), downloads, artwork, device,
         )
         serverId = db.serverDao().insert(
             ServerEntity(name = "TOWER", host = "tower", port = 445, authMode = "GUEST", username = null, lastSeenAtMs = null, createdAtMs = 0),

@@ -100,6 +100,13 @@ class AlphabetIndex(names: List<String>) {
 val AlphabetRailWidth = 32.dp
 
 /**
+ * More items than this, and a list gets an [AlphabetRail]: the owner's line
+ * between a list you read and one you hunt through. The move sheet's
+ * folders and the Library's walls both draw it there.
+ */
+const val RAIL_AFTER = 10
+
+/**
  * An A–Z strip down the end edge of a long alphabetical list. Touch it and
  * slide, and the list jumps to each letter the finger crosses; a bubble
  * beside the finger shows the letter, because the finger hides the strip.

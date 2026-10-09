@@ -13,6 +13,8 @@ import com.regolith.data.db.ServerDao
 import com.regolith.data.db.ServerEntity
 import com.regolith.data.db.ShareDao
 import com.regolith.data.db.ShareEntity
+import com.regolith.data.db.ShareFileDao
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.library.TitleParser
@@ -23,6 +25,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
@@ -32,8 +38,9 @@ import kotlin.random.Random
  * share (on a train, on a plane, in a review).
  *
  * It writes the same Room rows a real scan would — servers, shares,
- * folders, files, playback progress — and copies a handful of bundled
- * clips into [DemoStore], one per file. Because the player, the artwork
+ * folders, files, pictures, playback progress — and copies a handful of
+ * bundled clips into [DemoStore], one per file, beside albums of pictures
+ * painted as it installs ([DemoPictures]). Because the player, the artwork
  * pipeline and the probe all prefer a local copy when there is one
  * ([com.regolith.player.LocalMedia]), everything downstream behaves as it
  * does on a real share: titles play, scrubbing shows real frames, posters
@@ -55,6 +62,7 @@ class DemoLibrary @Inject constructor(
     private val folderDao: FolderDao,
     private val mediaFileDao: MediaFileDao,
     private val progressDao: PlaybackProgressDao,
+    private val shareFileDao: ShareFileDao,
     private val artwork: ArtworkRepository,
     private val store: DemoStore,
 ) {
@@ -162,6 +170,29 @@ class DemoLibrary @Inject constructor(
             }
         }
 
+        // Albums of pictures (P20), so the Images chip, a collection's
+        // mosaic, the lightbox and a story have something to show: a folder
+        // of them, and a few beside the Phone videos. Painted here rather
+        // than bundled (DemoPictures), measured as they are written.
+        val photos = folderDao.insert(folder(shareId, root, PHOTOS, PHOTOS, FolderKind.COLLECTION, now))
+        for (album in ALBUMS) {
+            val folderId = if (album.under == PHOTOS) {
+                folderDao.insert(folder(shareId, photos, "$PHOTOS/${album.name}", album.name, FolderKind.COLLECTION, now, TitleParser.parseFolderName(album.name)))
+            } else {
+                folderDao.byPath(shareId, "${album.under}/${album.name}")?.id ?: continue
+            }
+            val relPath = "${album.under}/${album.name}"
+            var taken = LocalDateTime.parse(album.firstShot)
+            repeat(album.count) {
+                val (width, height) = SHAPES[random.nextInt(SHAPES.size)]
+                writePicture(shareId, folderId, relPath, cameraName(taken), album.scene, width, height, taken, random, now)
+                taken = taken.plusMinutes(album.minutesApart + random.nextLong(0, album.minutesApart / 2 + 1))
+            }
+            if (album.poster) {
+                writePicture(shareId, folderId, relPath, "poster.jpg", album.scene, 1000, 1500, LocalDateTime.parse(album.firstShot), random, now, camera = null)
+            }
+        }
+
         // A few part-watched titles so Continue watching, the resume chips
         // and the progress bars have something to show, spread over the last
         // few days so "today" / "last night" / a weekday all appear.
@@ -217,6 +248,50 @@ class DemoLibrary @Inject constructor(
         year = parsed?.year,
     )
 
+    /**
+     * One painted picture ([DemoPictures]) as a `share_files` row and the
+     * file behind it, already measured, so nothing tries to read its header
+     * off a share the demo does not have. [camera] is null for a picture no
+     * camera took (the album's own poster).
+     */
+    private suspend fun writePicture(
+        shareId: Long,
+        folderId: Long,
+        folderRelPath: String,
+        name: String,
+        scene: DemoPictures.Scene,
+        width: Int,
+        height: Int,
+        taken: LocalDateTime,
+        random: Random,
+        now: Long,
+        camera: String? = DEMO_CAMERA,
+    ) {
+        val bytes = DemoPictures.jpeg(scene, width, height, random)
+        val takenAt = taken.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val id = shareFileDao.insert(
+            ShareFileEntity(
+                shareId = shareId,
+                folderId = folderId,
+                relPath = "$folderRelPath/$name",
+                name = name,
+                sizeBytes = bytes.size.toLong(),
+                modifiedAtMs = takenAt,
+                width = width,
+                height = height,
+                takenAtMs = takenAt.takeIf { camera != null },
+                camera = camera,
+                measuredAtMs = now,
+                addedAtMs = now,
+            ),
+        )
+        store.createPicture(id).writeBytes(bytes)
+    }
+
+    /** A Galaxy camera's own name for a shot: when it was taken. */
+    private fun cameraName(taken: LocalDateTime): String =
+        taken.format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss", Locale.ROOT)) + ".jpg"
+
     /** One bundled clip becomes this file's bytes. Cheap: the largest is 316 KB. */
     private fun copyClip(clip: Clip, fileId: Long) {
         context.resources.openRawResource(clip.resId).use { input ->
@@ -255,12 +330,44 @@ class DemoLibrary @Inject constructor(
 
     private data class Collection(val name: String, val groups: List<Group>)
 
+    /**
+     * A folder of the demo's pictures: [name] inside [under], [count] shots
+     * of one [scene] from [firstShot] on (ISO local time), about
+     * [minutesApart] apart, and its own `poster.jpg` when [poster].
+     */
+    private data class Album(
+        val under: String,
+        val name: String,
+        val scene: DemoPictures.Scene,
+        val count: Int,
+        val firstShot: String,
+        val minutesApart: Long,
+        val poster: Boolean = false,
+    )
+
     private companion object {
         const val DEMO_SERVER_NAME = "DEMO NAS"
         const val DEMO_SHARE_NAME = "media"
         const val SEED = 20260909L
         const val HOUR = 3_600_000L
         const val DAY = 24 * HOUR
+
+        /** The folder of albums the demo's pictures live in. */
+        const val PHOTOS = "Photos"
+
+        /** What every demo photo says it was taken on. */
+        const val DEMO_CAMERA = "Galaxy Z Fold 8 · f/1.8"
+
+        /** The albums, and a few pictures beside the Phone videos so that collection has an Images tab. */
+        val ALBUMS = listOf(
+            Album(PHOTOS, "Kayak trip 2024", DemoPictures.Scene.SEA, count = 12, firstShot = "2024-08-02T07:40:12", minutesApart = 50, poster = true),
+            Album(PHOTOS, "Lisbon 2026", DemoPictures.Scene.CITY, count = 9, firstShot = "2026-04-18T10:05:31", minutesApart = 70),
+            Album(PHOTOS, "Snow week 2025", DemoPictures.Scene.SNOW, count = 7, firstShot = "2025-02-09T09:30:04", minutesApart = 300),
+            Album("Home videos", "Phone", DemoPictures.Scene.FIELD, count = 4, firstShot = "2026-07-12T18:20:45", minutesApart = 90),
+        )
+
+        /** The shapes a phone's photos come in: mostly 3:4 either way up, sometimes tall, wide or square. */
+        val SHAPES = listOf(900 to 1200, 900 to 1200, 1200 to 900, 1200 to 900, 720 to 1280, 1800 to 750, 1000 to 1000)
 
         /** Which titles start part-watched, and how far in. */
         val PROGRESS = listOf(

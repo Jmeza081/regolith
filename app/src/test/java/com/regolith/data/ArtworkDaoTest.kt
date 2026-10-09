@@ -76,6 +76,36 @@ class ArtworkDaoTest {
     }
 
     @Test
+    fun `a picture's thumbnail is found by its folder, and is an orphan once its file is gone`() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            db.openHelper.writableDatabase.apply {
+                execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
+                execSQL("INSERT INTO shares (id, serverId, name, enabled, freeBytes, totalBytes, lastScanAtMs) VALUES (1, 1, 'media', 1, NULL, NULL, NULL)")
+                execSQL("INSERT INTO folders (id, shareId, parentId, relPath, name, fileCount, byteCount, lastListedAtMs) VALUES (3, 1, NULL, 'Lake', 'Lake', 0, 0, NULL)")
+                execSQL("INSERT INTO folders (id, shareId, parentId, relPath, name, fileCount, byteCount, lastListedAtMs) VALUES (4, 1, NULL, 'Other', 'Other', 0, 0, NULL)")
+                execSQL("INSERT INTO share_files (id, shareId, folderId, relPath, name, sizeBytes, modifiedAtMs) VALUES (40, 1, 3, 'Lake/IMG_1.jpg', 'IMG_1.jpg', 5, 1)")
+                execSQL("INSERT INTO share_files (id, shareId, folderId, relPath, name, sizeBytes, modifiedAtMs) VALUES (41, 1, 4, 'Other/IMG_2.jpg', 'IMG_2.jpg', 5, 1)")
+            }
+            fun thumb(id: Long) = ArtworkEntity(
+                ownerType = "picture", ownerId = id, kind = "PICTURE", source = "PICTURE",
+                relPath = "picture/$id/picture.jpg", width = 480, height = 640, updatedAtMs = 1, sourceStamp = "5\t1",
+            )
+            val dao = db.artworkDao()
+            dao.upsert(thumb(40))
+            dao.upsert(thumb(41))
+
+            assertEquals(listOf(40L), dao.picturesIn(3).map { it.ownerId })
+            assertEquals(emptyList<Long>(), dao.orphans().map { it.ownerId })
+
+            db.shareFileDao().delete(40)
+            assertEquals("a picture gone from the share leaves its thumbnail behind", listOf(40L), dao.orphans().map { it.ownerId })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `a folder listing finds the pictures of the folder and of the films directly in it`() = runTest {
         // What ArtworkRepository.onFolderListed checks against the listing:
         // nothing further down (a subfolder is checked by its own listing),

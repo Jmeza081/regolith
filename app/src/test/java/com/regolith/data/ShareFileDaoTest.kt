@@ -64,6 +64,42 @@ class ShareFileDaoTest {
     }
 
     @Test
+    fun `a listing keeps a picture's measurements while the file is the same, and drops them when it changed`() = runTest {
+        val dao = db.shareFileDao()
+        dao.replaceInFolder(filmsId, listOf(other("Films/IMG_1.jpg", size = 100), other("Films/IMG_2.jpg", size = 200)))
+        val one = dao.byPath(shareId, "Films/IMG_1.jpg")!!
+        val two = dao.byPath(shareId, "Films/IMG_2.jpg")!!
+        dao.saveFacts(one.id, one.sizeBytes, one.modifiedAtMs, width = 3024, height = 4032, takenAtMs = 5, camera = "Pixel 8", measuredAtMs = 9)
+        dao.saveFacts(two.id, two.sizeBytes, two.modifiedAtMs, width = 4032, height = 3024, takenAtMs = 6, camera = null, measuredAtMs = 9)
+
+        // The same first picture; the second replaced on the share under the same name.
+        dao.replaceInFolder(filmsId, listOf(other("Films/IMG_1.jpg", size = 100), other("Films/IMG_2.jpg", size = 250)))
+
+        val kept = dao.byPath(shareId, "Films/IMG_1.jpg")!!
+        assertEquals(3024, kept.width)
+        assertEquals("Pixel 8", kept.camera)
+        assertEquals(9L, kept.measuredAtMs)
+        val changed = dao.byPath(shareId, "Films/IMG_2.jpg")!!
+        assertEquals("the same row", two.id, changed.id)
+        assertEquals("measured again", null, changed.measuredAtMs)
+        assertEquals(null, changed.width)
+        assertEquals(listOf(changed.id), dao.unmeasuredInFolder(filmsId).map { it.id })
+    }
+
+    @Test
+    fun `a measurement of a file that changed meanwhile is not written`() = runTest {
+        val dao = db.shareFileDao()
+        dao.replaceInFolder(filmsId, listOf(other("Films/IMG_1.jpg", size = 100)))
+        val before = dao.byPath(shareId, "Films/IMG_1.jpg")!!
+        dao.replaceInFolder(filmsId, listOf(other("Films/IMG_1.jpg", size = 120)))
+
+        // Read from the file as it was: its size no longer matches.
+        dao.saveFacts(before.id, before.sizeBytes, before.modifiedAtMs, width = 10, height = 10, takenAtMs = null, camera = null, measuredAtMs = 9)
+
+        assertEquals(null, dao.byPath(shareId, "Films/IMG_1.jpg")!!.measuredAtMs)
+    }
+
+    @Test
     fun `an empty listing empties the folder, and only that folder`() = runTest {
         val dao = db.shareFileDao()
         dao.replaceInFolder(rootId, listOf(other("notes.txt", folderId = rootId)))

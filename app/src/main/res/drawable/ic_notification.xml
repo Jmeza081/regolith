@@ -2,13 +2,12 @@
      the scan, the artwork walk): the Strata Wedge, banded, as the splash
      and the loaders draw it — the state of the mark people recognise.
 
-     Its own drawable rather than ic_splash_wordmark or ic_splash_wedge:
-     those sit on a 108dp adaptive-icon canvas with the launcher's
-     safe-zone margin, so as a small icon they filled barely 40% of the
-     slot. Here the wedge is 19.8 units tall in a 24dp frame (90% of edge
-     to edge, the owner's call on the Fold), and the bands are
-     ic_splash_wedge's mapped onto it, so the gaps land at ~1.4dp and still
-     read at status-bar size.
+     Its own drawable rather than ic_launcher_foreground: that sits on a
+     108dp adaptive-icon canvas with the launcher's safe-zone margin, so as
+     a small icon it filled barely 40% of the slot. Here the wedge is 19.8
+     units tall in a 24dp frame (90% of edge to edge, the owner's call on
+     the Fold), and the bands are ic_launcher_foreground's mapped onto it,
+     so the gaps land at ~1.4dp and still read at status-bar size.
 
      Android draws a small icon from the alpha channel alone, as a white
      silhouette: the 62% bands come out dimmer, the same rhythm as the mark. -->

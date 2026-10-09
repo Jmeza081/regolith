@@ -1,5 +1,7 @@
 package com.regolith.ui.player
 
+import com.regolith.ui.components.timeFor
+
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import androidx.activity.compose.LocalActivity
@@ -2113,21 +2115,6 @@ private const val SHRINK_FLICK_DP_PER_S = 1_000
 
 /** A step of the swipe down's back gesture, [progress] of the way into the mini player. */
 private fun shrinkEvent(progress: Float) = NavigationEvent(touchX = 0f, touchY = 0f, progress = progress, swipeEdge = NavigationEvent.EDGE_NONE)
-
-/**
- * When this easing reaches [value]: its inverse, found by halving, for a
- * curve that only rises. A back gesture's progress is the transition's time;
- * this turns where the picture should be into that time.
- */
-private fun Easing.timeFor(value: Float): Float {
-    var low = 0f
-    var high = 1f
-    repeat(24) {
-        val mid = (low + high) / 2f
-        if (transform(mid) < value) low = mid else high = mid
-    }
-    return (low + high) / 2f
-}
 
 /** The film's still fading off its first frame: quick, so it reads as the picture arriving, not a dissolve. */
 private const val STILL_FADE_MS = 160

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,7 +73,9 @@ import kotlin.math.abs
  * Every poster wall on the inner display uses it — the Library's, its On
  * this device grid, and Home's — and each step goes to [rememberWallPinch]'s
  * `onStep`, which keeps it as Settings › Display › Posters per row: one
- * setting, whichever wall was pinched.
+ * setting, whichever wall was pinched. An album's mosaic uses it too, on
+ * both screens, with a range and a setting of its own
+ * ([com.regolith.domain.display.PicturesAcross]).
  *
  * Web analogy: a gesture handler with a tiny store of its own for the toast
  * it shows, the way a `usePinch()` hook might keep `{ active, count }`.
@@ -91,6 +94,10 @@ class WallPinch internal constructor(
      */
     internal var shown by mutableIntStateOf(0)
     internal var most by mutableIntStateOf(0)
+
+    /** The range a step may reach: four to seven posters, or a mosaic's own. */
+    internal var fewest by mutableIntStateOf(PostersPerRow.FOUR.count)
+    internal var top by mutableIntStateOf(PostersPerRow.SEVEN.count)
 
     /** The count the pill shows; null while it is out of sight. */
     var pill: Int? by mutableStateOf(null)
@@ -115,16 +122,16 @@ class WallPinch internal constructor(
 
     private var hide: Job? = null
 
-    internal fun begin(at: Offset, grid: LazyGridState?) {
+    internal fun begin(at: Offset, anchorAt: ((Offset) -> PinchAnchor?)?) {
         hide?.cancel()
         active = true
-        anchor = grid?.anchorAt(at)
+        anchor = anchorAt?.invoke(at)
         pill = shown
     }
 
     /** One step's worth of pinch: [fewer] when the fingers spread. */
     internal fun step(fewer: Boolean) {
-        val next = pinchStep(shown, fewer, most)
+        val next = pinchStep(shown, fewer, most, fewest, top)
         if (next == null) {
             bumps++
             haptics.performHapticFeedback(HapticFeedbackType.Reject)
@@ -147,29 +154,39 @@ class WallPinch internal constructor(
     }
 }
 
-/** A poster on a lazy wall, by [index], and where its [top] was in [grid]'s viewport. */
-internal class PinchAnchor(val grid: LazyGridState, val index: Int, val top: Int)
+/**
+ * The tile a pinch began on, on a lazy wall: [restore] scrolls the wall so
+ * that it is back where it was in the viewport, once the columns change.
+ */
+internal class PinchAnchor(val restore: suspend () -> Unit)
 
 /**
  * A [WallPinch] for a wall that shows [shown] posters across, where [most]
- * fit at all. [onStep] gets each new count, to keep as the setting.
+ * fit at all. [onStep] gets each new count, to keep as the setting. A step
+ * stays within [fewest]..[top]: a poster wall's four to seven unless said.
  */
 @Composable
-fun rememberWallPinch(shown: Int, most: Int, onStep: (Int) -> Unit): WallPinch {
+fun rememberWallPinch(
+    shown: Int,
+    most: Int,
+    onStep: (Int) -> Unit,
+    fewest: Int = PostersPerRow.FOUR.count,
+    top: Int = PostersPerRow.SEVEN.count,
+): WallPinch {
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val step = rememberUpdatedState(onStep)
     val pinch = remember(haptics, scope) { WallPinch(step, haptics, scope).also { it.shown = shown; it.most = most } }
     SideEffect {
         pinch.most = most
+        pinch.fewest = fewest
+        pinch.top = top
         if (!pinch.active) pinch.shown = shown
     }
     // The wall's columns changed under a pinch: the poster it began on goes
     // back where it was (see [wallPinch]'s grid).
     LaunchedEffect(pinch, shown) {
-        val anchor = pinch.anchor ?: return@LaunchedEffect
-        anchor.grid.scrollToItem(anchor.index)
-        anchor.grid.scrollBy(-anchor.top.toFloat())
+        pinch.anchor?.restore?.invoke()
     }
     return pinch
 }
@@ -197,7 +214,18 @@ fun rememberWallPinch(shown: Int, most: Int, onStep: (Int) -> Unit): WallPinch {
  * seven could leave the one you pinched a screen down. A wall that isn't
  * lazy (Home's) keeps its place by itself.
  */
-fun Modifier.wallPinch(pinch: WallPinch?, grid: LazyGridState? = null): Modifier = if (pinch == null) this else pointerInput(pinch, grid) {
+fun Modifier.wallPinch(pinch: WallPinch?, grid: LazyGridState? = null): Modifier =
+    pinchWith(pinch, grid, grid?.let { g -> { at: Offset -> g.anchorAt(at) } })
+
+/**
+ * The same pinch on a mosaic, a lazy staggered grid ([grid]): an album's
+ * pictures, each at its own shape. The picture it began on stays put as the
+ * columns change, as a poster does on a wall.
+ */
+fun Modifier.wallPinch(pinch: WallPinch?, grid: LazyStaggeredGridState): Modifier =
+    pinchWith(pinch, grid) { at -> grid.anchorAt(at) }
+
+private fun Modifier.pinchWith(pinch: WallPinch?, key: Any?, anchorAt: ((Offset) -> PinchAnchor?)?): Modifier = if (pinch == null) this else pointerInput(pinch, key) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         var pinching = false
@@ -215,7 +243,7 @@ fun Modifier.wallPinch(pinch: WallPinch?, grid: LazyGridState? = null): Modifier
                 if (!pinching) {
                     pinching = true
                     baseline = distance
-                    pinch.begin((a + b) / 2f, grid)
+                    pinch.begin((a + b) / 2f, anchorAt)
                 } else if (baseline > 0f) {
                     val ratio = distance / baseline
                     if (ratio >= STEP_RATIO || ratio <= 1f / STEP_RATIO) {
@@ -239,7 +267,24 @@ private fun LazyGridState.anchorAt(at: Offset): PinchAnchor? {
     val under = items.firstOrNull {
         at.x >= it.offset.x && at.x < it.offset.x + it.size.width && at.y >= it.offset.y && at.y < it.offset.y + it.size.height
     } ?: items.minBy { abs(it.offset.x + it.size.width / 2f - at.x) + abs(it.offset.y + it.size.height / 2f - at.y) }
-    return PinchAnchor(this, under.index, under.offset.y)
+    val top = under.offset.y
+    return PinchAnchor {
+        scrollToItem(under.index)
+        scrollBy(-top.toFloat())
+    }
+}
+
+/** The same for a staggered grid: the picture under [at], or the nearest. */
+private fun LazyStaggeredGridState.anchorAt(at: Offset): PinchAnchor? {
+    val items = layoutInfo.visibleItemsInfo.ifEmpty { return null }
+    val under = items.firstOrNull {
+        at.x >= it.offset.x && at.x < it.offset.x + it.size.width && at.y >= it.offset.y && at.y < it.offset.y + it.size.height
+    } ?: items.minBy { abs(it.offset.x + it.size.width / 2f - at.x) + abs(it.offset.y + it.size.height / 2f - at.y) }
+    val top = under.offset.y
+    return PinchAnchor {
+        scrollToItem(under.index)
+        scrollBy(-top.toFloat())
+    }
 }
 
 /**
@@ -292,7 +337,7 @@ fun WallPinchPill(pinch: WallPinch, modifier: Modifier = Modifier) {
             Icon(painterResource(R.drawable.rg_ic_library), contentDescription = null, tint = colors.ink, modifier = Modifier.size(16.dp))
             Text("$count across", style = TextStyles.message, color = colors.ink)
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-                for (n in PostersPerRow.FOUR.count..minOf(PostersPerRow.SEVEN.count, pinch.most)) {
+                for (n in pinch.fewest..minOf(pinch.top, pinch.most)) {
                     Box(
                         Modifier
                             .size(width = 16.dp, height = 4.dp)

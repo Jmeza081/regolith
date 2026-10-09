@@ -30,4 +30,10 @@ class LocalMedia @Inject constructor(
 
     /** For ExoPlayer's loader and the frame decoder, which are already on their own threads. */
     fun fileBlocking(fileId: Long): File? = demo.fileFor(fileId) ?: transfers.localFileBlocking(fileId) ?: phone.fileBlocking(fileId)
+
+    /**
+     * The same question for a picture, a `share_files` row (P20): only the
+     * demo library's pictures live on the phone. Null when it is on a share.
+     */
+    fun picture(pictureId: Long): File? = demo.pictureFor(pictureId)
 }

@@ -22,6 +22,9 @@ interface FolderLookup {
     /** A file that is not a video, as Browse lists it. */
     suspend fun other(otherId: Long): ShareFileEntity?
 
+    /** Every file that is not a video directly in [folderId]: its pictures, among them the one it wears as its poster. */
+    suspend fun othersIn(folderId: Long): List<ShareFileEntity>
+
     /** Every present video in the subtree of [folderId]. */
     suspend fun filesUnder(folderId: Long): List<MediaFileEntity>
 

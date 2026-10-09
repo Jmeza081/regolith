@@ -437,6 +437,10 @@ interface ShareFileDao {
      * A row that has not changed is not written at all. Most listings find
      * nothing new, and a write, even of the same values, wakes every screen
      * watching the table.
+     *
+     * A listing knows nothing of a picture's header (schema v17), so a row
+     * keeps what was measured as long as the file has the same size and
+     * date. One that changed on the share is measured again.
      */
     @Transaction
     suspend fun replaceInFolder(folderId: Long, files: List<ShareFileEntity>) {
@@ -447,12 +451,48 @@ interface ShareFileDao {
             // checked there too: an insert that collided would fail the
             // whole listing.
             val existing = known[f.relPath] ?: byPath(f.shareId, f.relPath)
-            when {
-                existing == null -> insert(f)
-                existing != f.copy(id = existing.id) -> update(f.copy(id = existing.id))
+            if (existing == null) {
+                insert(f)
+                continue
             }
+            val sameFile = existing.sizeBytes == f.sizeBytes && existing.modifiedAtMs == f.modifiedAtMs
+            // Found before, so it keeps the day it was first found.
+            val found = f.copy(id = existing.id, addedAtMs = existing.addedAtMs ?: f.addedAtMs)
+            val next = if (sameFile) {
+                found.copy(width = existing.width, height = existing.height, takenAtMs = existing.takenAtMs, camera = existing.camera, measuredAtMs = existing.measuredAtMs)
+            } else {
+                found
+            }
+            if (existing != next) update(next)
         }
     }
+
+    /** What a picture's header said ([com.regolith.domain.media.PictureHeaders]), or that it said nothing readable. */
+    @Query(
+        "UPDATE share_files SET width = :width, height = :height, takenAtMs = :takenAtMs, camera = :camera, measuredAtMs = :measuredAtMs " +
+            "WHERE id = :id AND sizeBytes = :sizeBytes AND modifiedAtMs = :modifiedAtMs",
+    )
+    suspend fun saveFacts(id: Long, sizeBytes: Long, modifiedAtMs: Long, width: Int?, height: Int?, takenAtMs: Long?, camera: String?, measuredAtMs: Long)
+
+    /** Files in one folder whose header has not been read: new, or changed on the share since. The caller keeps the pictures. */
+    @Query("SELECT * FROM share_files WHERE folderId = :folderId AND measuredAtMs IS NULL")
+    suspend fun unmeasuredInFolder(folderId: Long): List<ShareFileEntity>
+
+    /** The same across a share, for the background walk. */
+    @Query("SELECT * FROM share_files WHERE shareId = :shareId AND measuredAtMs IS NULL")
+    suspend fun unmeasuredInShare(shareId: Long): List<ShareFileEntity>
+
+    /** Every file in the given shares, for the Library, which keeps the pictures and counts them per folder. */
+    @Query("SELECT * FROM share_files WHERE shareId IN (:shareIds)")
+    fun observeInShares(shareIds: List<Long>): Flow<List<ShareFileEntity>>
+
+    /** Every file in a share, for the artwork walk, which keeps the pictures. */
+    @Query("SELECT * FROM share_files WHERE shareId = :shareId")
+    suspend fun inShare(shareId: Long): List<ShareFileEntity>
+
+    /** Every file id there is, for the startup sweep's "does anything still own this picture?". */
+    @Query("SELECT id FROM share_files")
+    suspend fun allIds(): List<Long>
 }
 
 @Dao
@@ -790,7 +830,8 @@ interface ArtworkDao {
     @Query(
         "SELECT * FROM artwork WHERE " +
             "(ownerType IN ('file', 'moment') AND ownerId NOT IN (SELECT id FROM media_files)) OR " +
-            "(ownerType = 'folder' AND ownerId NOT IN (SELECT id FROM folders))",
+            "(ownerType = 'folder' AND ownerId NOT IN (SELECT id FROM folders)) OR " +
+            "(ownerType = 'picture' AND ownerId NOT IN (SELECT id FROM share_files))",
     )
     suspend fun orphans(): List<ArtworkEntity>
 
@@ -833,6 +874,13 @@ interface ArtworkDao {
             "(ownerType = 'file' AND ownerId IN (SELECT id FROM media_files WHERE folderId = :folderId)))",
     )
     suspend fun forFolderAndItsFiles(folderId: Long): List<ArtworkEntity>
+
+    /**
+     * The thumbnails of the pictures directly in one folder (schema v17), so a
+     * listing can tell which pictures changed on the share since they were made.
+     */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'picture' AND ownerId IN (SELECT id FROM share_files WHERE folderId = :folderId)")
+    suspend fun picturesIn(folderId: Long): List<ArtworkEntity>
 
     /** Every image one owner has, of every kind: a poster the user just set replaces all of them. */
     @Query("DELETE FROM artwork WHERE ownerType = :ownerType AND ownerId = :ownerId AND ownerVariant = ''")
@@ -1056,6 +1104,9 @@ data class UserChapterHitRow(
 /** Where one named mark is: all a moment frame needs to be grabbed. */
 data class NamedMarkRow(val fileId: Long, val startMs: Long)
 
+/** One film's count of named marks ([UserChapterDao.observeNamedCounts]). */
+data class NamedCountRow(val fileId: Long, val count: Int)
+
 /** `COUNT(*)` and `COUNT(DISTINCT fileId)` in one read. */
 data class UserChapterTally(val chapters: Int, val files: Int)
 
@@ -1118,6 +1169,20 @@ interface UserChapterDao {
             "ORDER BY user_chapters.fileId, user_chapters.startMs",
     )
     suspend fun namedInShare(shareId: Long): List<NamedMarkRow>
+
+    /**
+     * How many named marks each film on these shares carries, for the
+     * Library's Moments chip: a collection is on its wall when a video
+     * beneath it has any.
+     */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, COUNT(*) AS count " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE media_files.shareId IN (:shareIds) AND media_files.missing = 0 " +
+            "AND user_chapters.title IS NOT NULL AND user_chapters.title != '' " +
+            "GROUP BY user_chapters.fileId",
+    )
+    fun observeNamedCounts(shareIds: List<Long>): Flow<List<NamedCountRow>>
 
     /** When this film's rows were last written, for the newest-wins rule. */
     @Query("SELECT MAX(updatedAtMs) FROM user_chapters WHERE fileId = :fileId")

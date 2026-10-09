@@ -34,6 +34,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 10. `media_files.rotationDegrees`: the rotation the container asks for,
  *     so a portrait clip stored landscape can be recognised as portrait
  *     (Shorts). Additive; null everywhere until the artwork walk fills it.
+ *
+ * Versions 11 to 17 are described where they are listed, below.
  */
 @Database(
     entities = [
@@ -57,7 +59,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UploadEntity::class,
         ShareFileEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -99,6 +101,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // Browse can list everything a folder holds. A new table and nothing
         // else, so Room writes it alone; it fills as folders are listed.
         AutoMigration(from = 15, to = 16),
+        // v17: a picture's shape, date taken, camera and when they were read,
+        // on `share_files`, so pictures can be an album's mosaic. Nullable and
+        // additive: every picture reads as "not measured yet", and the next
+        // artwork walk or the first look at its album measures it.
+        AutoMigration(from = 16, to = 17),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

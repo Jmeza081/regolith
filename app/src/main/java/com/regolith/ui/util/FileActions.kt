@@ -1,12 +1,15 @@
 package com.regolith.ui.util
 
 import com.regolith.data.db.FolderEntity
+import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.FolderLookup
 import com.regolith.data.transfer.SelectionStore
+import com.regolith.domain.artwork.FolderPoster
 import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.fileops.ReadOnlySource
+import com.regolith.domain.media.MediaFileTypes
 import com.regolith.domain.transfer.Selection
 import com.regolith.domain.transfer.foldersWithExclusions
 import com.regolith.ui.components.MoveChild
@@ -31,7 +34,14 @@ import kotlinx.coroutines.launch
  * own `viewModelScope` ([Factory]), and `FileActionsHost` draws whatever
  * [state] says, so a delete reads and behaves the same on every screen.
  * The picks themselves live in the app-wide [SelectionStore], because a
- * selection outlives the screen it was started on; this reads them there.
+ * selection outlives the screen it was started on; this reads them there —
+ * except for one thing acted on by itself, the lightbox's picture
+ * ([renameOne], [moveOne], [deleteOne]), which leaves the selection alone.
+ *
+ * Pictures are spoken of as pictures, and the two whose going changes
+ * another screen say so before anything happens: a collection's poster
+ * (its tile falls back to another picture, or a mosaic) and a video's own
+ * picture (renamed, it is no longer that video's).
  */
 class FileActions @AssistedInject constructor(
     @Assisted private val scope: CoroutineScope,
@@ -54,6 +64,16 @@ class FileActions @AssistedInject constructor(
      */
     private var origins: Map<FileOpTarget, Long> = emptyMap()
 
+    /**
+     * Picks handed over directly — the lightbox's one picture — instead of
+     * the selection's. Set as such a verb starts and forgotten when it ends
+     * or is called off; while set, the selection is neither read nor cleared.
+     */
+    private var explicit: List<FileOpTarget>? = null
+
+    /** The picks that are pictures, found as a verb starts: a target says only that it is not a video. */
+    private var pictures: Set<FileOpTarget> = emptySet()
+
     init {
         scope.launch {
             selection.state.collectLatest { sel -> _state.update { it.copy(verbs = verbsFor(sel)) } }
@@ -68,6 +88,7 @@ class FileActions @AssistedInject constructor(
 
     /** What is picked, as the repository wants it: ids that say what they point at. */
     private fun picked(): List<FileOpTarget>? {
+        explicit?.let { return it }
         val sel = selection.snapshot() ?: return null
         val targets = sel.folders.map { FileOpTarget.folder(it.folderId) } +
             sel.files.map { FileOpTarget.file(it.fileId) } +
@@ -79,11 +100,25 @@ class FileActions @AssistedInject constructor(
 
     fun startRename() {
         if (!_state.value.verbs.canRename) return
-        val target = picked()?.singleOrNull() ?: return
+        explicit = null
+        beginRename(picked()?.singleOrNull() ?: return)
+    }
+
+    /** Rename [target] by itself, whatever is selected: the lightbox's More › Rename. */
+    fun renameOne(target: FileOpTarget) {
+        explicit = listOf(target)
+        beginRename(target)
+    }
+
+    private fun beginRename(target: FileOpTarget) {
         scope.launch {
-            val name = nameOf(target)
+            val name = nameOf(target) ?: return@launch
             val companions = if (target.isVideo) lookup.companionCount(listOf(target.id)) else 0
-            _state.update { it.copy(renaming = RenameTarget(target, name ?: return@launch, companions)) }
+            val other = if (target.isOther) lookup.other(target.id) else null
+            val picture = other != null && MediaFileTypes.isPicture(other.name)
+            pictures = if (picture) setOf(target) else emptySet()
+            val warning = other?.let { posterGoing(it, going = setOf(it.id)) ?: videoPictureOf(it) }
+            _state.update { it.copy(renaming = RenameTarget(target, name, companions, picture, warning)) }
         }
     }
 
@@ -92,12 +127,15 @@ class FileActions @AssistedInject constructor(
         _state.update { it.copy(renaming = null) }
         scope.launch {
             val result = fileOps.rename(target.target, newName)
-            selection.clear()
+            finishVerb()
             report(result, verb = "rename", past = "Renamed")
         }
     }
 
-    fun cancelRename() = _state.update { it.copy(renaming = null) }
+    fun cancelRename() {
+        explicit = null
+        _state.update { it.copy(renaming = null) }
+    }
 
     // ── delete ─────────────────────────────────────────────────────────
 
@@ -108,7 +146,17 @@ class FileActions @AssistedInject constructor(
      */
     fun startDelete() {
         if (!_state.value.verbs.canDelete) return
-        val targets = picked() ?: return
+        explicit = null
+        beginDelete(picked() ?: return)
+    }
+
+    /** Delete [target] by itself, whatever is selected: the lightbox's More › Delete from share. */
+    fun deleteOne(target: FileOpTarget) {
+        explicit = listOf(target)
+        beginDelete(listOf(target))
+    }
+
+    private fun beginDelete(targets: List<FileOpTarget>) {
         scope.launch {
             if (refusedForLeftOut("delete")) return@launch
             val names = mutableListOf<String>()
@@ -116,6 +164,8 @@ class FileActions @AssistedInject constructor(
             var bytes = 0L
             var folders = 0
             var others = 0
+            val pictured = mutableSetOf<FileOpTarget>()
+            val otherRows = mutableListOf<ShareFileEntity>()
             for (target in targets) {
                 when (target.kind) {
                     FileOpTarget.Kind.FOLDER -> {
@@ -137,10 +187,15 @@ class FileActions @AssistedInject constructor(
                         names += other.name
                         others++
                         bytes += other.sizeBytes
+                        otherRows += other
+                        if (MediaFileTypes.isPicture(other.name)) pictured += target
                     }
                 }
             }
+            pictures = pictured
             val companions = lookup.companionCount(targets.filter { it.isVideo }.map { it.id })
+            val going = otherRows.mapTo(HashSet()) { it.id }
+            val posterNote = otherRows.firstNotNullOfOrNull { posterGoing(it, going) }
             _state.update {
                 it.copy(
                     confirmingDelete = DeleteTarget(
@@ -151,6 +206,8 @@ class FileActions @AssistedInject constructor(
                         folderCount = folders,
                         companionCount = companions,
                         otherCount = others,
+                        pictureCount = pictured.size,
+                        posterNote = posterNote,
                     ),
                 )
             }
@@ -163,12 +220,15 @@ class FileActions @AssistedInject constructor(
         scope.launch {
             if (refusedForLeftOut("delete")) return@launch
             val result = fileOps.delete(target.targets)
-            selection.clear()
+            finishVerb()
             report(result, verb = "delete", past = "Deleted")
         }
     }
 
-    fun cancelDelete() = _state.update { it.copy(confirmingDelete = null) }
+    fun cancelDelete() {
+        explicit = null
+        _state.update { it.copy(confirmingDelete = null) }
+    }
 
     // ── move ───────────────────────────────────────────────────────────
 
@@ -180,9 +240,20 @@ class FileActions @AssistedInject constructor(
      */
     fun startMove(here: Long?) {
         if (!_state.value.verbs.canMove) return
-        val targets = picked() ?: return
+        explicit = null
+        beginMove(here, picked() ?: return)
+    }
+
+    /** Move [target] by itself, whatever is selected: the lightbox's More › Move to…, opening at [here]. */
+    fun moveOne(target: FileOpTarget, here: Long?) {
+        explicit = listOf(target)
+        beginMove(here, listOf(target))
+    }
+
+    private fun beginMove(here: Long?, targets: List<FileOpTarget>) {
         scope.launch {
             if (refusedForLeftOut("move")) return@launch
+            pictures = picturesAmong(targets)
             origins = originsOf(targets)
             val share = shareOf(targets) ?: return@launch
             val start = here?.let { lookup.folder(it) }?.takeIf { it.shareId == share }?.id ?: lookup.rootFolder(share).id
@@ -216,7 +287,10 @@ class FileActions @AssistedInject constructor(
         }
     }
 
-    fun dismissMove() = _state.update { it.copy(moveSheet = null) }
+    fun dismissMove() {
+        explicit = null
+        _state.update { it.copy(moveSheet = null) }
+    }
 
     fun confirmMove() {
         val sheet = _state.value.moveSheet ?: return
@@ -226,7 +300,7 @@ class FileActions @AssistedInject constructor(
         scope.launch {
             if (refusedForLeftOut("move")) return@launch
             val result = fileOps.move(targets, sheet.chosenFolderId)
-            selection.clear()
+            finishVerb()
             report(
                 result, verb = "move", past = "Moved", where = sheet.chosenName,
                 // Only when everything made it: a half-done batch undone
@@ -294,7 +368,7 @@ class FileActions @AssistedInject constructor(
     fun clearMessage() = _state.update { it.copy(message = null) }
 
     private fun report(result: FileOpResult, verb: String, past: String, where: String? = null, undo: UndoMove? = null) {
-        val text = FileOpMessages.forResult(result, verb, past, where)
+        val text = FileOpMessages.forResult(result, verb, past, where, pictures)
         // ONE message, always. A failure used to set a banner as well, so the
         // same sentence arrived twice. A failure earns more TIME instead (see
         // the host), not a second copy of itself.
@@ -309,11 +383,47 @@ class FileActions @AssistedInject constructor(
      * honours the exclusions file by file, so it never asks.
      */
     private suspend fun refusedForLeftOut(verb: String): Boolean {
+        // One thing acted on by itself has nothing taken out of it.
+        if (explicit != null) return false
         val folders = selection.snapshot()?.foldersWithExclusions().orEmpty()
         if (folders.isEmpty()) return false
         val names = folders.mapNotNull { lookup.folder(it.folderId)?.name }
         _state.update { it.copy(message = FileOpMessage(FileOpMessages.forLeftOut(verb, names), failed = true)) }
         return true
+    }
+
+    /** A verb is done: a selection it acted on ends; one thing acted on by itself leaves the selection as it was. */
+    private fun finishVerb() {
+        if (explicit == null) selection.clear()
+        explicit = null
+    }
+
+    private suspend fun picturesAmong(targets: List<FileOpTarget>): Set<FileOpTarget> =
+        targets.filter { it.isOther && lookup.other(it.id)?.name?.let(MediaFileTypes::isPicture) == true }.toSet()
+
+    /**
+     * The warning for [file] going (renamed, or deleted along with [going]):
+     * it is the picture its folder wears as its poster, and the tile then
+     * falls back to the next picture of its own, or a mosaic. Null when it
+     * is not the poster.
+     */
+    private suspend fun posterGoing(file: ShareFileEntity, going: Set<Long>): String? {
+        if (!MediaFileTypes.isPicture(file.name)) return null
+        val siblings = lookup.othersIn(file.folderId)
+        if (FolderPoster.worn(siblings.map { it.name })?.equals(file.name, ignoreCase = true) != true) return null
+        val folderName = lookup.folder(file.folderId)?.name?.ifEmpty { null } ?: lookup.shareLabel(file.shareId).substringAfter(" · ")
+        val next = FolderPoster.worn(siblings.filterNot { it.id in going }.map { it.name })
+        return FileOpMessages.forPosterGoing(folderName, next)
+    }
+
+    /** The warning for renaming [file] when it is a video's own picture (`beach.jpg` beside `beach.mp4`); null otherwise. */
+    private suspend fun videoPictureOf(file: ShareFileEntity): String? {
+        if (!MediaFileTypes.isPicture(file.name)) return null
+        val stem = file.name.substringBeforeLast('.')
+        val video = lookup.filesUnder(file.folderId).firstOrNull {
+            it.folderId == file.folderId && it.name.substringBeforeLast('.').equals(stem, ignoreCase = true)
+        } ?: return null
+        return FileOpMessages.forVideoPicture(video.name.substringBeforeLast('.'))
     }
 
     private suspend fun originsOf(targets: List<FileOpTarget>): Map<FileOpTarget, Long> = targets.mapNotNull { target ->
@@ -422,6 +532,8 @@ data class FileVerbs(
     val canMove: Boolean = false,
     val canRename: Boolean = false,
     val canDelete: Boolean = false,
+    /** Pictures can be saved to the phone's gallery: a share's, not spoof mode's stand-ins. */
+    val canSave: Boolean = false,
     val hint: String? = null,
 ) {
     companion object {
@@ -440,6 +552,7 @@ data class FileVerbs(
                 canMove = shares == 1,
                 canRename = itemCount == 1,
                 canDelete = true,
+                canSave = true,
                 hint = when {
                     shares > 1 -> "Move works within one share"
                     itemCount > 1 -> "Rename works on one at a time"
@@ -450,8 +563,19 @@ data class FileVerbs(
     }
 }
 
-/** The one thing a rename is about: a video, a folder or another file. [companions] are renamed along with a video. */
-data class RenameTarget(val target: FileOpTarget, val name: String, val companions: Int = 0) {
+/**
+ * The one thing a rename is about: a video, a folder or another file.
+ * [companions] are renamed along with a video. [picture] says a file is a
+ * picture, for the dialog's title; [warning] is what renaming it would
+ * change elsewhere — a collection's poster, a video's own picture.
+ */
+data class RenameTarget(
+    val target: FileOpTarget,
+    val name: String,
+    val companions: Int = 0,
+    val picture: Boolean = false,
+    val warning: String? = null,
+) {
     val isFolder: Boolean get() = target.isFolder
 }
 
@@ -473,6 +597,10 @@ data class DeleteTarget(
     val companionCount: Int = 0,
     /** Files that are not videos, picked in their own right. */
     val otherCount: Int = 0,
+    /** Of those, the pictures: all of them makes it a delete of pictures. */
+    val pictureCount: Int = 0,
+    /** What a collection's tile becomes once its poster goes ([FileOpMessages.forPosterGoing]), when one of these is it. */
+    val posterNote: String? = null,
 )
 
 /**

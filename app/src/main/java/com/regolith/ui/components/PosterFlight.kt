@@ -8,6 +8,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SharedTransitionScope.ResizeMode.Companion.RemeasureToBounds
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -254,6 +255,23 @@ val FlightEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 private val FlightBounds = BoundsTransform { _, _ -> tween(FLIGHT_MS, easing = FlightEasing) }
+
+/**
+ * When this easing reaches [value]: its inverse, found by halving, for a
+ * curve that only rises. A back gesture's progress is the transition's time;
+ * this turns where the picture should be into that time. The swipes that
+ * drive a flight with the finger (the player's into the mini player, the
+ * lightbox's back into its tile) both use it.
+ */
+fun Easing.timeFor(value: Float): Float {
+    var low = 0f
+    var high = 1f
+    repeat(24) {
+        val mid = (low + high) / 2f
+        if (transform(mid) < value) low = mid else high = mid
+    }
+    return (low + high) / 2f
+}
 
 /**
  * Where a tile was when it was tapped, for a flight made by hand

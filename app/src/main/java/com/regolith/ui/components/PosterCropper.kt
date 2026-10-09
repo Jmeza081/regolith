@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -159,3 +160,12 @@ private fun DrawScope.drawBoxChrome(topLeft: Offset, box: Size) {
         drawLine(Color.White, corner, corner + Offset(0f, arm * dir.y), w)
     }
 }
+
+/**
+ * Keeps a [PosterFraming] across a rotation or the process being put away,
+ * for the screens that hold one (`rememberSaveable(stateSaver = …)`).
+ */
+val PosterFramingSaver = listSaver<PosterFraming, Float>(
+    save = { listOf(it.zoom, it.panX, it.panY) },
+    restore = { PosterFraming(it[0], it[1], it[2]) },
+)
