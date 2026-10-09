@@ -82,8 +82,9 @@ down to read every share again.
 
 Search finds titles, filenames and folders as you type, and the moments you
 have named, each shown with the frame at its time: tap one and the film opens
-there. Chips narrow the results to **Unwatched** or **4K**, and **Moment** picks one
-name from all of the library's. Results come as rows or a grid, and your last
+there. Chips narrow the results to **Unwatched**, **4K** or **On device** (downloaded,
+or on the phone to begin with), and **Moment** picks one name from all of the
+library's. Results come as rows or a grid, and your last
 eight searches wait under **Recent**.
 
 ### Shorts

@@ -83,6 +83,18 @@ class SourceRepository @Inject constructor(
             shares.filterNot { it.serverId in deviceIds }
         }
 
+    /**
+     * The ids of "This device"'s own shares ([DeviceSource]): adopted
+     * downloads and the phone's videos. The other half of
+     * [observeNetworkShares], for what asks "is this on the phone?" of a
+     * file rather than of a transfer — Search's On device chip.
+     */
+    fun observeDeviceShareIds(): Flow<Set<Long>> =
+        combine(observeEnabledShares(), serverDao.observeAll()) { shares, servers ->
+            val deviceIds = servers.filter { DeviceSource.isDevice(it.host) }.map { it.id }.toSet()
+            shares.filter { it.serverId in deviceIds }.mapTo(HashSet()) { it.id }
+        }
+
     /** One share with its chosen folders, live; null once it is gone. */
     fun observeShare(shareId: Long): Flow<Share?> =
         combine(shareDao.observe(shareId), shareRootDao.observeForShare(shareId)) { share, roots ->

@@ -13,6 +13,7 @@ import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.scan.ScanRepository
+import com.regolith.data.transfer.TransferRepository
 import com.regolith.domain.library.ParsedName
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.playback.ChapterFacet
@@ -45,6 +46,27 @@ import com.regolith.ui.util.SelectionPresenter
 import com.regolith.ui.util.SelectionUiState
 
 enum class SearchFilter(val label: String) { ALL("All"), UNWATCHED("Unwatched"), UHD("4K"), ON_DEVICE("On device") }
+
+/**
+ * What is on this phone, for the On device chip: files with a finished
+ * download, wherever their share is, and every file in "This device"'s own
+ * shares — copies adopted from a disconnected server, and the videos the
+ * phone already had ([com.regolith.domain.media.DeviceSource]).
+ */
+internal data class OnDevice(
+    val doneFileIds: Set<Long> = emptySet(),
+    val deviceShareIds: Set<Long> = emptySet(),
+) {
+    fun has(fileId: Long, shareId: Long): Boolean = fileId in doneFileIds || shareId in deviceShareIds
+}
+
+/** Whether a file passes this chip, given what is known about it. */
+internal fun SearchFilter.keeps(unwatched: Boolean, uhd: Boolean, onDevice: Boolean): Boolean = when (this) {
+    SearchFilter.ALL -> true
+    SearchFilter.UNWATCHED -> unwatched
+    SearchFilter.UHD -> uhd
+    SearchFilter.ON_DEVICE -> onDevice
+}
 
 /** One row of results. Titles, raw filenames and folders share the list. */
 sealed interface SearchHit {
@@ -162,6 +184,7 @@ class SearchViewModel @AssistedInject constructor(
     private val prefs: AppPreferences,
     private val spoof: SpoofMode,
     fileActionsFactory: FileActions.Factory,
+    transfers: TransferRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -214,12 +237,13 @@ class SearchViewModel @AssistedInject constructor(
             else -> userChapters.search(q, MOMENTS_LIMIT)
         }
     }.spoofed(spoof) { matches(it) }
+    private val onDevice = combine(transfers.observeDoneFileIds(), sources.observeDeviceShareIds(), ::OnDevice)
     private val running = sources.observeEnabledShares().flatMapLatest { list ->
         if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id })
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode, spoof.state,
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode, spoof.state, onDevice,
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -243,18 +267,15 @@ class SearchViewModel @AssistedInject constructor(
         val mode = values[10] as ViewMode
         // Paths shown as text are made up part by part; the real ones stay on the hits for picking.
         val spoofed = values[11] as Spoof?
+        val here = values[12] as OnDevice
         fun shownDir(relPath: String): String = relPath.substringBeforeLast('/', "").let { spoofed?.path(it) ?: it }
 
         val hits = mutableListOf<SearchHit>()
         for (file in files) {
             val p = progressById[file.id]
             val unwatched = p == null || (p.positionMs == 0L && !p.completed)
-            when (f) {
-                SearchFilter.UNWATCHED -> if (!unwatched) continue
-                SearchFilter.UHD -> if (VideoInfo.resolutionLabelFor(file.width, file.height) != "4K") continue
-                SearchFilter.ON_DEVICE -> continue // downloads arrive in Phase 5
-                SearchFilter.ALL -> Unit
-            }
+            val uhd = VideoInfo.resolutionLabelFor(file.width, file.height) == "4K"
+            if (!f.keeps(unwatched, uhd, here.has(file.id, file.shareId))) continue
             val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
             val res = VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null }
             // ONE ROW PER FILE. A file whose name parses into a title wears
