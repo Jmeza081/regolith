@@ -2,9 +2,7 @@ package com.regolith.data.artwork
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.ImageDecoder
-import androidx.core.graphics.createBitmap
 import android.util.Log
 import coil3.ImageLoader
 import com.regolith.data.db.ArtworkDao
@@ -23,6 +21,7 @@ import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkFreshness
 import com.regolith.domain.artwork.CachedPicture
+import com.regolith.domain.artwork.DeckLayout
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -310,6 +309,15 @@ class ArtworkRepository @Inject constructor(
                 for (row in borrowed) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
                 artworkDao.deleteFilePicturesFromFolders()
             }
+            if (from < 4) {
+                // Only the folders' 2×2 grids: each is dealt again as a deck
+                // the next time its tile asks, from five frames of its own.
+                // Every video's own picture stays.
+                val mosaics = artworkDao.mosaics()
+                Log.i(TAG, "artwork generation $from -> 4: dropping ${mosaics.size} folder mosaics; they come back as decks")
+                for (row in mosaics) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteMosaics()
+            }
             store.setGeneration(ArtworkStore.GENERATION)
         }
     }
@@ -393,22 +401,22 @@ class ArtworkRepository @Inject constructor(
      * neither should anything above it.
      *
      * The case this exists for: a folder is made on the share, the scan
-     * finds it empty, the walk finds nothing to build a mosaic from and
+     * finds it empty, the walk finds nothing to deal a deck from and
      * records a placeholder — then the videos are copied in. The next scan
      * lists them, but the placeholder is good for a day and the walk skips
      * anything already cached, so the folder stayed blank. Seen on the
      * owner's phone: a folder of 96 films placeholdered five hours before
      * they arrived.
      *
-     * Every ancestor too, because a mosaic walks DOWN into subfolders
-     * ([mosaicFiles]): a show folder whose seasons were empty is waiting on
-     * exactly the same videos. Only placeholders go; a real image or mosaic
+     * Every ancestor too, because a deck walks DOWN into subfolders
+     * ([deckFiles]): a show folder whose seasons were empty is waiting on
+     * exactly the same videos. Only placeholders go; a real image or deck
      * above is left alone. Database only, a few rows per listing.
      */
     private suspend fun forgetFolderPlaceholders(folderId: Long) {
         var id: Long? = folderId
         var depth = 0
-        while (id != null && depth++ < MOSAIC_MAX_FOLDERS) {
+        while (id != null && depth++ < DECK_MAX_FOLDERS) {
             if (artworkDao.deleteFolderPlaceholder(id) > 0) Log.i(TAG, "folder $id holds videos now; dropped its placeholder")
             id = folderDao.byId(id)?.parentId
         }
@@ -850,13 +858,13 @@ class ArtworkRepository @Inject constructor(
 
     private suspend fun resolveFolder(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
         val folder = folderDao.byId(owner.id) ?: return
-        // A sidecar always wins, but it lives on the share, and the mosaic
+        // A sidecar always wins, but it lives on the share, and the deck
         // below may not need the share at all — the demo library and anything
         // downloaded have local copies. So an unreachable share is remembered
-        // rather than thrown here, and only re-thrown if the mosaic also
+        // rather than thrown here, and only re-thrown if the deck also
         // could not be made: "try again later" must not become a placeholder.
         var unreachable: SmbFailure? = null
-        // Null while the share cannot be listed: a mosaic made from local
+        // Null while the share cannot be listed: a deck made from local
         // copies then carries no stamp, and the next real listing judges it.
         var stamp: String? = null
         // The demo library has no share to list: its albums' pictures are on
@@ -882,93 +890,93 @@ class ArtworkRepository @Inject constructor(
         }
         // No picture of its own any more, so nothing to move either.
         keepAnimated(owner, folder.relPath, null, kinds)
-        if (mosaic(owner, kinds, stamp)) return
+        if (deck(owner, kinds, stamp)) return
         // An album: no videos to take frames from, so its own pictures.
-        if (unreachable == null && pictureCover(owner, kinds, stamp)) return
+        if (unreachable == null && pictureDeck(owner, kinds, stamp)) return
         unreachable?.let { throw it }
         placeholder(owner, kinds, stamp)
     }
 
     /**
      * A folder with no picture of its own gets one made out of its contents:
-     * [ArtworkCandidates.MOSAIC_CELLS] frames stitched into a grid, the way a
-     * photo album shows four of the photos inside it.
+     * a deck, [DeckLayout.MAX_CARDS] frames of the videos inside fanned like
+     * a hand of cards ([DeckPainter]), which says "a handful of whatever is
+     * in here" the way a tidy grid of four did not.
      *
-     * Written at each kind's own aspect rather than once and cropped: a 16:9
-     * grid squeezed into a 2:3 poster would slice the outer columns in half.
-     * Same four frames, composed twice — the seeks are the expensive part.
+     * Drawn at each kind's own shape rather than once and cropped: the 2:3
+     * poster and the 16:9 thumb each hold the whole hand. Same frames, drawn
+     * twice — the seeks are the expensive part.
      *
-     * All-or-nothing: a grid with a black hole in it looks broken in a way a
-     * plain placeholder does not.
+     * A frame that will not come leaves the deck a card short rather than
+     * failing it, since a hand of four has no hole in it to look broken.
      */
-    private suspend fun mosaic(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
-        val files = mosaicFiles(owner.id)
+    private suspend fun deck(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
+        val files = deckFiles(owner.id)
         if (files.isEmpty()) return false
-        // Fewer videos than cells: the ones there are each give several
-        // frames, so a folder holding one film still reads as that film.
+        // Fewer videos than cards: the ones there are each give several
+        // frames, so a folder holding one film still deals a full hand.
         val slots = IntArray(files.size)
-        for (i in 0 until ArtworkCandidates.MOSAIC_CELLS) slots[i % files.size]++
+        for (i in 0 until DeckLayout.MAX_CARDS) slots[i % files.size]++
 
-        val cells = mutableListOf<Bitmap>()
+        val hands = mutableListOf<List<Bitmap>>()
         try {
             for ((index, file) in files.withIndex()) {
-                openFrames(file)?.use { source ->
-                    val duration = runtimeOf(file, source)
-                    for (position in ArtworkCandidates.mosaicPositionsMs(duration, slots[index])) {
-                        cells += source.frameAt(position, MOSAIC_FRAME_MAX, MOSAIC_FRAME_MAX) ?: return false
+                val hand = mutableListOf<Bitmap>()
+                hands += hand
+                try {
+                    openFrames(file)?.use { source ->
+                        val duration = runtimeOf(file, source)
+                        for (position in ArtworkCandidates.framePositionsMs(duration, slots[index])) {
+                            source.frameAt(position, DECK_FRAME_MAX, DECK_FRAME_MAX)?.let { hand += it }
+                        }
                     }
+                } catch (e: SmbFailure) {
+                    // The server going quiet stops the deck, to be dealt
+                    // again later ([resolveOwner]); one file it would not
+                    // hand over (gone since the scan, say) is a card fewer.
+                    if (e.isAboutTheServer) throw e
+                    Log.w(TAG, "deck for folder ${owner.id}: no frames from ${file.name}: ${e.message}")
                 }
             }
-            if (cells.size != ArtworkCandidates.MOSAIC_CELLS) return false
+            val cards = DeckLayout.deal(hands)
+            if (cards.isEmpty()) return false
             var wrote = false
             for (kind in kinds) {
-                val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
-                val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
-                val grid = createBitmap(kind.width, kind.height)
-                val canvas = Canvas(grid)
+                val deck = DeckPainter.paint(cards, kind.width, kind.height)
                 try {
-                    cells.forEachIndexed { i, frame ->
-                        val cell = ArtworkStore.centerCrop(frame, cellW, cellH)
-                        canvas.drawBitmap(
-                            cell,
-                            (i % ArtworkCandidates.MOSAIC_COLUMNS * cellW).toFloat(),
-                            (i / ArtworkCandidates.MOSAIC_COLUMNS * cellH).toFloat(),
-                            null,
-                        )
-                        if (cell !== frame) cell.recycle()
-                    }
-                    if (store.saveExact(grid, owner, kind)) {
-                        record(owner, kind, ArtworkSource.MOSAIC, stamp)
+                    if (store.saveExact(deck, owner, kind)) {
+                        record(owner, kind, ArtworkSource.DECK, stamp)
                         wrote = true
                     }
                 } finally {
-                    grid.recycle()
+                    deck.recycle()
                 }
             }
-            if (wrote) Log.d(TAG, "mosaic for folder ${owner.id} from ${files.size} file(s)")
+            if (wrote) Log.d(TAG, "deck for folder ${owner.id}: ${cards.size} card(s) from ${files.size} file(s)")
             return wrote
         } finally {
-            cells.forEach { it.recycle() }
+            hands.forEach { hand -> hand.forEach { it.recycle() } }
         }
     }
 
     /**
-     * Up to [ArtworkCandidates.MOSAIC_CELLS] videos to draw the mosaic from.
+     * Up to [DeckLayout.MAX_CARDS] videos to deal the deck from, spread
+     * through the folder rather than its first few ([DeckLayout.picks]).
      * A show folder holds seasons rather than files, so this walks down
      * breadth-first until it has enough — that is what makes "Severance"
      * get a tile at all.
      */
-    private suspend fun mosaicFiles(folderId: Long): List<MediaFileEntity> {
-        val out = mutableListOf<MediaFileEntity>()
+    private suspend fun deckFiles(folderId: Long): List<MediaFileEntity> {
+        val found = mutableListOf<MediaFileEntity>()
         val queue = ArrayDeque(listOf(folderId))
         var visited = 0
-        while (queue.isNotEmpty() && out.size < ArtworkCandidates.MOSAIC_CELLS && visited < MOSAIC_MAX_FOLDERS) {
+        while (queue.isNotEmpty() && found.size < DeckLayout.MAX_CARDS && visited < DECK_MAX_FOLDERS) {
             val id = queue.removeFirst()
             visited++
-            out += mediaFileDao.inFolder(id).take(ArtworkCandidates.MOSAIC_CELLS - out.size)
-            if (out.size < ArtworkCandidates.MOSAIC_CELLS) queue += folderDao.children(id).map { it.id }
+            found += mediaFileDao.inFolder(id)
+            if (found.size < DeckLayout.MAX_CARDS) queue += folderDao.children(id).map { it.id }
         }
-        return out
+        return DeckLayout.picks(found.size).map { found[it] }
     }
 
     /** The file's frames, from a copy on this device if there is one, else the share. */
@@ -1109,69 +1117,57 @@ class ArtworkRepository @Inject constructor(
     }.getOrNull()
 
     /**
-     * An album's cover, when it has no picture of its own and no videos to
-     * take frames from: its four newest pictures in a 2×2 grid, the way a
-     * folder of videos gets four frames ([mosaic]), or the newest alone when
-     * it holds fewer than four. Made from the pictures' own thumbnails,
-     * which are made first where they do not exist yet.
+     * An album's picture, when it has none of its own and no videos to take
+     * frames from: a deck of its newest pictures, dealt the way a folder of
+     * videos deals frames ([deck]), with as many cards as it has pictures up
+     * to [DeckLayout.MAX_CARDS] (a picture has only the one frame to give).
+     * Made from the pictures' own thumbnails, which are made first where
+     * they do not exist yet.
      */
-    private suspend fun pictureCover(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
-        val picks = coverPictures(owner.id)
+    private suspend fun pictureDeck(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
+        val picks = deckPictures(owner.id)
         if (picks.isEmpty()) return false
-        val cells = mutableListOf<Bitmap>()
+        val cards = mutableListOf<Bitmap>()
         try {
-            for (id in picks) pictureThumb(ArtworkOwner.Picture(id))?.let { cells += it }
-            if (cells.isEmpty()) return false
+            for (id in picks) pictureThumb(ArtworkOwner.Picture(id))?.let { cards += it }
+            if (cards.isEmpty()) return false
             var wrote = false
             for (kind in kinds) {
-                val saved = if (cells.size < ArtworkCandidates.MOSAIC_CELLS) {
-                    store.save(cells.first(), owner, kind)
-                } else {
-                    val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
-                    val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
-                    val grid = createBitmap(kind.width, kind.height)
-                    try {
-                        val canvas = Canvas(grid)
-                        cells.take(ArtworkCandidates.MOSAIC_CELLS).forEachIndexed { i, picture ->
-                            val cell = ArtworkStore.centerCrop(picture, cellW, cellH)
-                            canvas.drawBitmap(cell, (i % ArtworkCandidates.MOSAIC_COLUMNS * cellW).toFloat(), (i / ArtworkCandidates.MOSAIC_COLUMNS * cellH).toFloat(), null)
-                            if (cell !== picture) cell.recycle()
-                        }
-                        store.saveExact(grid, owner, kind)
-                    } finally {
-                        grid.recycle()
+                val deck = DeckPainter.paint(cards, kind.width, kind.height)
+                try {
+                    if (store.saveExact(deck, owner, kind)) {
+                        record(owner, kind, ArtworkSource.DECK, stamp)
+                        wrote = true
                     }
-                }
-                if (saved) {
-                    record(owner, kind, ArtworkSource.MOSAIC, stamp)
-                    wrote = true
+                } finally {
+                    deck.recycle()
                 }
             }
-            if (wrote) Log.d(TAG, "cover for album ${owner.id} from ${cells.size} picture(s)")
+            if (wrote) Log.d(TAG, "deck for album ${owner.id} from ${cards.size} picture(s)")
             return wrote
         } finally {
-            cells.forEach { it.recycle() }
+            cards.forEach { it.recycle() }
         }
     }
 
     /**
-     * Up to four pictures for an album's cover, newest first: the folder's
-     * own, then its subfolders' as [mosaicFiles] walks them, so a folder of
-     * albums gets a cover too.
+     * Up to [DeckLayout.MAX_CARDS] pictures for an album's deck, newest
+     * first: the folder's own, then its subfolders' as [deckFiles] walks
+     * them, so a folder of albums gets a deck too.
      */
-    private suspend fun coverPictures(folderId: Long): List<Long> {
+    private suspend fun deckPictures(folderId: Long): List<Long> {
         val out = mutableListOf<Long>()
         val queue = ArrayDeque(listOf(folderId))
         var visited = 0
-        while (queue.isNotEmpty() && out.size < ArtworkCandidates.MOSAIC_CELLS && visited < MOSAIC_MAX_FOLDERS) {
+        while (queue.isNotEmpty() && out.size < DeckLayout.MAX_CARDS && visited < DECK_MAX_FOLDERS) {
             val id = queue.removeFirst()
             visited++
             out += shareFileDao.inFolder(id)
                 .filter { MediaFileTypes.isPicture(it.name) && !ArtworkCandidates.isSidecarName(it.name) }
                 .sortedByDescending { it.takenAtMs ?: it.modifiedAtMs }
-                .take(ArtworkCandidates.MOSAIC_CELLS - out.size)
+                .take(DeckLayout.MAX_CARDS - out.size)
                 .map { it.id }
-            if (out.size < ArtworkCandidates.MOSAIC_CELLS) queue += folderDao.children(id).map { it.id }
+            if (out.size < DeckLayout.MAX_CARDS) queue += folderDao.children(id).map { it.id }
         }
         return out
     }
@@ -1282,10 +1278,14 @@ class ArtworkRepository @Inject constructor(
         // Grab at poster height so the 500×750 crop is not upscaled from a 16:9 frame.
         const val FRAME_MAX_WIDTH = 1334
         const val FRAME_MAX_HEIGHT = 750
-        /** A mosaic cell is at most 250×375, so this covers it without decoding a full frame per cell. */
-        const val MOSAIC_FRAME_MAX = 720
+        /**
+         * A deck's card is at most 280×420 on the poster, cut from the middle
+         * of a 16:9 frame: 800 wide is 450 tall, enough for the card without
+         * decoding a full frame per card.
+         */
+        const val DECK_FRAME_MAX = 800
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
-        const val MOSAIC_MAX_FOLDERS = 24
+        const val DECK_MAX_FOLDERS = 24
 
         /**
          * How far from the requested position a frame may land before it is

@@ -49,15 +49,15 @@ class ArtworkFreshnessTest {
     }
 
     @Test
-    fun `a picture removed from the share goes, and the folder falls back to its mosaic`() {
+    fun `a picture removed from the share goes, and the folder falls back to its deck`() {
         val before = folderStamp(listOf(image("folder.jpg")))
         assertTrue(ArtworkFreshness.isStale(before, folderStamp(emptyList()), ArtworkSource.SIDECAR))
     }
 
     @Test
-    fun `a mosaic gives way the moment a folder gets a picture of its own`() {
-        assertTrue(ArtworkFreshness.isStale(NO_IMAGES, folderStamp(listOf(image("cover.png"))), ArtworkSource.MOSAIC))
-        assertFalse(ArtworkFreshness.isStale(NO_IMAGES, folderStamp(emptyList()), ArtworkSource.MOSAIC))
+    fun `a deck gives way the moment a folder gets a picture of its own`() {
+        assertTrue(ArtworkFreshness.isStale(NO_IMAGES, folderStamp(listOf(image("cover.png"))), ArtworkSource.DECK))
+        assertFalse(ArtworkFreshness.isStale(NO_IMAGES, folderStamp(emptyList()), ArtworkSource.DECK))
     }
 
     @Test
@@ -114,7 +114,7 @@ class ArtworkFreshnessTest {
     @Test
     fun `an old generated picture goes only if the share now has an image for it`() {
         assertFalse(ArtworkFreshness.isStale(null, NO_IMAGES, ArtworkSource.FRAMEGRAB))
-        assertTrue(ArtworkFreshness.isStale(null, folderStamp(listOf(image("folder.jpg"))), ArtworkSource.MOSAIC))
+        assertTrue(ArtworkFreshness.isStale(null, folderStamp(listOf(image("folder.jpg"))), ArtworkSource.DECK))
     }
 
     @Test

@@ -175,12 +175,12 @@ object FileOpMessages {
     /**
      * What a collection's tile becomes once its poster goes (renamed, moved
      * or deleted): it wears [next], another picture of its own, or — null —
-     * a mosaic of what is in it. Said in the dialog that asks, because the
-     * poster is the one picture whose going changes another screen.
+     * a deck of cards dealt from what is in it. Said in the dialog that asks,
+     * because the poster is the one picture whose going changes another screen.
      */
     fun forPosterGoing(folderName: String, next: String?): String =
         if (next != null) "It’s $folderName’s poster, so $folderName wears $next instead."
-        else "It’s $folderName’s poster, so $folderName shows a mosaic of what’s in it instead."
+        else "It’s $folderName’s poster, so $folderName shows a deck of cards from what’s in it instead."
 
     /** The rename note's warning for a video's own picture: with a new name it is no longer that video's. */
     fun forVideoPicture(videoName: String): String = "It’s $videoName’s picture: with a new name it stops being that video’s."

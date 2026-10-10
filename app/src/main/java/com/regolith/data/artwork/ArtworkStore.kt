@@ -214,8 +214,10 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
          *    and folders without a sidecar gained a mosaic.
          * 3: a folder's own picture stopped applying to its only video, so
          *    films' pictures taken from one go (nothing generated does).
+         * 4: a folder without a picture of its own wears a deck of cards
+         *    instead of a 2×2 mosaic, so the mosaics go (and only they do).
          */
-        const val GENERATION = 3
+        const val GENERATION = 4
         const val GENERATION_FILE = ".generation"
 
         fun sampleSize(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Int {

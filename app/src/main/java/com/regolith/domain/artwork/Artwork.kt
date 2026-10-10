@@ -38,7 +38,7 @@ enum class ArtworkKind(val width: Int, val height: Int, val fileName: String) {
     ;
 
     companion object {
-        /** What a grid needs, and what every frame grab, sidecar and mosaic writes together. */
+        /** What a grid needs, and what every frame grab, sidecar and deck writes together. */
         val stills = listOf(POSTER, THUMB)
     }
 }
@@ -57,8 +57,13 @@ enum class ArtworkSource {
     /** A frame grabbed from the middle of the runtime. */
     FRAMEGRAB,
 
-    /** A 2x2 stitch of frames from the videos inside a folder, when it has no sidecar. */
-    MOSAIC,
+    /**
+     * A folder's deck, when it has no picture of its own: frames of the
+     * videos inside (or an album's newest pictures) fanned like a hand of
+     * cards ([DeckLayout]). It replaced a 2×2 grid stored as `MOSAIC`;
+     * rows still named that are dropped by `ArtworkStore.GENERATION` 4.
+     */
+    DECK,
 
     /** Nothing readable: the tile carries the wedge and the filename. */
     PLACEHOLDER,

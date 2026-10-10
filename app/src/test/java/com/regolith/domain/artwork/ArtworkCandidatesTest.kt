@@ -73,15 +73,15 @@ class ArtworkCandidatesTest {
         assertEquals(0L, ArtworkCandidates.framePositionMs(0))
     }
 
-    @Test fun `mosaic positions spread across the middle, one file or four`() {
-        // Four videos: one frame each, all from the midpoint.
-        assertEquals(listOf(30_000L), ArtworkCandidates.mosaicPositionsMs(60_000, 1))
-        // One video filling all four cells: 20% to 80%, evenly.
+    @Test fun `a deck's frames spread across the middle of one video, one card or five`() {
+        // Five videos: one frame each, all from the midpoint.
+        assertEquals(listOf(30_000L), ArtworkCandidates.framePositionsMs(60_000, 1))
+        // One video dealing all five cards: 20% to 80%, evenly.
         assertEquals(
-            listOf(12_000L, 24_000L, 36_000L, 48_000L),
-            ArtworkCandidates.mosaicPositionsMs(60_000, 4),
+            listOf(12_000L, 21_000L, 30_000L, 39_000L, 48_000L),
+            ArtworkCandidates.framePositionsMs(60_000, 5),
         )
-        assertTrue(ArtworkCandidates.mosaicPositionsMs(0, 4).isEmpty())
-        assertTrue(ArtworkCandidates.mosaicPositionsMs(60_000, 0).isEmpty())
+        assertTrue(ArtworkCandidates.framePositionsMs(0, 4).isEmpty())
+        assertTrue(ArtworkCandidates.framePositionsMs(60_000, 0).isEmpty())
     }
 }

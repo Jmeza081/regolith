@@ -38,11 +38,12 @@ object ArtworkCandidates {
     fun framePositionMs(durationMs: Long): Long = (durationMs / 2).coerceAtLeast(0)
 
     /**
-     * Where the [MOSAIC_CELLS] frames of a folder mosaic come from within
-     * ONE of its videos, when the folder holds fewer videos than cells:
-     * evenly spread across the middle of the runtime.
+     * Where [count] frames come from within ONE video: the midpoint for
+     * one, else evenly spread across the middle of the runtime. A folder's
+     * deck asks for several when it holds fewer videos than cards
+     * ([DeckLayout.MAX_CARDS]).
      */
-    fun mosaicPositionsMs(durationMs: Long, count: Int): List<Long> {
+    fun framePositionsMs(durationMs: Long, count: Int): List<Long> {
         if (durationMs <= 0 || count <= 0) return emptyList()
         if (count == 1) return listOf(framePositionMs(durationMs))
         val start = (durationMs * 0.20).toLong()
@@ -50,11 +51,6 @@ object ArtworkCandidates {
         val step = (end - start) / (count - 1)
         return List(count) { start + step * it }
     }
-
-    /** A folder mosaic is 2x2: four frames is enough to read as "these films", and costs four seeks. */
-    const val MOSAIC_COLUMNS = 2
-    const val MOSAIC_ROWS = 2
-    const val MOSAIC_CELLS = MOSAIC_COLUMNS * MOSAIC_ROWS
 
     data class Candidate(val name: String, val source: ArtworkSource)
 

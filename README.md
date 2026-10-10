@@ -191,7 +191,7 @@ collection's poster. The lightbox has the same at hand: **Set as poster**,
 **Play from here** and **More** (Rename, Move to…, Save to phone, Details,
 Delete from share), up in its bar on the inner display. Renaming a video's own picture says it will stop being
 that video's, and deleting a collection's poster says what its tile falls back
-to — another picture of its own, or a mosaic.
+to — another picture of its own, or a deck of cards made from what's inside.
 
 **Set as poster** frames the picture 2:3: pinch and drag it behind the box, and
 the crop is saved as `poster.jpg` while the picture itself stays as it is. Or
@@ -688,10 +688,12 @@ ten seconds of the mark, the row shows the film's own thumbnail instead, rather
 than a picture claiming to be a time it is not. That stand-in is tried again after
 a day, in case the grab only failed because the share was down.
 
-A folder with no poster of its own gets a 2×2 mosaic of frames from the videos
-inside it. If a folder is scanned while it is still empty, and the videos are
+A folder with no poster of its own gets a deck of cards: five frames from the
+videos inside it, picked from the first video to the last and fanned like a hand
+of cards over a blurred copy of the front one. An album deals its newest pictures
+the same way. If a folder is scanned while it is still empty, and the videos are
 copied in later, the next scan that finds them clears the "no picture" record so
-the mosaic gets made.
+the deck gets dealt.
 
 </details>
 

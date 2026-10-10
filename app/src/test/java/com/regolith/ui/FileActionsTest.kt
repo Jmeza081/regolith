@@ -330,7 +330,7 @@ class FileActionsTest {
     }
 
     @Test
-    fun `deleting the only poster says the tile goes back to a mosaic`() = runTest {
+    fun `deleting the only poster says the tile goes back to a deck`() = runTest {
         val poster = picture("poster.jpg")
         picture("IMG_1.jpg")
         val actions = actions()
@@ -340,7 +340,7 @@ class FileActionsTest {
         val target = actions.awaitState { it.confirmingDelete != null }.confirmingDelete!!
         assertEquals("Delete this picture?", FileOpMessages.deleteTitle(target))
         assertEquals("Delete picture", FileOpMessages.deleteConfirmLabel(target))
-        assertTrue(FileOpMessages.deleteBody(target).endsWith("It’s Films’s poster, so Films shows a mosaic of what’s in it instead."))
+        assertTrue(FileOpMessages.deleteBody(target).endsWith("It’s Films’s poster, so Films shows a deck of cards from what’s in it instead."))
         actions.confirmDelete()
         assertEquals("Deleted 1 picture", actions.awaitState { it.message != null }.message!!.text)
         assertFalse(onShare("Films/poster.jpg"))

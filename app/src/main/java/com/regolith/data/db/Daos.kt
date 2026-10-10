@@ -838,11 +838,22 @@ interface ArtworkDao {
     @Query("DELETE FROM artwork WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
-    @Query("SELECT * FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
+    /** Every picture the app made itself rather than read off the share ('MOSAIC' is the deck's predecessor). */
+    @Query("SELECT * FROM artwork WHERE source IN ('FRAMEGRAB', 'DECK', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun generated(): List<ArtworkEntity>
 
-    @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
+    @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'DECK', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun deleteGenerated()
+
+    /**
+     * Folders' pictures made as a 2×2 grid of frames, before a deck of
+     * cards replaced it (ArtworkStore.GENERATION 4). None are made any more.
+     */
+    @Query("SELECT * FROM artwork WHERE source = 'MOSAIC'")
+    suspend fun mosaics(): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE source = 'MOSAIC'")
+    suspend fun deleteMosaics()
 
     /**
      * Films' pictures taken from their folder's own picture (a `poster.jpg`
@@ -857,7 +868,7 @@ interface ArtworkDao {
 
     /**
      * Drops a folder's placeholder so the next request tries again. A folder
-     * scanned before its videos were copied in has nothing to make a mosaic
+     * scanned before its videos were copied in has nothing to deal a deck
      * from; this is how the scan that finds them undoes that.
      */
     @Query("DELETE FROM artwork WHERE ownerType = 'folder' AND ownerId = :folderId AND source = 'PLACEHOLDER'")

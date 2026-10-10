@@ -228,7 +228,7 @@ class LibraryRepository @Inject constructor(
         }
         shareFileDao.replaceInFolder(folder.id, others)
         // A poster.jpg dropped into the folder since the last scan beats the
-        // mosaic the app stitched for it; this is the rescan that notices.
+        // deck the app dealt for it; this is the rescan that notices.
         artwork.onFolderListed(folder.id, entries)
         // Likewise a chapter file beside a film (P10): new or changed, it
         // replaces the phone's copy; gone, it takes its copy with it.

@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
  *
  * Pictures are spoken of as pictures, and the two whose going changes
  * another screen say so before anything happens: a collection's poster
- * (its tile falls back to another picture, or a mosaic) and a video's own
+ * (its tile falls back to another picture, or a deck of cards) and a video's own
  * picture (renamed, it is no longer that video's).
  */
 class FileActions @AssistedInject constructor(
@@ -404,7 +404,7 @@ class FileActions @AssistedInject constructor(
     /**
      * The warning for [file] going (renamed, or deleted along with [going]):
      * it is the picture its folder wears as its poster, and the tile then
-     * falls back to the next picture of its own, or a mosaic. Null when it
+     * falls back to the next picture of its own, or a deck of cards. Null when it
      * is not the poster.
      */
     private suspend fun posterGoing(file: ShareFileEntity, going: Set<Long>): String? {

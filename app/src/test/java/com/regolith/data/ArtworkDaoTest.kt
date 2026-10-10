@@ -48,7 +48,7 @@ class ArtworkDaoTest {
     @Test
     fun `a folder's placeholder can go without its real pictures`() = runTest {
         // A folder placeholdered while it was still empty gets a second
-        // chance once a scan finds videos in it — but a mosaic or a poster
+        // chance once a scan finds videos in it — but a deck or a poster
         // already made, for this folder or any other, must survive that.
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
         fun folder(id: Long, kind: String, source: String) = ArtworkEntity(
@@ -59,7 +59,7 @@ class ArtworkDaoTest {
             db.artworkDao().upsert(folder(3, "POSTER", "PLACEHOLDER"))
             db.artworkDao().upsert(folder(3, "THUMB", "PLACEHOLDER"))
             db.artworkDao().upsert(folder(4, "POSTER", "PLACEHOLDER"))
-            db.artworkDao().upsert(folder(5, "POSTER", "MOSAIC"))
+            db.artworkDao().upsert(folder(5, "POSTER", "DECK"))
             db.artworkDao().upsert(row("THUMB", source = "PLACEHOLDER")) // file 7, same id space elsewhere
 
             db.artworkDao().deleteFolderPlaceholder(3)
@@ -68,8 +68,38 @@ class ArtworkDaoTest {
             assertEquals(null, db.artworkDao().get("folder", 3, "", "POSTER"))
             assertEquals(null, db.artworkDao().get("folder", 3, "", "THUMB"))
             assertEquals("PLACEHOLDER", db.artworkDao().get("folder", 4, "", "POSTER")!!.source)
-            assertEquals("MOSAIC", db.artworkDao().get("folder", 5, "", "POSTER")!!.source)
+            assertEquals("DECK", db.artworkDao().get("folder", 5, "", "POSTER")!!.source)
             assertEquals("PLACEHOLDER", db.artworkDao().get("file", 7, "", "THUMB")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `the old mosaics go on their own, and a deck counts as the app's own picture`() = runTest {
+        // ArtworkStore.GENERATION 4: a folder's 2×2 mosaic is dealt again as
+        // a deck, and nothing else is touched — above all not a video's own
+        // frame, each of which would be a trip to the share to make again.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        fun poster(type: String, id: Long, source: String) = ArtworkEntity(
+            ownerType = type, ownerId = id, kind = "POSTER", source = source, relPath = "$type/$id/poster.jpg",
+            width = 500, height = 750, updatedAtMs = 1,
+        )
+        try {
+            val dao = db.artworkDao()
+            dao.upsert(poster("folder", 1, "MOSAIC"))
+            dao.upsert(poster("folder", 2, "DECK"))
+            dao.upsert(poster("folder", 3, "SIDECAR"))
+            dao.upsert(poster("file", 4, "FRAMEGRAB"))
+
+            assertEquals(listOf(1L), dao.mosaics().map { it.ownerId })
+            assertEquals(setOf(1L, 2L, 4L), dao.generated().map { it.ownerId }.toSet())
+
+            dao.deleteMosaics()
+            assertEquals(null, dao.get("folder", 1, "", "POSTER"))
+            assertEquals("DECK", dao.get("folder", 2, "", "POSTER")!!.source)
+            assertEquals("SIDECAR", dao.get("folder", 3, "", "POSTER")!!.source)
+            assertEquals("FRAMEGRAB", dao.get("file", 4, "", "POSTER")!!.source)
         } finally {
             db.close()
         }
