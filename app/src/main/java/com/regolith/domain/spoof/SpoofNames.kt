@@ -92,6 +92,16 @@ object SpoofNames {
      */
     fun imageSeed(ownerKey: String, salt: Long): String = "rg" + java.lang.Long.toHexString(hash(salt, "image", ownerKey))
 
+    /**
+     * The shapes (width over height) of the cards in a made-up deck for the
+     * folder [ownerKey], one per card: a phone's clips (all tall), films (all
+     * wide, a scope one among them) or both, picked by the folder and the
+     * [salt] as its photos are. A library shows each kind of hand somewhere,
+     * since a deck's cards take their video's shape.
+     */
+    fun deckShapes(ownerKey: String, salt: Long): List<Float> =
+        HANDS[Math.floorMod(hash(salt, "deck", ownerKey), HANDS.size.toLong()).toInt()]
+
     private fun isStructural(name: String): Boolean = SEASON.matches(name) || name.lowercase() in KEPT_FOLDERS
 
     /**
@@ -124,6 +134,17 @@ object SpoofNames {
         "specials", "extras", "featurettes", "trailers", "behind the scenes", "deleted scenes",
         "dcim", "camera", "movies", "download", "downloads", "pictures", "screenshots",
         "screen recordings", "screenrecorder", "video", "videos",
+    )
+
+    private const val TALL = 9f / 16f
+    private const val WIDE = 16f / 9f
+    private const val SCOPE = 2.39f
+
+    /** The hands [deckShapes] picks from: five cards each, as a deck holds. */
+    private val HANDS = listOf(
+        List(5) { TALL },
+        listOf(WIDE, SCOPE, WIDE, WIDE, WIDE),
+        listOf(TALL, WIDE, WIDE, TALL, WIDE),
     )
 
     /** The names a folder's own pictures go by ([com.regolith.domain.artwork.ArtworkCandidates]). */

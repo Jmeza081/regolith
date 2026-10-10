@@ -76,7 +76,8 @@ import com.regolith.ui.theme.scaledDp
  * Spoof mode for the pictures: non-null while Settings › Demo › Spoof mode
  * is on, and then [ArtworkImage] and [ArtworkLight] draw a stock photo
  * ([com.regolith.data.spoof.SpoofImage]) in place of every picture of the
- * library. Provided once, at the root of the app. A composition local
+ * library, and a deck of them for a folder whose picture is a deck
+ * ([com.regolith.data.spoof.SpoofDeck]). Provided once, at the root of the app. A composition local
  * rather than a check in the fetcher because switching it has to change
  * what is already on screen: a new model is what makes Coil load again.
  */
@@ -122,8 +123,9 @@ fun ArtworkImage(
     // Settings › Accessibility › Remove animations turns off every animator
     // in the app; a moving poster is one more thing it should hold still.
     val still = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
-    // Spoof mode: a stock photo in its place, picked by the owner's id.
-    val model: Any = LocalSpoof.current?.image(still) ?: still
+    // Spoof mode: a stock photo in its place, picked by the owner's id, or
+    // for a folder whose picture is a deck, a deck of them.
+    val model: Any = LocalSpoof.current?.standIn(still) ?: still
     SubcomposeAsyncImage(
         model = model,
         contentDescription = null,

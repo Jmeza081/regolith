@@ -64,8 +64,8 @@ fun ArtworkLight(
                 .alpha(LIGHT_ALPHA),
         ) {
             SubcomposeAsyncImage(
-                // Spoof mode lights the page with the stand-in photo instead.
-                model = LocalSpoof.current?.image(artwork) ?: artwork,
+                // Spoof mode lights the page with the stand-in (a photo, or a deck of them) instead.
+                model = LocalSpoof.current?.standIn(artwork) ?: artwork,
                 contentDescription = null,
                 loading = {},
                 error = {},

@@ -525,6 +525,17 @@ class ArtworkRepository @Inject constructor(
     /** [owner]'s moving poster, when it has one ([AnimatedPoster]): for the Library tiles that play it. */
     fun animatedFileFor(owner: ArtworkOwner): java.io.File? = store.animatedFile(owner)
 
+    /**
+     * Whether the folder picture [request] asks for is a deck the app dealt
+     * ([ArtworkSource.DECK]), made first if need be ([resolve]): spoof mode
+     * asks, to deal a deck of stand-in photos in its place. False for any
+     * other owner, and when it cannot be told with the share out of reach.
+     */
+    suspend fun isDeck(request: ArtworkRequest): Boolean {
+        if (request.owner !is ArtworkOwner.Folder) return false
+        return resolve(request.copy(animated = false, loose = false))?.source == ArtworkSource.DECK.name
+    }
+
     /** [owner]'s deck laid loose, for its collection's page ([ArtworkRequest.loose]), or null when its picture is not a deck. */
     fun looseFileFor(owner: ArtworkOwner): java.io.File? = store.looseFile(owner)
 
@@ -1125,7 +1136,7 @@ class ArtworkRepository @Inject constructor(
      */
     private fun keepLoose(owner: ArtworkOwner.Folder, cards: List<Bitmap>, kinds: List<ArtworkKind>) {
         if (ArtworkKind.POSTER !in kinds) return
-        val loose = DeckPainter.paintLoose(cards, LOOSE_DECK_WIDTH)
+        val loose = DeckPainter.paintLoose(cards, DeckPainter.LOOSE_WIDTH)
         try {
             if (!store.saveLoose(loose, owner)) Log.w(TAG, "deck for folder ${owner.id}: could not keep it laid loose")
         } finally {
@@ -1456,12 +1467,6 @@ class ArtworkRepository @Inject constructor(
         const val DECK_FRAME_MAX = 800
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
         const val DECK_MAX_FOLDERS = 24
-        /**
-         * How wide a loose deck is made: a collection's page gives it at most
-         * about 340dp, which is a little over 1,000 pixels on the sharpest
-         * phones, and the poster's cards come from frames grabbed this big.
-         */
-        const val LOOSE_DECK_WIDTH = 1080
         /** What a folder's 2×2 grid was stored as, before decks ([ensureGeneration] 4). */
         const val MOSAIC = "MOSAIC"
 

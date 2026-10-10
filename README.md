@@ -455,8 +455,9 @@ from your own library, for a demo, a screen recording or a screenshot. Videos,
 folders, paths and the chapters you named get believable made-up titles
 ("Quiet Lantern (2016)", keeping the year and "S01E02"), and every poster,
 thumbnail and backdrop is a low-resolution stock photo from Unsplash, through
-Lorem Picsum. Each video keeps the same stand-ins every time, so it still reads
-as one library. Only the phone's display changes: the share is never touched,
+Lorem Picsum. A folder that wears a deck of cards gets a deck dealt from stock
+photos instead, its cards tall, wide or both. Each video keeps the same
+stand-ins every time, so it still reads as one library. Only the phone's display changes: the share is never touched,
 the lock screen (which shows no picture) and the download notification are made
 up too, and
 nothing can be moved, renamed, deleted or uploaded until it is switched off.

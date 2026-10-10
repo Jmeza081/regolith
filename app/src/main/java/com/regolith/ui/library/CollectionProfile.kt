@@ -57,7 +57,6 @@ import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
 import com.regolith.ui.components.posterFlight
-import com.regolith.ui.components.LocalSpoof
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -117,9 +116,9 @@ internal fun ProfileHeader(
 ) {
     val colors = RegolithTheme.colors
     // A deck the app dealt is laid out loose: there is room here for the
-    // whole hand, so the box round it goes. Spoof mode's stand-in photos
-    // are no deck, and keep the poster's place.
-    val loose = profile.deck && LocalSpoof.current == null
+    // whole hand, so the box round it goes. Spoof mode deals its stand-in
+    // deck in the same place (SpoofDeck), so it is laid loose too.
+    val loose = profile.deck
     Box(modifier.fillMaxWidth().testTag("library_profile_header")) {
         // The light fills the header's whole height, up under the status bar
         // and out to both edges, and falls off to the page's own ground at

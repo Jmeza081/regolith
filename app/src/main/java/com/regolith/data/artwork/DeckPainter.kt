@@ -32,6 +32,13 @@ import kotlin.math.roundToInt
  */
 object DeckPainter {
     /**
+     * How wide a loose deck is made ([paintLoose]): a collection's page gives
+     * it at most about 340dp, which is a little over 1,000 pixels on the
+     * sharpest phones, and the poster's cards come from frames grabbed this big.
+     */
+    const val LOOSE_WIDTH = 1080
+
+    /**
      * [frames] as a [width] × [height] deck, each card the shape of its own
      * frame ([withFaces]). The front card colours the background, and the rest go
      * behind it in [DeckLayout]'s rank order. At most [DeckLayout.MAX_CARDS]
