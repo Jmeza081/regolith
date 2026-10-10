@@ -846,14 +846,16 @@ interface ArtworkDao {
     suspend fun deleteGenerated()
 
     /**
-     * Folders' pictures made as a 2×2 grid of frames, before a deck of
-     * cards replaced it (ArtworkStore.GENERATION 4). None are made any more.
+     * Every picture made one way ([com.regolith.domain.artwork.ArtworkSource]'s
+     * name, or a name it no longer has), for a generation step that throws
+     * those away (ArtworkStore.GENERATION): the 2×2 mosaics a deck replaced,
+     * the decks made before they were kept laid loose too.
      */
-    @Query("SELECT * FROM artwork WHERE source = 'MOSAIC'")
-    suspend fun mosaics(): List<ArtworkEntity>
+    @Query("SELECT * FROM artwork WHERE source = :source")
+    suspend fun withSource(source: String): List<ArtworkEntity>
 
-    @Query("DELETE FROM artwork WHERE source = 'MOSAIC'")
-    suspend fun deleteMosaics()
+    @Query("DELETE FROM artwork WHERE source = :source")
+    suspend fun deleteWithSource(source: String)
 
     /**
      * Films' pictures taken from their folder's own picture (a `poster.jpg`

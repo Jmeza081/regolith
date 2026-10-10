@@ -145,5 +145,16 @@ sealed interface ArtworkOwner {
  * ([AnimatedPoster]), and the still one where it has not. Only the
  * collection tiles on the Library's first screen ask, which is what keeps
  * the number of moving tiles to a handful.
+ *
+ * [loose] asks for a folder's deck laid loose, its cards on a transparent
+ * ground ([DeckLayout.looseCards]), where its picture is a deck, and its
+ * poster where it is not. Only a collection's page asks: it has the room to
+ * show the hand out of its box.
  */
-data class ArtworkRequest(val owner: ArtworkOwner, val kind: ArtworkKind, val revision: Int = 0, val animated: Boolean = false)
+data class ArtworkRequest(
+    val owner: ArtworkOwner,
+    val kind: ArtworkKind,
+    val revision: Int = 0,
+    val animated: Boolean = false,
+    val loose: Boolean = false,
+)

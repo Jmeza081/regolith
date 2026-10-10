@@ -138,7 +138,9 @@ carries on; leaving the app with picture-in-picture off pauses it too.
 
 Open a collection that holds videos or pictures, and no collections, and it
 opens as its own page rather than a plain wall. Its poster lights the top of the
-page, the way the player lights the room around a film. Under it, up to four
+page, the way the player lights the room around a film; a collection without a
+poster of its own shows its deck of cards there with no box round it, the whole
+hand fanned out over the light. Under it, up to four
 figures (how many videos and pictures it holds, how long they run, how much
 space they take, how many you have watched), then Play all, Shuffle, and its
 tabs. **Videos** is the wall you know. **Moments** lists every chapter you have
@@ -218,7 +220,7 @@ arrives late.
 Tap a poster and it flies to where its page shows it. A video's poster grows
 into the wide picture at the top of its page, uncropping as it goes, and a
 collection's poster settles into its place on the collection's page, while the
-page fades in around it. Back flies it home, and on a phone the back swipe
+page fades in around it (a deck's box fades away as its cards spread out). Back flies it home, and on a phone the back swipe
 holds it under your thumb. On the inner display it flies into the page beside
 the wall too; closing that page slides it away as before.
 

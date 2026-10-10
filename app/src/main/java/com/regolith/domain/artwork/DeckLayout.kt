@@ -1,6 +1,8 @@
 package com.regolith.domain.artwork
 
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Where the cards go on a folder's deck: the picture a folder wears when it
@@ -15,6 +17,9 @@ import kotlin.math.abs
  * A tall picture (the 2:3 poster) holds cards a little over half its height;
  * a wide one (the 16:9 thumb and backdrop) holds taller cards spread wider,
  * so a hand still fills a short, wide frame.
+ *
+ * A collection's page has room for the whole hand, so there it is laid
+ * loose ([looseCards]): every card whole, with no box round them.
  */
 object DeckLayout {
     /** The most cards a deck holds: enough to read as a handful, and five frames to grab. */
@@ -37,7 +42,20 @@ object DeckLayout {
         val degrees: Float,
         /** 1 for the front card, dimmer the further from the middle a card sits. */
         val brightness: Float,
-    )
+    ) {
+        /** Where its four corners land once it has turned (clockwise, y down, as a canvas turns). */
+        val corners: List<Pair<Float, Float>>
+            get() {
+                val turn = Math.toRadians(degrees.toDouble())
+                val cos = cos(turn).toFloat()
+                val sin = sin(turn).toFloat()
+                return listOf(left to top, left + width to top, left to top + height, left + width to top + height).map { (x, y) ->
+                    val dx = x - pivotX
+                    val dy = y - pivotY
+                    (pivotX + dx * cos - dy * sin) to (pivotY + dx * sin + dy * cos)
+                }
+            }
+    }
 
     /**
      * [count] cards (at most [MAX_CARDS]) for a [width] × [height] picture,
@@ -46,15 +64,47 @@ object DeckLayout {
      * the right one lies on top of it.
      */
     fun cards(width: Float, height: Float, count: Int): List<Card> {
-        val n = count.coerceAtMost(MAX_CARDS)
-        if (n <= 0 || width <= 0f || height <= 0f) return emptyList()
+        if (width <= 0f || height <= 0f) return emptyList()
         val tall = height > width
         val cardHeight = height * if (tall) TALL_CARD else WIDE_CARD
         val cardWidth = cardHeight * CARD_ASPECT
         val left = (width - cardWidth) / 2f
         val top = height * if (tall) TALL_TOP else WIDE_TOP
+        return fan(count, left, top, cardWidth, if (tall) TALL_STEP_DEGREES else WIDE_STEP_DEGREES)
+    }
+
+    /**
+     * The same hand laid loose, for a collection's page: every card whole
+     * inside a [width] × [height] picture ([looseAspect] is the shape it
+     * is made for), with room round the hand for the shadows. The cards are
+     * the size a full hand needs whatever [count] is, so a card on its own
+     * is no bigger than the front of five.
+     */
+    fun looseCards(width: Float, height: Float, count: Int): List<Card> {
+        if (width <= 0f || height <= 0f) return emptyList()
+        val box = looseBox
+        val scale = minOf(width / box.width, height / box.height)
+        val left = (width - box.width * scale) / 2f + box.frontLeft * scale
+        val top = (height - box.height * scale) / 2f + box.frontTop * scale
+        return fan(count, left, top, scale, TALL_STEP_DEGREES)
+    }
+
+    /**
+     * Width over height of a loose hand's picture: the whole fan of
+     * [MAX_CARDS] and the room for its shadows. A page sizes its room for
+     * the deck by it, and the picture is made at it.
+     */
+    val looseAspect: Float get() = looseBox.width / looseBox.height
+
+    /**
+     * [count] cards fanned from a front card at [left], [top], [cardWidth]
+     * across, in the order they are drawn: back to front.
+     */
+    private fun fan(count: Int, left: Float, top: Float, cardWidth: Float, step: Float): List<Card> {
+        val n = count.coerceAtMost(MAX_CARDS)
+        if (n <= 0) return emptyList()
+        val cardHeight = cardWidth / CARD_ASPECT
         val pivotY = top + cardHeight * PIVOT
-        val step = if (tall) TALL_STEP_DEGREES else WIDE_STEP_DEGREES
         val middle = (n - 1) / 2f
         val drawOrder = (0 until n).sortedWith(compareByDescending<Int> { abs(it - middle) }.thenBy { it })
         return drawOrder.mapIndexed { drawn, slot ->
@@ -66,12 +116,31 @@ object DeckLayout {
                 top = top,
                 width = cardWidth,
                 height = cardHeight,
-                pivotX = width / 2f,
+                pivotX = left + cardWidth / 2f,
                 pivotY = pivotY,
                 degrees = offset * step,
                 brightness = if (front) 1f else 1f - DIM_PER_STEP * abs(offset),
             )
         }
+    }
+
+    /**
+     * A full loose hand measured once, in card widths: how big the picture
+     * is round it, margins for the shadows included, and where in it the
+     * front card's top left corner sits.
+     */
+    private class LooseBox(val width: Float, val height: Float, val frontLeft: Float, val frontTop: Float)
+
+    private val looseBox: LooseBox by lazy {
+        val corners = fan(MAX_CARDS, 0f, 0f, 1f, TALL_STEP_DEGREES).flatMap { it.corners }
+        val minX = corners.minOf { it.first }
+        val minY = corners.minOf { it.second }
+        LooseBox(
+            width = corners.maxOf { it.first } - minX + 2 * LOOSE_SIDE,
+            height = corners.maxOf { it.second } - minY + LOOSE_ABOVE + LOOSE_BELOW,
+            frontLeft = LOOSE_SIDE - minX,
+            frontTop = LOOSE_ABOVE - minY,
+        )
     }
 
     /**
@@ -119,4 +188,13 @@ object DeckLayout {
 
     /** How much darker each step out from the middle is. */
     private const val DIM_PER_STEP = 0.15f
+
+    /**
+     * The room round a loose hand, in card widths, for the shadows `DeckPainter`
+     * draws: they spread about a quarter of a card's width and fall a little
+     * below, so a picture cut tighter would show their edge as a hard line.
+     */
+    private const val LOOSE_SIDE = 0.26f
+    private const val LOOSE_ABOVE = 0.18f
+    private const val LOOSE_BELOW = 0.34f
 }

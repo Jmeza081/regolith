@@ -313,10 +313,18 @@ class ArtworkRepository @Inject constructor(
                 // Only the folders' 2×2 grids: each is dealt again as a deck
                 // the next time its tile asks, from five frames of its own.
                 // Every video's own picture stays.
-                val mosaics = artworkDao.mosaics()
+                val mosaics = artworkDao.withSource(MOSAIC)
                 Log.i(TAG, "artwork generation $from -> 4: dropping ${mosaics.size} folder mosaics; they come back as decks")
                 for (row in mosaics) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
-                artworkDao.deleteMosaics()
+                artworkDao.deleteWithSource(MOSAIC)
+            }
+            if (from < 5) {
+                // Decks dealt before each kept a loose copy for its page
+                // (only the first test builds of decks made any).
+                val decks = artworkDao.withSource(ArtworkSource.DECK.name)
+                Log.i(TAG, "artwork generation $from -> 5: dealing ${decks.size} decks again, laid loose too")
+                for (row in decks) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteWithSource(ArtworkSource.DECK.name)
             }
             store.setGeneration(ArtworkStore.GENERATION)
         }
@@ -498,6 +506,9 @@ class ArtworkRepository @Inject constructor(
 
     /** [owner]'s moving poster, when it has one ([AnimatedPoster]): for the Library tiles that play it. */
     fun animatedFileFor(owner: ArtworkOwner): java.io.File? = store.animatedFile(owner)
+
+    /** [owner]'s deck laid loose, for its collection's page ([ArtworkRequest.loose]), or null when its picture is not a deck. */
+    fun looseFileFor(owner: ArtworkOwner): java.io.File? = store.looseFile(owner)
 
     /**
      * Beside a folder's still poster, the GIF it was made from, kept as it
@@ -870,7 +881,10 @@ class ArtworkRepository @Inject constructor(
         // The demo library has no share to list: its albums' pictures are on
         // the phone, its own poster among them.
         if (isLocal(folder.shareId)) {
-            if (localSidecar(folder.id, owner, kinds)) return
+            if (localSidecar(folder.id, owner, kinds)) {
+                forgetLoose(owner, kinds)
+                return
+            }
         } else try {
             locate(folder.shareId)?.let { location ->
                 val entries = listing(location, folder.shareId, folder.relPath)
@@ -881,6 +895,7 @@ class ArtworkRepository @Inject constructor(
                     val bytes = readImage(location, path) ?: continue
                     if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) {
                         keepAnimated(owner, folder.relPath, bytes, kinds)
+                        forgetLoose(owner, kinds)
                         return
                     }
                 }
@@ -952,7 +967,10 @@ class ArtworkRepository @Inject constructor(
                     deck.recycle()
                 }
             }
-            if (wrote) Log.d(TAG, "deck for folder ${owner.id}: ${cards.size} card(s) from ${files.size} file(s)")
+            if (wrote) {
+                keepLoose(owner, cards, kinds)
+                Log.d(TAG, "deck for folder ${owner.id}: ${cards.size} card(s) from ${files.size} file(s)")
+            }
             return wrote
         } finally {
             hands.forEach { hand -> hand.forEach { it.recycle() } }
@@ -977,6 +995,27 @@ class ArtworkRepository @Inject constructor(
             if (found.size < DeckLayout.MAX_CARDS) queue += folderDao.children(id).map { it.id }
         }
         return DeckLayout.picks(found.size).map { found[it] }
+    }
+
+    /**
+     * Beside a folder's deck, the same [cards] laid loose ([DeckPainter.paintLoose]):
+     * the hand out of its box, for the collection's page to show. Only with a
+     * poster among [kinds], so a pass that makes something else (a backdrop
+     * alone) leaves it as it is.
+     */
+    private fun keepLoose(owner: ArtworkOwner.Folder, cards: List<Bitmap>, kinds: List<ArtworkKind>) {
+        if (ArtworkKind.POSTER !in kinds) return
+        val loose = DeckPainter.paintLoose(cards, LOOSE_DECK_WIDTH)
+        try {
+            if (!store.saveLoose(loose, owner)) Log.w(TAG, "deck for folder ${owner.id}: could not keep it laid loose")
+        } finally {
+            loose.recycle()
+        }
+    }
+
+    /** A folder that wears a picture of its own now: a loose deck kept from before goes. Only with a poster among [kinds], as [keepLoose]. */
+    private fun forgetLoose(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
+        if (ArtworkKind.POSTER in kinds) store.deleteLoose(owner)
     }
 
     /** The file's frames, from a copy on this device if there is one, else the share. */
@@ -1143,7 +1182,10 @@ class ArtworkRepository @Inject constructor(
                     deck.recycle()
                 }
             }
-            if (wrote) Log.d(TAG, "deck for album ${owner.id} from ${cards.size} picture(s)")
+            if (wrote) {
+                keepLoose(owner, cards, kinds)
+                Log.d(TAG, "deck for album ${owner.id} from ${cards.size} picture(s)")
+            }
             return wrote
         } finally {
             cards.forEach { it.recycle() }
@@ -1286,6 +1328,14 @@ class ArtworkRepository @Inject constructor(
         const val DECK_FRAME_MAX = 800
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
         const val DECK_MAX_FOLDERS = 24
+        /**
+         * How wide a loose deck is made: a collection's page gives it at most
+         * about 340dp, which is a little over 1,000 pixels on the sharpest
+         * phones, and the poster's cards come from frames grabbed this big.
+         */
+        const val LOOSE_DECK_WIDTH = 1080
+        /** What a folder's 2×2 grid was stored as, before decks ([ensureGeneration] 4). */
+        const val MOSAIC = "MOSAIC"
 
         /**
          * How far from the requested position a frame may land before it is

@@ -33,6 +33,7 @@ import kotlinx.coroutines.withContext
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.artwork.ArtworkSource
 import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.library.FolderKind
@@ -53,6 +54,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -199,8 +201,17 @@ class LibraryViewModel @AssistedInject constructor(
             // The pictures (schema v17) and the named moments, for the chips.
             val others = parents.flatMapLatest { ps -> library.observeOtherFilesInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { otherFiles(it) }
             val momentCounts = parents.flatMapLatest { ps -> chapters.observeNamedCounts(ps.map { it.shareId }.distinct()) }
+            // Whether this collection's picture is a deck the app dealt, which
+            // its page lays out loose. The first wall is no collection.
+            val deckPoster = if (folderId == null) {
+                flowOf(false)
+            } else {
+                artwork.observe(ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.POSTER))
+                    .map { it?.source == ArtworkSource.DECK.name }
+                    .distinctUntilChanged()
+            }
 
-            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts) { values ->
+            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts, deckPoster) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val shareList = values[0] as List<com.regolith.domain.model.Share>
                 @Suppress("UNCHECKED_CAST")
@@ -223,7 +234,8 @@ class LibraryViewModel @AssistedInject constructor(
                 val otherList = values[9] as List<ShareFileEntity>
                 @Suppress("UNCHECKED_CAST")
                 val momentMap = values[10] as Map<Long, Int>
-                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap)
+                val deck = values[11] as Boolean
+                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap, deck)
             }.collect { built ->
                 unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
@@ -375,6 +387,7 @@ class LibraryViewModel @AssistedInject constructor(
         marks: List<ChapterMatch> = emptyList(),
         others: List<ShareFileEntity> = emptyList(),
         momentCounts: Map<Long, Int> = emptyMap(),
+        deck: Boolean = false,
     ): Built {
         val byFolder = allFiles.groupBy { it.folderId }
         val byParent = children.filter { it.parentId != null }.groupBy { it.parentId }
@@ -495,6 +508,7 @@ class LibraryViewModel @AssistedInject constructor(
                 marks = marks,
                 pictures = ownPictures,
                 hasCollections = hasCollections,
+                deck = deck,
             )
         }
         val state = LibraryUiState(

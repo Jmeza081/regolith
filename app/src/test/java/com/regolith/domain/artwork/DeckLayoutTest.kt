@@ -61,6 +61,28 @@ class DeckLayoutTest {
         }
     }
 
+    @Test fun `a loose hand keeps every card whole inside its picture, with room for the shadows`() {
+        val width = 1080f
+        val height = width / DeckLayout.looseAspect
+        val hand = DeckLayout.looseCards(width, height, 5)
+        val margin = hand.last().width * 0.15f
+        for (corner in hand.flatMap { it.corners }) {
+            assertTrue("corner $corner", corner.first in margin..width - margin && corner.second in margin..height - margin)
+        }
+        val front = hand.last()
+        assertEquals(0f, front.degrees)
+        assertEquals(width / 2f, front.left + front.width / 2f, 0.01f)
+        assertTrue("a hand is wider than it is tall", DeckLayout.looseAspect > 1f)
+    }
+
+    @Test fun `a loose card on its own is the size of the front of five`() {
+        val five = DeckLayout.looseCards(1080f, 700f, 5).last()
+        val one = DeckLayout.looseCards(1080f, 700f, 1).single()
+        assertEquals(five.width, one.width, 0.01f)
+        assertEquals(five.left, one.left, 0.01f)
+        assertEquals(five.top, one.top, 0.01f)
+    }
+
     @Test fun `picks spread from the first video to the last`() {
         assertEquals(listOf(0, 6, 11, 17, 22), DeckLayout.picks(23))
         assertEquals(listOf(0, 1, 3, 4, 5), DeckLayout.picks(6))

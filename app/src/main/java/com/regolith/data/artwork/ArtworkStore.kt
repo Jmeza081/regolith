@@ -25,10 +25,11 @@ import kotlin.math.roundToInt
  *
  * Every image is stored at exactly its kind's size, centre-cropped, so a
  * tile never scales at draw time and a 40 MB poster.jpg on the share costs
- * 40 KB on the phone. Two exceptions: a top-level folder's GIF, kept as it
+ * 40 KB on the phone. Three exceptions: a top-level folder's GIF, kept as it
  * came beside the still poster made from it so that it can move
- * ([saveAnimated]), and a picture's own thumbnail, which keeps the
- * picture's shape inside its box ([saveFitted]).
+ * ([saveAnimated]); a deck laid loose for a collection's page, a WebP with a
+ * transparent ground beside the deck's poster ([saveLoose]); and a picture's
+ * own thumbnail, which keeps the picture's shape inside its box ([saveFitted]).
  */
 @Singleton
 class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
@@ -79,6 +80,36 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
     /** Forget [owner]'s moving poster: its picture is no longer a GIF, or no longer one that may move. */
     fun deleteAnimated(owner: ArtworkOwner.Folder) {
         fileFor(animatedRelPathFor(owner)).delete()
+    }
+
+    /** `folder/12/deck.webp`: [owner]'s deck laid loose, beside the poster dealt from the same cards. */
+    fun looseRelPathFor(owner: ArtworkOwner.Folder): String = "${owner.typeName}/${owner.id}/$LOOSE_DECK_NAME"
+
+    /** [owner]'s deck laid loose, or null when it has none: only a folder whose picture is a deck does. */
+    fun looseFile(owner: ArtworkOwner): File? =
+        (owner as? ArtworkOwner.Folder)?.let { fileFor(looseRelPathFor(it)) }?.takeIf { it.exists() }
+
+    /**
+     * Keep [bitmap], [owner]'s deck laid loose, for its collection's page.
+     * WebP, because the ground round the cards is transparent, which a JPEG
+     * cannot be, and a PNG of five photographs is several times the size.
+     */
+    fun saveLoose(bitmap: Bitmap, owner: ArtworkOwner.Folder): Boolean {
+        val file = fileFor(looseRelPathFor(owner))
+        file.parentFile?.mkdirs()
+        val tmp = File(file.path + ".tmp")
+        return try {
+            FileOutputStream(tmp).use { out -> bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, JPEG_QUALITY, out) }
+            tmp.renameTo(file)
+        } catch (e: Exception) {
+            tmp.delete()
+            false
+        }
+    }
+
+    /** Forget [owner]'s loose deck: its picture is no longer a deck. */
+    fun deleteLoose(owner: ArtworkOwner.Folder) {
+        fileFor(looseRelPathFor(owner)).delete()
     }
 
     /** Decode [bytes] (a sidecar or embedded cover) at roughly the target size, then crop and save. */
@@ -216,9 +247,12 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
          *    films' pictures taken from one go (nothing generated does).
          * 4: a folder without a picture of its own wears a deck of cards
          *    instead of a 2×2 mosaic, so the mosaics go (and only they do).
+         * 5: a deck is kept laid loose too, for its collection's page, so
+         *    decks dealt before that are dealt again.
          */
-        const val GENERATION = 4
+        const val GENERATION = 5
         const val GENERATION_FILE = ".generation"
+        const val LOOSE_DECK_NAME = "deck.webp"
 
         fun sampleSize(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Int {
             var sample = 1

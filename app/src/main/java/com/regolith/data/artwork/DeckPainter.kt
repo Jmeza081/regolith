@@ -47,6 +47,24 @@ object DeckPainter {
     }
 
     /**
+     * The same cards laid loose ([DeckLayout.looseCards]): every card whole,
+     * on nothing — transparent round them but for their shadows — for a
+     * collection's page to float over its own light. [width] across, as tall
+     * as [DeckLayout.looseAspect] makes it.
+     */
+    fun paintLoose(frames: List<Bitmap>, width: Int): Bitmap {
+        require(frames.isNotEmpty()) { "a deck needs a card" }
+        val height = (width / DeckLayout.looseAspect).roundToInt()
+        // A new bitmap starts transparent, which is the whole of the ground.
+        val out = createBitmap(width, height)
+        val canvas = Canvas(out)
+        for (card in DeckLayout.looseCards(width.toFloat(), height.toFloat(), frames.size)) {
+            card(canvas, frames[card.rank], card)
+        }
+        return out
+    }
+
+    /**
      * The front card again, blurred to a wash of its colours, more
      * saturated and darker, then darker still towards the bottom, where the
      * tile's own chips and the cards' shadows sit.

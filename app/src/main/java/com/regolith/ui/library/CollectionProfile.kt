@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,6 +40,7 @@ import com.regolith.R
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.artwork.DeckLayout
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.ArtworkLight
 import com.regolith.ui.components.bleedHorizontally
@@ -55,6 +57,7 @@ import com.regolith.ui.components.RowTrailing
 import com.regolith.ui.components.Segment
 import com.regolith.ui.components.SegmentedTabs
 import com.regolith.ui.components.posterFlight
+import com.regolith.ui.components.LocalSpoof
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -63,6 +66,7 @@ import com.regolith.ui.theme.scaledDp
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.util.formatDurationShort
+import androidx.compose.ui.layout.ContentScale
 
 /*
  * A leaf collection's page, read as a profile ([CollectionProfile]): the
@@ -112,6 +116,10 @@ internal fun ProfileHeader(
     tab: TabPlay? = null,
 ) {
     val colors = RegolithTheme.colors
+    // A deck the app dealt is laid out loose: there is room here for the
+    // whole hand, so the box round it goes. Spoof mode's stand-in photos
+    // are no deck, and keep the poster's place.
+    val loose = profile.deck && LocalSpoof.current == null
     Box(modifier.fillMaxWidth().testTag("library_profile_header")) {
         // The light fills the header's whole height, up under the status bar
         // and out to both edges, and falls off to the page's own ground at
@@ -130,8 +138,20 @@ internal fun ProfileHeader(
         }
         BoxWithConstraints(Modifier.fillMaxWidth().padding(top = profileBarHeight(), bottom = Spacing.s18)) {
             if (maxWidth >= PROFILE_SIDE_BY_SIDE_MIN) {
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.s30)) {
-                    ProfilePoster(profile.poster, name, Modifier.size(width = 136.scaledDp(), height = 204.scaledDp()))
+                // A loose deck is as wide as it may be while the column beside
+                // it keeps room for Play all and the round buttons it has. Its
+                // picture has a margin of its own round the cards, so it stands
+                // nearer the column than a poster does and looks as far off.
+                val buttons = listOfNotNull(tab?.onShuffle ?: onShuffle, onAdd).size
+                val column = PROFILE_PLAY_WIDTH + (Spacing.s8 + 42.scaledDp()) * buttons
+                val gap = if (loose) Spacing.s12 else Spacing.s30
+                val deckWidth = (maxWidth - gap - column).coerceIn(PROFILE_DECK_NARROWEST, PROFILE_DECK_BESIDE.scaledDp())
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    if (loose) {
+                        ProfileDeck(profile.poster, name, Modifier.width(deckWidth))
+                    } else {
+                        ProfilePoster(profile.poster, name, Modifier.size(width = 136.scaledDp(), height = 204.scaledDp()))
+                    }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s18)) {
                         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                             profile.parentName?.let { Eyebrow(it) }
@@ -143,7 +163,11 @@ internal fun ProfileHeader(
                 }
             } else {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    ProfilePoster(profile.poster, name, Modifier.size(width = 112.scaledDp(), height = 168.scaledDp()))
+                    if (loose) {
+                        ProfileDeck(profile.poster, name, Modifier.fillMaxWidth().widthIn(max = PROFILE_DECK_ABOVE.scaledDp()))
+                    } else {
+                        ProfilePoster(profile.poster, name, Modifier.size(width = 112.scaledDp(), height = 168.scaledDp()))
+                    }
                     Spacer(Modifier.height(Spacing.s18))
                     profile.parentName?.let {
                         Eyebrow(it)
@@ -268,6 +292,26 @@ private fun ProfilePoster(poster: ArtworkRequest, name: String, modifier: Modifi
             .border(1.dp, Color(0x24FFFFFF), TileShape)
             .testTag("library_profile_poster"),
         fallbackLabel = name,
+    )
+}
+
+/**
+ * A collection's deck laid loose ([ArtworkRequest.loose]): the cards alone,
+ * with nothing round them, over the page's light. [modifier] sets its width;
+ * its height follows from the hand's own shape. It flies from the tile as the
+ * poster does, the box fading out as the cards spread.
+ */
+@Composable
+private fun ProfileDeck(poster: ArtworkRequest, name: String, modifier: Modifier) {
+    ArtworkImage(
+        poster,
+        modifier
+            .aspectRatio(DeckLayout.looseAspect)
+            .posterFlight(poster.owner)
+            .testTag("library_profile_deck"),
+        fallbackLabel = name,
+        contentScale = ContentScale.Fit,
+        bare = true,
     )
 }
 
@@ -403,11 +447,26 @@ private fun picturesSpan(pictures: List<PictureTile>): String? {
 /** Wide enough for the poster to stand beside the name: the inner display with the wall to itself, not beside a title's page. */
 private val PROFILE_SIDE_BY_SIDE_MIN = 600.dp
 
+/**
+ * How wide a loose deck may be, in design px ([scaledDp]): above the name on
+ * a phone, where it takes the width it is given up to this, and beside it on
+ * a wide window, where at most this keeps it to the poster's height.
+ */
+private const val PROFILE_DECK_ABOVE = 330
+private const val PROFILE_DECK_BESIDE = 300
+
 /** The stat strip beside the poster: four cells read as one line, not spread across the window. */
 private val PROFILE_STATS_MAX_WIDTH = 480.dp
 
 /** Play all beside the poster: about the phone's own, rather than the whole column. */
 private val PROFILE_PLAY_WIDTH = 240.dp
+
+/**
+ * The least a loose deck beside the name is given on a wide window: the
+ * side-by-side layout's least width ([PROFILE_SIDE_BY_SIDE_MIN]) still has
+ * room for it beside Play all and two round buttons.
+ */
+private val PROFILE_DECK_NARROWEST = 200.dp
 
 /** The tabs beside the poster on a wide window. */
 private val PROFILE_TABS_MAX_WIDTH = 420.dp

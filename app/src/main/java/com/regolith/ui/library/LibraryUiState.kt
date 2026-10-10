@@ -407,6 +407,11 @@ data class CollectionProfile(
     val moments: List<CollectionMoment>,
     /** The pictures in it, the poster and the videos' own among them, in no particular order ([inOrder] orders them). */
     val pictures: List<PictureTile> = emptyList(),
+    /**
+     * Its picture is a deck the app dealt rather than one of its own, so the
+     * page lays the cards out loose ([poster] asks for them that way).
+     */
+    val deck: Boolean = false,
 ) {
     /** Its tabs, in order: Videos and Moments where it holds videos, Images where it holds pictures. */
     internal val tabs: List<ProfileTab>
@@ -447,7 +452,8 @@ data class CollectionMoment(
  * the ids of videos played to the end. [marks] are the named chapters in the
  * folder; only those on the wall's own videos are kept, since a hidden or
  * vanished video's marks have nothing to play. [pictures] are the pictures
- * directly in it.
+ * directly in it. [deck] is whether its picture is a deck the app dealt
+ * ([com.regolith.domain.artwork.ArtworkSource.DECK]).
  */
 internal fun collectionProfile(
     tiles: List<LibraryTile>,
@@ -457,6 +463,7 @@ internal fun collectionProfile(
     marks: List<ChapterMatch>,
     pictures: List<PictureTile> = emptyList(),
     hasCollections: Boolean = tiles.any { it is LibraryTile.Collection },
+    deck: Boolean = false,
 ): CollectionProfile? {
     if (hasCollections) return null
     val videos = tiles.filterIsInstance<LibraryTile.Title>()
@@ -465,8 +472,11 @@ internal fun collectionProfile(
     val durations = videos.map { it.durationMs }
     return CollectionProfile(
         parentName = parentName,
-        poster = poster,
+        // A deck is shown loose on the page; the light is still the poster's,
+        // whose ground carries the front card's colours out to the edges.
+        poster = if (deck) poster.copy(loose = true) else poster,
         light = poster.copy(animated = false),
+        deck = deck,
         videoCount = videos.size,
         runtimeMs = if (durations.all { it != null }) durations.sumOf { it ?: 0L } else null,
         sizeBytes = videos.sumOf { it.sizeBytes },

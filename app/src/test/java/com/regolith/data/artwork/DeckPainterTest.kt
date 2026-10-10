@@ -64,6 +64,16 @@ class DeckPainterTest {
         assertTrue(Color.red(deck.getPixel(4, 745)) < Color.red(top))
     }
 
+    @Test fun `laid loose, the cards stand on nothing`() {
+        val deck = DeckPainter.paintLoose(listOf(frame(Color.RED)) + List(4) { frame(Color.BLUE) }, 1080)
+        assertEquals(1080, deck.width)
+        assertEquals((1080 / DeckLayout.looseAspect).toInt().toFloat(), deck.height.toFloat(), 1f)
+        assertEquals("the corners are clear", 0, Color.alpha(deck.getPixel(2, 2)))
+        assertEquals(0, Color.alpha(deck.getPixel(deck.width - 3, 2)))
+        val front = DeckLayout.looseCards(deck.width.toFloat(), deck.height.toFloat(), 5).last()
+        assertEquals(Color.RED, deck.on(front, 0.5f, 0.5f))
+    }
+
     @Test fun `a thumb deals the same hand at its own shape`() {
         val deck = DeckPainter.paint(listOf(frame(Color.GREEN)), 320, 180)
         assertEquals(320, deck.width)

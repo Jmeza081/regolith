@@ -95,6 +95,11 @@ val LocalSpoof = staticCompositionLocalOf<Spoof?> { null }
  * [placeholder] is a smaller picture of the same thing to show while this
  * one is on its way, in place of the "reading" look: Title Detail's 720p
  * backdrop is made when the page opens, and its tile's thumb already exists.
+ *
+ * [bare] draws nothing at all until the picture is there, and nothing if
+ * there is none, for art that is not a box: a deck laid loose
+ * ([ArtworkRequest.loose]), where the reading look's box, or the filename's,
+ * would be the one thing it is meant not to show.
  */
 @Composable
 fun ArtworkImage(
@@ -103,6 +108,7 @@ fun ArtworkImage(
     fallbackLabel: String = "",
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: ArtworkRequest? = null,
+    bare: Boolean = false,
 ) {
     if (artwork == null) {
         NoPictureArt(fallbackLabel, modifier)
@@ -125,11 +131,11 @@ fun ArtworkImage(
         loading = {
             if (placeholder != null) {
                 ArtworkImage(placeholder, Modifier.fillMaxSize(), fallbackLabel = fallbackLabel, contentScale = contentScale)
-            } else {
+            } else if (!bare) {
                 ReadingArt()
             }
         },
-        error = { NoPictureArt(fallbackLabel, Modifier.fillMaxSize()) },
+        error = { if (!bare) NoPictureArt(fallbackLabel, Modifier.fillMaxSize()) },
         success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
         onLoading = pending?.let { p -> { _ -> mark.start(p) } },
         onSuccess = pending?.let { p -> { _ -> mark.done(p) } },

@@ -92,10 +92,11 @@ class ArtworkDaoTest {
             dao.upsert(poster("folder", 3, "SIDECAR"))
             dao.upsert(poster("file", 4, "FRAMEGRAB"))
 
-            assertEquals(listOf(1L), dao.mosaics().map { it.ownerId })
+            assertEquals(listOf(1L), dao.withSource("MOSAIC").map { it.ownerId })
+            assertEquals(listOf(2L), dao.withSource("DECK").map { it.ownerId })
             assertEquals(setOf(1L, 2L, 4L), dao.generated().map { it.ownerId }.toSet())
 
-            dao.deleteMosaics()
+            dao.deleteWithSource("MOSAIC")
             assertEquals(null, dao.get("folder", 1, "", "POSTER"))
             assertEquals("DECK", dao.get("folder", 2, "", "POSTER")!!.source)
             assertEquals("SIDECAR", dao.get("folder", 3, "", "POSTER")!!.source)
