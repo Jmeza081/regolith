@@ -674,6 +674,14 @@ a second or two each. Rather than doing that while you scroll, a background job
 walks the share when its scan finishes and makes them all up front, showing a
 progress notification you can stop. One frame grab writes all three sizes.
 
+The frame comes from the middle of the video, past any intro and short of the
+credits. A frame that turns out black, or all one colour, is tried again a little
+either side. A recording with no index (an MKV without its Cues, a fragmented MP4,
+the way OBS and screen recorders often save them) cannot be seeked, so nothing can
+say how long it runs and a frame grab used to land on its first frame; its runtime
+is now read from its last cluster or fragment, and its frame is cut from the middle
+of the file by handing the decoder the file's header and a piece of the middle.
+
 A library scanned before this existed has no walk queued for it: tap **Settings ›
 Media › Prepare artwork**, or rescan the share. **Artwork cache**, above it, says
 how much room the pictures take and clears them.

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.io.Closeable
 import java.io.File
+import com.regolith.domain.smb.SeekableByteSource
 
 /**
  * One open video, asked for pictures. Behind this sit the platform's
@@ -109,4 +110,13 @@ fun interface FrameGrabber {
     fun framesAt(fileId: Long, positionsMs: List<Long>, maxWidth: Int, maxHeight: Int): Flow<GrabbedFrame?> = flow {
         for (position in positionsMs) emit(frameAt(fileId, position, maxWidth, maxHeight))
     }
+
+    /**
+     * The first frame of the bytes [open] reads: a file with no index, cut so
+     * that it starts in its middle ([com.regolith.domain.smb.SplicedByteSource],
+     * [com.regolith.domain.media.UnindexedVideo]). [name] is the file's own, for
+     * the decoder to tell its container by. Null when it cannot be decoded; the
+     * default, for a grabber that cannot be handed bytes, always is.
+     */
+    suspend fun frameFromBytes(open: () -> SeekableByteSource, name: String, maxWidth: Int, maxHeight: Int): GrabbedFrame? = null
 }

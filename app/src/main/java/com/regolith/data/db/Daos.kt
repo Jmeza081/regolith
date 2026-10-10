@@ -858,6 +858,24 @@ interface ArtworkDao {
     suspend fun deleteWithSource(source: String)
 
     /**
+     * Videos' own frames grabbed while nothing knew how long the video runs,
+     * so taken from its first moment: black, or an intro's logo. A grab fills
+     * in the runtime whenever anything knows it, so a frame on a row still
+     * without one is exactly such a frame (ArtworkStore.GENERATION 6).
+     */
+    @Query(
+        "SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND " +
+            "ownerId IN (SELECT id FROM media_files WHERE durationMs IS NULL OR durationMs <= 0)",
+    )
+    suspend fun framesFromTheStart(): List<ArtworkEntity>
+
+    @Query(
+        "DELETE FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND " +
+            "ownerId IN (SELECT id FROM media_files WHERE durationMs IS NULL OR durationMs <= 0)",
+    )
+    suspend fun deleteFramesFromTheStart()
+
+    /**
      * Films' pictures taken from their folder's own picture (a `poster.jpg`
      * beside a lone film). None are made any more: a folder's pictures are
      * the folder's alone (ArtworkStore.GENERATION 3).

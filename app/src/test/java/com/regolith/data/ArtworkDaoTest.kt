@@ -107,6 +107,46 @@ class ArtworkDaoTest {
     }
 
     @Test
+    fun `frames grabbed with no runtime known are found, and nothing else is`() = runTest {
+        // ArtworkStore.GENERATION 6: a frame on a row with no runtime came from
+        // the video's first moment. Not a cover image read off the file, not a
+        // frame of a video whose runtime is known, and no folder's picture.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            db.openHelper.writableDatabase.apply {
+                execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
+                execSQL("INSERT INTO shares (id, serverId, name, enabled, freeBytes, totalBytes, lastScanAtMs) VALUES (1, 1, 'media', 1, NULL, NULL, NULL)")
+                execSQL("INSERT INTO folders (id, shareId, parentId, relPath, name, fileCount, byteCount, lastListedAtMs) VALUES (3, 1, NULL, 'Clips', 'Clips', 3, 30, NULL)")
+                for ((id, duration) in listOf(10 to "NULL", 11 to "0", 12 to "60000", 13 to "NULL")) {
+                    execSQL(
+                        "INSERT INTO media_files (id, shareId, folderId, relPath, name, ext, sizeBytes, modifiedAtMs, durationMs, missing, addedAtMs, lastSeenAtMs) " +
+                            "VALUES ($id, 1, 3, 'Clips/$id.mkv', '$id.mkv', 'mkv', 10, 0, $duration, 0, 0, 0)",
+                    )
+                }
+            }
+            fun art(type: String, id: Long, source: String, kind: String = "POSTER") = ArtworkEntity(
+                ownerType = type, ownerId = id, kind = kind, source = source, relPath = "$type/$id/$kind.jpg", width = 500, height = 750, updatedAtMs = 1,
+            )
+            val dao = db.artworkDao()
+            dao.upsert(art("file", 10, "FRAMEGRAB"))
+            dao.upsert(art("file", 10, "FRAMEGRAB", kind = "THUMB"))
+            dao.upsert(art("file", 11, "FRAMEGRAB"))
+            dao.upsert(art("file", 12, "FRAMEGRAB"))
+            dao.upsert(art("file", 13, "EMBEDDED"))
+            dao.upsert(art("folder", 3, "DECK"))
+
+            assertEquals(setOf(10L to "POSTER", 10L to "THUMB", 11L to "POSTER"), dao.framesFromTheStart().map { it.ownerId to it.kind }.toSet())
+            dao.deleteFramesFromTheStart()
+            assertEquals(null, dao.get("file", 10, "", "THUMB"))
+            assertEquals("FRAMEGRAB", dao.get("file", 12, "", "POSTER")!!.source)
+            assertEquals("EMBEDDED", dao.get("file", 13, "", "POSTER")!!.source)
+            assertEquals("DECK", dao.get("folder", 3, "", "POSTER")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `a picture's thumbnail is found by its folder, and is an orphan once its file is gone`() = runTest {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
         try {

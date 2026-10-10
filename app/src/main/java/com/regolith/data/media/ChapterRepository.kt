@@ -7,6 +7,7 @@ import com.regolith.data.db.ShareDao
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.media.ChapterParser
 import com.regolith.domain.playback.Chapter
+import com.regolith.domain.smb.FileByteSource
 import com.regolith.domain.smb.SeekableByteSource
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.domain.smb.SmbGateway
@@ -14,7 +15,6 @@ import com.regolith.domain.smb.SmbHost
 import com.regolith.player.LocalMedia
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.RandomAccessFile
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -71,7 +71,7 @@ class ChapterRepository @Inject constructor(
     }
 
     private suspend fun openSource(fileId: Long): SeekableByteSource? {
-        local.file(fileId)?.let { return FileSource(it) }
+        local.file(fileId)?.let { return FileByteSource(it) }
         val file = mediaFileDao.byId(fileId) ?: return null
         val share = shareDao.byId(file.shareId) ?: return null
         val server = serverDao.byId(share.serverId) ?: return null
@@ -81,22 +81,6 @@ class ChapterRepository @Inject constructor(
             share.name,
             file.relPath,
         )
-    }
-
-    /** A copy on this device, read the way the share is read. */
-    private class FileSource(file: java.io.File) : SeekableByteSource {
-        private val handle = RandomAccessFile(file, "r")
-        override val size: Long = handle.length()
-
-        override fun readAt(offset: Long, dst: ByteArray, dstOffset: Int, length: Int): Int = synchronized(handle) {
-            if (offset >= size) return -1
-            handle.seek(offset)
-            handle.read(dst, dstOffset, length)
-        }
-
-        override fun close() {
-            runCatching { handle.close() }
-        }
     }
 
     private companion object {

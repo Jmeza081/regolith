@@ -36,6 +36,12 @@ import com.regolith.domain.smb.listingRetryDelayMs
 import kotlinx.coroutines.delay
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
+import com.regolith.domain.artwork.FrameLook
+import com.regolith.domain.media.UnindexedVideo
+import com.regolith.domain.smb.BufferedByteSource
+import com.regolith.domain.smb.FileByteSource
+import com.regolith.domain.smb.SeekableByteSource
+import com.regolith.domain.smb.SplicedByteSource
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -324,6 +330,18 @@ class ArtworkRepository @Inject constructor(
                 val decks = artworkDao.withSource(ArtworkSource.DECK.name)
                 Log.i(TAG, "artwork generation $from -> 5: dealing ${decks.size} decks again, laid loose too")
                 for (row in decks) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteWithSource(ArtworkSource.DECK.name)
+            }
+            if (from < 6) {
+                // Frames grabbed while nothing knew a video's runtime came from
+                // its first moment. A file with no index now gives its runtime
+                // and a frame from its middle, and a deck's cards come the same
+                // careful way, so both are made again; nothing else is.
+                val starts = artworkDao.framesFromTheStart()
+                val decks = artworkDao.withSource(ArtworkSource.DECK.name)
+                Log.i(TAG, "artwork generation $from -> 6: grabbing ${starts.size} frames again from the middle, and dealing ${decks.size} decks again")
+                for (row in starts + decks) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteFramesFromTheStart()
                 artworkDao.deleteWithSource(ArtworkSource.DECK.name)
             }
             store.setGeneration(ArtworkStore.GENERATION)
@@ -625,10 +643,10 @@ class ArtworkRepository @Inject constructor(
 
     /**
      * Steps 3 and 4 on an already-open file: embedded cover art, else a
-     * frame from the midpoint. True when something was written.
+     * frame from the middle ([frameAround]). True when something was written.
      *
-     * The log line here is the one to read when a tile looks wrong — it
-     * says where the frame was taken from and how the runtime behind that
+     * The log lines here are the ones to read when a tile looks wrong: they
+     * say where the frame was taken from and how the runtime behind that
      * decision was arrived at (`adb logcat -s Regolith/Artwork`).
      */
     private suspend fun grabFrame(
@@ -646,36 +664,124 @@ class ArtworkRepository @Inject constructor(
             }
         }
         val duration = runtimeOf(file, source)
-        val at = ArtworkCandidates.framePositionMs(duration)
-
-        // Media3 first: the same extractors and the same data source the
-        // player uses, and it says which frame it actually gave you. The
-        // platform retriever cannot, and returns the OPENING frame when it
-        // fails to seek — the one failure this whole path exists to avoid.
-        grabber.frameAt(file.id, at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)?.let { grabbed ->
-            val off = grabbed.presentationTimeMs - at
-            if (duration > 0 && abs(off) > SEEK_TOLERANCE_MS) {
-                // Not fatal — a file whose key frames really are minutes apart
-                // is legitimately far off — but it is the line to read when a
-                // tile looks like a title card.
-                Log.w(TAG, "${file.name}: asked for ${at}ms, got ${grabbed.presentationTimeMs}ms (${off}ms off)")
-            } else {
-                Log.i(TAG, "${file.name}: frame at ${grabbed.presentationTimeMs}ms of ${duration}ms (media3)")
-            }
-            try {
-                if (saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds, stamp)) return true
-            } finally {
-                grabbed.bitmap.recycle()
-            }
-        }
-
-        // Fallback: the platform retriever on the file we already have open.
-        val frame = source.frameAt(at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
-        Log.i(TAG, "${file.name}: frame at ${at}ms of ${duration}ms (retriever)")
+        val frame = frameAround(file, source, duration, MIDDLE, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
         return try {
             saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB, kinds, stamp)
         } finally {
             frame.recycle()
+        }
+    }
+
+    /**
+     * A frame from around [fraction] of [file]'s runtime that shows what the
+     * video is, for its tile or a card in its folder's deck. Null when none
+     * could be had at all. The caller owns, and recycles, the bitmap.
+     *
+     * A frame that is blank ([FrameLook]: black, or all one flat colour) is
+     * tried again at other points ([ArtworkCandidates.blankRetryFractions]),
+     * and kept only if every other point is blank too.
+     */
+    private suspend fun frameAround(file: MediaFileEntity, source: FrameSource, durationMs: Long, fraction: Double, maxWidth: Int, maxHeight: Int): Bitmap? {
+        // A container that says nothing of its length may have no index, and
+        // then the cut is the way in: Media3 can only reach the middle of such
+        // a file by decoding the whole first half of it, off the share.
+        val unindexed = if (source.durationMs == null) unindexedLayout(file) else null
+        var blank: Bitmap? = null
+        for (point in listOf(fraction) + ArtworkCandidates.blankRetryFractions(fraction)) {
+            val frame = frameAt(file, source, durationMs, point, unindexed, maxWidth, maxHeight) ?: continue
+            if (!FrameLook.blank(frame.lumaGrid())) {
+                blank?.recycle()
+                return frame
+            }
+            Log.i(TAG, "${file.name}: the frame at ${(point * 100).roundToInt()}% is blank; trying elsewhere")
+            if (blank == null) blank = frame else frame.recycle()
+            // With no runtime every point is the same point.
+            if (durationMs <= 0 && unindexed == null) break
+        }
+        return blank
+    }
+
+    /**
+     * The frame at [fraction] of the runtime, the surest way there is:
+     *  1. for a file with no index ([unindexed]), which nothing can seek in,
+     *     a frame cut from that point of the file ([cutFrame]);
+     *  2. Media3, which seeks with the player's own extractors and says where
+     *     its frame really came from: kept if it landed near where it was
+     *     sent, and if it came back from the start instead, the file turns
+     *     out to have no index after all, so 1;
+     *  3. the platform's retriever, as a last resort: it cannot say where its
+     *     frame came from, and gives the opening one when it cannot seek.
+     */
+    private suspend fun frameAt(
+        file: MediaFileEntity,
+        source: FrameSource,
+        durationMs: Long,
+        fraction: Double,
+        unindexed: UnindexedVideo.Layout?,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap? {
+        if (unindexed != null) cutFrame(file, unindexed, fraction, maxWidth, maxHeight)?.let { return it }
+        val at = (durationMs * fraction).toLong()
+        if (unindexed == null && durationMs > 0) grabber.frameAt(file.id, at, maxWidth, maxHeight)?.let { grabbed ->
+            val landed = grabbed.presentationTimeMs
+            if (at < LANDED_EARLY_MIN_MS || landed >= at / 4) {
+                if (abs(landed - at) > SEEK_TOLERANCE_MS) {
+                    // Not fatal — key frames minutes apart are legitimately far
+                    // off — but it is the line to read when a tile looks wrong.
+                    Log.w(TAG, "${file.name}: asked for ${at}ms, got ${landed}ms (${landed - at}ms off)")
+                } else {
+                    Log.i(TAG, "${file.name}: frame at ${landed}ms of ${durationMs}ms (media3)")
+                }
+                return grabbed.bitmap.software()
+            }
+            // Sent to the middle, back at the start: a file with no index.
+            Log.w(TAG, "${file.name}: asked for ${at}ms, landed at ${landed}ms; it cannot seek")
+            grabbed.bitmap.recycle()
+            unindexedLayout(file)?.let { layout -> cutFrame(file, layout, fraction, maxWidth, maxHeight)?.let { return it } }
+        }
+        val frame = source.frameAt(at, maxWidth, maxHeight) ?: return null
+        Log.i(TAG, "${file.name}: frame at ${at}ms of ${durationMs}ms (retriever)")
+        return frame
+    }
+
+    /**
+     * For a file with no index ([UnindexedVideo]: an MKV without Cues, a
+     * fragmented MP4 without a `sidx`): its header with a cut from [fraction]
+     * of the way through spliced on, its clock started again at zero, decoded
+     * by Media3. Reads the header and a few megabytes around the cut, never
+     * the half of the file it would take to decode up to the middle.
+     */
+    private suspend fun cutFrame(file: MediaFileEntity, layout: UnindexedVideo.Layout, fraction: Double, maxWidth: Int, maxHeight: Int): Bitmap? {
+        val open = bytesOf(file) ?: return null
+        val cut = open().use { bytes -> UnindexedVideo.cutNear(bytes, layout, fraction) } ?: return null
+        val grabbed = grabber.frameFromBytes({ SplicedByteSource(open(), layout.headerEnd, cut.offset, cut.prefix) }, file.name, maxWidth, maxHeight)
+            ?: return null
+        Log.i(TAG, "${file.name}: no index; frame at ${cut.timeMs}ms, cut from the file")
+        return grabbed.bitmap.software()
+    }
+
+    /** [file]'s layout when it is a video with no index ([UnindexedVideo.layout]), from its first bytes; null for any other. */
+    private suspend fun unindexedLayout(file: MediaFileEntity): UnindexedVideo.Layout? {
+        val open = bytesOf(file) ?: return null
+        return open().use { bytes -> UnindexedVideo.layout(bytes) }
+    }
+
+    /**
+     * How to open [file]'s bytes, each call a new handle: a copy on this
+     * device, else the share, read the way a frame grab reads it. Null when
+     * the share cannot be located. The location is looked up once, here, so
+     * the opener itself does not suspend: Media3 calls it on its own thread.
+     */
+    private suspend fun bytesOf(file: MediaFileEntity): (() -> SeekableByteSource)? {
+        local.file(file.id)?.let { copy -> return { FileByteSource(copy) } }
+        val location = locate(file.shareId) ?: return null
+        return {
+            BufferedByteSource(
+                gateway.open(location.host, location.credentials, location.share, file.relPath),
+                blockSize = BufferedByteSource.FRAME_BLOCK_SIZE,
+                blockCount = BufferedByteSource.FRAME_BLOCK_COUNT,
+            )
         }
     }
 
@@ -853,18 +959,30 @@ class ArtworkRepository @Inject constructor(
      */
     private suspend fun runtimeOf(file: MediaFileEntity, source: FrameSource): Long {
         source.durationMs?.let { return it }
-        file.durationMs?.let { known ->
+        file.durationMs?.takeIf { it > 0 }?.let { known ->
             Log.d(TAG, "no runtime from the container for ${file.name}; using the ${known}ms already on the row")
             return known
         }
-        val probed = durations.durationMs(file.id)
-        if (probed == null || probed <= 0) {
-            Log.w(TAG, "no runtime for ${file.name} from the container, the row or the probe: grabbing at 0")
-            return 0L
+        durations.durationMs(file.id)?.takeIf { it > 0 }?.let { probed ->
+            Log.i(TAG, "no runtime from the container for ${file.name}; the probe says ${probed}ms")
+            mediaFileDao.fillBasics(file.id, probed, null, null, null)
+            return probed
         }
-        Log.i(TAG, "no runtime from the container for ${file.name}; the probe says ${probed}ms")
-        mediaFileDao.fillBasics(file.id, probed, null, null, null)
-        return probed
+        // A recording with no index says nowhere how long it runs, so nothing
+        // above can tell; the time of its last cluster or fragment can.
+        unindexedRuntime(file)?.let { read ->
+            Log.i(TAG, "${file.name} has no index; its last cluster or fragment says it runs ${read}ms")
+            mediaFileDao.fillBasics(file.id, read, null, null, null)
+            return read
+        }
+        Log.w(TAG, "no runtime for ${file.name} from the container, the row, the probe or its end: grabbing at 0")
+        return 0L
+    }
+
+    /** How long a file with no index runs, read off its end ([UnindexedVideo.runtimeMs]), or null. */
+    private suspend fun unindexedRuntime(file: MediaFileEntity): Long? {
+        val open = bytesOf(file) ?: return null
+        return open().use { bytes -> UnindexedVideo.layout(bytes)?.let { UnindexedVideo.runtimeMs(bytes, it) } }?.takeIf { it > 0 }
     }
 
     private suspend fun resolveFolder(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
@@ -941,8 +1059,10 @@ class ArtworkRepository @Inject constructor(
                 try {
                     openFrames(file)?.use { source ->
                         val duration = runtimeOf(file, source)
-                        for (position in ArtworkCandidates.framePositionsMs(duration, slots[index])) {
-                            source.frameAt(position, DECK_FRAME_MAX, DECK_FRAME_MAX)?.let { hand += it }
+                        // The same care a video's own tile gets: from the middle
+                        // and not blank, cut from a file with no index.
+                        for (fraction in ArtworkCandidates.frameFractions(slots[index])) {
+                            frameAround(file, source, duration, fraction, DECK_FRAME_MAX, DECK_FRAME_MAX)?.let { hand += it }
                         }
                     }
                 } catch (e: SmbFailure) {
@@ -1320,6 +1440,14 @@ class ArtworkRepository @Inject constructor(
         // Grab at poster height so the 500×750 crop is not upscaled from a 16:9 frame.
         const val FRAME_MAX_WIDTH = 1334
         const val FRAME_MAX_HEIGHT = 750
+        /** Where a video's own picture comes from: half way through, past every intro and short of the credits. */
+        const val MIDDLE = 0.5
+        /**
+         * A frame asked for this far in or later that comes back from its first
+         * quarter landed at the start: the file could not be seeked. Nearer the
+         * start than this, a key frame a few seconds early is ordinary.
+         */
+        const val LANDED_EARLY_MIN_MS = 10_000L
         /**
          * A deck's card is at most 280×420 on the poster, cut from the middle
          * of a 16:9 frame: 800 wide is 450 tall, enough for the card without

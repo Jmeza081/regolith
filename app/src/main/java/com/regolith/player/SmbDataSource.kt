@@ -8,6 +8,7 @@ import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
+import com.regolith.domain.smb.BufferedByteSource
 import com.regolith.domain.smb.ReadAheadByteSource
 import com.regolith.domain.smb.SeekableByteSource
 import com.regolith.domain.smb.SmbFailure
@@ -25,14 +26,14 @@ import javax.inject.Inject
  * honor `dataSpec.position` and `dataSpec.length`, return
  * [C.RESULT_END_OF_INPUT] at the end, throw POSITION_OUT_OF_RANGE past it.
  *
- * @param readAhead false reads over one connection, exactly what is asked
- *   for and no more; see [Factory.withoutReadAhead].
+ * @param reading how it reads the share: streaming for the player, and the
+ *   two ways of the background readers ([Reading]).
  */
 @UnstableApi
 class SmbDataSource(
     private val resolver: MediaResolver,
     private val gateway: SmbGateway,
-    private val readAhead: Boolean = true,
+    private val reading: Reading = Reading.STREAM,
 ) : BaseDataSource(/* isNetwork = */ true) {
 
     private var uri: Uri? = null
@@ -58,7 +59,11 @@ class SmbDataSource(
             // headers a few bytes at a time, and one handle is capped near 40 Mbps on
             // Wi-Fi (see ReadAheadByteSource). Extra handles open only as needed.
             val open = { gateway.open(media.host, media.credentials, media.share, media.relPath) }
-            if (readAhead) ReadAheadByteSource(open(), openAnother = open) else open()
+            when (reading) {
+                Reading.STREAM -> ReadAheadByteSource(open(), openAnother = open)
+                Reading.EXACT -> open()
+                Reading.FRAMES -> BufferedByteSource(open(), BufferedByteSource.FRAME_BLOCK_SIZE, BufferedByteSource.FRAME_BLOCK_COUNT)
+            }
         } catch (e: SmbFailure) {
             throw DataSourceException(e.message ?: "SMB open failed", e, e.toErrorCode())
         }
@@ -137,6 +142,23 @@ class SmbDataSource(
         const val TAG = "Regolith/DataSource"
     }
 
+    /** How a [SmbDataSource] reads the share, by what is reading it. */
+    enum class Reading {
+        /** The player: the next dozen 1 MiB blocks fetched at once, each on its own handle ([ReadAheadByteSource]). */
+        STREAM,
+
+        /** Exactly what is asked for, over one connection: a reader that stops partway (the Shorts openings). */
+        EXACT,
+
+        /**
+         * A frame grab: a few small blocks kept ([BufferedByteSource]), as it hops
+         * between the index and the frame. Streaming's read-ahead would fetch a
+         * dozen megabytes on a dozen handles at every one of those hops, for one
+         * picture, which is what it did from 27 Sep 2026 until this mode.
+         */
+        FRAMES,
+    }
+
     /** ExoPlayer asks the factory for a fresh DataSource per load. */
     class Factory @Inject constructor(
         private val resolver: MediaUriResolver,
@@ -150,6 +172,9 @@ class SmbDataSource(
          * openings): read-ahead fetches the next dozen megabytes the moment
          * a file is opened, and a reader that stops early throws them away.
          */
-        fun withoutReadAhead(): DataSource.Factory = DataSource.Factory { SmbDataSource(resolver, gateway, readAhead = false) }
+        fun withoutReadAhead(): DataSource.Factory = DataSource.Factory { SmbDataSource(resolver, gateway, Reading.EXACT) }
+
+        /** The same share, read the way a frame grab needs ([Reading.FRAMES]). */
+        fun forFrames(): DataSource.Factory = DataSource.Factory { SmbDataSource(resolver, gateway, Reading.FRAMES) }
     }
 }

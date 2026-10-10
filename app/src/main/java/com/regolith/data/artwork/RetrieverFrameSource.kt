@@ -5,6 +5,7 @@ import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import com.regolith.domain.smb.BufferedByteSource
+import com.regolith.domain.smb.FileByteSource
 import com.regolith.domain.smb.SeekableByteSource
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbGateway
@@ -93,7 +94,11 @@ class RetrieverFrameSource private constructor(
             // extractor reads container headers in small pieces too. Several
             // smaller blocks, because a frame grab hops between the sample
             // tables (end of file) and the frame bytes (anywhere).
-            val source = BufferedByteSource(gateway.open(host, credentials, share, relPath), blockSize = FRAME_BLOCK_SIZE, blockCount = FRAME_BLOCK_COUNT)
+            val source = BufferedByteSource(
+                gateway.open(host, credentials, share, relPath),
+                blockSize = BufferedByteSource.FRAME_BLOCK_SIZE,
+                blockCount = BufferedByteSource.FRAME_BLOCK_COUNT,
+            )
             val retriever = MediaMetadataRetriever()
             val dataSource = ByteSourceMediaDataSource(source)
             val started = System.nanoTime()
@@ -125,25 +130,7 @@ class RetrieverFrameSource private constructor(
         }
     }
 
-    /** A file on this device, read the way the share is read. No buffering: the page cache is the buffer. */
-    private class FileByteSource(file: java.io.File) : SeekableByteSource {
-        private val handle = java.io.RandomAccessFile(file, "r")
-        override val size: Long = handle.length()
-
-        override fun readAt(offset: Long, dst: ByteArray, dstOffset: Int, length: Int): Int = synchronized(handle) {
-            if (offset >= size) return -1
-            handle.seek(offset)
-            handle.read(dst, dstOffset, length)
-        }
-
-        override fun close() {
-            runCatching { handle.close() }
-        }
-    }
-
     private companion object {
         const val TAG = "Regolith/Frames"
-        const val FRAME_BLOCK_SIZE = 256 * 1024
-        const val FRAME_BLOCK_COUNT = 8 // 2 MiB resident
     }
 }

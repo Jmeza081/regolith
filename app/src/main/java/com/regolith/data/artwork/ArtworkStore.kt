@@ -249,8 +249,12 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
          *    instead of a 2×2 mosaic, so the mosaics go (and only they do).
          * 5: a deck is kept laid loose too, for its collection's page, so
          *    decks dealt before that are dealt again.
+         * 6: a video with no index (an MKV without Cues, a fragmented MP4)
+         *    gives its runtime and a frame from its middle, and a blank frame
+         *    is tried again elsewhere, so frames grabbed while the runtime was
+         *    unknown (from the very start) go, and so do decks.
          */
-        const val GENERATION = 5
+        const val GENERATION = 6
         const val GENERATION_FILE = ".generation"
         const val LOOSE_DECK_NAME = "deck.webp"
 

@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.inspector.frame.FrameExtractor
 import com.regolith.data.artwork.FrameGrabber
 import com.regolith.data.artwork.GrabbedFrame
+import com.regolith.domain.smb.SeekableByteSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -204,10 +205,36 @@ class Media3Frames @Inject constructor(
             .build()
     }
 
+    /**
+     * The first frame of [open]'s bytes: a file with no index, cut to start in
+     * its middle. Media3 opens it like any other file ([ByteSourceDataSource]),
+     * finds it cannot seek, starts at the top, and the top is now the middle,
+     * so the first frame it gives back is the one wanted, with the time it
+     * really has in the film.
+     */
+    override suspend fun frameFromBytes(open: () -> SeekableByteSource, name: String, maxWidth: Int, maxHeight: Int): GrabbedFrame? = try {
+        runInterruptible(Dispatchers.IO) {
+            val mediaSources = DefaultMediaSourceFactory(context).setDataSourceFactory { ByteSourceDataSource(open) }
+            // Only a name, for the extractors to guess the container by first.
+            val uri = android.net.Uri.Builder().scheme("regolith-cut").authority("media").appendPath(name).build()
+            frameExtractor(MediaItem.fromUri(uri), mediaSources, maxWidth, maxHeight).use { extractor -> grab(extractor, 0) }
+        }
+    } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
+        Log.w(TAG, "media3 frame from a cut of $name failed (${e.javaClass.simpleName}: ${e.message})")
+        null
+    }
+
     private fun extractor(uri: android.net.Uri, maxWidth: Int, maxHeight: Int): FrameExtractor {
+        // A frame grab's own reading of the share (SmbDataSource.Reading.FRAMES):
+        // the player's read-ahead would fetch a dozen megabytes per hop.
         val mediaSources = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(DefaultDataSource.Factory(context, smbDataSourceFactory))
-        return FrameExtractor.Builder(context, MediaItem.fromUri(uri))
+            .setDataSourceFactory(DefaultDataSource.Factory(context, smbDataSourceFactory.forFrames()))
+        return frameExtractor(MediaItem.fromUri(uri), mediaSources, maxWidth, maxHeight)
+    }
+
+    private fun frameExtractor(item: MediaItem, mediaSources: DefaultMediaSourceFactory, maxWidth: Int, maxHeight: Int): FrameExtractor {
+        return FrameExtractor.Builder(context, item)
             .setMediaSourceFactory(mediaSources)
             // One key frame, like the retriever's OPTION_CLOSEST_SYNC:
             // decoding forward to an exact frame would mean pulling
