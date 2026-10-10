@@ -700,8 +700,10 @@ a day, in case the grab only failed because the share was down.
 
 A folder with no poster of its own gets a deck of cards: five frames from the
 videos inside it, picked from the first video to the last and fanned like a hand
-of cards over a blurred copy of the front one. An album deals its newest pictures
-the same way. If a folder is scanned while it is still empty, and the videos are
+of cards over a blurred copy of the front one. Each card is the shape of its own
+video, tall for a phone clip and wide for a film, with any black bars baked into
+the video left off, and the card that best fits the poster's shape goes in front.
+An album deals its newest pictures the same way. If a folder is scanned while it is still empty, and the videos are
 copied in later, the next scan that finds them clears the "no picture" record so
 the deck gets dealt.
 

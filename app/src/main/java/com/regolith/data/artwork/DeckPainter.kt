@@ -16,6 +16,8 @@ import androidx.core.graphics.scale
 import androidx.core.graphics.withRotation
 import com.regolith.domain.artwork.BoxBlur
 import com.regolith.domain.artwork.DeckLayout
+import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.roundToInt
 
 /**
@@ -30,20 +32,23 @@ import kotlin.math.roundToInt
  */
 object DeckPainter {
     /**
-     * [frames] as a [width] × [height] deck: the first is the front card and
-     * colours the background, and the rest go behind it in [DeckLayout]'s
-     * rank order. At most [DeckLayout.MAX_CARDS] are used; there must be one.
+     * [frames] as a [width] × [height] deck, each card the shape of its own
+     * frame ([withFaces]). The front card colours the background, and the rest go
+     * behind it in [DeckLayout]'s rank order. At most [DeckLayout.MAX_CARDS]
+     * are used; there must be one. [frames] are the caller's, left as they are.
      */
     fun paint(frames: List<Bitmap>, width: Int, height: Int): Bitmap {
         require(frames.isNotEmpty()) { "a deck needs a card" }
-        val out = createBitmap(width, height)
-        val canvas = Canvas(out)
-        canvas.drawColor(GROUND)
-        background(canvas, frames.first(), width, height)
-        for (card in DeckLayout.cards(width.toFloat(), height.toFloat(), frames.size)) {
-            card(canvas, frames[card.rank], card)
+        return withFaces(frames) { faces ->
+            val out = createBitmap(width, height)
+            val canvas = Canvas(out)
+            canvas.drawColor(GROUND)
+            background(canvas, faces.first(), width, height)
+            for (card in DeckLayout.cards(width.toFloat(), height.toFloat(), faces.map(::shapeOf))) {
+                card(canvas, faces[card.rank], card)
+            }
+            out
         }
-        return out
     }
 
     /**
@@ -55,14 +60,35 @@ object DeckPainter {
     fun paintLoose(frames: List<Bitmap>, width: Int): Bitmap {
         require(frames.isNotEmpty()) { "a deck needs a card" }
         val height = (width / DeckLayout.looseAspect).roundToInt()
-        // A new bitmap starts transparent, which is the whole of the ground.
-        val out = createBitmap(width, height)
-        val canvas = Canvas(out)
-        for (card in DeckLayout.looseCards(width.toFloat(), height.toFloat(), frames.size)) {
-            card(canvas, frames[card.rank], card)
+        return withFaces(frames) { faces ->
+            // A new bitmap starts transparent, which is the whole of the ground.
+            val out = createBitmap(width, height)
+            val canvas = Canvas(out)
+            for (card in DeckLayout.looseCards(width.toFloat(), height.toFloat(), faces.map(::shapeOf))) {
+                card(canvas, faces[card.rank], card)
+            }
+            out
         }
-        return out
     }
+
+    /**
+     * [frames] as the cards show them, handed to [draw]: black bars baked
+     * into a video trimmed off ([withoutBars]), so a widescreen film's card is
+     * as wide as its picture, and the frame whose shape suits the tall poster
+     * best (nearest 2:3) moved to the front, the rest in their order. Copies
+     * made here are recycled after.
+     */
+    private fun <T> withFaces(frames: List<Bitmap>, draw: (List<Bitmap>) -> T): T {
+        val trimmed = frames.take(DeckLayout.MAX_CARDS).map { it.withoutBars() }
+        try {
+            val front = trimmed.indices.minBy { abs(ln(shapeOf(trimmed[it]) / POSTER_SHAPE)) }
+            return draw(listOf(trimmed[front]) + trimmed.filterIndexed { index, _ -> index != front })
+        } finally {
+            trimmed.forEach { face -> if (frames.none { it === face }) face.recycle() }
+        }
+    }
+
+    private fun shapeOf(bitmap: Bitmap): Float = bitmap.width.toFloat() / bitmap.height
 
     /**
      * The front card again, blurred to a wash of its colours, more
@@ -106,7 +132,10 @@ object DeckPainter {
         val face = shrink(frame, card.width.roundToInt(), card.height.roundToInt())
         val front = card.rank == 0
         val rect = RectF(card.left, card.top, card.left + face.width, card.top + face.height)
-        val radius = card.width * CORNER
+        // Corners, shadows and edges go by the card's short side, so a wide
+        // card and a tall one look like the same kind of card.
+        val side = minOf(card.width, card.height)
+        val radius = side * CORNER
         try {
             canvas.withRotation(card.degrees, card.pivotX, card.pivotY) {
                 // The shadow: like CSS box-shadow, drawn by a shape the face
@@ -114,7 +143,7 @@ object DeckPainter {
                 // anti-aliased edge lets through reads as edge, not as a halo.
                 val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = GROUND
-                    setShadowLayer(card.width * SHADOW_BLUR, 0f, card.width * SHADOW_DROP, if (front) FRONT_SHADOW else SHADOW)
+                    setShadowLayer(side * SHADOW_BLUR, 0f, side * SHADOW_DROP, if (front) FRONT_SHADOW else SHADOW)
                 }
                 drawRoundRect(rect, radius, radius, shadow)
                 // The face, through a shader so the rounded corners are
@@ -130,7 +159,7 @@ object DeckPainter {
                     if (card.brightness < 1f) colorFilter = dimmed(card.brightness)
                 }
                 drawRoundRect(rect, radius, radius, paint)
-                val stroke = card.width * EDGE
+                val stroke = side * EDGE
                 val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     style = Paint.Style.STROKE
                     strokeWidth = stroke
@@ -171,6 +200,9 @@ object DeckPainter {
 
     private val GROUND = Color.rgb(10, 10, 10)
 
+    /** The poster's own shape: the front card is the one nearest it. */
+    private const val POSTER_SHAPE = 2f / 3f
+
     /** More colour, less light: a blur averages most pictures towards grey. */
     private val BACKGROUND_TONE = ColorMatrixColorFilter(
         ColorMatrix().apply {
@@ -183,7 +215,7 @@ object DeckPainter {
     private const val MIN_BACKGROUND = 4
     private const val BLUR_RADIUS = 2
 
-    /** Sizes in parts of the card's width, so every kind of picture is the same deck at its own scale. */
+    /** Sizes in parts of the card's short side, so every kind of picture is the same deck at its own scale. */
     private const val CORNER = 0.065f
     private const val EDGE = 0.009f
     private const val SHADOW_BLUR = 0.17f

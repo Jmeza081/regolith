@@ -24,8 +24,10 @@ import kotlin.math.sin
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DeckPainterTest {
-    /** A 16:9 frame of one colour, the size the deck's frames are grabbed at. */
-    private fun frame(color: Int): Bitmap = createBitmap(800, 450).apply { eraseColor(color) }
+    /** A frame of one colour, 2:3 unless said otherwise, so its card is the deck's standard one. */
+    private fun frame(color: Int, width: Int = 400, height: Int = 600): Bitmap = createBitmap(width, height).apply { eraseColor(color) }
+
+    private val twoByThree = List(5) { 2f / 3f }
 
     /** The pixel under a point on [card], given in parts of its width and height, once the card has turned. */
     private fun Bitmap.on(card: DeckLayout.Card, across: Float, down: Float): Int {
@@ -42,7 +44,7 @@ class DeckPainterTest {
         val deck = DeckPainter.paint(frames, 500, 750)
         assertEquals(500, deck.width)
         assertEquals(750, deck.height)
-        val front = DeckLayout.cards(500f, 750f, 5).last()
+        val front = DeckLayout.cards(500f, 750f, twoByThree).last()
         assertEquals(Color.RED, deck.on(front, 0.5f, 0.5f))
     }
 
@@ -51,7 +53,7 @@ class DeckPainterTest {
         val deck = DeckPainter.paint(frames, 500, 750)
         // The third frame is the left one of the middle pair, out of the
         // front card's way (and out of its shadow) near its own left edge.
-        val third = DeckLayout.cards(500f, 750f, 5).single { it.rank == 2 }
+        val third = DeckLayout.cards(500f, 750f, twoByThree).single { it.rank == 2 }
         val pixel = deck.on(third, 0.1f, 0.35f)
         assertTrue("got ${Integer.toHexString(pixel)}", Color.red(pixel) < 20 && Color.green(pixel) < 20)
         assertTrue("got ${Color.blue(pixel)}", Color.blue(pixel) in 190..240)
@@ -70,14 +72,40 @@ class DeckPainterTest {
         assertEquals((1080 / DeckLayout.looseAspect).toInt().toFloat(), deck.height.toFloat(), 1f)
         assertEquals("the corners are clear", 0, Color.alpha(deck.getPixel(2, 2)))
         assertEquals(0, Color.alpha(deck.getPixel(deck.width - 3, 2)))
-        val front = DeckLayout.looseCards(deck.width.toFloat(), deck.height.toFloat(), 5).last()
+        val front = DeckLayout.looseCards(deck.width.toFloat(), deck.height.toFloat(), twoByThree).last()
         assertEquals(Color.RED, deck.on(front, 0.5f, 0.5f))
+    }
+
+    @Test fun `a wide frame makes a wide card, not a tall crop of one`() {
+        val deck = DeckPainter.paint(listOf(frame(Color.RED, 800, 450)), 500, 750)
+        val card = DeckLayout.cards(500f, 750f, listOf(16f / 9f)).single()
+        assertEquals(Color.RED, deck.on(card, 0.5f, 0.5f))
+        // Where a 2:3 card's top would be, there is only the background.
+        val standard = DeckLayout.cards(500f, 750f, listOf(2f / 3f)).single()
+        assertTrue(deck.on(standard, 0.5f, 0.05f) != Color.RED)
+    }
+
+    @Test fun `black bars baked into a film are left off its card`() {
+        // A 2.39:1 picture in a 16:9 frame: 57 px of black above and below.
+        val letterboxed = frame(Color.BLACK, 800, 450).also { bitmap ->
+            for (y in 57 until 393) for (x in 0 until 800) bitmap.setPixel(x, y, Color.RED)
+        }
+        val deck = DeckPainter.paint(listOf(letterboxed), 500, 750)
+        // Down the middle of the card: the picture, and just past either end
+        // of it the card's edge and the background, never a black bar.
+        val column = (0 until 750).map { deck.getPixel(250, it) }
+        val first = column.indexOfFirst { it == Color.RED }
+        val last = column.indexOfLast { it == Color.RED }
+        assertTrue("a wide card's worth of picture: ${last - first} px", last - first in 140..175)
+        for (y in listOf(first - 3, last + 3)) {
+            assertTrue("no bar at $y: ${Integer.toHexString(column[y])}", Color.red(column[y]) > 30)
+        }
     }
 
     @Test fun `a thumb deals the same hand at its own shape`() {
         val deck = DeckPainter.paint(listOf(frame(Color.GREEN)), 320, 180)
         assertEquals(320, deck.width)
-        val front = DeckLayout.cards(320f, 180f, 1).single()
+        val front = DeckLayout.cards(320f, 180f, listOf(2f / 3f)).single()
         assertEquals(Color.GREEN, deck.on(front, 0.5f, 0.5f))
     }
 }

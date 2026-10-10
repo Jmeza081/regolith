@@ -32,6 +32,26 @@ class FrameLookTest {
         assertFalse("a night scene", FrameLook.blank(scene(dark = 10, light = 90)))
     }
 
+    /** A [width] x [height] grid of a bright picture, with [paint] darkening some of it. */
+    private fun grid(width: Int = 64, height: Int = 36, paint: (x: Int, y: Int) -> Int? = { _, _ -> null }) =
+        IntArray(width * height) { i -> paint(i % width, i / width) ?: random.nextInt(60, 220) }
+
+    @Test fun `bars above and below a widescreen picture are found`() {
+        val box = FrameLook.picture(grid { _, y -> if (y < 5 || y >= 31) 3 else null }, 64, 36)
+        assertTrue(box != null && box.toList() == listOf(0, 5, 64, 31))
+    }
+
+    @Test fun `bars either side of a 4-by-3 picture are found`() {
+        val box = FrameLook.picture(grid { x, _ -> if (x < 8 || x >= 56) 2 else null }, 64, 36)
+        assertTrue(box != null && box.toList() == listOf(8, 0, 56, 36))
+    }
+
+    @Test fun `a dark sky over a picture is not a bar, nor is a dark frame, nor none`() {
+        assertTrue("one band only", FrameLook.picture(grid { _, y -> if (y < 8) 3 else null }, 64, 36) == null)
+        assertTrue("all dark", FrameLook.picture(IntArray(64 * 36) { 4 }, 64, 36) == null)
+        assertTrue("no bars", FrameLook.picture(grid(), 64, 36) == null)
+    }
+
     @Test fun `luma weighs green most and blue least`() {
         assertTrue(FrameLook.luma(0, 255, 0) > FrameLook.luma(255, 0, 0))
         assertTrue(FrameLook.luma(255, 0, 0) > FrameLook.luma(0, 0, 255))
