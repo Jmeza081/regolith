@@ -217,7 +217,13 @@ class Media3Frames @Inject constructor(
             val mediaSources = DefaultMediaSourceFactory(context).setDataSourceFactory { ByteSourceDataSource(open) }
             // Only a name, for the extractors to guess the container by first.
             val uri = android.net.Uri.Builder().scheme("regolith-cut").authority("media").appendPath(name).build()
-            frameExtractor(MediaItem.fromUri(uri), mediaSources, maxWidth, maxHeight).use { extractor -> grab(extractor, 0) }
+            // A cut's frame is its very first, a few hundred kilobytes in, so it
+            // comes in well under a second. One that has not come in
+            // [CUT_TIMEOUT_SECONDS] is not coming: a decoder that wedged as it
+            // started (seen now and then on the emulator's software decoder,
+            // which then holds up the next extractor too, so a second try is
+            // no use) need not hold an extraction slot for Media3's thirty.
+            frameExtractor(MediaItem.fromUri(uri), mediaSources, maxWidth, maxHeight).use { extractor -> grab(extractor, 0, CUT_TIMEOUT_SECONDS) }
         }
     } catch (e: Exception) {
         if (e is kotlinx.coroutines.CancellationException) throw e
@@ -246,7 +252,7 @@ class Media3Frames @Inject constructor(
             .build()
     }
 
-    private fun grab(extractor: FrameExtractor, positionMs: Long): GrabbedFrame {
+    private fun grab(extractor: FrameExtractor, positionMs: Long, timeoutSeconds: Long = TIMEOUT_SECONDS): GrabbedFrame {
         // Cancelled before `use` closes the extractor, not left running.
         // Closing one while a frame request is still outstanding means
         // tearing down the GL context and the decoder under work that still
@@ -254,7 +260,7 @@ class Media3Frames @Inject constructor(
         // fail.
         val pending = extractor.getFrame(positionMs)
         val frame = try {
-            pending.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            pending.get(timeoutSeconds, TimeUnit.SECONDS)
         } catch (e: Exception) {
             pending.cancel(/* mayInterruptIfRunning = */ true)
             throw e
@@ -270,5 +276,8 @@ class Media3Frames @Inject constructor(
          * short enough that a wall of tiles does not sit on a dead extractor.
          */
         const val TIMEOUT_SECONDS = 30L
+
+        /** How long a cut's first frame ([frameFromBytes]) may take. */
+        const val CUT_TIMEOUT_SECONDS = 12L
     }
 }

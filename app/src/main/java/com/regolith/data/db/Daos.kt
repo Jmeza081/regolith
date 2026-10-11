@@ -876,6 +876,29 @@ interface ArtworkDao {
     suspend fun deleteFramesFromTheStart()
 
     /**
+     * Marks showing their film's thumb rather than a frame of their own
+     * (`ArtworkRepository.fallBackToFilm`): Media3 could not reach them,
+     * usually because the file has no index (ArtworkStore.GENERATION 7).
+     * Their row points at the film's picture, which lives under `file/`.
+     */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'moment' AND relPath LIKE 'file/%'")
+    suspend fun momentsBorrowingFilms(): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE ownerType = 'moment' AND relPath LIKE 'file/%'")
+    suspend fun deleteMomentsBorrowingFilms()
+
+    /** Videos' own frames of one [kind], each, for a generation step that looks at the pictures themselves. */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND kind = :kind")
+    suspend fun filmFrames(kind: String): List<ArtworkEntity>
+
+    /** Every kind of [fileIds]' own frames, to be grabbed again. */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND ownerId IN (:fileIds)")
+    suspend fun filmFramesOf(fileIds: List<Long>): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND ownerId IN (:fileIds)")
+    suspend fun deleteFilmFramesOf(fileIds: List<Long>)
+
+    /**
      * Films' pictures taken from their folder's own picture (a `poster.jpg`
      * beside a lone film). None are made any more: a folder's pictures are
      * the folder's alone (ArtworkStore.GENERATION 3).

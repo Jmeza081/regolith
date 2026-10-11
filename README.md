@@ -698,10 +698,13 @@ single open of the file, which costs little more than one mark on its own. A mar
 named since the last walk is grabbed the first time Search shows it, along with any
 other marks in that film still missing a picture. Frames are kept under the mark's
 own time: move a mark and its old frame is dropped and a new one taken; rename it
-and nothing is re-read. If the file's key frames are too far apart to land within
-ten seconds of the mark, the row shows the film's own thumbnail instead, rather
-than a picture claiming to be a time it is not. That stand-in is tried again after
-a day, in case the grab only failed because the share was down.
+and nothing is re-read. A recording with no index, which the player can only read
+from its start, would hand back its opening frames for every mark; its marks are
+cut from the file at a key frame by each one instead, as its own tile is. If the
+frame still can't be had within ten seconds of the mark, the row shows the film's
+own thumbnail instead, rather than a picture claiming to be a time it is not. That
+stand-in is tried again after a day, in case the grab only failed because the
+share was down.
 
 A folder with no poster of its own gets a deck of cards: five frames from the
 videos inside it, picked from the first video to the last and fanned like a hand

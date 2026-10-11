@@ -253,8 +253,11 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
          *    gives its runtime and a frame from its middle, and a blank frame
          *    is tried again elsewhere, so frames grabbed while the runtime was
          *    unknown (from the very start) go, and so do decks.
+         * 7: a mark in a file Media3 cannot seek gets its own frame from a cut
+         *    of the file, so marks that borrowed their film's thumb go, with
+         *    those films' frames, and any film's frame that is blank.
          */
-        const val GENERATION = 6
+        const val GENERATION = 7
         const val GENERATION_FILE = ".generation"
         const val LOOSE_DECK_NAME = "deck.webp"
 

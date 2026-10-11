@@ -1,5 +1,6 @@
 package com.regolith.domain.media
 
+import kotlin.math.abs
 import com.regolith.domain.smb.SeekableByteSource
 
 /**
@@ -114,6 +115,38 @@ object UnindexedVideo {
         }
         null
     }.getOrNull()
+
+    /**
+     * A cut at the key frame nearest [timeMs] it can find, in a file whose
+     * clock runs to [runtimeMs]: for a moment's own frame, where [cutNear]'s
+     * share of the file is not enough. The first try is where that time
+     * would be at a steady bit rate; each next one is moved by how far the
+     * last landed off, kept between the tries already too early and too
+     * late, since a recording's bit rate is anything but steady. It stops
+     * within [CLOSE_ENOUGH_MS] (a recorder's key frames are a few seconds
+     * apart), or after a few tries, each a read round one cluster or
+     * fragment, with the nearest it found. Null when even that is further
+     * than [toleranceMs]: past the end of the file, or a clock that does not
+     * start near zero.
+     */
+    fun cutAtTime(source: SeekableByteSource, layout: Layout, timeMs: Long, runtimeMs: Long, toleranceMs: Long): Cut? {
+        if (runtimeMs <= 0 || timeMs < 0) return null
+        val aim = minOf(toleranceMs, CLOSE_ENOUGH_MS)
+        var early = 0.0
+        var late = 1.0
+        var fraction = (timeMs.toDouble() / runtimeMs).coerceIn(0.0, 1.0)
+        var nearest: Cut? = null
+        for (attempt in 0 until MAX_TIME_TRIES) {
+            val cut = cutNear(source, layout, fraction) ?: break
+            val off = cut.timeMs - timeMs
+            if (nearest == null || abs(off) < abs(nearest.timeMs - timeMs)) nearest = cut
+            if (abs(off) <= aim) return cut
+            if (off > 0) late = fraction else early = fraction
+            val next = if (cut.timeMs > 0) fraction * timeMs / cut.timeMs else (early + late) / 2
+            fraction = if (next > early && next < late) next else (early + late) / 2
+        }
+        return nearest?.takeIf { abs(it.timeMs - timeMs) <= toleranceMs }
+    }
 
     // --- Matroska (EBML: every element is an ID, a size, then that many bytes)
 
@@ -555,6 +588,12 @@ object UnindexedVideo {
 
     /** Windows overlap by this much, so a signature on the seam is not missed. */
     private const val SIGNATURE_OVERLAP = 16
+
+    /** How many cuts [cutAtTime] tries on its way to a time... */
+    private const val MAX_TIME_TRIES = 8
+
+    /** ...and how near it must land to stop trying. */
+    private const val CLOSE_ENOUGH_MS = 1_000L
 
     /** How far into a cluster to walk for its first key frame before trying the next cluster. */
     private const val MAX_CLUSTER_WALK = 8L shl 20

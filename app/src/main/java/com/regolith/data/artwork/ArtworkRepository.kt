@@ -345,7 +345,44 @@ class ArtworkRepository @Inject constructor(
                 artworkDao.deleteFramesFromTheStart()
                 artworkDao.deleteWithSource(ArtworkSource.DECK.name)
             }
+            if (from < 7) {
+                // A mark Media3 could not reach showed its film's thumb, and a
+                // film Media3 could not seek in kept the opening frame it handed
+                // back before a landing was checked, on a row that knew its
+                // runtime, which step 6 left alone: the intros on Home's moments.
+                // Such a mark gets a frame of its own now, cut from the file
+                // (cutMoments), and its film a frame from its middle. So the
+                // marks borrowing a film's thumb go, with those films' frames,
+                // and so does any film's frame that is all but black or a logo
+                // on black (FrameLook), judged from the copy on this phone.
+                val borrowing = artworkDao.momentsBorrowingFilms()
+                val blank = artworkDao.filmFrames(ArtworkKind.THUMB.name).filter { looksBlank(it.relPath) }.map { it.ownerId }
+                val films = (borrowing.map { it.ownerId } + blank).distinct()
+                Log.i(TAG, "artwork generation $from -> 7: ${borrowing.size} marks borrowing a film's thumb; grabbing ${films.size} films' frames again, ${blank.size} of them blank")
+                artworkDao.deleteMomentsBorrowingFilms()
+                for (chunk in films.chunked(GENERATION_CHUNK)) {
+                    for (row in artworkDao.filmFramesOf(chunk)) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                    artworkDao.deleteFilmFramesOf(chunk)
+                }
+            }
             store.setGeneration(ArtworkStore.GENERATION)
+        }
+    }
+
+    /**
+     * Whether the picture kept at [relPath] says nothing about its video
+     * ([FrameLook.blank]: all but black, one flat colour, a logo on black),
+     * from a small decode of the copy on this phone. False when it will not
+     * decode, so a picture that cannot be judged is left alone.
+     */
+    private fun looksBlank(relPath: String): Boolean {
+        if (relPath.isEmpty()) return false
+        val options = BitmapFactory.Options().apply { inSampleSize = BLANK_CHECK_SAMPLE }
+        val bitmap = BitmapFactory.decodeFile(store.fileFor(relPath).path, options) ?: return false
+        return try {
+            FrameLook.blank(bitmap.lumaGrid())
+        } finally {
+            bitmap.recycle()
         }
     }
 
@@ -856,6 +893,10 @@ class ArtworkRepository @Inject constructor(
             }
             // A grabber that stopped short owes the rest; treat them as misses.
             misses += wanted.drop(next)
+            // A file with no index seeks only from its start, so Media3 lands
+            // at the opening frames whatever time it is sent to. Its marks get
+            // their own frames from cuts of the file instead, as its tile does.
+            if (misses.isNotEmpty()) misses.removeAll(cutMoments(file, misses, kinds))
             val rest = System.currentTimeMillis() - startedAt - firstFrameMs
             Log.i(
                 TAG,
@@ -865,6 +906,36 @@ class ArtworkRepository @Inject constructor(
             )
         }
         for (at in misses) fallBackToFilm(ArtworkOwner.Moment(owner.fileId, at), kinds)
+    }
+
+    /**
+     * The marks at [times] in [file], which Media3 could not reach, each
+     * given its own frame from a cut of the file at a key frame by it
+     * ([UnindexedVideo.cutAtTime]), when the file is one with no index; the
+     * times saved. A mark's frame is drawn under its clock, so a cut that
+     * cannot land within [MOMENT_SEEK_TOLERANCE_MS] saves nothing, and the
+     * mark falls back to the film's thumb as before.
+     */
+    private suspend fun cutMoments(file: MediaFileEntity, times: List<Long>, kinds: List<ArtworkKind>): Set<Long> {
+        val layout = unindexedLayout(file) ?: return emptySet()
+        val open = bytesOf(file) ?: return emptySet()
+        val runtime = file.durationMs?.takeIf { it > 0 } ?: open().use { UnindexedVideo.runtimeMs(it, layout) } ?: return emptySet()
+        val saved = mutableSetOf<Long>()
+        for (at in times) {
+            val cut = open().use { UnindexedVideo.cutAtTime(it, layout, at, runtime, MOMENT_SEEK_TOLERANCE_MS) } ?: continue
+            val grabbed = grabber.frameFromBytes(
+                { SplicedByteSource(open(), layout.headerEnd, cut.offset, cut.prefix) },
+                file.name, MOMENT_FRAME_MAX_WIDTH, MOMENT_FRAME_MAX_HEIGHT,
+            ) ?: continue
+            val frame = grabbed.bitmap.software()
+            try {
+                Log.i(TAG, "${file.name}: no index; frame at ${cut.timeMs}ms for its mark at ${at}ms, cut from the file")
+                if (saveBitmap(frame, ArtworkOwner.Moment(file.id, at), ArtworkSource.FRAMEGRAB, kinds)) saved += at
+            } finally {
+                frame.recycle()
+            }
+        }
+        return saved
     }
 
     /** Save [grabbed] as [owner]'s frame if it landed close enough to the mark. False means fall back. */
@@ -1504,6 +1575,10 @@ class ArtworkRepository @Inject constructor(
         const val DECK_FRAME_MAX = 800
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
         const val DECK_MAX_FOLDERS = 24
+        /** How many ids a generation step hands SQLite at once, well inside its limit on a query's parameters. */
+        const val GENERATION_CHUNK = 500
+        /** A thumb is judged blank from a quarter of its width: 80 pixels, more than [FrameLook]'s grid needs. */
+        const val BLANK_CHECK_SAMPLE = 4
         /**
          * The most videos a deck opens to learn which way up they are, when
          * their rows do not say yet. The artwork walk measures every video

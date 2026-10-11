@@ -147,6 +147,44 @@ class ArtworkDaoTest {
     }
 
     @Test
+    fun `marks borrowing their film's thumb are found apart from marks with frames of their own`() = runTest {
+        // ArtworkStore.GENERATION 7: a mark's row pointing at its film's
+        // picture (under file/) borrowed it; one under moment/ is its own.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            val dao = db.artworkDao()
+            fun mark(fileId: Long, at: Long, relPath: String) = ArtworkEntity(
+                ownerType = "moment", ownerId = fileId, ownerVariant = at.toString(), kind = "THUMB", source = "FRAMEGRAB",
+                relPath = relPath, width = 320, height = 180, updatedAtMs = 1,
+            )
+            fun film(fileId: Long, kind: String, source: String = "FRAMEGRAB") = ArtworkEntity(
+                ownerType = "file", ownerId = fileId, kind = kind, source = source, relPath = "file/$fileId/$kind.jpg", width = 320, height = 180, updatedAtMs = 1,
+            )
+            dao.upsert(mark(10, 30_000, "file/10/thumb.jpg"))
+            dao.upsert(mark(10, 90_000, "moment/10/90000/thumb.jpg"))
+            dao.upsert(mark(11, 5_000, "moment/11/5000/thumb.jpg"))
+            dao.upsert(film(10, "POSTER"))
+            dao.upsert(film(10, "THUMB"))
+            dao.upsert(film(11, "THUMB"))
+            dao.upsert(film(12, "THUMB", source = "EMBEDDED"))
+
+            assertEquals(listOf(10L to "30000"), dao.momentsBorrowingFilms().map { it.ownerId to it.ownerVariant })
+            assertEquals(setOf(10L, 11L), dao.filmFrames("THUMB").map { it.ownerId }.toSet())
+            assertEquals(setOf("POSTER", "THUMB"), dao.filmFramesOf(listOf(10)).map { it.kind }.toSet())
+
+            dao.deleteMomentsBorrowingFilms()
+            dao.deleteFilmFramesOf(listOf(10))
+            assertEquals(null, dao.get("moment", 10, "30000", "THUMB"))
+            assertEquals("moment/10/90000/thumb.jpg", dao.get("moment", 10, "90000", "THUMB")!!.relPath)
+            assertEquals(null, dao.get("file", 10, "", "POSTER"))
+            assertEquals("FRAMEGRAB", dao.get("file", 11, "", "THUMB")!!.source)
+            assertEquals("EMBEDDED", dao.get("file", 12, "", "THUMB")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `a picture's thumbnail is found by its folder, and is an orphan once its file is gone`() = runTest {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
         try {

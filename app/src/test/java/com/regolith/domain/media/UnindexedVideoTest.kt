@@ -50,6 +50,22 @@ class UnindexedVideoTest {
         assertTrue("on a key frame, one a second", cut.timeMs % 1000 < 50)
     }
 
+    @Test fun `a cut can be steered to a moment's own time, and none past the end`() {
+        for (name in listOf("unindexed.mkv", "fragmented.mp4")) {
+            val video = file(name)
+            val layout = UnindexedVideo.layout(video)!!
+            val runtime = UnindexedVideo.runtimeMs(video, layout)!!
+            for (at in listOf(2_000L, 7_000L, 15_000L)) {
+                val cut = UnindexedVideo.cutAtTime(video, layout, at, runtime, toleranceMs = 500)
+                assertTrue("$name: for ${at}ms got ${cut?.timeMs}", cut != null && cut.timeMs in at - 500..at + 500)
+            }
+            assertNull("$name: a minute into a 20-second file", UnindexedVideo.cutAtTime(video, layout, 60_000, runtime, toleranceMs = 500))
+            // Allowed ten seconds off, it still goes for the key frame by the mark.
+            val loose = UnindexedVideo.cutAtTime(video, layout, 13_000, runtime, toleranceMs = 10_000)
+            assertTrue("$name: got ${loose?.timeMs}", loose != null && loose.timeMs in 12_000..14_000)
+        }
+    }
+
     @Test fun `cuts move through the file in order, from the first second to the last`() {
         for (name in listOf("unindexed.mkv", "fragmented.mp4")) {
             val video = file(name)
