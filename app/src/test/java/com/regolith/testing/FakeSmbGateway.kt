@@ -71,6 +71,13 @@ class FakeSmbGateway : SmbGateway {
     /** Every whole-file write fails with this, while renames and deletes still work: a share that is full, or refuses new files. */
     var writeFailure: SmbFailure? = null
 
+    /**
+     * Runs at the start of every rename, before anything is checked. A test
+     * holds a `writeReplacing` write here, its `.part` down and not yet
+     * renamed: the moment a second writer of the same file collides with it.
+     */
+    @Volatile var beforeRename: (suspend () -> Unit)? = null
+
     fun addFile(share: String, relPath: String, bytes: ByteArray, modifiedAtMs: Long = DEFAULT_MTIME) {
         addShare(share)
         files.getValue(share)[relPath] = bytes
@@ -112,6 +119,7 @@ class FakeSmbGateway : SmbGateway {
     }
 
     override suspend fun rename(host: SmbHost, credentials: SmbCredentials, share: String, fromRelPath: String, toRelPath: String, replace: Boolean) {
+        beforeRename?.invoke()
         unreachableAfterRenames?.let { limit -> if (renameCount >= limit) throw SmbFailure.Unreachable(host.host) }
         renameCount++
         checkWritable(host, credentials, share)

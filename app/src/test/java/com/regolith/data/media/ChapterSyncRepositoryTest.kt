@@ -19,8 +19,14 @@ import com.regolith.domain.smb.ServerAccess
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbHost
 import com.regolith.testing.FakeSmbGateway
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -222,6 +228,79 @@ class ChapterSyncRepositoryTest {
         assertEquals(0, rows().size)
     }
 
+    /**
+     * Runs [first] until its write reaches the rename, its `.part` down, and
+     * holds it there while [second] starts on another thread, as Save's own
+     * write and the worker do, with [COLLIDE_MS] of real time to get in the
+     * way. Then lets [first] finish. Returns both answers.
+     */
+    private suspend fun <A, B> whileWriting(first: suspend () -> A, second: suspend () -> B): Pair<A, B> = coroutineScope {
+        val atRename = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        gateway.beforeRename = { atRename.complete(Unit); release.await() }
+        val held = async(Dispatchers.Default) { first() }
+        atRename.await()
+        gateway.beforeRename = null
+        val other = async(Dispatchers.Default) { second() }
+        // Real time, not the test clock, which would skip straight past it.
+        withContext(Dispatchers.Default) { withTimeoutOrNull(COLLIDE_MS) { other.await() } }
+        release.complete(Unit)
+        held.await() to other.await()
+    }
+
+    @Test
+    fun `save's own write waits for the worker's, and finds the file written`() = runTest {
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
+        repo.markDirty(heat)
+        // Unlocked, Save put its own `.part` down and renamed it in place
+        // here, so the worker's rename found nothing to move: a failure for a
+        // file that had landed, set over the row as "the last write failed".
+        val (reachable, saved) = whileWriting({ repo.syncDirty() }, { repo.writeNow(heat) })
+        assertTrue(reachable)
+        assertEquals(ChapterWriteOutcome.WRITTEN, saved)
+        assertEquals(1, gateway.writes.size)
+        assertEquals(ChapterSyncState.ON_SHARE, state().state)
+        assertNull(state().note)
+    }
+
+    @Test
+    fun `the worker waits for save's own write, and finds nothing left to write`() = runTest {
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
+        repo.markDirty(heat)
+        // The other way round, Save was the one told "the share refused the file".
+        val (saved, reachable) = whileWriting({ repo.writeNow(heat) }, { repo.syncDirty() })
+        assertEquals(ChapterWriteOutcome.WRITTEN, saved)
+        assertTrue(reachable)
+        assertEquals(1, gateway.writes.size)
+        assertEquals(ChapterSyncState.ON_SHARE, state().state)
+        assertNull(state().note)
+    }
+
+    @Test
+    fun `an edit saved while the last one is being written is written after it`() = runTest {
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
+        repo.markDirty(heat)
+        whileWriting({ repo.syncDirty() }) {
+            // The next Save: its rows, then its mark. The write under way read
+            // the rows before these, so it must not leave this edit marked done.
+            db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", 750_000L to "The heist", at = 20_000))
+            repo.markDirty(heat)
+        }
+        assertEquals(ChapterSyncState.WAITING, state().state)
+        assertEquals(ChapterWriteOutcome.WRITTEN, repo.writeNow(heat))
+        assertEquals(sidecar, String(gateway.files.getValue("media").getValue("Films/Heat.1995.chapters.txt")))
+    }
+
+    @Test
+    fun `a revert during a write takes the file that write puts down`() = runTest {
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
+        repo.markDirty(heat)
+        whileWriting({ repo.syncDirty() }, { repo.revert(heat) })
+        assertFalse(gateway.files.getValue("media").containsKey("Films/Heat.1995.chapters.txt"))
+        assertNull(db.chapterSyncDao().byFile(heat))
+        assertEquals(0, rows().size)
+    }
+
     @Test
     fun `revert on a read-only share drops the rows, and warns the file stays`() = runTest {
         db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
@@ -232,5 +311,10 @@ class ChapterSyncRepositoryTest {
         assertEquals(0, rows().size)
         assertEquals(ChapterSyncNote.FILE_STAYS, state().note)
         assertTrue(gateway.files.getValue("media").containsKey("Films/Heat.1995.chapters.txt"))
+    }
+
+    private companion object {
+        /** How long a second writer is given to collide with a held one. Ample: everything here is in memory. */
+        const val COLLIDE_MS = 300L
     }
 }
