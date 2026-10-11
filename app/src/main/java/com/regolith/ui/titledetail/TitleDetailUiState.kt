@@ -3,6 +3,7 @@ package com.regolith.ui.titledetail
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.transfer.TransferCause
 import com.regolith.domain.transfer.TransferStatus
+import com.regolith.ui.components.PathCrumb
 
 /** Everything Title Detail draws (design section 09). */
 data class TitleDetailUiState(
@@ -16,8 +17,12 @@ data class TitleDetailUiState(
     /** Seconds already watched, for "Resume · 15m left". Null when never started. */
     val progressMs: Long? = null,
     val durationMs: Long? = null,
-    /** "/media/Films/The Thing/" */
-    val path: String = "",
+    /**
+     * Where the file is, step by step, for the Path line: the share, then
+     * each folder down to the file's own ("media", "Films", "The Thing"),
+     * each opening its folder. Empty until the file has loaded.
+     */
+    val pathCrumbs: List<PathCrumb> = emptyList(),
     /** "H.264 · 1920×1080 · 24 fps"; null while the probe runs, "" if it found nothing. */
     val videoLine: String? = null,
     val audioLine: String? = null,

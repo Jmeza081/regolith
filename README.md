@@ -334,6 +334,11 @@ its video where it is. They never download, since what Download keeps on the
 phone is videos to play. Moving, renaming or deleting a folder's poster this
 way changes the folder's tile at once.
 
+A video's page says where it lives, and each folder in its Path line opens that
+folder here, so a film you reached from Home or Search is one tap from its
+neighbours. The folder it is in opens with the video ringed, so you can see
+where it sits.
+
 Because a folder moves and deletes whole, Move and Delete refuse when you have
 picked a folder and then taken something back out of it. Moving or deleting the
 folder would take that too, so the app says so and asks you to open the folder

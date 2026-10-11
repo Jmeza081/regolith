@@ -58,6 +58,7 @@ import com.regolith.ui.components.ChipStyle
 import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.PathCrumbs
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
@@ -92,6 +93,11 @@ fun TitleDetailScreen(
     viewModel: TitleDetailViewModel,
     onBack: () -> Unit,
     onPlay: (fileId: Long) -> Unit,
+    /**
+     * A step of the Path line was tapped: open [folderId]. [highlightFileId]
+     * is this file when the folder is its own, for the folder to show it.
+     */
+    onOpenFolder: (folderId: Long, highlightFileId: Long?) -> Unit,
     modifier: Modifier = Modifier,
     /**
      * True when this is the page beside a wall on a wide window (`WallScene`,
@@ -104,6 +110,7 @@ fun TitleDetailScreen(
         stateFlow = viewModel.uiState,
         onBack = onBack,
         onPlay = onPlay,
+        onOpenFolder = onOpenFolder,
         onKeep = viewModel::keepOnDevice,
         onRemove = viewModel::removeFromDevice,
         onStartRename = viewModel::startRename,
@@ -126,6 +133,7 @@ private fun TitleDetailContent(
     stateFlow: StateFlow<TitleDetailUiState>,
     onBack: () -> Unit,
     onPlay: (fileId: Long) -> Unit,
+    onOpenFolder: (folderId: Long, highlightFileId: Long?) -> Unit,
     onKeep: () -> Unit,
     onRemove: () -> Unit,
     onStartRename: () -> Unit,
@@ -268,7 +276,19 @@ private fun TitleDetailContent(
                 }
 
                 SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
-                    FactRow("Path", state.path)
+                    FactRow("Path", loading = state.pathCrumbs.isEmpty()) {
+                        // Each step opens its folder in Browse; the file's own
+                        // folder shows the file, ringed, as Shorts' Locate does.
+                        PathCrumbs(
+                            crumbs = state.pathCrumbs,
+                            onOpen = { index, crumb ->
+                                val folderId = crumb.folderId
+                                if (folderId != null) onOpenFolder(folderId, state.fileId.takeIf { index == state.pathCrumbs.lastIndex })
+                            },
+                            testTag = "detail_path",
+                            leadingSlash = !state.phone,
+                        )
+                    }
                     FactRow("Video", state.videoLine, loading = state.probing)
                     FactRow("Audio", state.audioLine, loading = state.probing)
                     FactRow("Modified", formatDate(state.modifiedAtMs))
@@ -444,15 +464,25 @@ private fun TransferLine(transfer: TransferView?, onKeep: () -> Unit, onRemove: 
 @Composable
 private fun FactRow(label: String, value: String?, loading: Boolean = false) {
     val colors = RegolithTheme.colors
+    // A value in hand shows even while a new one is read; "" is a read that found nothing.
+    FactRow(label, loading = value.isNullOrEmpty() && (loading || value == null)) {
+        if (value.isNullOrEmpty()) {
+            Text("Unknown", style = TextStyles.factValue, color = colors.metadata)
+        } else {
+            Text(value, style = TextStyles.factValue, color = colors.inkSoft, textAlign = TextAlign.End)
+        }
+    }
+}
+
+/** A fact whose value is more than a line of text: the Path line's crumbs. A skeleton stands in while [loading]. */
+@Composable
+private fun FactRow(label: String, loading: Boolean, value: @Composable () -> Unit) {
+    val colors = RegolithTheme.colors
     Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 46.dp).padding(vertical = Spacing.s8), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = TextStyles.factLabel, color = colors.metadata)
         Spacer(Modifier.width(Spacing.s12))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            when {
-                value != null && value.isNotEmpty() -> Text(value, style = TextStyles.factValue, color = colors.inkSoft, textAlign = TextAlign.End)
-                loading || value == null -> Skeleton(Modifier.height(12.dp).fillMaxWidth(0.4f))
-                else -> Text("Unknown", style = TextStyles.factValue, color = colors.metadata)
-            }
+            if (loading) Skeleton(Modifier.height(12.dp).fillMaxWidth(0.4f)) else value()
         }
     }
 }
