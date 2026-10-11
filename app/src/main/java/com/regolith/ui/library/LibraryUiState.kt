@@ -1,5 +1,6 @@
 package com.regolith.ui.library
 
+import com.regolith.ui.components.readingTheShare
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
@@ -164,6 +165,13 @@ data class LibraryUiState(
     val noSource: Boolean = false,
     /** A scan is walking a share right now. */
     val scanning: Boolean = false,
+    /** The files the running scans have found so far, for the refresh line. */
+    val scanFiles: Int = 0,
+    /**
+     * A collection's pull to refresh is listing its folders
+     * (`LibraryViewModel.refresh`): the files listed so far. Null when it is not.
+     */
+    val walkFiles: Int? = null,
     /** True when at least one share has completed a scan; false shows the "scan first" nudge. */
     val scannedOnce: Boolean = true,
     /** Servers that cannot be reached right now (design: "TOWER is out of reach"). */
@@ -171,7 +179,15 @@ data class LibraryUiState(
     val checkingReachability: Boolean = false,
     /** "On this device" tab. */
     val device: DeviceUiState = DeviceUiState(),
-)
+) {
+    /**
+     * The refresh line's live status while the share is being read for this
+     * page, a collection's own walk or any scan, as Home shows a scan; null
+     * while nothing is reading it.
+     */
+    val refreshLine: String?
+        get() = walkFiles?.let(::readingTheShare) ?: if (scanning) readingTheShare(scanFiles) else null
+}
 
 data class UnreachableServer(val serverId: Long, val name: String, val lastSeenAtMs: Long?)
 
@@ -343,6 +359,7 @@ fun LibraryUiState.withWall(built: LibraryUiState, sortedTiles: List<LibraryTile
     loaded = built.loaded,
     noSource = built.noSource,
     scanning = built.scanning,
+    scanFiles = built.scanFiles,
     scannedOnce = built.scannedOnce,
     unreachable = built.unreachable,
 )

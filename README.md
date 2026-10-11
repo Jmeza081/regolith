@@ -78,7 +78,9 @@ Home picks up where you were. **Continue watching** has a card for each film you
 have started, with the time it has left (**See all** lists every one), **Newly
 added** the twelve newest files, **On this device** what you have downloaded, and
 **Moments** every name you have given a mark (see Chapters, below). Pull Home
-down to read every share again.
+or the Library down to read every share again. On a collection, a pull reads
+just that collection and the folders inside it, so what you are looking at is up
+to date in seconds rather than after the whole share.
 
 Search finds titles, filenames and folders as you type, and the moments you
 have named, each shown with the frame at its time: tap one and the film opens
@@ -286,8 +288,8 @@ it will keep, beside the new one.
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an
 `Arrival.2016.jpg` beside `Arrival.2016.mkv`, and the app makes the tile again the
-next time it lists that folder: when you open it, pull Home down, or scan the
-share. One uploaded from the phone is noticed as soon as the upload lands.
+next time it lists that folder: when you open it, pull it or Home down, or scan
+the share. One uploaded from the phone is noticed as soon as the upload lands.
 
 ### Manages the files, not just the library
 

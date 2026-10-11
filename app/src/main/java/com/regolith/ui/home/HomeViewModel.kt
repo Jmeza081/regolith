@@ -1,5 +1,6 @@
 package com.regolith.ui.home
 
+import com.regolith.ui.components.readingTheShare
 import com.regolith.data.spoof.spoofed
 import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
@@ -110,7 +111,7 @@ class HomeViewModel @Inject constructor(
                     unwatched = p == null || (p.positionMs == 0L && !p.completed),
                 )
             },
-            refreshLine = running.takeIf { it.isNotEmpty() }?.let { "Reading the share · ${"%,d".format(it.sumOf { r -> r.filesFound })} files so far" },
+            refreshLine = running.takeIf { it.isNotEmpty() }?.let { readingTheShare(it.sumOf { r -> r.filesFound }) },
             neverScanned = shareList.isNotEmpty() && shareList.none { it.lastScanAtMs != null } && runList.none { it.status == ScanRunEntity.DONE },
             moments = momentNames,
             postersPerRow = perRow,

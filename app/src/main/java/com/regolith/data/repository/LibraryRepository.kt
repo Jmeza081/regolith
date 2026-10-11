@@ -23,6 +23,7 @@ import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.model.rootsCover
 import com.regolith.domain.smb.SmbFailure
+import com.regolith.domain.smb.isAboutTheServer
 import com.regolith.domain.smb.SmbGateway
 import android.util.Log
 import com.regolith.domain.smb.SmbEntry
@@ -66,6 +67,9 @@ class LibraryRepository @Inject constructor(
 ) : FolderLookup {
     /** What one listing produced: the subfolders to walk next and how many playable files were seen. */
     data class FolderOutcome(val subfolders: List<FolderEntity>, val fileCount: Int)
+
+    /** What a walk of a folder tree ([refreshTree]) listed, and how many folders it had to leave out. */
+    data class TreeOutcome(val folders: Int, val files: Int, val skipped: Int)
 
     /**
      * Bring every stored parse up to [TitleParser.VERSION], once. A listing
@@ -143,6 +147,48 @@ class LibraryRepository @Inject constructor(
         return folderDao.upsert(
             FolderEntity(shareId = shareId, parentId = null, relPath = "", name = share.name, fileCount = 0, byteCount = 0, lastListedAtMs = null),
         )
+    }
+
+    /**
+     * List [start] and every folder under it, breadth-first ([refreshFolder]
+     * each): a scan's walk of a share from its root, and a collection's pull
+     * to refresh from the collection. [onListed] hears each folder once it
+     * is done, with the folders and files listed so far, so a walk can say
+     * how far it has got.
+     *
+     * One folder the server will not hand over is not a reason to abandon
+     * the walk. A walk is thousands of listings, and any of them can fail
+     * for reasons that say nothing about the rest — a folder deleted since
+     * its parent was listed, an ACL this login cannot read, a name the
+     * server will not open. Before this, the first of those ended a scan and
+     * the library kept whatever fraction had been reached. Only a failure
+     * about the SERVER stops the walk, thrown, and by the time one gets here
+     * the listing has already been retried ([listWithRetry]).
+     */
+    suspend fun refreshTree(
+        start: FolderEntity,
+        onListed: suspend (folder: FolderEntity, folders: Int, files: Int) -> Unit = { _, _, _ -> },
+    ): TreeOutcome {
+        val queue = ArrayDeque<FolderEntity>().apply { add(start) }
+        var folders = 0
+        var files = 0
+        var skipped = 0
+        while (queue.isNotEmpty()) {
+            val folder = queue.removeFirst()
+            val outcome = try {
+                refreshFolder(folder.id)
+            } catch (e: SmbFailure) {
+                if (e.isAboutTheServer) throw e
+                Log.w(TAG, "skipping '${folder.relPath}': ${e.message}")
+                skipped++
+                continue
+            }
+            folders++
+            files += outcome.fileCount
+            queue.addAll(outcome.subfolders)
+            onListed(folder, folders, files)
+        }
+        return TreeOutcome(folders, files, skipped)
     }
 
     /**

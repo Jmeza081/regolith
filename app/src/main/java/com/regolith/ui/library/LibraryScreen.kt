@@ -1,5 +1,14 @@
 package com.regolith.ui.library
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.graphics.graphicsLayer
+import com.regolith.ui.components.RefreshLine
+import com.regolith.ui.components.pagePull
+import com.regolith.ui.components.rememberPagePull
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -275,6 +284,26 @@ fun LibraryScreen(
     // lighting the page, its stats, and Videos / Moments tabs over the wall.
     // Network tab only: the device tab is a different page sharing this screen.
     val profile = state.profile.takeIf { onBack != null && tab == LibraryTab.NETWORK }
+
+    // Pull to refresh, as Home has it (PagePull): the share read again for
+    // what this page shows (LibraryViewModel.refresh). The line stays for as
+    // long as anything is reading the share, a scan started elsewhere too,
+    // as Home's does. The device tab re-reads the phone, which is quick and
+    // leaves no line behind.
+    val refreshLine = state.refreshLine.takeIf { tab == LibraryTab.NETWORK }
+    val refreshing = refreshLine != null
+    val pull = rememberPagePull(refreshing)
+    // The line hangs just above the page's top bar and comes down with the
+    // page as it is pulled; while the refresh runs, the page makes room for
+    // it. Over the top bar, as on Home, its status would run into the bar's
+    // subtitle. A profile's page draws up under the status bar (its light
+    // does), so it moves down that much further; every other page's top bar
+    // keeps clear of the status bar on its own.
+    var lineHeightPx by remember { mutableIntStateOf(0) }
+    val lineHeight = with(LocalDensity.current) { lineHeightPx.toDp() }
+    val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val lineSpan = lineHeight + Spacing.s8 + if (profile != null) statusBar else 0.dp
+    val lineRoom by animateDpAsState(if (refreshing) lineSpan else 0.dp, label = "refreshRoom")
     // It opens on the tab the chip it was opened from names (LibraryFilter);
     // a tab the collection does not have gives way to its first.
     var chosenTab by rememberSaveable { mutableStateOf(state.filter.profileTab()) }
@@ -408,8 +437,24 @@ fun LibraryScreen(
     // comes with it, so a pick can span a wall and the folders under it.
     // Leaving selection is the X above or Cancel below.
 
-    Box(modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().testTag("library_screen")) {
+    Box(
+        modifier.fillMaxSize().pagePull(
+            pull, refreshing,
+            onRefresh = { if (tab == LibraryTab.ON_DEVICE) viewModel.onDeviceShown() else viewModel.refresh() },
+        ),
+    ) {
+    // In front of the page, so a profile's light, which runs up under the
+    // status bar, does not cover it; it sits clear of the page's top bar.
+    RefreshLine(
+        pull = pull,
+        refreshing = refreshing,
+        status = refreshLine,
+        modifier = Modifier.align(Alignment.TopCenter).zIndex(1f).statusBarsPadding()
+            .onSizeChanged { lineHeightPx = it.height }
+            .graphicsLayer { translationY = pull.offset + (lineRoom - lineSpan).toPx() },
+        testTag = "library_refresh_line",
+    )
+    Column(Modifier.fillMaxSize().padding(top = lineRoom).graphicsLayer { translationY = pull.offset }.testTag("library_screen")) {
         val subtitle = when {
             tab == LibraryTab.ON_DEVICE && state.device.phoneCount > 0 -> listOfNotNull(
                 when (readyCount) { 0 -> null; 1 -> "1 download"; else -> "$readyCount downloads" },
@@ -595,7 +640,6 @@ fun LibraryScreen(
         // Files on their way are what this collection is about to hold: no
         // "nothing here" above them.
         val showEmpty = state.loaded && state.tiles.isEmpty() && !state.scanning && uploads.section == null
-        val showScanLine = state.scanning && state.tiles.isNotEmpty()
         val unreachableBlock = @Composable {
             OutOfReach(
                 server = unreachable.first(),
@@ -622,7 +666,7 @@ fun LibraryScreen(
         // the top, level with the page's art. Rows need none of this: a row
         // is the same height at any width, so it stays where it was.
         val leadingItems = (if (profile != null) 2 else 0) +
-            (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0) + (if (showScanLine) 1 else 0)
+            (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0)
         // In the order the wall shows their videos, so sorting one sorts both.
         val moments = remember(profile?.moments, state.tiles, state.momentOrder) { profile?.moments.orEmpty().inOrder(state.momentOrder, state.tiles) }
         val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
@@ -863,7 +907,6 @@ fun LibraryScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) { emptyBlock() }
                         return@LazyVerticalGrid
                     }
-                    if (showScanLine) item(span = { GridItemSpan(maxLineSpan) }) { ScanLine() }
                     items(state.tiles, key = { it.testTag }) { tile ->
                         val nudge = nudgeOf(tile)
                         // No further than the gap: a poster nudged into the next one would slide under it.
@@ -920,7 +963,6 @@ fun LibraryScreen(
                         item { emptyBlock() }
                         return@LazyColumn
                     }
-                    if (showScanLine) item { Box(Modifier.padding(bottom = Spacing.s8)) { ScanLine() } }
                     itemsIndexed(state.tiles, key = { _, tile -> tile.testTag }) { index, tile ->
                         if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
                         val nudge = nudgeOf(tile)
@@ -960,12 +1002,16 @@ fun LibraryScreen(
         if (selecting) {
             // Select all on the Images tab is its pictures; on the others, the wall's tiles.
             val selectAll = { if (showPictures) viewModel.selectAllPictures(profile.pictures) else viewModel.selectAllHere() }
-            SelectionBar(selection!!.itemCount, onBack, selectAll, viewModel::cancelSelection, Modifier.background(colors.ground))
+            SelectionBar(
+                selection!!.itemCount, onBack, selectAll, viewModel::cancelSelection,
+                Modifier.padding(top = lineRoom).graphicsLayer { translationY = pull.offset }.background(colors.ground),
+            )
         } else {
             TopBar(
                 title = if (collapsed) state.title else "",
                 onBack = onBack,
-                modifier = Modifier.background(barGround).testTag("library_profile_topbar"),
+                // It moves with the page it floats over, a pull included.
+                modifier = Modifier.padding(top = lineRoom).graphicsLayer { translationY = pull.offset }.background(barGround).testTag("library_profile_topbar"),
                 actions = listOf(
                     TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
                     TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
@@ -1441,16 +1487,6 @@ private fun EmptyWall(scannedOnce: Boolean, rows: Boolean, onScan: () -> Unit, f
         action = if (scannedOnce) null else EmptyAction("Scan now", onScan, "library_scan_button"),
         modifier = Modifier.padding(top = Spacing.s12),
         testTag = "library_empty_card",
-    )
-}
-
-/** "Still reading the share": the wall fills in behind it as the scan walks. */
-@Composable
-private fun ScanLine() {
-    Text(
-        "Still reading the share · more will arrive",
-        style = TextStyles.meta, color = RegolithTheme.colors.metadata,
-        modifier = Modifier.testTag("library_scanning_line"),
     )
 }
 

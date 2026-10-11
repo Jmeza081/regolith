@@ -1,5 +1,7 @@
 package com.regolith.ui.library
 
+import com.regolith.domain.smb.SmbFailure
+import kotlinx.coroutines.Job
 import com.regolith.data.spoof.spoofed
 import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
@@ -520,6 +522,7 @@ class LibraryViewModel @AssistedInject constructor(
             loaded = true,
             noSource = shares.isEmpty(),
             scanning = runs.any { it.status == ScanRunEntity.RUNNING },
+            scanFiles = runs.filter { it.status == ScanRunEntity.RUNNING }.sumOf { it.filesFound },
             scannedOnce = shares.any { it.lastScanAtMs != null } || runs.any { it.status == ScanRunEntity.DONE },
             unreachable = servers.filter { s -> s.unreachableSinceMs != null && shares.any { it.serverId == s.id } }
                 .map { UnreachableServer(it.id, it.name, it.lastSeenAtMs) },
@@ -721,9 +724,36 @@ class LibraryViewModel @AssistedInject constructor(
         measuring = viewModelScope.launch { pictures.measureFolder(id) }
     }
 
-    /** "Scan first" nudge and pull-to-refresh both land here. */
+    /** "Scan first" nudge, and pull to refresh on the first wall ([refresh]). */
     fun scanAll() {
         viewModelScope.launch { scans.scanAll() }
+    }
+
+    /** A collection's walk for pull to refresh, while it runs, so a second pull does not start another. */
+    private var walk: Job? = null
+
+    /**
+     * Pull to refresh. On the first wall every share is walked again in the
+     * background, as Home's pull does ([scanAll]). On a collection, this
+     * folder and every folder under it are listed now
+     * ([LibraryRepository.refreshTree]): what is on screen comes back in
+     * seconds rather than after the whole share. Leaving the page stops it.
+     */
+    fun refresh() {
+        val id = folderId ?: return scanAll()
+        if (walk?.isActive == true) return
+        walk = viewModelScope.launch {
+            _uiState.update { it.copy(walkFiles = 0) }
+            try {
+                val start = library.folder(id) ?: return@launch
+                library.refreshTree(start) { _, _, files -> _uiState.update { it.copy(walkFiles = files) } }
+            } catch (e: SmbFailure) {
+                // The server itself went away. The listing has marked it out
+                // of reach already, which the page's subtitle says.
+            } finally {
+                _uiState.update { it.copy(walkFiles = null) }
+            }
+        }
     }
 
     /** "Try again" on the out-of-reach card: one cheap listing per server. */

@@ -17,17 +17,14 @@ import androidx.work.WorkerParameters
 import com.regolith.MainActivity
 import com.regolith.R
 import com.regolith.data.RegolithNotifications
-import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.smb.SmbFailure
-import com.regolith.domain.smb.isAboutTheServer
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
-import java.util.ArrayDeque
 
 /**
  * Walks one share top to bottom and reconciles Room with what it finds:
@@ -81,34 +78,10 @@ class ScanWorker @AssistedInject constructor(
             // one it is reading rather than "the share".
             progress = progress.copy(shareName = root.name)
             notify(force = true)
-            val queue = ArrayDeque<FolderEntity>().apply { add(root) }
-            var folders = 0
-            var files = 0
-            var skipped = 0
-            while (queue.isNotEmpty()) {
-                val folder = queue.removeFirst()
-                // One folder the server will not hand over is not a reason to
-                // abandon the share. A walk is thousands of listings, and any
-                // of them can fail for reasons that say nothing about the rest
-                // — a folder deleted since its parent was listed, an ACL this
-                // login cannot read, a name the server will not open. Before
-                // this, the first of those ended the scan and the library kept
-                // whatever fraction had been reached.
-                //
-                // Only a failure about the SERVER stops the walk, and by the
-                // time one reaches here the listing has already been retried
-                // (LibraryRepository.listWithRetry).
-                val outcome = try {
-                    library.refreshFolder(folder.id)
-                } catch (e: SmbFailure) {
-                    if (e.isAboutTheServer) throw e
-                    Log.w(TAG, "skipping '${folder.relPath}': ${e.message}")
-                    skipped++
-                    continue
-                }
-                folders++
-                files += outcome.fileCount
-                queue.addAll(outcome.subfolders)
+            // Breadth-first from the root; a folder the server will not hand
+            // over is skipped, and only the server itself going away stops it
+            // (LibraryRepository.refreshTree).
+            val walked = library.refreshTree(root) { folder, folders, files ->
                 val now = System.currentTimeMillis()
                 if (now - lastWrite > PROGRESS_INTERVAL_MS) {
                     lastWrite = now
@@ -118,8 +91,8 @@ class ScanWorker @AssistedInject constructor(
                     notify()
                 }
             }
-            if (skipped > 0) Log.w(TAG, "share $shareId: $skipped folder(s) could not be read; the rest of the walk finished")
-            scanRunDao.update(run.copy(status = ScanRunEntity.DONE, foldersDone = folders, filesFound = files, currentPath = "", finishedAtMs = System.currentTimeMillis()))
+            if (walked.skipped > 0) Log.w(TAG, "share $shareId: ${walked.skipped} folder(s) could not be read; the rest of the walk finished")
+            scanRunDao.update(run.copy(status = ScanRunEntity.DONE, foldersDone = walked.folders, filesFound = walked.files, currentPath = "", finishedAtMs = System.currentTimeMillis()))
             library.markScanned(shareId)
             // The walk knows what to make from the rows this just wrote, so
             // it starts here rather than being something the user has to ask
