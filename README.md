@@ -88,9 +88,11 @@ Search finds titles, filenames and folders as you type, and the moments you
 have named, each shown with the frame at its time: tap one and the film opens
 there. Chips narrow the results to **Unwatched**, **4K** or **On device** (downloaded,
 or on the phone to begin with), and **Moment** picks one name from all of the
-library's: then the results are the videos that carry it, each with its marks of
-that name listed above them, and the other chips narrow both together. Results
-come as rows or a grid, and your last eight searches wait under **Recent**.
+library's: then the results are every video that carries it, with its marks of
+that name listed above them, and the other chips narrow both together. Typing
+lists up to 40 files and 40 folders, and says "40+" when it found more, so you can
+type more to narrow them down. Results come as rows or a grid, and your last
+eight searches wait under **Recent**.
 
 ### Shorts
 

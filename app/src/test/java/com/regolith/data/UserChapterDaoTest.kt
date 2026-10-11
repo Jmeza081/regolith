@@ -89,19 +89,43 @@ class UserChapterDaoTest {
     }
 
     @Test
-    fun `a chip's moments are every mark of its name in the films given, film by film`() = runTest {
+    fun `a chip lists every film carrying its name, and its marks are in exactly those films`() = runTest {
         val alien = file("Films/Alien.mkv")
         val heat = file("Films/Heat.1995.mkv")
         val zodiac = file("Films/Zodiac.mkv")
         val gone = file("Films/Gone.mkv", missing = true)
+        val plain = file("Films/Plain.mkv")
         db.userChapterDao().replaceForFile(zodiac, listOf(row(zodiac, 5_000, "Big reveal")))
         db.userChapterDao().replaceForFile(heat, listOf(row(heat, 9_000, "big reveal"), row(heat, 2_000, "Big reveal"), row(heat, 4_000, "Intro")))
         db.userChapterDao().replaceForFile(alien, listOf(row(alien, 1_000, "Big reveal")))
         db.userChapterDao().replaceForFile(gone, listOf(row(gone, 1_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(plain, listOf(row(plain, 1_000, "Intro")))
 
-        // Every mark, however many there are, in the films asked about only; by film name, then time; any case.
-        val marks = db.userChapterDao().occurrencesIn("Big reveal", listOf(heat, zodiac, gone)).first()
-        assertEquals(listOf(heat to 2_000L, heat to 9_000L, zodiac to 5_000L), marks.map { it.fileId to it.startMs })
+        // Every present film carrying it, by name, any case; no cap.
+        assertEquals(listOf(alien, heat, zodiac), db.userChapterDao().filesWithChapter("Big reveal").first().map { it.id })
+        // Every mark of it, in exactly those films, by film then time.
+        assertEquals(
+            listOf(alien to 1_000L, heat to 2_000L, heat to 9_000L, zodiac to 5_000L),
+            db.userChapterDao().occurrencesOf("Big reveal").first().map { it.fileId to it.startMs },
+        )
+    }
+
+    @Test
+    fun `words typed after a chip narrow its films and its marks alike`() = runTest {
+        val heat = file("Films/Heat.1995.mkv", titleParsed = "Heat")
+        val heathers = file("Films/Heathers.1989.mkv", titleParsed = "Heathers")
+        val zodiac = file("Films/Zodiac.mkv")
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 2_000, "Big reveal"), row(heat, 9_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(heathers, listOf(row(heathers, 3_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(zodiac, listOf(row(zodiac, 5_000, "Big reveal")))
+
+        // "hea" by Search's prefix rule finds Heat and Heathers, not Zodiac.
+        val match = LibraryRepository.ftsMatch("hea")!!
+        assertEquals(listOf(heat, heathers), db.userChapterDao().filesWithChapterMatching("Big reveal", match).first().map { it.id })
+        assertEquals(
+            listOf(heat to 2_000L, heat to 9_000L, heathers to 3_000L),
+            db.userChapterDao().occurrencesMatching("Big reveal", match).first().map { it.fileId to it.startMs },
+        )
     }
 
     @Test

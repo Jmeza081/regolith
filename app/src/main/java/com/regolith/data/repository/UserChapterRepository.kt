@@ -100,16 +100,27 @@ class UserChapterRepository @Inject constructor(
         return dao.observeNameMatches(match, limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
     }
 
-    /** The films carrying a point of interest, for a chip standing on its own. */
-    fun filesWith(title: String, limit: Int): Flow<List<MediaFileEntity>> = dao.filesWithChapter(title, limit)
+    /**
+     * Every film carrying a point of interest: a chip's results. With words
+     * typed after the chip ([query]), only those whose filename, title or path
+     * matches them too, by Search's own rule.
+     */
+    fun filesWith(title: String, query: String = ""): Flow<List<MediaFileEntity>> {
+        val match = LibraryRepository.ftsMatch(query) ?: return dao.filesWithChapter(title)
+        return dao.filesWithChapterMatching(title, match)
+    }
 
     /**
-     * Every occurrence of one point of interest in [fileIds], the films a
-     * chip lists, by film name and then time: the moments beside those
-     * films, one for one.
+     * Every occurrence of one point of interest in the films [filesWith]
+     * finds for the same [title] and [query], by film name and then time:
+     * the moments above those films, one for one, since both ask the same
+     * question of the same rows.
      */
-    fun occurrencesIn(title: String, fileIds: List<Long>): Flow<List<ChapterMatch>> =
-        if (fileIds.isEmpty()) flowOf(emptyList()) else dao.occurrencesIn(title, fileIds).map { rows -> rows.map { it.toMatch() } }
+    fun occurrences(title: String, query: String = ""): Flow<List<ChapterMatch>> {
+        val match = LibraryRepository.ftsMatch(query)
+        val rows = if (match == null) dao.occurrencesOf(title) else dao.occurrencesMatching(title, match)
+        return rows.map { list -> list.map { it.toMatch() } }
+    }
 
     /**
      * The named marks on the videos directly in [folderId], for a collection

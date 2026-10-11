@@ -1325,30 +1325,57 @@ interface UserChapterDao {
     )
     fun observeNameMatches(match: String, limit: Int): Flow<List<UserChapterFacetRow>>
 
-    /** The films carrying a chapter of this exact name, for a chip's own listing. */
+    /**
+     * Every film carrying a chapter of this exact name, for a chip's own
+     * listing. No cap: a chip is a filter, and its list is what was asked for.
+     */
     @Query(
         "SELECT media_files.* FROM media_files JOIN user_chapters ON user_chapters.fileId = media_files.id " +
             "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
-            "GROUP BY media_files.id ORDER BY media_files.name LIMIT :limit",
+            "GROUP BY media_files.id ORDER BY media_files.name",
     )
-    fun filesWithChapter(title: String, limit: Int): Flow<List<MediaFileEntity>>
+    fun filesWithChapter(title: String): Flow<List<MediaFileEntity>>
 
     /**
-     * Every occurrence of one point of interest in [fileIds], so a chip can
-     * list the moments themselves beside the films holding them: always the
-     * same films, never a different cut of the library. Same shape as
-     * [search], matched on the exact name instead of through the index, in
-     * the films' order (by name), then by time. [fileIds] are the films a
-     * chip lists, at most Search's limit, far under SQLite's 999 variables.
+     * [filesWithChapter], narrowed to the films whose filename, title or path
+     * also matches [match] (an FTS expression, as `MediaFileDao.search` takes):
+     * a chip with words typed after it, in one query, so neither can cut the
+     * other short.
+     */
+    @Query(
+        "SELECT media_files.* FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid " +
+            "JOIN user_chapters ON user_chapters.fileId = media_files.id " +
+            "WHERE media_fts MATCH :match AND user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
+            "GROUP BY media_files.id ORDER BY media_files.name",
+    )
+    fun filesWithChapterMatching(title: String, match: String): Flow<List<MediaFileEntity>>
+
+    /**
+     * Every occurrence of one point of interest, so a chip can list the
+     * moments themselves above the films holding them. The same WHERE as
+     * [filesWithChapter], so the two are always the same films; same shape
+     * as [search], matched on the exact name instead of through the index;
+     * by film name, then time. No cap, as for the films.
      */
     @Query(
         "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
             "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
-            "WHERE user_chapters.title = :title COLLATE NOCASE AND user_chapters.fileId IN (:fileIds) AND media_files.missing = 0 " +
+            "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
             "ORDER BY media_files.name, user_chapters.startMs",
     )
-    fun occurrencesIn(title: String, fileIds: List<Long>): Flow<List<UserChapterHitRow>>
+    fun occurrencesOf(title: String): Flow<List<UserChapterHitRow>>
+
+    /** [occurrencesOf] in the films [filesWithChapterMatching] finds: the same WHERE, mark by mark. */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "JOIN media_fts ON media_files.id = media_fts.rowid " +
+            "WHERE media_fts MATCH :match AND user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
+            "ORDER BY media_files.name, user_chapters.startMs",
+    )
+    fun occurrencesMatching(title: String, match: String): Flow<List<UserChapterHitRow>>
 
     /**
      * The named marks on the videos directly in one folder: a collection
