@@ -77,7 +77,9 @@ collection's page the rail comes once the top of the page has scrolled away.
 Home picks up where you were. **Continue watching** has a card for each film you
 have started, with the time it has left (**See all** lists every one), **Newly
 added** the twelve newest files, **On this device** what you have downloaded, and
-**Moments** every name you have given a mark (see Chapters, below). Pull Home
+**Moments** every name you have given a mark, A to Z, each as a frame of the
+moment you gave it to last, with the name across the picture; tap one to see
+every place it appears (see Chapters, below). Pull Home
 or the Library down to read every share again. On a collection, a pull reads
 just that collection and the folders inside it, so what you are looking at is up
 to date in seconds rather than after the whole share.

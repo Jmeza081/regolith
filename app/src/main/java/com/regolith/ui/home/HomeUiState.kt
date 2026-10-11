@@ -2,7 +2,6 @@ package com.regolith.ui.home
 
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.display.PostersPerRow
-import com.regolith.domain.playback.ChapterFacet
 
 /** One card in "Continue watching": 16:9 so the frame is recognisable, labelled with time left. */
 data class ResumeItem(
@@ -37,6 +36,20 @@ data class NewItem(
 }
 
 /**
+ * One moment name in Home's Moments grid: a frame of it, with the name over
+ * the picture. A tap opens Search on the name.
+ */
+data class HomeMoment(
+    val title: String,
+    /** How many videos carry the name. */
+    val films: Int,
+    /** The frame at the mark given this name most recently; null when none was found. */
+    val frame: ArtworkRequest?,
+) {
+    val testTag get() = "home_moment_${title.lowercase().replace(' ', '_')}"
+}
+
+/**
  * Home (design section 04): first use, resume, nothing started, and the
  * refresh line. The resume row's absence is the "nothing started" message.
  */
@@ -61,12 +74,12 @@ data class HomeUiState(
     val downloadsReady: Int = 0,
     val downloadsBytes: Long = 0,
     /**
-     * Every name the library's moments carry, A to Z, each with how many
-     * videos use it: Home's last section, where a tap opens Search on that
-     * name. Empty while spoof mode is on, and on a library nobody has
+     * Every name the library's moments carry, A to Z, each as a frame of
+     * one of its moments: Home's last section, where a tap opens Search on
+     * that name. Empty while spoof mode is on, and on a library nobody has
      * marked yet, which leaves the section out.
      */
-    val moments: List<ChapterFacet> = emptyList(),
+    val moments: List<HomeMoment> = emptyList(),
     /** Settings › Display › Posters per row: the inner display's Newly added wall follows it, as the Library's walls do. */
     val postersPerRow: PostersPerRow = PostersPerRow.DEFAULT,
 ) {

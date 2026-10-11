@@ -1135,6 +1135,9 @@ data class UserChapterHitRow(
 /** Where one named mark is: all a moment frame needs to be grabbed. */
 data class NamedMarkRow(val fileId: Long, val startMs: Long)
 
+/** The mark standing for a moment name on Home: its name as written, and where it is. */
+data class MomentCoverRow(val title: String, val fileId: Long, val startMs: Long, val updatedAtMs: Long)
+
 /** One film's count of named marks ([UserChapterDao.observeNamedCounts]). */
 data class NamedCountRow(val fileId: Long, val count: Int)
 
@@ -1259,6 +1262,22 @@ interface UserChapterDao {
             "ORDER BY films DESC, title COLLATE NOCASE LIMIT :limit",
     )
     fun observeFacets(limit: Int): Flow<List<UserChapterFacetRow>>
+
+    /**
+     * For each name [observeFacets] lists, grouped the same way (case
+     * aside), the mark given it most recently: Home's tile for the name
+     * shows that mark's frame. SQLite takes a grouped query's other columns
+     * from the row its one MAX() picked, which is what makes this a single
+     * pass rather than a query per name.
+     */
+    @Query(
+        "SELECT user_chapters.title AS title, user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, " +
+            "MAX(user_chapters.updatedAtMs) AS updatedAtMs " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE user_chapters.title IS NOT NULL AND user_chapters.title != '' AND media_files.missing = 0 " +
+            "GROUP BY user_chapters.title COLLATE NOCASE",
+    )
+    fun observeMomentCovers(): Flow<List<MomentCoverRow>>
 
     /**
      * The same list, narrowed to the names matching what is being typed —

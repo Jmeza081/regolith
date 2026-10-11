@@ -32,6 +32,25 @@ data class ChapterMatch(
  */
 data class ChapterFacet(val title: String, val films: Int)
 
+/** The mark whose frame stands for a moment name: the one given that name most recently. */
+data class MomentCover(val title: String, val fileId: Long, val startMs: Long)
+
+/**
+ * These names, each with its [covers] entry, or null where there is none.
+ * Names are matched the way the database groups them, `COLLATE NOCASE`:
+ * capitals aside, and in ASCII only, so a name and its cover always come
+ * from the same group.
+ */
+fun List<ChapterFacet>.withCovers(covers: List<MomentCover>): List<Pair<ChapterFacet, MomentCover?>> {
+    val byName = covers.associateBy { nocase(it.title) }
+    return map { it to byName[nocase(it.title)] }
+}
+
+/** [text] as SQLite's `NOCASE` compares it: ASCII capitals folded, nothing else. */
+internal fun nocase(text: String): String = buildString(text.length) {
+    for (c in text) append(if (c in 'A'..'Z') c + ('a' - 'A') else c)
+}
+
 /**
  * These names A to Z the way a person reads a list, not the way the
  * database compares bytes: capitals and accents don't move a name

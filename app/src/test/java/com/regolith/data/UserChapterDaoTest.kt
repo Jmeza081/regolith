@@ -105,6 +105,24 @@ class UserChapterDaoTest {
     }
 
     @Test
+    fun `each name's cover is the mark given it most recently, on a present film`() = runTest {
+        val heat = file("Films/Heat.1995.mkv")
+        val ocean = file("Films/Oceans.Eleven.mkv")
+        val gone = file("Films/Gone.mkv", missing = true)
+        fun named(fileId: Long, startMs: Long, title: String?, at: Long) = UserChapterEntity(fileId = fileId, startMs = startMs, title = title, updatedAtMs = at)
+        db.userChapterDao().replaceForFile(heat, listOf(named(heat, 0, "The heist", at = 10), named(heat, 60_000, "Finale", at = 30), named(heat, 90_000, null, at = 99)))
+        // Named later, and only the case differs: the same name, with this the newer mark.
+        db.userChapterDao().replaceForFile(ocean, listOf(named(ocean, 5_000, "the heist", at = 20)))
+        // Newest of all, but the film is off the share.
+        db.userChapterDao().replaceForFile(gone, listOf(named(gone, 0, "The heist", at = 50)))
+
+        val covers = db.userChapterDao().observeMomentCovers().first().associateBy { it.title.lowercase() }
+        assertEquals(setOf("the heist", "finale"), covers.keys)
+        assertEquals(ocean to 5_000L, covers.getValue("the heist").let { it.fileId to it.startMs })
+        assertEquals(heat to 60_000L, covers.getValue("finale").let { it.fileId to it.startMs })
+    }
+
+    @Test
     fun `name matches prefix-search the chapter index and group by name`() = runTest {
         val heat = file("Films/Heat.1995.mkv")
         val ocean = file("Films/Oceans.Eleven.mkv")

@@ -8,6 +8,7 @@ import com.regolith.data.media.ChapterSyncRepository
 import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.MomentCover
 import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.UserChapterStats
 import kotlinx.coroutines.flow.Flow
@@ -76,6 +77,13 @@ class UserChapterRepository @Inject constructor(
      */
     fun facets(limit: Int): Flow<List<ChapterFacet>> =
         dao.observeFacets(limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
+
+    /**
+     * For every name [facets] lists, the mark given it most recently, whose
+     * frame stands for the name on Home ([withCovers] pairs them up).
+     */
+    fun momentCovers(): Flow<List<MomentCover>> =
+        dao.observeMomentCovers().map { rows -> rows.map { MomentCover(it.title, it.fileId, it.startMs) } }
 
     /**
      * Names to offer while a chapter is being named: the ones matching what

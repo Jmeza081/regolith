@@ -22,6 +22,7 @@ import com.regolith.domain.library.ParsedName
 import com.regolith.domain.media.DeviceSource
 import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.playback.alphabetical
+import com.regolith.domain.playback.withCovers
 import com.regolith.ui.util.formatWhen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -67,11 +68,19 @@ class HomeViewModel @Inject constructor(
 
     // Every name the library's moments carry, A to Z: the names Search's
     // moment sheet offers, without its cap and in reading order, since Home
-    // lists all of them as a section of its own. Spoof mode lists none, as
-    // the sheet does: a made-up label would open a Search that finds
-    // nothing, and the real names are the owner's own words.
-    private val moments = combine(userChapters.facets(MOMENTS_GUARD), spoof.state) { names, spoofed ->
-        if (spoofed == null) names.alphabetical() else emptyList()
+    // lists all of them as a section of its own, each as the frame of the
+    // mark given that name most recently. Spoof mode lists none, as the
+    // sheet does: a made-up label would open a Search that finds nothing,
+    // and the real names are the owner's own words.
+    private val moments = combine(userChapters.facets(MOMENTS_GUARD), userChapters.momentCovers(), spoof.state) { names, covers, spoofed ->
+        if (spoofed != null) return@combine emptyList()
+        names.alphabetical().withCovers(covers).map { (name, cover) ->
+            HomeMoment(
+                title = name.title,
+                films = name.films,
+                frame = cover?.let { ArtworkRequest(ArtworkOwner.Moment(it.fileId, it.startMs), ArtworkKind.THUMB) },
+            )
+        }
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -137,10 +146,11 @@ class HomeViewModel @Inject constructor(
 
         /**
          * Not a design limit — Home lists every moment name — but a guard
-         * against a library where something named ten thousand marks, which
-         * would be ten thousand chips composed at once. Past it, the
-         * commonest names win, still shown A to Z.
+         * against a library with hundreds of them. Each is a picture now,
+         * and Home is one scroll with no lazy list to hold them, so every
+         * tile is composed and its frame loaded at once (once 1,000, for
+         * chips). Past it, the commonest names win, still shown A to Z.
          */
-        const val MOMENTS_GUARD = 1_000
+        const val MOMENTS_GUARD = 200
     }
 }

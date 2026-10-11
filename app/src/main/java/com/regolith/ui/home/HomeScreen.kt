@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +37,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.thumbColumns
+import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.pagePull
 import com.regolith.ui.components.posterFlight
@@ -45,7 +47,6 @@ import com.regolith.ui.components.rememberPagePull
 import com.regolith.ui.components.EmptyAction
 import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.components.FilterChip
 import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.RefreshLine
 import com.regolith.ui.components.ResumeCard
@@ -91,7 +92,7 @@ fun HomeScreen(
     onPlay: (fileId: Long, startMs: Long) -> Unit,
     onOpenDevice: () -> Unit,
     onOpenContinueWatching: () -> Unit,
-    /** A chip in the Moments section: open Search with this moment name picked. */
+    /** A tile in the Moments section: open Search with this moment name picked. */
     onOpenMoment: (name: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -123,6 +124,8 @@ fun HomeScreen(
         // Wide: three cards fill the row. Phone: the design's card-and-a-half peek.
         // Read here, at the BoxWithConstraints level, since maxWidth is not in scope inside the Column.
         val resumeWidth = if (wide) (maxWidth - Spacing.s18 * 2 - Spacing.s8 * 2) / 3 else RESUME_CARD_WIDTH
+        // Moments: as many frames across as Search's results take at this width.
+        val momentsAcross = thumbColumns(maxWidth - Spacing.s18 * 2)
         // The design's refresh line: a 30dp ring with the arrow, then "Release to refresh" /
         // one line of live status, never a Material spinner.
         RefreshLine(
@@ -285,31 +288,40 @@ fun HomeScreen(
                     }
                 }
 
-                // Every name you have given a moment, A to Z, wrapping in a
-                // section of its own after the others (the owner, 2026-10-07:
-                // "not hidden behind a horizontal scroll ... left to right and
-                // wrapping"). Last, because it is a way into the library rather
-                // than a shelf of things in it: a tap opens Search on that name,
-                // already picked, listing every place it appears.
+                // Every name you have given a moment, A to Z, in a section of
+                // its own after the others: a grid of frames, one per name, each
+                // the moment most recently given it, with the name over the
+                // picture (the owner, 2026-10-11: rather than "a large list or
+                // chips"). Rows of tiles rather than a lazy grid, as the Newly
+                // added wall is, since Home is one vertical scroll. Last, because
+                // it is a way into the library rather than a shelf of things in
+                // it: a tap opens Search on that name, already picked, listing
+                // every place it appears.
                 if (state.moments.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         SectionHeader(
                             title = "Moments",
                             meta = "${state.moments.size} ${if (state.moments.size == 1) "name" else "names"} · A to Z",
                         )
-                        FlowRow(
+                        Column(
                             Modifier.padding(horizontal = Spacing.s18).testTag("home_moments"),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
                             verticalArrangement = Arrangement.spacedBy(Spacing.s8),
                         ) {
-                            state.moments.forEach { moment ->
-                                FilterChip(
-                                    text = moment.title,
-                                    selected = false,
-                                    onClick = { onOpenMoment(moment.title) },
-                                    testTag = "home_moment_${moment.title.lowercase().replace(' ', '_')}",
-                                    trailing = moment.films.toString(),
-                                )
+                            state.moments.chunked(momentsAcross).forEach { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                    row.forEach { moment ->
+                                        MediaTile(
+                                            artwork = moment.frame,
+                                            kind = ArtworkKind.THUMB,
+                                            title = moment.title,
+                                            titleOnArt = true,
+                                            onClick = { onOpenMoment(moment.title) },
+                                            testTag = moment.testTag,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    repeat(momentsAcross - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                         }
                     }
