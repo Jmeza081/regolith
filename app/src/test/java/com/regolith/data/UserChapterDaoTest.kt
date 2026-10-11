@@ -89,6 +89,22 @@ class UserChapterDaoTest {
     }
 
     @Test
+    fun `a chip's moments are every mark of its name in the films given, film by film`() = runTest {
+        val alien = file("Films/Alien.mkv")
+        val heat = file("Films/Heat.1995.mkv")
+        val zodiac = file("Films/Zodiac.mkv")
+        val gone = file("Films/Gone.mkv", missing = true)
+        db.userChapterDao().replaceForFile(zodiac, listOf(row(zodiac, 5_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 9_000, "big reveal"), row(heat, 2_000, "Big reveal"), row(heat, 4_000, "Intro")))
+        db.userChapterDao().replaceForFile(alien, listOf(row(alien, 1_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(gone, listOf(row(gone, 1_000, "Big reveal")))
+
+        // Every mark, however many there are, in the films asked about only; by film name, then time; any case.
+        val marks = db.userChapterDao().occurrencesIn("Big reveal", listOf(heat, zodiac, gone)).first()
+        assertEquals(listOf(heat to 2_000L, heat to 9_000L, zodiac to 5_000L), marks.map { it.fileId to it.startMs })
+    }
+
+    @Test
     fun `facets list every name, including one that is only on a single film`() = runTest {
         val heat = file("Films/Heat.1995.mkv")
         val ocean = file("Films/Oceans.Eleven.mkv")

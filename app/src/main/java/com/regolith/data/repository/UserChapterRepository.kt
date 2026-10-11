@@ -103,9 +103,13 @@ class UserChapterRepository @Inject constructor(
     /** The films carrying a point of interest, for a chip standing on its own. */
     fun filesWith(title: String, limit: Int): Flow<List<MediaFileEntity>> = dao.filesWithChapter(title, limit)
 
-    /** Every occurrence of one point of interest, newest-listed film first. */
-    fun occurrences(title: String, limit: Int): Flow<List<ChapterMatch>> =
-        dao.occurrencesOf(title, limit).map { rows -> rows.map { it.toMatch() } }
+    /**
+     * Every occurrence of one point of interest in [fileIds], the films a
+     * chip lists, by film name and then time: the moments beside those
+     * films, one for one.
+     */
+    fun occurrencesIn(title: String, fileIds: List<Long>): Flow<List<ChapterMatch>> =
+        if (fileIds.isEmpty()) flowOf(emptyList()) else dao.occurrencesIn(title, fileIds).map { rows -> rows.map { it.toMatch() } }
 
     /**
      * The named marks on the videos directly in [folderId], for a collection

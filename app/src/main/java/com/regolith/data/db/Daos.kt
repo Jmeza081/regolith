@@ -1334,18 +1334,21 @@ interface UserChapterDao {
     fun filesWithChapter(title: String, limit: Int): Flow<List<MediaFileEntity>>
 
     /**
-     * Every occurrence of one point of interest, so a chip can list the
-     * moments themselves rather than the files holding them. Same shape as
-     * [search], matched on the exact name instead of through the index.
+     * Every occurrence of one point of interest in [fileIds], so a chip can
+     * list the moments themselves beside the films holding them: always the
+     * same films, never a different cut of the library. Same shape as
+     * [search], matched on the exact name instead of through the index, in
+     * the films' order (by name), then by time. [fileIds] are the films a
+     * chip lists, at most Search's limit, far under SQLite's 999 variables.
      */
     @Query(
         "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
             "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
-            "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
-            "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
+            "WHERE user_chapters.title = :title COLLATE NOCASE AND user_chapters.fileId IN (:fileIds) AND media_files.missing = 0 " +
+            "ORDER BY media_files.name, user_chapters.startMs",
     )
-    fun occurrencesOf(title: String, limit: Int): Flow<List<UserChapterHitRow>>
+    fun occurrencesIn(title: String, fileIds: List<Long>): Flow<List<UserChapterHitRow>>
 
     /**
      * The named marks on the videos directly in one folder: a collection

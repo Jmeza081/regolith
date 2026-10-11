@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -58,6 +59,20 @@ internal data class OnDevice(
     val deviceShareIds: Set<Long> = emptySet(),
 ) {
     fun has(fileId: Long, shareId: Long): Boolean = fileId in doneFileIds || shareId in deviceShareIds
+}
+
+/**
+ * The points of interest to show, from [matches] (a chip's marks, or the
+ * names the query found). With a [chip] they ARE the result, the moments
+ * beside the films listed, so only those in films the filter chips [kept]:
+ * one for one with the matches. Without one they show under All only: the
+ * other filters are about the file (watched, 4K, on device), and a moment
+ * is not a file.
+ */
+internal fun pointsOfInterest(matches: List<ChapterMatch>, chip: String?, filter: SearchFilter, kept: Set<Long>): List<ChapterMatch> = when {
+    chip != null -> matches.filter { it.fileId in kept }
+    filter == SearchFilter.ALL -> matches
+    else -> emptyList()
 }
 
 /** Whether a file passes this chip, given what is known about it. */
@@ -228,11 +243,15 @@ class SearchViewModel @AssistedInject constructor(
         }
     }.spoofed(spoof) { (fs, ds, searched) -> Triple(files(fs), folders(ds), searched) }
     private val progress = results.flatMapLatest { (files, _, _) -> library.observeProgress(files.map { it.id }) }
-    // Chapter names: every occurrence of the chip's name when one is on,
-    // otherwise whatever the query matches, through the same MATCH rule.
+    // Chapter names. With a chip, every mark of its name in the films listed
+    // below, so the two groups always hold the same films: it used to be the
+    // library's first 20 marks of that name, which left later films in the
+    // list with no moment at all. Otherwise whatever the query matches,
+    // through the same MATCH rule.
     private val moments = combine(query.debounce(150), poi) { q, p -> q to p }.flatMapLatest { (q, p) ->
         when {
-            p != null -> userChapters.occurrences(p, MOMENTS_LIMIT)
+            p != null -> results.map { (files, _, _) -> files.map { it.id } }.distinctUntilChanged()
+                .flatMapLatest { ids -> userChapters.occurrencesIn(p, ids) }
             q.isBlank() -> flowOf(emptyList())
             else -> userChapters.search(q, MOMENTS_LIMIT)
         }
@@ -271,11 +290,14 @@ class SearchViewModel @AssistedInject constructor(
         fun shownDir(relPath: String): String = relPath.substringBeforeLast('/', "").let { spoofed?.path(it) ?: it }
 
         val hits = mutableListOf<SearchHit>()
+        // The films the filter chips kept, which a chip's moments follow.
+        val kept = HashSet<Long>()
         for (file in files) {
             val p = progressById[file.id]
             val unwatched = p == null || (p.positionMs == 0L && !p.completed)
             val uhd = VideoInfo.resolutionLabelFor(file.width, file.height) == "4K"
             if (!f.keeps(unwatched, uhd, here.has(file.id, file.shareId))) continue
+            kept += file.id
             val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
             val res = VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null }
             // ONE ROW PER FILE. A file whose name parses into a title wears
@@ -321,13 +343,7 @@ class SearchViewModel @AssistedInject constructor(
                 )
             }
         }
-        // Without a chip, points of interest only under "All": the other
-        // filters are about the file (watched, 4K, on device), and a moment
-        // is not a file. With a chip they ARE the result, so they stay —
-        // narrowed to the films that survived the filter above.
-        val visible = files.mapTo(HashSet()) { it.id }
-        val shown = if (chip != null) matches.filter { it.fileId in visible } else matches
-        val moments = if (chip != null || f == SearchFilter.ALL) shown.map { m ->
+        val moments = pointsOfInterest(matches, chip, f, kept).map { m ->
             SearchHit.Moment(
                 fileId = m.fileId,
                 startMs = m.startMs,
@@ -336,7 +352,7 @@ class SearchViewModel @AssistedInject constructor(
                 shareId = m.shareId,
                 relPath = m.fileRelPath.substringBeforeLast('/', ""),
             )
-        } else emptyList()
+        }
         SearchUiState(
             query = q,
             filter = f,
@@ -444,7 +460,11 @@ class SearchViewModel @AssistedInject constructor(
     private companion object {
         const val LIMIT = 40
 
-        /** Points of interest are one group above the files; more than this and it becomes the list. */
+        /**
+         * The names a typed query finds are one group above the files; more
+         * than this and it becomes the list. A chip's moments have no cap of
+         * their own: they are the marks in the films listed, at most [LIMIT].
+         */
         const val MOMENTS_LIMIT = 20
 
         /**
