@@ -16,6 +16,7 @@ import com.regolith.data.db.UserChapterDao
 import com.regolith.data.pictures.PictureRepository
 import com.regolith.domain.media.LocalSource
 import com.regolith.domain.media.MediaFileTypes
+import com.regolith.domain.media.ShortsRule
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.artwork.ArtworkCandidates
@@ -1109,23 +1110,59 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * Up to [DeckLayout.MAX_CARDS] videos to deal the deck from, spread
-     * through the folder rather than its first few ([DeckLayout.picks]).
-     * A show folder holds seasons rather than files, so this walks down
-     * breadth-first until it has enough — that is what makes "Severance"
-     * get a tile at all.
+     * Up to [DeckLayout.MAX_CARDS] videos to deal the deck from: the folder's
+     * tall ones (a phone's clips) where it has any, its wide ones where it
+     * has none ([DeckLayout.dealFrom]), spread through it rather than its
+     * first few. A show folder holds seasons rather than files, so this
+     * walks down breadth-first until it has enough tall ones, or has looked
+     * everywhere — that is what makes "Severance" get a tile at all.
+     *
+     * Which way up a video is comes from its row, its rotation applied
+     * ([ShortsRule.displayAspect]), as Shorts reads it. A video not measured
+     * yet is opened to find out ([measure]), a few at most and only while
+     * the tall ones are short of a hand.
      */
     private suspend fun deckFiles(folderId: Long): List<MediaFileEntity> {
         val found = mutableListOf<MediaFileEntity>()
+        val shapes = mutableListOf<Float?>()
+        fun tallCount() = shapes.count { it != null && it < 1f }
         val queue = ArrayDeque(listOf(folderId))
         var visited = 0
-        while (queue.isNotEmpty() && found.size < DeckLayout.MAX_CARDS && visited < DECK_MAX_FOLDERS) {
+        while (queue.isNotEmpty() && tallCount() < DeckLayout.MAX_CARDS && visited < DECK_MAX_FOLDERS) {
             val id = queue.removeFirst()
             visited++
-            found += mediaFileDao.inFolder(id)
-            if (found.size < DeckLayout.MAX_CARDS) queue += folderDao.children(id).map { it.id }
+            for (file in mediaFileDao.inFolder(id)) {
+                found += file
+                shapes += ShortsRule.displayAspect(file.width, file.height, file.rotationDegrees)
+            }
+            queue += folderDao.children(id).map { it.id }
         }
-        return DeckLayout.picks(found.size).map { found[it] }
+        if (tallCount() < DeckLayout.MAX_CARDS) {
+            val unmeasured = shapes.indices.filter { shapes[it] == null }
+            for (pick in DeckLayout.picks(unmeasured.size, DECK_MEASURE_MAX)) {
+                val index = unmeasured[pick]
+                shapes[index] = measure(found[index])
+                if (tallCount() >= DeckLayout.MAX_CARDS) break
+            }
+        }
+        return DeckLayout.dealFrom(shapes).map { found[it] }
+    }
+
+    /**
+     * Opens [file] for its stored size and rotation, keeps them on its row as
+     * a frame grab would, and returns its shape as shown: width over height.
+     * Null when it will not open or does not say. The server going quiet
+     * stops the deck, as a frame that will not come does.
+     */
+    private suspend fun measure(file: MediaFileEntity): Float? = try {
+        openFrames(file)?.use { source ->
+            mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height, source.rotationDegrees)
+            ShortsRule.displayAspect(source.width, source.height, source.rotationDegrees)
+        }
+    } catch (e: SmbFailure) {
+        if (e.isAboutTheServer) throw e
+        Log.w(TAG, "deck: could not measure ${file.name}: ${e.message}")
+        null
     }
 
     /**
@@ -1467,6 +1504,12 @@ class ArtworkRepository @Inject constructor(
         const val DECK_FRAME_MAX = 800
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
         const val DECK_MAX_FOLDERS = 24
+        /**
+         * The most videos a deck opens to learn which way up they are, when
+         * their rows do not say yet. The artwork walk measures every video
+         * in time; this is for a folder dealt before it has.
+         */
+        const val DECK_MEASURE_MAX = 8
         /** What a folder's 2×2 grid was stored as, before decks ([ensureGeneration] 4). */
         const val MOSAIC = "MOSAIC"
 

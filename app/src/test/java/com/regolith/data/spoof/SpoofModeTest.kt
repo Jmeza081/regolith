@@ -22,7 +22,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
-import kotlin.math.abs
 
 /** Spoof mode changes what is shown and nothing a file is found by. */
 @RunWith(AndroidJUnit4::class)
@@ -80,19 +79,15 @@ class SpoofModeTest {
     }
 
     @Test
-    fun `a folder's stand-in is its photo and a hand of cards, a video's only a photo`() {
+    fun `a folder's stand-in is its photo and a hand of tall cards, a video's only a photo`() {
         val spoof = Spoof(salt = 99)
         val request = ArtworkRequest(ArtworkOwner.Folder(3), ArtworkKind.POSTER)
         val deck = spoof.standIn(request) as SpoofDeck
         assertEquals(request, deck.request)
         assertEquals(spoof.image(request), deck.photo)
         assertEquals(5, deck.cards.map { it.seed }.distinct().size)
-        for (card in deck.cards) {
-            // Each photo at its card's shape: a phone's 9:16, a film's 16:9 or 2.39:1.
-            assertEquals(640, maxOf(card.width, card.height))
-            val shape = card.width.toFloat() / card.height
-            assertTrue("$shape", listOf(9f / 16f, 16f / 9f, 2.39f).any { abs(it - shape) < 0.01f })
-        }
+        // A phone clip's 9:16, as a deck is dealt from a folder's tall videos.
+        assertTrue(deck.cards.all { it.width == 360 && it.height == 640 })
         assertEquals(deck, spoof.standIn(request))
         val other = spoof.standIn(ArtworkRequest(ArtworkOwner.Folder(4), ArtworkKind.POSTER)) as SpoofDeck
         assertTrue(other.cards.none { it.seed in deck.cards.map(SpoofImage::seed) })

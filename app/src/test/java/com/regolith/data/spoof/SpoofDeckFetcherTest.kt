@@ -110,4 +110,14 @@ class SpoofDeckFetcherTest {
         assertTrue(thumb.source.file() != first.source.file())
         assertEquals(320 to 180, picture.width to picture.height)
     }
+
+    @Test
+    fun `a deck dealt from other photos is drawn again, not read from before`() = runTest {
+        val (first, _) = fetch(deck(poster)) { true }
+        val other = deck(poster).copy(cards = listOf(photo("c9", 360, 640, Color.BLUE)))
+        val (again, picture) = fetch(other) { true }
+        assertEquals(DataSource.NETWORK, again.dataSource)
+        assertTrue(again.source.file() != first.source.file())
+        assertTrue(near(Color.BLUE, picture.getPixel(250, 398)))
+    }
 }

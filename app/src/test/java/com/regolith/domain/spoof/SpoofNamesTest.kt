@@ -75,15 +75,4 @@ class SpoofNamesTest {
         assertFalse(seed.contains("file"))
         assertTrue(seed.matches(Regex("rg[0-9a-f]+")))
     }
-
-    @Test
-    fun `a made-up deck is five cards, the same each time, and a library has every kind of hand`() {
-        val hand = SpoofNames.deckShapes("folder:3:", salt)
-        assertEquals(5, hand.size)
-        assertEquals(hand, SpoofNames.deckShapes("folder:3:", salt))
-        val hands = (1..60).map { SpoofNames.deckShapes("folder:$it:", salt) }
-        assertTrue("a phone's clips", hands.any { h -> h.all { it < 1f } })
-        assertTrue("films", hands.any { h -> h.all { it > 1f } })
-        assertTrue("both", hands.any { h -> h.any { it < 1f } && h.any { it > 1f } })
-    }
 }

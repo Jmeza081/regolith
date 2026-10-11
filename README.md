@@ -456,7 +456,7 @@ folders, paths and the chapters you named get believable made-up titles
 ("Quiet Lantern (2016)", keeping the year and "S01E02"), and every poster,
 thumbnail and backdrop is a low-resolution stock photo from Unsplash, through
 Lorem Picsum. A folder that wears a deck of cards gets a deck dealt from stock
-photos instead, its cards tall, wide or both. Each video keeps the same
+photos instead, its cards tall. Each video keeps the same
 stand-ins every time, so it still reads as one library. Only the phone's display changes: the share is never touched,
 the lock screen (which shows no picture) and the download notification are made
 up too, and
@@ -701,10 +701,11 @@ a day, in case the grab only failed because the share was down.
 
 A folder with no poster of its own gets a deck of cards: five frames from the
 videos inside it, picked from the first video to the last and fanned like a hand
-of cards over a blurred copy of the front one. Each card is the shape of its own
-video, tall for a phone clip and wide for a film, with any black bars baked into
-the video left off, and the card that best fits the poster's shape goes in front.
-An album deals its newest pictures the same way. If a folder is scanned while it is still empty, and the videos are
+of cards over a blurred copy of the front one. The frames come from the folder's
+tall videos, its phone clips, whenever it has any, so the cards are tall; a
+folder with only wide videos deals wide cards. Each card is the shape of its own
+video, with any black bars baked into the video left off. An album deals its
+newest pictures the same way. If a folder is scanned while it is still empty, and the videos are
 copied in later, the next scan that finds them clears the "no picture" record so
 the deck gets dealt.
 

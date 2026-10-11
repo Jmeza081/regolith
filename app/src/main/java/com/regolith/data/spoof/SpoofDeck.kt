@@ -29,10 +29,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * A folder's picture while spoof mode is on ([Spoof.standIn]): its stand-in
  * [photo], as every other picture has, unless the folder's real picture is
  * a deck ([com.regolith.domain.artwork.ArtworkSource.DECK]). Then it is a
- * deck too, dealt from [cards]: stand-in photos at the shapes
- * [com.regolith.domain.spoof.SpoofNames.deckShapes] picks for the folder.
- * So a demo shows a deck wherever the library has one, and nothing of
- * what is in it.
+ * deck too, dealt from [cards]: tall stand-in photos, as a deck's cards are
+ * tall where a folder has tall videos. So a demo shows a deck wherever the
+ * library has one, and nothing of what is in it.
  *
  * [request] is the real picture's: it says whether that is a deck, and
  * whether this one is wanted laid loose ([ArtworkRequest.loose]).
@@ -68,7 +67,10 @@ class SpoofDeckFetcher(
                 return@withContext result(photos.file(deck.photo), "image/jpeg", fetched)
             }
             val loose = deck.request.loose
-            val file = File(photos.directory, "deck-${deck.photo.seed}-${if (loose) "loose.webp" else "${deck.request.kind.name.lowercase()}.jpg"}")
+            // Named by its cards too, so a deck dealt from other photos (an
+            // update that changes them) is drawn again, not read from before.
+            val hand = Integer.toHexString(deck.cards.hashCode())
+            val file = File(photos.directory, "deck-${deck.photo.seed}-$hand-${if (loose) "loose.webp" else "${deck.request.kind.name.lowercase()}.jpg"}")
             val fetched = !file.exists()
             if (fetched) deal(file)
             result(file, if (loose) "image/webp" else "image/jpeg", fetched)

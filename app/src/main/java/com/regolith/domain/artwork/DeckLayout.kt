@@ -15,9 +15,10 @@ import kotlin.math.sqrt
  * turn out to either side behind it, each a little dimmer, and the outer
  * ones run off the edges, which reads as more cards than are drawn.
  *
- * Each card has its own video's shape, a phone clip's tall, a film's wide,
- * so a folder of phone clips deals tall cards and a folder of both a mixed
- * hand. A tall picture (the 2:3 poster) holds cards a little over half its
+ * A deck is dealt from a folder's tall videos (a phone's clips) where it has
+ * any ([dealFrom]), so its cards are tall; a folder of wide videos only deals
+ * wide cards. Each card has its own video's shape, a film's as wide as its
+ * picture. A tall picture (the 2:3 poster) holds cards a little over half its
  * height; a wide one (the 16:9 thumb and backdrop) holds taller cards spread
  * wider, so a hand still fills a short, wide frame.
  *
@@ -199,6 +200,19 @@ object DeckLayout {
         if (count == 1) return listOf(0)
         // Rounded to the nearest index, in whole numbers.
         return List(count) { i -> ((i.toLong() * (size - 1) + (count - 1) / 2) / (count - 1)).toInt() }
+    }
+
+    /**
+     * Which of a folder's videos, in its own order, the deck is dealt from,
+     * given each one's shape as shown (width over height, null when it has
+     * not been measured): its tall ones where it has any, so every card is
+     * tall, and all of them where it has none. [count] at most, spread from
+     * the first to the last as [picks] spreads them.
+     */
+    fun dealFrom(shapes: List<Float?>, count: Int = MAX_CARDS): List<Int> {
+        val tall = shapes.indices.filter { shapes[it]?.let { shape -> shape < 1f } == true }
+        val pool = tall.ifEmpty { shapes.indices.toList() }
+        return picks(pool.size, count).map { pool[it] }
     }
 
     /**

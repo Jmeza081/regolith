@@ -133,6 +133,18 @@ class DeckLayoutTest {
         assertTrue(DeckLayout.picks(0).isEmpty())
     }
 
+    @Test fun `a deck is dealt from a folder's tall videos, spread through them, where it has any`() {
+        val tall = 9f / 16f
+        val wide = 16f / 9f
+        // Wide films with phone clips among them: only the clips, first to last.
+        val mixed = listOf(wide, tall, wide, tall, null, tall, wide, tall, wide, tall, tall, wide)
+        assertEquals(listOf(1, 3, 7, 9, 10), DeckLayout.dealFrom(mixed))
+        assertEquals("fewer clips than cards: every one", listOf(2, 4), DeckLayout.dealFrom(listOf(wide, wide, tall, wide, tall)))
+        assertEquals("none tall: the wide ones, spread", listOf(0, 1, 3, 4, 5), DeckLayout.dealFrom(listOf(wide, wide, wide, null, wide, 1f)))
+        assertEquals("square is not tall", listOf(1), DeckLayout.dealFrom(listOf(1f, 0.75f)))
+        assertTrue(DeckLayout.dealFrom(emptyList()).isEmpty())
+    }
+
     @Test fun `frames are dealt a video at a time, so cards side by side differ`() {
         assertEquals(listOf("a1", "b1", "a2", "b2", "a3"), DeckLayout.deal(listOf(listOf("a1", "a2", "a3"), listOf("b1", "b2"))))
         assertEquals(listOf("b1"), DeckLayout.deal(listOf(emptyList(), listOf("b1"))))
