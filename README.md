@@ -320,7 +320,10 @@ When the folder you want to move something into doesn't exist yet, the move shee
 makes it for you and drops the files straight in. However long the folder list,
 the Move button stays at the foot of the sheet, and a folder with more than ten
 subfolders gets an A–Z rail down the edge: slide a thumb down it to jump from
-letter to letter.
+letter to letter. To reach a folder on the far side of the tree, type its name in
+the search at the top of the sheet: every folder on the share that matches comes
+up with its path under it, and tapping one takes the sheet there, ticked and
+ready to move into.
 
 Browse shows a folder the way a file manager would. After its folders and
 videos come all its other files, by their real names and sizes: the poster,

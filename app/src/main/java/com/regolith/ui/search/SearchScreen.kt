@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,17 +24,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,16 +39,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
@@ -76,6 +65,8 @@ import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.SurfaceCard
+import com.regolith.ui.components.SearchField
+import com.regolith.ui.components.highlightMatches
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -84,7 +75,6 @@ import com.regolith.ui.theme.designSp
 import com.regolith.ui.theme.scaledDp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.ui.draw.alpha
 import com.regolith.ui.util.SelectionUiState
 
 /**
@@ -150,38 +140,16 @@ fun SearchScreen(
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("search_screen")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.s18, vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
-            Row(
-                Modifier.weight(1f).height(44.scaledDp()).clip(PillShape).background(colors.surface).border(1.dp, colors.raised, PillShape).padding(horizontal = Spacing.s12),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(painterResource(R.drawable.rg_ic_search), contentDescription = null, tint = colors.body, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(Spacing.s8))
-                BasicTextField(
-                    value = state.query,
-                    onValueChange = viewModel::setQuery,
-                    singleLine = true,
-                    textStyle = TextStyles.body.copy(fontSize = 14.designSp(), lineHeight = 14.designSp(), color = colors.ink),
-                    cursorBrush = SolidColor(colors.accent),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { viewModel.remember() }),
-                    decorationBox = { inner ->
-                        Box {
-                            if (state.query.isEmpty()) Text("Titles, filenames, folders", style = TextStyles.body.copy(fontSize = 14.designSp(), lineHeight = 14.designSp()), color = colors.metadata)
-                            inner()
-                        }
-                    },
-                    modifier = Modifier.weight(1f).focusRequester(focus).testTag("search_field"),
-                )
-                if (state.query.isNotEmpty()) {
-                    Spacer(Modifier.width(Spacing.s8))
-                    Box(
-                        Modifier.size(20.dp).background(colors.raised, PillShape).clickable(interactionSource = null, indication = null) { viewModel.setQuery("") }.testTag("search_clear_button"),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(painterResource(R.drawable.rg_ic_close_small), contentDescription = "Clear", tint = colors.ink, modifier = Modifier.size(11.dp))
-                    }
-                }
-            }
+            SearchField(
+                query = state.query,
+                onQueryChange = viewModel::setQuery,
+                placeholder = "Titles, filenames, folders",
+                testTag = "search_field",
+                clearTestTag = "search_clear_button",
+                focusRequester = focus,
+                onSearch = { viewModel.remember() },
+                modifier = Modifier.weight(1f),
+            )
             Spacer(Modifier.width(Spacing.s12))
             // While selecting, this is "Select all" rather than a second
             // Cancel: the word would otherwise mean "leave Search" here and
@@ -491,12 +459,12 @@ private fun HitRow(
                 ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
-            Text(highlight(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(highlightMatches(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             // The meta line is highlighted as well as the title. A row now
             // stands for the whole file, so the match is just as likely to
             // be in the filename or the path down here as in the name above
             // -- and a result with nothing marked on it reads as a mistake.
-            Text(highlight(hit.meta, query, colors.accent), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(highlightMatches(hit.meta, query, colors.accent), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (hit is SearchHit.Moment) Tag("Point of interest", Modifier.padding(top = Spacing.s2))
         }
         if (picked) {
@@ -668,22 +636,3 @@ private fun HitTile(
     }
 }
 
-/** The matched run in red: the first case-insensitive occurrence of each query word. */
-private fun highlight(text: String, query: String, accent: Color): AnnotatedString {
-    val words = query.split(Regex("""[\s.\-_/]+""")).filter { it.isNotEmpty() }
-    if (words.isEmpty()) return AnnotatedString(text)
-    val ranges = words.mapNotNull { w ->
-        val i = text.indexOf(w, ignoreCase = true)
-        if (i < 0) null else i until i + w.length
-    }.sortedBy { it.first }
-    return buildAnnotatedString {
-        var cursor = 0
-        for (r in ranges) {
-            if (r.first < cursor) continue
-            append(text.substring(cursor, r.first))
-            withStyle(SpanStyle(color = accent)) { append(text.substring(r.first, r.last + 1)) }
-            cursor = r.last + 1
-        }
-        append(text.substring(cursor))
-    }
-}

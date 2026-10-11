@@ -594,6 +594,9 @@ class LibraryRepository @Inject constructor(
     override suspend fun subfolders(folderId: Long): List<FolderEntity> =
         folderDao.children(folderId).sortedBy { it.name.lowercase() }
 
+    /** Every folder Room knows on [shareId], for the move sheet's search: like the walk, what has been seen, not a new listing. */
+    override suspend fun foldersOnShare(shareId: Long): List<FolderEntity> = folderDao.inShare(shareId)
+
     /** Remember what the container probe found, so Title Detail and the chips never probe twice. */
     suspend fun saveProbe(fileId: Long, info: MediaInfo) {
         mediaFileDao.saveProbe(

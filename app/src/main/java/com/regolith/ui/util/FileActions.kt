@@ -6,6 +6,7 @@ import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.FolderLookup
 import com.regolith.data.transfer.SelectionStore
 import com.regolith.domain.artwork.FolderPoster
+import com.regolith.domain.fileops.FolderSearch
 import com.regolith.domain.fileops.FileOpResult
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.domain.fileops.ReadOnlySource
@@ -18,12 +19,15 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Rename, move and delete for whatever is picked, for every screen that
@@ -73,6 +77,16 @@ class FileActions @AssistedInject constructor(
 
     /** The picks that are pictures, found as a verb starts: a target says only that it is not a video. */
     private var pictures: Set<FileOpTarget> = emptySet()
+
+    /**
+     * The share's folders, read the first time the move sheet is searched
+     * and kept while it is open. Dropped when it closes, and when a folder
+     * is made in it, so the new one can be found too.
+     */
+    private var shareFolders: ShareFolders? = null
+    private var searchJob: Job? = null
+
+    private class ShareFolders(val byId: Map<Long, FolderEntity>, val index: FolderSearch.Index)
 
     init {
         scope.launch {
@@ -251,6 +265,7 @@ class FileActions @AssistedInject constructor(
     }
 
     private fun beginMove(here: Long?, targets: List<FileOpTarget>) {
+        forgetSearch()
         scope.launch {
             if (refusedForLeftOut("move")) return@launch
             pictures = picturesAmong(targets)
@@ -261,8 +276,13 @@ class FileActions @AssistedInject constructor(
         }
     }
 
-    /** Walk into a folder. Walking in also chooses it: that is what walking in means here. */
+    /**
+     * Walk into a folder. Walking in also chooses it: that is what walking in
+     * means here. From the search's results it ends the search, since the
+     * walk is now somewhere the breadcrumb can say.
+     */
     fun moveWalk(folderId: Long) {
+        searchJob?.cancel()
         scope.launch {
             val targets = picked() ?: return@launch
             _state.update { it.copy(moveSheet = sheetFor(folderId, chosenId = folderId, targets = targets)) }
@@ -278,24 +298,87 @@ class FileActions @AssistedInject constructor(
         }
     }
 
-    /** Choose a folder without walking into it. */
+    /**
+     * Choose a folder without walking into it. One picked from the search's
+     * results may be anywhere on the share, so the sheet goes to where it
+     * lives: its parent, with it ticked and brought into view
+     * ([MoveSheetState.reveal]). That ends the search; the breadcrumb is its
+     * path now.
+     */
     fun moveChoose(chosenId: Long) {
         scope.launch {
             val sheet = _state.value.moveSheet ?: return@launch
             val targets = picked() ?: return@launch
-            _state.update { it.copy(moveSheet = sheetFor(sheet.currentFolderId, chosenId = chosenId, targets = targets)) }
+            if (sheet.query.isBlank()) {
+                _state.update { it.copy(moveSheet = sheetFor(sheet.currentFolderId, chosenId = chosenId, targets = targets)) }
+                return@launch
+            }
+            searchJob?.cancel()
+            val parent = lookup.folder(chosenId)?.parentId ?: return@launch
+            _state.update { it.copy(moveSheet = sheetFor(parent, chosenId = chosenId, targets = targets, reveal = chosenId)) }
+        }
+    }
+
+    /**
+     * Look for a folder anywhere on the share: the field at the top of the
+     * move sheet. What is typed is the sheet's at once, so the field never
+     * waits on the search; the folders follow, best first ([FolderSearch]),
+     * at most [SEARCH_LIMIT] of them. Blank is no search, and the walk is
+     * where it was.
+     *
+     * Only folders Room has seen are found, as only those are walked: the
+     * sheet chooses from what has been listed, and the move itself is what
+     * talks to the server.
+     */
+    fun moveSearch(query: String) {
+        if (_state.value.moveSheet == null) return
+        // Earlier results stay up until these replace them, so the list
+        // does not blink empty between two letters.
+        _state.update { s -> s.copy(moveSheet = s.moveSheet?.let { if (query.isBlank()) it.copy(query = query, results = null, moreResults = false) else it.copy(query = query) }) }
+        searchJob?.cancel()
+        if (query.isBlank()) return
+        searchJob = scope.launch {
+            val sheet = _state.value.moveSheet ?: return@launch
+            val targets = picked() ?: return@launch
+            val shareId = lookup.folder(sheet.currentFolderId)?.shareId ?: return@launch
+            val folders = shareFolders ?: lookup.foldersOnShare(shareId).let { all ->
+                // Folding thousands of names is worth keeping off the main thread.
+                withContext(Dispatchers.Default) {
+                    ShareFolders(all.associateBy { it.id }, FolderSearch.Index(all.map { FolderSearch.Candidate(it.id, it.name, it.relPath) }))
+                }
+            }.also { shareFolders = it }
+            val found = withContext(Dispatchers.Default) { folders.index.find(query) }
+            val refusals = refusalsFor(targets)
+            val rows = found.take(SEARCH_LIMIT).mapNotNull { folders.byId[it.id] }.map { folder ->
+                rowFor(folder, refusals, where = pathLabel(sheet.shareName, folder.relPath.substringBeforeLast('/', "")))
+            }
+            _state.update { s ->
+                // Only onto what is still typed: a search for an earlier letter
+                // that finishes late must not land on top of a later one.
+                val now = s.moveSheet?.takeIf { it.query == query } ?: return@update s
+                s.copy(moveSheet = now.copy(results = rows, moreResults = found.size > SEARCH_LIMIT))
+            }
         }
     }
 
     fun dismissMove() {
         explicit = null
+        forgetSearch()
         _state.update { it.copy(moveSheet = null) }
+    }
+
+    /** The sheet is closing or starting over: no search under way, and the share's folders read afresh next time. */
+    private fun forgetSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        shareFolders = null
     }
 
     fun confirmMove() {
         val sheet = _state.value.moveSheet ?: return
         val targets = picked() ?: return
         val from = origins
+        forgetSearch()
         _state.update { it.copy(moveSheet = null) }
         scope.launch {
             if (refusedForLeftOut("move")) return@launch
@@ -344,6 +427,8 @@ class FileActions @AssistedInject constructor(
         _state.update { it.copy(newFolderIn = null) }
         scope.launch {
             val result = fileOps.createFolder(parentId, name)
+            // A new folder on the share: the next search reads them afresh.
+            shareFolders = null
             val targets = picked() ?: return@launch
             val made = result.done.firstOrNull()
             if (made == null) {
@@ -455,58 +540,87 @@ class FileActions @AssistedInject constructor(
 
     /**
      * The sheet as it looks with [chosenId] picked while looking at [currentId].
-     *
-     * A picked folder cannot be its own destination, nor can anything
-     * inside it, so those rows are offered but not choosable. The test is on
-     * PATHS rather than ids because the folder being aimed at may be several
-     * levels down from the one that was picked. A folder every pick already
-     * sits in is no destination either ("They're already here").
+     * [reveal] is a folder to bring into view: one just chosen from the
+     * search's results, now shown where it lives.
      */
     private suspend fun sheetFor(
         currentId: Long,
         chosenId: Long,
         targets: List<FileOpTarget>,
         error: String? = null,
+        reveal: Long? = null,
     ): MoveSheetState? {
         val current = lookup.folder(currentId) ?: return null
         val chosen = lookup.folder(chosenId) ?: return null
         val shareName = lookup.shareLabel(current.shareId).substringAfter(" · ")
-        val movingPaths = targets.filter { it.isFolder }.mapNotNull { lookup.folder(it.id)?.relPath }
-        fun insideAMovingFolder(relPath: String) =
-            movingPaths.any { relPath == it || relPath.startsWith("$it/") }
-        fun allAlreadyIn(folder: FolderEntity) = origins.isNotEmpty() && origins.values.all { it == folder.id }
-        val currentBlocked = insideAMovingFolder(current.relPath)
-        val chosenBlocked = insideAMovingFolder(chosen.relPath)
+        val refusals = refusalsFor(targets)
+        val currentBlocked = refusals.insideAMovingFolder(current.relPath)
+        val chosenBlocked = refusals.insideAMovingFolder(chosen.relPath)
         return MoveSheetState(
             itemsLabel = FileOpMessages.subjectFor(targets),
             shareName = shareName,
-            breadcrumb = (listOf(shareName) + current.relPath.split('/').filter { it.isNotEmpty() }).joinToString(" / "),
+            breadcrumb = pathLabel(shareName, current.relPath),
             currentFolderId = current.id,
-            children = lookup.subfolders(current.id).map { f ->
-                val blocked = insideAMovingFolder(f.relPath)
-                MoveChild(
-                    folderId = f.id,
-                    name = f.name,
-                    meta = when {
-                        blocked -> "Being moved"
-                        f.fileCount > 0 -> "${f.fileCount} videos · ${formatBytes(f.byteCount)}"
-                        else -> null
-                    },
-                    enabled = !blocked,
-                )
-            },
+            children = lookup.subfolders(current.id).map { rowFor(it, refusals) },
             chosenFolderId = chosen.id,
             chosenName = chosen.name,
             canUp = current.parentId != null,
-            currentChoosable = !allAlreadyIn(current) && !currentBlocked,
-            confirmEnabled = !allAlreadyIn(chosen) && !chosenBlocked,
+            currentChoosable = !refusals.allAlreadyIn(current) && !currentBlocked,
+            confirmEnabled = !refusals.allAlreadyIn(chosen) && !chosenBlocked,
             note = when {
                 currentBlocked -> "A folder can't move inside itself"
-                allAlreadyIn(current) -> "They're already here"
+                refusals.allAlreadyIn(current) -> "They're already here"
                 else -> null
             },
             error = error,
+            reveal = reveal,
         )
+    }
+
+    /**
+     * Why a folder cannot be where the picks go. A picked folder cannot go
+     * into itself or anything inside it; the test is on PATHS rather than
+     * ids, because the folder aimed at may be several levels down from the
+     * one that was picked. And a folder every pick already sits in is no
+     * move at all ("They're already here").
+     */
+    private inner class Refusals(private val movingPaths: List<String>) {
+        fun insideAMovingFolder(relPath: String) = movingPaths.any { relPath == it || relPath.startsWith("$it/") }
+        fun allAlreadyIn(folder: FolderEntity) = origins.isNotEmpty() && origins.values.all { it == folder.id }
+    }
+
+    private suspend fun refusalsFor(targets: List<FileOpTarget>) =
+        Refusals(targets.filter { it.isFolder }.mapNotNull { lookup.folder(it.id)?.relPath })
+
+    /**
+     * [folder] as a row of the sheet. A folder that cannot be chosen stays
+     * in the list, greyed, with the reason as its meta: a destination that
+     * silently vanished would read as a missing folder rather than a
+     * refused one. [where] is a search result's place on the share, which
+     * then leads the meta; a row in the walk says how much is in it instead.
+     */
+    private fun rowFor(folder: FolderEntity, refusals: Refusals, where: String? = null): MoveChild {
+        val why = when {
+            refusals.insideAMovingFolder(folder.relPath) -> "Being moved"
+            refusals.allAlreadyIn(folder) -> "They're already here"
+            else -> null
+        }
+        val meta = when {
+            where != null -> listOfNotNull(why, where).joinToString(" · ")
+            why != null -> why
+            folder.fileCount > 0 -> "${folder.fileCount} videos · ${formatBytes(folder.byteCount)}"
+            else -> null
+        }
+        return MoveChild(folderId = folder.id, name = folder.name, meta = meta, enabled = why == null)
+    }
+
+    /** "media / Films / Sci-fi": a place on the share, from the share's name down. `""` is the share itself. */
+    private fun pathLabel(shareName: String, relPath: String): String =
+        (listOf(shareName) + relPath.split('/').filter { it.isNotEmpty() }).joinToString(" / ")
+
+    private companion object {
+        /** The most results the move sheet's search shows; past it, the sheet says to type more. */
+        const val SEARCH_LIMIT = 100
     }
 }
 

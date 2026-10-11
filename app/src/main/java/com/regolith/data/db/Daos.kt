@@ -279,6 +279,10 @@ interface FolderDao {
     @Query("SELECT * FROM folders WHERE parentId = :parentId")
     suspend fun children(parentId: Long): List<FolderEntity>
 
+    /** Every folder on one share but its root: what the move sheet's search looks through. */
+    @Query("SELECT * FROM folders WHERE shareId = :shareId AND parentId IS NOT NULL")
+    suspend fun inShare(shareId: Long): List<FolderEntity>
+
     @Query("SELECT folders.* FROM folders JOIN folder_fts ON folders.id = folder_fts.rowid WHERE folder_fts MATCH :match AND folders.parentId IS NOT NULL LIMIT :limit")
     fun searchFolders(match: String, limit: Int): Flow<List<FolderEntity>>
 

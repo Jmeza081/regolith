@@ -1,9 +1,11 @@
 package com.regolith.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,8 +33,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.regolith.R
@@ -92,6 +99,21 @@ data class MoveSheetState(
      * looking at. A message nobody can see is the same as no message.
      */
     val error: String? = null,
+    /** What is typed in the search field. Blank is no search: the walk shows. */
+    val query: String = "",
+    /**
+     * The folders anywhere on the share that [query] could mean, best first,
+     * each with where it is as its meta. Null until the first search comes
+     * back; empty when it found nothing.
+     */
+    val results: List<MoveChild>? = null,
+    /** More folders matched than [results] holds: typing more narrows them down. */
+    val moreResults: Boolean = false,
+    /**
+     * A folder to bring into view and nudge, once: the result just chosen,
+     * now shown where it lives among [children].
+     */
+    val reveal: Long? = null,
 )
 
 /**
@@ -114,10 +136,19 @@ data class MoveSheetState(
  * [AlphabetRail] runs down the edge, and the first folder under each letter
  * it jumps to is nudged, so the eye lands on it — the one that matters when
  * the list is too near its end to bring that folder to the top.
+ *
+ * Above it all, a search field finds a folder anywhere on the share
+ * ([onQueryChange]): the walk gives way to the folders that match, each
+ * with where it is under its name, so a folder on the far side of the tree
+ * is a few letters away rather than a climb back up and down again. A
+ * result is chosen the way a folder is, and then shown where it lives, in
+ * its parent, ticked; its chevron walks into it. Back clears the search
+ * before it closes the sheet.
  */
 @Composable
 fun MoveToSheet(
     state: MoveSheetState,
+    onQueryChange: (String) -> Unit,
     onUp: () -> Unit,
     onOpen: (folderId: Long) -> Unit,
     onChoose: (folderId: Long) -> Unit,
@@ -147,6 +178,50 @@ fun MoveToSheet(
         delay(RAIL_NUDGE_FORGET_MS)
         nudged = null
     }
+    // A result was chosen: the walk is now where it lives, so bring it into
+    // view and nudge it, as a letter's jump does, for the eye to land on.
+    LaunchedEffect(state.reveal, state.currentFolderId) {
+        val id = state.reveal ?: return@LaunchedEffect
+        val position = state.children.indexOfFirst { it.folderId == id }
+        if (position < 0) return@LaunchedEffect
+        listState.scrollToItem(LEAD_ROWS + position)
+        nudged = id
+        nudges++
+    }
+    val searching = state.query.isNotBlank()
+    val resultsState = rememberLazyListState()
+    // Each new set of results starts at its best match.
+    LaunchedEffect(state.results) { resultsState.scrollToItem(0) }
+
+    // The "Move to …" button, pinned under the list.
+    val footer: @Composable ColumnScope.() -> Unit = {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+        if (state.error != null) {
+            Spacer(Modifier.height(Spacing.s12))
+            Text(
+                state.error,
+                style = TextStyles.meta,
+                color = colors.accent,
+                modifier = Modifier.fillMaxWidth().testTag("move_sheet_error"),
+            )
+        }
+        Spacer(Modifier.height(Spacing.s18))
+        PrimaryButton(
+            text = "Move to ${state.chosenName}",
+            onClick = onConfirm,
+            enabled = state.confirmEnabled,
+            testTag = "move_sheet_confirm",
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(Spacing.s12))
+        Text(
+            "Each one moves in a single step on the server — nothing is copied, so nothing can be left " +
+                "half-moved. A folder takes everything inside it.",
+            style = TextStyles.meta,
+            color = colors.metadata,
+            modifier = Modifier.fillMaxWidth().testTag("move_sheet_note"),
+        )
+    }
 
     RegolithSheet(
         title = "Move ${state.itemsLabel}",
@@ -154,114 +229,160 @@ fun MoveToSheet(
         onDismiss = onDismiss,
         testTag = "move_sheet",
         contentScrolls = false,
-        footer = {
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-            if (state.error != null) {
-                Spacer(Modifier.height(Spacing.s12))
-                Text(
-                    state.error,
-                    style = TextStyles.meta,
-                    color = colors.accent,
-                    modifier = Modifier.fillMaxWidth().testTag("move_sheet_error"),
-                )
-            }
-            Spacer(Modifier.height(Spacing.s18))
-            PrimaryButton(
-                text = "Move to ${state.chosenName}",
-                onClick = onConfirm,
-                enabled = state.confirmEnabled,
-                testTag = "move_sheet_confirm",
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(Spacing.s12))
-            Text(
-                "Each one moves in a single step on the server — nothing is copied, so nothing can be left " +
-                    "half-moved. A folder takes everything inside it.",
-                style = TextStyles.meta,
-                color = colors.metadata,
-                modifier = Modifier.fillMaxWidth().testTag("move_sheet_note"),
-            )
-        },
+        // Not while searching: the button would still name the last folder
+        // chosen, and the results need the room the keyboard leaves. A
+        // result picked brings it back, naming that folder.
+        footer = if (searching) null else footer,
     ) {
+        // Read here, inside the sheet: it is a window of its own, and the
+        // focus and keyboard outside it are the screen's behind.
+        val focusManager = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
+        // A result was picked: the typing is done, and the keyboard goes.
+        val doneTyping = {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+        // Back ends the search before it ends the sheet: it undoes the
+        // last thing done. Inside the sheet, whose window takes the back.
+        BackHandler(enabled = state.query.isNotEmpty()) { onQueryChange("") }
+
+        Spacer(Modifier.height(Spacing.s8))
+        SearchField(
+            query = state.query,
+            onQueryChange = onQueryChange,
+            placeholder = "Search folders on ${state.shareName}",
+            testTag = "move_sheet_search_field",
+            clearTestTag = "move_sheet_search_clear",
+            // The sheet is the surface colour already; the pill sits a step lower.
+            containerColor = colors.ground,
+            onSearch = { keyboard?.hide() },
+            modifier = Modifier.fillMaxWidth(),
+        )
         Spacer(Modifier.height(Spacing.s8))
 
-        // Where the walk is, and the way back up.
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
-            if (state.canUp) {
-                Box(
-                    Modifier.size(44.dp).clickable(interactionSource = null, indication = null, onClick = onUp).testTag("move_sheet_up"),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Icon(painterResource(R.drawable.rg_ic_chevron_left), contentDescription = "Up one folder", tint = colors.inkSoft, modifier = Modifier.size(19.scaledDp()))
+        if (searching) {
+            val results = state.results.orEmpty()
+            LazyColumn(state = resultsState, modifier = Modifier.weight(1f, fill = false).fillMaxWidth().testTag("move_sheet_results")) {
+                if (state.results != null && results.isEmpty()) {
+                    item(key = "none") {
+                        Text(
+                            "No folder on ${state.shareName} matches “${state.query.trim()}”.",
+                            style = TextStyles.meta,
+                            color = colors.metadata,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.s18).testTag("move_sheet_no_results"),
+                        )
+                    }
                 }
-            }
-            Text(
-                state.breadcrumb,
-                style = TextStyles.settingLabel,
-                color = colors.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).testTag("move_sheet_breadcrumb"),
-            )
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-
-        Box(Modifier.weight(1f, fill = false)) {
-            LazyColumn(
-                state = listState,
-                contentPadding = PaddingValues(end = if (railRoom) AlphabetRailWidth - SheetGutter else 0.dp),
-                modifier = Modifier.fillMaxWidth().testTag("move_sheet_list"),
-            ) {
-                // The folder being looked at is itself a destination — that
-                // is what "move it here" means once you have walked somewhere.
-                item(key = "here") {
+                itemsIndexed(results, key = { _, result -> result.folderId }) { i, result ->
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
                     DestinationRow(
-                        name = state.breadcrumb.substringAfterLast(" / "),
-                        meta = if (state.currentChoosable) null else state.note,
-                        chosen = state.chosenFolderId == state.currentFolderId,
-                        enabled = state.currentChoosable,
-                        onChoose = { onChoose(state.currentFolderId) },
-                        onOpen = null,
-                        testTag = "move_sheet_here",
+                        name = result.name,
+                        meta = result.meta,
+                        chosen = state.chosenFolderId == result.folderId,
+                        enabled = result.enabled,
+                        onChoose = { doneTyping(); onChoose(result.folderId) },
+                        onOpen = { doneTyping(); onOpen(result.folderId) },
+                        testTag = "move_sheet_result_${result.folderId}",
+                        highlight = state.query,
+                        // A path keeps both ends: the share it starts on, and the folder it ends in.
+                        metaOverflow = TextOverflow.MiddleEllipsis,
                     )
                 }
-                item(key = "new_folder") {
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                    NewFolderRow(onNewFolder)
-                }
-                items(state.children, key = { it.folderId }) { child ->
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                    DestinationRow(
-                        name = child.name,
-                        meta = child.meta,
-                        chosen = state.chosenFolderId == child.folderId,
-                        enabled = child.enabled,
-                        onChoose = { onChoose(child.folderId) },
-                        // Still walkable when it cannot be chosen: a folder being
-                        // moved may hold the folder you actually want.
-                        onOpen = { onOpen(child.folderId) },
-                        testTag = "move_sheet_folder_${child.folderId}",
-                        nudge = if (child.folderId == nudged) nudges else 0,
-                    )
+                if (state.moreResults) {
+                    item(key = "more") {
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                        Text(
+                            "The best ${results.size}. Type more to narrow them down.",
+                            style = TextStyles.meta,
+                            color = colors.metadata,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.s18).testTag("move_sheet_results_more"),
+                        )
+                    }
                 }
             }
-            // Only once the list really scrolls: a rail beside rows that are
-            // all on screen already would be a control with nothing to do.
-            if (railRoom && (listState.canScrollForward || listState.canScrollBackward)) {
-                AlphabetRail(
-                    index = letters,
-                    onJump = { _, position ->
-                        // A jump, not a glide: the finger can cross five
-                        // letters in the time a smooth scroll takes to do one.
-                        scope.launch { listState.scrollToItem(LEAD_ROWS + position) }
-                        nudged = state.children[position].folderId
-                        nudges++
-                    },
-                    testTag = "move_sheet_rail",
-                    // The list's area, plus the gutter on the end side: the
-                    // strip belongs at the sheet's edge, where the thumb is.
-                    modifier = Modifier.matchParentSize().bleedEnd(SheetGutter),
+        } else {
+            // Where the walk is, and the way back up.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) {
+                if (state.canUp) {
+                    Box(
+                        Modifier.size(44.dp).clickable(interactionSource = null, indication = null, onClick = onUp).testTag("move_sheet_up"),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Icon(painterResource(R.drawable.rg_ic_chevron_left), contentDescription = "Up one folder", tint = colors.inkSoft, modifier = Modifier.size(19.scaledDp()))
+                    }
+                }
+                Text(
+                    state.breadcrumb,
+                    style = TextStyles.settingLabel,
+                    color = colors.ink,
+                    maxLines = 1,
+                    // Short in the middle: the share it starts on and the
+                    // folder you are in are the two ends that matter, and a
+                    // search lands you deep.
+                    overflow = TextOverflow.MiddleEllipsis,
+                    modifier = Modifier.weight(1f).testTag("move_sheet_breadcrumb"),
                 )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+
+            Box(Modifier.weight(1f, fill = false)) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(end = if (railRoom) AlphabetRailWidth - SheetGutter else 0.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("move_sheet_list"),
+                ) {
+                    // The folder being looked at is itself a destination — that
+                    // is what "move it here" means once you have walked somewhere.
+                    item(key = "here") {
+                        DestinationRow(
+                            name = state.breadcrumb.substringAfterLast(" / "),
+                            meta = if (state.currentChoosable) null else state.note,
+                            chosen = state.chosenFolderId == state.currentFolderId,
+                            enabled = state.currentChoosable,
+                            onChoose = { onChoose(state.currentFolderId) },
+                            onOpen = null,
+                            testTag = "move_sheet_here",
+                        )
+                    }
+                    item(key = "new_folder") {
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                        NewFolderRow(onNewFolder)
+                    }
+                    items(state.children, key = { it.folderId }) { child ->
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                        DestinationRow(
+                            name = child.name,
+                            meta = child.meta,
+                            chosen = state.chosenFolderId == child.folderId,
+                            enabled = child.enabled,
+                            onChoose = { onChoose(child.folderId) },
+                            // Still walkable when it cannot be chosen: a folder being
+                            // moved may hold the folder you actually want.
+                            onOpen = { onOpen(child.folderId) },
+                            testTag = "move_sheet_folder_${child.folderId}",
+                            nudge = if (child.folderId == nudged) nudges else 0,
+                        )
+                    }
+                }
+                // Only once the list really scrolls: a rail beside rows that are
+                // all on screen already would be a control with nothing to do.
+                if (railRoom && (listState.canScrollForward || listState.canScrollBackward)) {
+                    AlphabetRail(
+                        index = letters,
+                        onJump = { _, position ->
+                            // A jump, not a glide: the finger can cross five
+                            // letters in the time a smooth scroll takes to do one.
+                            scope.launch { listState.scrollToItem(LEAD_ROWS + position) }
+                            nudged = state.children[position].folderId
+                            nudges++
+                        },
+                        testTag = "move_sheet_rail",
+                        // The list's area, plus the gutter on the end side: the
+                        // strip belongs at the sheet's edge, where the thumb is.
+                        modifier = Modifier.matchParentSize().bleedEnd(SheetGutter),
+                    )
+                }
             }
         }
     }
@@ -305,6 +426,8 @@ private fun NewFolderRow(onNewFolder: () -> Unit) {
  *
  * [nudge] above zero plays the nudge — out toward the rail and back with a
  * bounce — and a new value plays it again. Zero settles the row at rest.
+ * [highlight] is a search's query, marked where it matched, in the name
+ * and in the meta, as Search marks its rows.
  */
 @Composable
 private fun DestinationRow(
@@ -316,6 +439,8 @@ private fun DestinationRow(
     onOpen: (() -> Unit)?,
     testTag: String,
     nudge: Int = 0,
+    highlight: String? = null,
+    metaOverflow: TextOverflow = TextOverflow.Ellipsis,
 ) {
     val colors = RegolithTheme.colors
     val nudged = rememberRailNudge(nudge)
@@ -342,13 +467,13 @@ private fun DestinationRow(
             Spacer(Modifier.width(Spacing.s12))
             Column(Modifier.weight(1f)) {
                 Text(
-                    name,
+                    marked(name, highlight),
                     style = TextStyles.settingLabel,
                     color = if (enabled) colors.ink else colors.disabledInk,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (meta != null) Text(meta, style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (meta != null) Text(marked(meta, highlight), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = metaOverflow)
             }
             if (chosen) {
                 Icon(
@@ -369,6 +494,11 @@ private fun DestinationRow(
         }
     }
 }
+
+/** [text] with [query]'s matches in the accent colour; as it is when there is no query. */
+@Composable
+private fun marked(text: String, query: String?): AnnotatedString =
+    if (query.isNullOrBlank()) AnnotatedString(text) else highlightMatches(text, query, RegolithTheme.colors.accent)
 
 /** The rows above the first folder: "here" and "New folder". A rail position is a folder's; the list's is this much further down. */
 private const val LEAD_ROWS = 2

@@ -24,6 +24,7 @@ import com.regolith.domain.transfer.FilePick
 import com.regolith.domain.transfer.FolderPick
 import com.regolith.testing.FakeSmbGateway
 import com.regolith.ui.util.FileActions
+import com.regolith.ui.components.MoveChild
 import com.regolith.ui.util.FileActionsState
 import com.regolith.ui.util.FileOpMessages
 import kotlinx.coroutines.flow.first
@@ -198,6 +199,171 @@ class FileActionsTest {
         val mixed = actions.awaitState { it.moveSheet != null }.moveSheet!!
         assertNull(mixed.note)
         assertTrue("the Archive pick can still come to Films", mixed.confirmEnabled)
+    }
+
+    // ── the move sheet's search ────────────────────────────────────────
+
+    /** Two folders called Sci-fi on the picks' share, and one on another share. */
+    private suspend fun sciFi(): Pair<Long, Long> {
+        val inFilms = folder("Sci-fi", filmsId, parentPath = "Films")
+        val inArchive = folder("Sci-fi", archiveId, parentPath = "Archive")
+        val elsewhere = share("NAS", "nas", "other")
+        val otherRoot = db.folderDao().upsert(FolderEntity(shareId = elsewhere, parentId = null, relPath = "", name = "other", fileCount = 0, byteCount = 0, lastListedAtMs = 1)).id
+        folder("Sci-fi", otherRoot, share = elsewhere)
+        return inFilms to inArchive
+    }
+
+    @Test
+    fun `the search finds a folder anywhere on the share, saying where it is`() = runTest {
+        val actions = actions()
+        val (inFilms, inArchive) = sciFi()
+        pick(film("Heat.mkv"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = filmsId)
+        actions.awaitState { it.moveSheet != null }
+
+        actions.moveSearch("sci")
+
+        val sheet = actions.awaitState { it.moveSheet?.results != null }.moveSheet!!
+        assertEquals("sci", sheet.query)
+        // Never the other share's: a move cannot leave the one it starts on.
+        assertEquals(listOf(inArchive, inFilms), sheet.results!!.map { it.folderId })
+        assertEquals(listOf("media / Archive", "media / Films"), sheet.results!!.map { it.meta })
+        assertEquals("the walk stays where it was", filmsId, sheet.currentFolderId)
+    }
+
+    @Test
+    fun `a result chosen is shown where it lives, ticked, and the search ends`() = runTest {
+        val actions = actions()
+        val (_, inArchive) = sciFi()
+        pick(film("Heat.mkv"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = filmsId)
+        actions.awaitState { it.moveSheet != null }
+        actions.moveSearch("sci")
+        actions.awaitState { it.moveSheet?.results != null }
+
+        actions.moveChoose(inArchive)
+
+        val sheet = actions.awaitState { it.moveSheet?.reveal == inArchive }.moveSheet!!
+        assertEquals(archiveId, sheet.currentFolderId)
+        assertEquals(inArchive, sheet.chosenFolderId)
+        assertEquals("Sci-fi", sheet.chosenName)
+        assertTrue(sheet.confirmEnabled)
+        assertEquals("", sheet.query)
+        assertNull(sheet.results)
+        assertEquals("media / Archive", sheet.breadcrumb)
+    }
+
+    @Test
+    fun `a result walked into is the walk's, and the search ends`() = runTest {
+        val actions = actions()
+        val (inFilms, _) = sciFi()
+        pick(film("Old.mkv", folderId = archiveId, folderPath = "Archive"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = archiveId)
+        actions.awaitState { it.moveSheet != null }
+        actions.moveSearch("sci")
+        actions.awaitState { it.moveSheet?.results != null }
+
+        actions.moveWalk(inFilms)
+
+        val sheet = actions.awaitState { it.moveSheet?.currentFolderId == inFilms }.moveSheet!!
+        assertEquals(inFilms, sheet.chosenFolderId)
+        assertEquals("", sheet.query)
+        assertEquals("media / Films / Sci-fi", sheet.breadcrumb)
+    }
+
+    @Test
+    fun `a folder being moved is found, but greyed with the reason`() = runTest {
+        val actions = actions()
+        val (inFilms, inArchive) = sciFi()
+        pickFolder(filmsId, "Films")
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = rootId)
+        actions.awaitState { it.moveSheet != null }
+
+        actions.moveSearch("sci")
+
+        val results = actions.awaitState { it.moveSheet?.results != null }.moveSheet!!.results!!.associateBy { it.folderId }
+        assertFalse(results.getValue(inFilms).enabled)
+        assertEquals("Being moved · media / Films", results.getValue(inFilms).meta)
+        assertTrue(results.getValue(inArchive).enabled)
+    }
+
+    @Test
+    fun `the folder every pick is in says so, in the walk and in the results`() = runTest {
+        val actions = actions()
+        pick(film("Heat.mkv"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = rootId)
+        val walk = actions.awaitState { it.moveSheet != null }.moveSheet!!.children.associateBy { it.name }
+        assertFalse(walk.getValue("Films").enabled)
+        assertEquals("They're already here", walk.getValue("Films").meta)
+        assertTrue(walk.getValue("Archive").enabled)
+
+        actions.moveSearch("films")
+
+        val found = actions.awaitState { it.moveSheet?.results != null }.moveSheet!!.results!!.single()
+        assertFalse(found.enabled)
+        assertEquals("They're already here · media", found.meta)
+    }
+
+    @Test
+    fun `clearing the search goes back to the walk where it was`() = runTest {
+        val actions = actions()
+        sciFi()
+        pick(film("Heat.mkv"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = archiveId)
+        actions.awaitState { it.moveSheet != null }
+        actions.moveSearch("sci")
+        actions.awaitState { it.moveSheet?.results != null }
+
+        actions.moveSearch("")
+
+        val sheet = actions.awaitState { it.moveSheet?.query == "" }.moveSheet!!
+        assertNull(sheet.results)
+        assertEquals(archiveId, sheet.currentFolderId)
+    }
+
+    @Test
+    fun `a folder made in the sheet can be found by the next search`() = runTest {
+        val actions = actions()
+        pick(film("Heat.mkv"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = archiveId)
+        actions.awaitState { it.moveSheet != null }
+        actions.moveSearch("keep")
+        assertEquals(emptyList<MoveChild>(), actions.awaitState { it.moveSheet?.results != null }.moveSheet!!.results)
+        actions.moveSearch("")
+        actions.awaitState { it.moveSheet?.query == "" }
+
+        actions.startNewFolder()
+        actions.createFolder("Keepers")
+        actions.awaitState { it.moveSheet?.chosenName == "Keepers" }
+        actions.moveSearch("keep")
+
+        val found = actions.awaitState { !it.moveSheet?.results.isNullOrEmpty() }.moveSheet!!.results!!
+        assertEquals(listOf("Keepers"), found.map { it.name })
+    }
+
+    @Test
+    fun `past the limit, the results say there are more`() = runTest {
+        val actions = actions()
+        repeat(105) { folder("Clip %03d".format(it), archiveId, parentPath = "Archive") }
+        pick(film("Heat.mkv"))
+        actions.awaitState { it.verbs.canMove }
+        actions.startMove(here = filmsId)
+        actions.awaitState { it.moveSheet != null }
+
+        actions.moveSearch("clip")
+
+        val sheet = actions.awaitState { it.moveSheet?.results != null }.moveSheet!!
+        assertEquals(100, sheet.results!!.size)
+        assertTrue(sheet.moreResults)
+        // Best first: these all start with "clip", so then A to Z.
+        assertEquals("Clip 000", sheet.results!!.first().name)
     }
 
     @Test
@@ -379,6 +545,7 @@ class FileActionsTest {
             return out
         }
         override suspend fun subfolders(folderId: Long) = db.folderDao().children(folderId).sortedBy { it.name.lowercase() }
+        override suspend fun foldersOnShare(shareId: Long) = db.folderDao().inShare(shareId)
         override suspend fun rootFolder(shareId: Long): FolderEntity {
             val name = db.shareDao().byId(shareId)!!.name
             return db.folderDao().upsert(FolderEntity(shareId = shareId, parentId = null, relPath = "", name = name, fileCount = 0, byteCount = 0, lastListedAtMs = null))

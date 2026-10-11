@@ -31,6 +31,9 @@ interface FolderLookup {
     /** The folders directly inside [folderId], by name. */
     suspend fun subfolders(folderId: Long): List<FolderEntity>
 
+    /** Every folder on [shareId] but its root, in no order: the move sheet searches these. */
+    suspend fun foldersOnShare(shareId: Long): List<FolderEntity>
+
     /** The row for a share's own root, made on first use. */
     suspend fun rootFolder(shareId: Long): FolderEntity
 
