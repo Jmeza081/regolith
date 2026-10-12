@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** What the artwork walk is doing right now, summed over every share. */
+/** What the artwork walk (or the chapter-picture pass, [ArtworkPrefetcher.observeWalls]) is doing right now, summed over every share. */
 data class PrefetchStatus(
     val running: Boolean = false,
     val done: Int = 0,
@@ -63,12 +63,38 @@ class ArtworkPrefetcher @Inject constructor(
         WorkManager.getInstance(context).enqueueUniqueWork(uniqueName(shareId), ExistingWorkPolicy.KEEP, request)
     }
 
-    fun cancel(shareId: Long) {
-        WorkManager.getInstance(context).cancelUniqueWork(uniqueName(shareId))
+    /**
+     * Every video's chapter pictures on [shareId] ([ChapterWallWorker]),
+     * queued by the share's artwork walk when it finishes.
+     *
+     * Wi-Fi only (UNMETERED), where the artwork walk takes any network. A
+     * wall is a dozen key-frame reads per video, which over a library is
+     * gigabytes, and the share is reached on mobile data only through a VPN.
+     * WorkManager holds the job until Wi-Fi comes back, by itself.
+     *
+     * Expedited for the artwork walk's reason (a foreground notification
+     * from the background), which also rules out "only while charging":
+     * expedited work takes network and storage constraints only.
+     */
+    fun enqueueWalls(shareId: Long) {
+        val request = OneTimeWorkRequestBuilder<ChapterWallWorker>()
+            .setInputData(workDataOf(ChapterWallWorker.KEY_SHARE_ID to shareId))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .addTag(WALLS_TAG)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(wallsName(shareId), ExistingWorkPolicy.KEEP, request)
     }
 
+    fun cancel(shareId: Long) {
+        WorkManager.getInstance(context).cancelUniqueWork(uniqueName(shareId))
+        WorkManager.getInstance(context).cancelUniqueWork(wallsName(shareId))
+    }
+
+    /** Stop: the artwork walk and the chapter-picture pass both. */
     fun cancelAll() {
         WorkManager.getInstance(context).cancelAllWorkByTag(TAG)
+        WorkManager.getInstance(context).cancelAllWorkByTag(WALLS_TAG)
     }
 
     /** Live progress across every share's walk. */
@@ -82,9 +108,30 @@ class ArtworkPrefetcher @Inject constructor(
             )
         }
 
+    /**
+     * Live progress of the chapter-picture pass, kept apart from [observe] so
+     * Shorts' "files checked" and the poster walk's own count stay theirs.
+     *
+     * Running means RUNNING. A pass waiting for Wi-Fi is enqueued but not
+     * running, and counting it would leave "Making chapter pictures" up for as
+     * long as the phone is on mobile data.
+     */
+    fun observeWalls(): Flow<PrefetchStatus> =
+        WorkManager.getInstance(context).getWorkInfosByTagFlow(WALLS_TAG).map { infos ->
+            val live = infos.filter { it.state == WorkInfo.State.RUNNING }
+            PrefetchStatus(
+                running = live.isNotEmpty(),
+                done = live.sumOf { it.progress.getInt(ChapterWallWorker.KEY_DONE, 0) },
+                total = live.sumOf { it.progress.getInt(ChapterWallWorker.KEY_TOTAL, 0) },
+            )
+        }
+
     private fun uniqueName(shareId: Long) = "artwork-share-$shareId"
+
+    private fun wallsName(shareId: Long) = "chapter-walls-share-$shareId"
 
     private companion object {
         const val TAG = "regolith-artwork"
+        const val WALLS_TAG = "regolith-chapter-walls"
     }
 }

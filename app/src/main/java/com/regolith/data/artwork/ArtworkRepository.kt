@@ -29,6 +29,11 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
 import com.regolith.domain.artwork.MomentFrames
+import com.regolith.domain.playback.Chapter
+import com.regolith.domain.playback.ChapterMarks
+import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterStills
+import com.regolith.domain.playback.ShownChapters
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.domain.smb.SmbCredentials
 import com.regolith.domain.smb.SmbEntry
@@ -94,6 +99,8 @@ class ArtworkRepository @Inject constructor(
     private val durations: DurationProbe,
     private val grabber: FrameGrabber,
     private val chapterDao: UserChapterDao,
+    /** A film's own chapter markers, for working out its chapter wall ahead of time ([prefetchChapterWall]). */
+    private val containerChapters: com.regolith.data.media.ChapterRepository,
     private val shareFileDao: ShareFileDao,
     private val pictures: PictureRepository,
     /**
@@ -230,7 +237,7 @@ class ArtworkRepository @Inject constructor(
     suspend fun makeMoments(fileId: Long, timesMs: List<Long>) {
         ensureGeneration()
         repeat(MOMENT_JOINS) {
-            val missing = timesMs.distinct().filter { cached(ArtworkRequest(ArtworkOwner.Moment(fileId, it), ArtworkKind.THUMB)) == null }
+            val missing = unmadeMoments(fileId, timesMs)
             if (missing.isEmpty()) return
             var ours = false
             joinOrStart(MomentBatch(fileId)) {
@@ -303,6 +310,65 @@ class ArtworkRepository @Inject constructor(
             }
         }
     }
+
+    /**
+     * Make film [fileId]'s chapter wall before anyone opens it: the walk's
+     * last pass ([ChapterWallWorker]). The same pictures the player's chapter
+     * sheet asks for ([ChapterStills]), worked out from the chapters it would
+     * show ([ShownChapters]): the user's, else the file's own, else the even
+     * split of the runtime.
+     *
+     * The even split is checked FIRST, from the row's runtime, because it is
+     * what nearly every film shows and reading the file's own markers means
+     * opening the file. A wall already made is then a handful of cached-row
+     * lookups, so a walk after every scan costs next to nothing for the films
+     * it has done. Only a film whose split is not all there has its container
+     * read, to tell its own markers from the split.
+     *
+     * The runtime is the row's, filled by the artwork pass; a film that pass
+     * never measured (its poster came off the share) is measured here by
+     * Media3, as the player measures it. Either can sit a few milliseconds
+     * from the player's own, which is why [ChapterStills] rounds to seconds.
+     *
+     * Same slots and time box as [prefetch]. False only when the share
+     * stopped answering.
+     */
+    suspend fun prefetchChapterWall(fileId: Long): Boolean {
+        ensureGeneration()
+        val file = mediaFileDao.byId(fileId) ?: return true
+        val durationMs = file.durationMs?.takeIf { it > 0 }
+            ?: durations.durationMs(fileId)?.takeIf { it > 0 }?.also { mediaFileDao.fillBasics(fileId, it, null, null, null) }
+            // Nowhere to put the parts. The player makes them if it ever can.
+            ?: return true
+        val user = chapterDao.forFile(fileId).map { Chapter(it.startMs, it.title) }
+        val times = if (user.isNotEmpty()) {
+            ChapterStills.timesFor(user, durationMs, ChapterSource.USER)
+        } else {
+            val split = ChapterStills.timesFor(ChapterMarks.evenly(durationMs), durationMs, ChapterSource.EVEN)
+            if (unmadeMoments(fileId, split).isEmpty()) return true
+            val shown = ShownChapters.of(emptyList(), containerChapters.chapters(fileId), durationMs)
+            ChapterStills.timesFor(shown.chapters, durationMs, shown.source)
+        }
+        val missing = unmadeMoments(fileId, times)
+        if (missing.isEmpty()) return true
+        return joinOrStart(MomentBatch(fileId)) {
+            prefetchSlots.withPermit {
+                // Inside the permit, for the reason [prefetch] gives.
+                withTimeoutOrNull(OWNER_TIMEOUT_MS) {
+                    guarded("chapter wall of ${file.name}", missing.map { ArtworkOwner.Moment(fileId, it) }, THUMB_ONLY) {
+                        resolveMoments(fileId, missing, THUMB_ONLY)
+                    }
+                } ?: run {
+                    Log.w(TAG, "chapter wall of ${file.name} gave up after ${OWNER_TIMEOUT_MS / 1000}s; moving on")
+                    true
+                }
+            }
+        }
+    }
+
+    /** Which of [timesMs] in film [fileId] have no moment frame cached yet. */
+    private suspend fun unmadeMoments(fileId: Long, timesMs: List<Long>): List<Long> =
+        timesMs.distinct().filter { cached(ArtworkRequest(ArtworkOwner.Moment(fileId, it), ArtworkKind.THUMB)) == null }
 
     /** Join the resolution already running for [key], or start it. */
     private suspend fun joinOrStart(key: Any, body: suspend () -> Boolean): Boolean {

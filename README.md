@@ -726,6 +726,14 @@ own thumbnail instead, rather than a picture claiming to be a time it is not. Th
 stand-in is tried again after a day, in case the grab only failed because the
 share was down.
 
+Then, on Wi-Fi only, the chapter pictures: every video's chapter sheet, one
+picture per chapter, so even a video you have never opened shows its whole sheet
+at once. It runs once the posters are done, newest videos first, and shows as
+**Making chapter pictures** in the same places. A sheet already made costs
+nothing on the next walk. Each picture is a small thumbnail of about 10 to 20 KB,
+so a twelve-part sheet is around 200 KB, and a thousand videos about 200 MB of
+the artwork cache.
+
 A folder with no poster of its own gets a deck of cards: five frames from the
 videos inside it, picked from the first video to the last. The frames come from
 the folder's tall videos, its phone clips, whenever it has any, so the cards are

@@ -70,6 +70,25 @@ object ChapterMarks {
 }
 
 /**
+ * The chapters a film shows, and where they came from: the user's, else the
+ * container's, else [ChapterMarks.evenly] of the runtime.
+ *
+ * One rule for the player ([com.regolith.player.PlaybackState.chapters]) and
+ * for the walk that makes their pictures ahead of time
+ * (`ArtworkRepository.prefetchChapterWall`), so the two always agree on the
+ * list, and so on which frames a wall needs.
+ */
+data class ShownChapters(val chapters: List<Chapter>, val source: ChapterSource) {
+    companion object {
+        fun of(user: List<Chapter>, container: List<Chapter>, durationMs: Long): ShownChapters = when {
+            user.isNotEmpty() -> ShownChapters(user, ChapterSource.USER)
+            container.isNotEmpty() -> ShownChapters(container, ChapterSource.CONTAINER)
+            else -> ShownChapters(ChapterMarks.evenly(durationMs), ChapterSource.EVEN)
+        }
+    }
+}
+
+/**
  * Where a file's chapters came from. The player shows exactly one kind at
  * a time, in this order of preference: what the user wrote beats what the
  * container carries, which beats the even split. Reverting the user's rows

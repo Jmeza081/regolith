@@ -40,6 +40,7 @@ import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.ReelClip
 import com.regolith.domain.playback.RepeatMode
+import com.regolith.domain.playback.ShownChapters
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -176,15 +177,15 @@ data class PlaybackState(
      * which arrives from the player a moment after the file does.
      */
     val chapters: List<Chapter>
-        get() = userChapters.ifEmpty { containerChapters.ifEmpty { ChapterMarks.evenly(durationMs) } }
+        get() = shown.chapters
 
     /** True when a person named these; false when they are even divisions. */
     val chapterSource: ChapterSource
-        get() = when {
-            userChapters.isNotEmpty() -> ChapterSource.USER
-            containerChapters.isNotEmpty() -> ChapterSource.CONTAINER
-            else -> ChapterSource.EVEN
-        }
+        get() = shown.source
+
+    /** The rule itself, shared with the walk that makes chapter pictures ahead of time. */
+    private val shown: ShownChapters
+        get() = ShownChapters.of(userChapters, containerChapters, durationMs)
 
     /**
      * Settled: the container has been read AND the runtime is known, so the

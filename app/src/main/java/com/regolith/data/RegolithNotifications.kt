@@ -25,6 +25,9 @@ object RegolithNotifications {
     /** What a run of uploads left behind when some of it did not go: stays after the progress one has gone. */
     const val UPLOADS_ATTENTION_ID = 45
 
+    /** The chapter-picture pass, which can run beside an artwork walk started by a later scan. */
+    const val CHAPTER_WALLS_ID = 46
+
     const val CHANNEL_SCAN = "scan"
     const val CHANNEL_ARTWORK = "artwork"
     const val CHANNEL_TRANSFERS = "transfers"
