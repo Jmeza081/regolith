@@ -283,6 +283,10 @@ how many videos use it, wrapping across the screen rather than hiding in a
 sideways row. Tap one and Search opens with that name already picked, listing
 every place it appears and every video it is in.
 
+A video's own page shows its moments too, under the Play button: each mark you
+named, in the order they come, as the frame at its time. Tap one to play the video
+from there.
+
 ### Posters you choose
 
 Don't like the frame a folder picked? "Make a poster from this frame", at the

@@ -59,6 +59,10 @@ import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PathCrumbs
+import com.regolith.ui.components.bleedHorizontally
+import com.regolith.ui.components.MomentTile
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
 import com.regolith.ui.components.PrimaryButton
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
@@ -100,6 +104,8 @@ fun TitleDetailScreen(
      * shows on its device tab rather than as a collection.
      */
     onOpenFolder: (folderId: Long, highlightFileId: Long?, phone: Boolean) -> Unit,
+    /** One of its moments was tapped: play [fileId] from [startMs]. */
+    onPlayAt: (fileId: Long, startMs: Long) -> Unit,
     modifier: Modifier = Modifier,
     /**
      * True when this is the page beside a wall on a wide window (`WallScene`,
@@ -113,6 +119,7 @@ fun TitleDetailScreen(
         onBack = onBack,
         onPlay = onPlay,
         onOpenFolder = onOpenFolder,
+        onPlayAt = onPlayAt,
         onKeep = viewModel::keepOnDevice,
         onRemove = viewModel::removeFromDevice,
         onStartRename = viewModel::startRename,
@@ -136,6 +143,7 @@ private fun TitleDetailContent(
     onBack: () -> Unit,
     onPlay: (fileId: Long) -> Unit,
     onOpenFolder: (folderId: Long, highlightFileId: Long?, phone: Boolean) -> Unit,
+    onPlayAt: (fileId: Long, startMs: Long) -> Unit,
     onKeep: () -> Unit,
     onRemove: () -> Unit,
     onStartRename: () -> Unit,
@@ -276,6 +284,8 @@ private fun TitleDetailContent(
                 } else {
                     TransferLine(state.transfer, onKeep, onRemove)
                 }
+
+                if (state.moments.isNotEmpty()) MomentsRow(state.fileId, state.moments, onPlayAt)
 
                 SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     FactRow("Path", loading = state.pathCrumbs.isEmpty()) {
@@ -462,6 +472,36 @@ private fun TransferLine(transfer: TransferView?, onKeep: () -> Unit, onRemove: 
         }
     }
 }
+
+/**
+ * The video's moments, the chapters someone named in it: a row of their
+ * frames in the order they play, each with its time and name, that scrolls
+ * sideways past the page's gutters. A tap plays the video from there.
+ */
+@Composable
+private fun MomentsRow(fileId: Long, moments: List<TitleMoment>, onPlayAt: (fileId: Long, startMs: Long) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        Eyebrow("Moments", muted = true)
+        LazyRow(
+            // Edge to edge, the first frame in line with the page's text.
+            modifier = Modifier.bleedHorizontally(Spacing.s18).testTag("detail_moments"),
+            contentPadding = PaddingValues(horizontal = Spacing.s18),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+        ) {
+            items(moments, key = { it.startMs }) { moment ->
+                MomentTile(
+                    fileId, moment.startMs, moment.name,
+                    onPlay = { onPlayAt(fileId, moment.startMs) },
+                    testTag = moment.testTag,
+                    modifier = Modifier.width(MOMENT_WIDTH),
+                )
+            }
+        }
+    }
+}
+
+/** A moment's frame on the page: two and a bit across a phone, so the row says it scrolls. */
+private val MOMENT_WIDTH = 168.dp
 
 /** Label left at 400 13/18 in #6E6E6E, value right-aligned at 500 12/16 in #EDEDED, 46dp minimum. */
 @Composable

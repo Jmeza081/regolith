@@ -50,7 +50,6 @@ import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.ListRow
-import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.PlayAllButton
 import com.regolith.ui.components.RowLeading
 import com.regolith.ui.components.RowTrailing
@@ -209,26 +208,6 @@ internal fun ProfileTabs(profile: CollectionProfile, tab: ProfileTab, onTab: (Pr
             modifier = if (maxWidth >= PROFILE_SIDE_BY_SIDE_MIN) Modifier.widthIn(max = PROFILE_TABS_MAX_WIDTH) else Modifier,
         )
     }
-}
-
-/**
- * One moment as a tile: the frame at its time with the time over it, the
- * chapter's name, and the video it is in. Search draws a point of interest
- * the same way, and the frame is the same cached picture.
- */
-@Composable
-internal fun MomentTile(moment: CollectionMoment, onPlayAt: (fileId: Long, startMs: Long) -> Unit, modifier: Modifier = Modifier) {
-    MediaTile(
-        artwork = moment.frame(),
-        kind = ArtworkKind.THUMB,
-        title = moment.title,
-        meta = moment.videoName,
-        chip = formatClock(moment.startMs),
-        fallbackLabel = moment.videoName,
-        onClick = { onPlayAt(moment.fileId, moment.startMs) },
-        testTag = moment.testTag,
-        modifier = modifier,
-    )
 }
 
 /** One moment as a row, for the wall's rows mode: the frame small, the time beside the video's name. */

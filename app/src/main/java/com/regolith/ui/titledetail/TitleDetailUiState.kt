@@ -62,7 +62,18 @@ data class TitleDetailUiState(
      * the person approves. One-shot: the screen launches it and clears it.
      */
     val phoneDeleteRequest: android.content.IntentSender? = null,
+    /**
+     * The chapters someone named in this video, its moments, in the order
+     * they play ([namedMoments]): a row of them between the Play button and
+     * the facts, each playing from its time. Empty leaves the row out.
+     */
+    val moments: List<TitleMoment> = emptyList(),
 )
+
+/** One of a video's moments on its page: a chapter's [name] and the time it starts. */
+data class TitleMoment(val startMs: Long, val name: String) {
+    val testTag get() = "detail_moment_$startMs"
+}
 
 /** The download's state as the detail screen shows it. */
 data class TransferView(
