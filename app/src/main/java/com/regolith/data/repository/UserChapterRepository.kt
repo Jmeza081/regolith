@@ -8,6 +8,8 @@ import com.regolith.data.media.ChapterSyncRepository
 import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterStills
 import com.regolith.domain.playback.MomentCover
 import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.UserChapterStats
@@ -35,20 +37,27 @@ class UserChapterRepository @Inject constructor(
     fun observe(fileId: Long): Flow<List<Chapter>> =
         dao.observeForFile(fileId).map { rows -> rows.map { Chapter(it.startMs, it.title) } }
 
-    /** Replace the file's set, then have the sidecar on the share catch up (P10). */
-    suspend fun save(fileId: Long, chapters: List<Chapter>) {
+    /**
+     * Replace the file's set, then have the sidecar on the share catch up
+     * (P10). [durationMs] is the film's runtime, which places the last
+     * chapter's picture ([ChapterStills]).
+     */
+    suspend fun save(fileId: Long, chapters: List<Chapter>, durationMs: Long) {
         val now = System.currentTimeMillis()
+        val sorted = chapters.sortedBy { it.startMs }
         dao.replaceForFile(
             fileId,
-            chapters.sortedBy { it.startMs }.map {
+            sorted.map {
                 UserChapterEntity(fileId = fileId, startMs = it.startMs, title = it.title?.takeIf { t -> t.isNotBlank() }, updatedAtMs = now)
             },
         )
-        // Search draws each mark with the frame at its own time, cached under
-        // that time. A mark that MOVED leaves its old frame behind with nothing
-        // pointing at it, so the set is collected down to the times that
-        // survived. Renaming changes no time and therefore costs no frame.
-        moments.pruneMoments(fileId, chapters.map { it.startMs })
+        // Every chapter's picture is a frame cached under the time it was taken
+        // from (ChapterStills). A mark that MOVED leaves its old frame behind
+        // with nothing pointing at it, and the file's own markers or the even
+        // split stop showing at all, so the set is collected down to the
+        // pictures these chapters use. A rename keeps a named mark's time and
+        // costs no frame; naming or un-naming one moves its picture.
+        moments.pruneMoments(fileId, ChapterStills.timesFor(sorted, durationMs, ChapterSource.USER))
         sync.markDirty(fileId)
     }
 

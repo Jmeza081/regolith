@@ -36,9 +36,8 @@ interface ScrubThumbnails {
      * call from the UI.
      *
      * [exact] means "this position's own frame or nothing". Pass it wherever
-     * the frame is LABELLED with a time — the chapter sheet, the filmstrip —
-     * so a tile can never show a neighbour's picture under someone else's
-     * clock. Leave it off for the scrub preview, where a near miss while the
+     * the frame is LABELLED with a time — the filmstrip — so a tile can never
+     * show a neighbour's picture under someone else's clock. Leave it off for the scrub preview, where a near miss while the
      * finger moves is better than a blank.
      */
     fun nearest(positionMs: Long, exact: Boolean = false): Bitmap?
@@ -47,13 +46,15 @@ interface ScrubThumbnails {
     fun request(positionMs: Long)
 
     /**
-     * A wall of frames wanted all at once (the chapter sheet, the flex-mode
-     * filmstrip). Every position is loaded, in order; nothing is dropped.
+     * A wall of frames wanted all at once (the flex-mode filmstrip). Every
+     * position is loaded, in order; nothing is dropped.
      *
      * Not the same as calling [request] in a loop. That path is built for a
      * finger on the timeline and keeps only the LATEST position, so twelve
      * requests fired together came out as two — the first and the last —
-     * and the ten chapters between stayed dark for good.
+     * and the ten frames between stayed dark for good. (The chapter sheet
+     * once filled itself here too; it now takes its pictures from the
+     * artwork cache, `com.regolith.domain.playback.ChapterWallLoader`.)
      */
     fun requestAll(positionsMs: List<Long>)
 
@@ -81,8 +82,9 @@ interface ScrubThumbnails {
  * takes dozens of frames. It has one failure the artwork pipeline already
  * had to solve: when it cannot seek a container it does not say so, it
  * hands back the OPENING frame — which is why some films had every chapter
- * tile showing 0:00. So every frame it returns is fingerprinted, and the
- * first time two different positions come back as the same picture the
+ * tile showing 0:00, when the chapter sheet still took its frames from here.
+ * So every frame it returns is fingerprinted, and the first time two
+ * different positions come back as the same picture the
  * source is written off: what it has given us so far is dropped and the
  * rest of the file is taken from Media3's `FrameExtractor` ([grabber]),
  * which uses the same extractors as playback and, unlike the retriever,
@@ -92,8 +94,8 @@ interface ScrubThumbnails {
  *
  * The catch is a file asked for exactly one frame: with nothing to compare
  * against, a bad seek goes unnoticed. Both callers ask for several (the
- * scrub prefetch takes five, the chapter sheet takes one per part), so in
- * practice the clash shows up on the second frame.
+ * scrub prefetch takes five, the filmstrip nine), so in practice the clash
+ * shows up on the second frame.
  *
  * v2 (a pre-generated sheet for titles the user has started) would sit
  * behind the same interface.

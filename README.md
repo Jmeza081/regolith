@@ -267,8 +267,12 @@ scan finishes, rather than while you are scrolling.
 
 ### Chapters you can write
 
-Every file has chapters: the container's own markers, or an even split. The
-player's chapter sheet has a pencil — mark a place at the playhead, name it, drag
+Every file has chapters: the container's own markers, or an even split (a clip
+under 20 seconds has none until you mark one). The chapter sheet is a wall of
+pictures, one per chapter, and the Chapters pill waits until every one is in.
+They are kept, so a film you have opened before has its wall at once, and a
+chapter you named shows the same frame it does in Search. The chapter sheet has
+a pencil — mark a place at the playhead, name it, drag
 its handle — and those become the film's chapters. Save writes a small
 `mkvmerge`-format text file beside the video on the share, so the work is
 readable by other tools and survives a reinstall; **Settings › Chapters** can keep

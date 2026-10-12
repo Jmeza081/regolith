@@ -14,6 +14,8 @@ import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.media.ChapterSidecar
 import com.regolith.domain.media.LocalSource
 import com.regolith.domain.playback.Chapter
+import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterStills
 import com.regolith.domain.playback.ChapterSync
 import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
@@ -197,9 +199,9 @@ class ChapterSyncRepository @Inject constructor(
                 val chapters = ChapterSidecar.parse(text, video.durationMs ?: 0L)
                 val now = System.currentTimeMillis()
                 chapterDao.replaceForFile(video.id, chapters.map { UserChapterEntity(fileId = video.id, startMs = it.startMs, title = it.title, updatedAtMs = now) })
-                // The share's set has replaced ours, so the marks that went
-                // take their cached frames with them.
-                moments.pruneMoments(video.id, chapters.map { it.startMs })
+                // The share's set has replaced ours, so the pictures these
+                // chapters do not use go (ChapterStills).
+                moments.pruneMoments(video.id, ChapterStills.timesFor(chapters.sortedBy { it.startMs }, video.durationMs ?: 0L, ChapterSource.USER))
                 syncDao.upsert(ChapterSyncEntity(video.id, shareMtimeMs = entry.modifiedAtMs, dirty = false, origin = ORIGIN_SHARE, note = note, updatedAtMs = now))
                 mirrorLocal(video.id, text)
                 Log.d(TAG, "imported ${chapters.size} chapters for ${video.relPath}")

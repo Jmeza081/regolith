@@ -14,7 +14,11 @@ import com.regolith.data.transfer.TransferRepository
 import com.regolith.data.transfer.TransferRepository.Companion.causeEnum
 import com.regolith.data.transfer.TransferRepository.Companion.statusEnum
 import com.regolith.domain.playback.AbLoop
+import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterDraft
+import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterWall
+import com.regolith.domain.playback.ChapterWallLoader
 import com.regolith.domain.playback.ChapterWriteOutcome
 import com.regolith.domain.playback.Filmstrip
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,7 +30,6 @@ import kotlinx.coroutines.flow.flowOf
 import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.player.PlaybackSession
-import com.regolith.player.ScrubThumbnails
 import com.regolith.player.PlaybackState
 import com.regolith.ui.navigation.RegolithKey
 import dagger.assisted.Assisted
@@ -42,7 +45,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.Job
@@ -70,6 +72,7 @@ class PlayerViewModel @AssistedInject constructor(
     private val posters: com.regolith.data.artwork.PosterRepository,
     private val spoof: com.regolith.data.spoof.SpoofMode,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
+    private val chapterPictures: com.regolith.data.artwork.ArtworkChapterPictures,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -130,85 +133,34 @@ class PlayerViewModel @AssistedInject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /**
-     * A frame for every chapter, through the same pipeline as the filmstrip:
-     * ask for a position, redraw as the pictures land. The chapter sheet is
-     * a wall of stills rather than a list of times, and this is what fills
-     * it — one key-frame seek per row, and no new machinery.
-     *
-     * Frames are taken a little INTO each part, not at its first frame: a
-     * chapter boundary is usually a cut, and the frame on a cut is often
-     * black or a title card. The same reason the artwork grab moved off 10%.
-     */
-    val chapterFrames: StateFlow<Map<Long, Bitmap?>> = session.scrubThumbnails
-        .flatMapLatest { thumbs ->
-            combine(state, thumbs.updates) { s, _ ->
-                s.chapters.associate { it.startMs to thumbs.nearest(frameFor(it.startMs, s), exact = true) }
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    private val walls = ChapterWallLoader(chapterPictures)
 
     /**
-     * Fill the chapter sheet, the part you are in first. One batch, not a
-     * loop of single requests: the single-request path keeps only the latest
-     * position, which is right for a finger and wrong for a wall — it is why
-     * most chapters used to stay dark.
-     */
-    fun requestChapterFrames() {
-        val thumbs = session.scrubThumbnails.value
-        val s = state.value
-        val here = s.positionMs
-        thumbs.requestAll(s.chapters.map { frameFor(it.startMs, s) }.sortedBy { (it - here).absoluteValue })
-    }
-
-    /**
-     * Whether the chapters sheet is worth opening yet: the list has settled
-     * AND its pictures have (see [chapterFramesSettled], which is where the
-     * ways out of waiting live).
+     * The chapter sheet's pictures, one per chapter, and whether every tile
+     * has one yet: the Chapters pill spins until it does. [ChapterWallLoader]
+     * has the rules, including the ways a picture that cannot be had still
+     * ends in a picture rather than a blank.
      *
-     * A poll rather than a combine, because two of the conditions are about
-     * time PASSING -- nothing has arrived for a while, or the wait has run
-     * long -- and no upstream flow emits for those. It runs only while the
-     * player is on screen and stops the moment it settles.
+     * Loaded as soon as the chapter list settles, NOT when the sheet opens:
+     * the frames are made while the film plays, and kept on disk, so a film
+     * opened before has its wall at once. Not during a Moments reel, which has
+     * no Chapters pill and moves to another film every few seconds.
      */
-    val chaptersOpenable: StateFlow<Boolean> = state
-        .map { it.fileId }
+    val chapterWall: StateFlow<ChapterWall<Bitmap>> = state
+        .map { s -> if (s.chaptersReady && s.reel == null) WallKey(s.fileId, s.chapters, s.durationMs, s.chapterSource) else null }
         .distinctUntilChanged()
-        .flatMapLatest {
-            flow {
-                emit(false)
-                val startedMs = SystemClock.elapsedRealtime()
-                var lastCount = -1
-                var lastArrivalMs = startedMs
-                while (true) {
-                    val s = state.value
-                    val present = chapterFrames.value.count { it.value != null }
-                    if (present != lastCount) {
-                        lastCount = present
-                        lastArrivalMs = SystemClock.elapsedRealtime()
-                    }
-                    val now = SystemClock.elapsedRealtime()
-                    val settled = !s.chaptersReady || chapterFramesSettled(
-                        chapterCount = s.chapters.size,
-                        framesPresent = present,
-                        thumbnailsOff = session.scrubThumbnails.value is ScrubThumbnails.None,
-                        msSinceRequest = now - startedMs,
-                        msSinceArrival = now - lastArrivalMs,
-                    )
-                    // Never "open" before the list itself is ready: that gate
-                    // still belongs to PlaybackState.chaptersReady.
-                    if (settled && s.chaptersReady) { emit(true); return@flow }
-                    delay(FRAMES_POLL_MS)
-                }
+        .flatMapLatest { key ->
+            when {
+                key == null -> flowOf(ChapterWall.waiting())
+                // A video another app handed over has no row, so nowhere to keep a frame.
+                key.fileId == null || key.fileId == RegolithKey.Player.EXTERNAL -> flowOf(ChapterWall.withoutPictures())
+                else -> walls.load(key.fileId, key.chapters, key.durationMs, key.source)
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChapterWall.waiting())
 
-    private fun frameFor(startMs: Long, s: PlaybackState): Long {
-        val end = s.chapters.firstOrNull { it.startMs > startMs }?.startMs ?: s.durationMs
-        val into = ((end - startMs) * CHAPTER_FRAME_FRACTION).toLong()
-        return (startMs + into).coerceIn(0L, (s.durationMs - 1).coerceAtLeast(0L))
-    }
+    /** What a chapter wall is made for: a new one whenever any of these changes. */
+    private data class WallKey(val fileId: Long?, val chapters: List<Chapter>, val durationMs: Long, val source: ChapterSource)
 
     /**
      * Load the filmstrip, nearest the playhead first: the frames beside where
@@ -289,7 +241,7 @@ class PlayerViewModel @AssistedInject constructor(
      */
     fun canEditChapters(): Boolean {
         val s = state.value
-        return s.fileId != null && s.fileId != RegolithKey.Player.EXTERNAL && s.chaptersReady && spoof.current == null
+        return s.fileId != null && s.fileId != RegolithKey.Player.EXTERNAL && s.chaptersReady && s.durationMs > 0 && spoof.current == null
     }
 
     /**
@@ -397,7 +349,7 @@ class PlayerViewModel @AssistedInject constructor(
         if (_chapterSaving.value) return
         _chapterSaving.value = true
         viewModelScope.launch {
-            userChapters.save(draft.fileId, draft.chapters)
+            userChapters.save(draft.fileId, draft.chapters, draft.durationMs)
             val outcome = runCatching { userChapters.writeNow(draft.fileId) }.getOrDefault(ChapterWriteOutcome.FAILED)
             _chapterDraft.value = null
             _chapterSaving.value = false
@@ -468,16 +420,6 @@ class PlayerViewModel @AssistedInject constructor(
     private var heldForFlight = key.flies && !key.expand && key.externalUri == null
 
     init {
-        // The sheet's pictures are asked for as soon as the chapter list
-        // settles, NOT when the sheet opens. They cost a key-frame seek each
-        // and the worker serves them one at a time, so starting at the tap
-        // meant watching them fill in. Started here, the seeks happen while
-        // the film is playing and the sheet is usually full before it opens.
-        viewModelScope.launch {
-            state.map { it.fileId to it.chaptersReady }.distinctUntilChanged().collect { (_, ready) ->
-                if (ready) requestChapterFrames()
-            }
-        }
         // A draft belongs to one file: when autoplay moves on, it goes.
         viewModelScope.launch {
             state.map { it.fileId }.distinctUntilChanged().collect { id ->
@@ -582,9 +524,6 @@ class PlayerViewModel @AssistedInject constructor(
     }
 
     companion object {
-        /** How far into a chapter its picture is taken from: past the cut at its start. */
-        const val CHAPTER_FRAME_FRACTION = 0.25f
-
         /** Frames across the flex-mode filmstrip. Nine fits the artboard's deck without crowding. */
         const val STRIP_FRAMES = 9
 

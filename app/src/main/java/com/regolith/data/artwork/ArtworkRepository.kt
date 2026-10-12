@@ -212,6 +212,38 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
+     * Make the frames at [timesMs] in film [fileId]: a chapter wall's, for the
+     * player's chapter sheet ([com.regolith.domain.playback.ChapterStills]
+     * says which times). One batch on one open of the file, beside any of the
+     * film's named marks still missing theirs ([resolveMoments]). Each frame
+     * lands in the moment cache under its own time, so the sheet and Search
+     * share a picture wherever they ask for the same time, and the wall is on
+     * disk the next time the film is opened.
+     *
+     * Returns when the run is over; read the frames back with [cached]. A
+     * time with no row afterwards is one the share was too unwell to try.
+     *
+     * A run already going for this film (the walk, or Search) is joined, not
+     * doubled. It read its list of times when it began, so the times it did
+     * not include get a run of their own once it ends.
+     */
+    suspend fun makeMoments(fileId: Long, timesMs: List<Long>) {
+        ensureGeneration()
+        repeat(MOMENT_JOINS) {
+            val missing = timesMs.distinct().filter { cached(ArtworkRequest(ArtworkOwner.Moment(fileId, it), ArtworkKind.THUMB)) == null }
+            if (missing.isEmpty()) return
+            var ours = false
+            joinOrStart(MomentBatch(fileId)) {
+                ours = true
+                guarded("${missing.size} frame(s) of file $fileId", missing.map { ArtworkOwner.Moment(fileId, it) }, THUMB_ONLY) {
+                    resolveMoments(fileId, missing, THUMB_ONLY)
+                }
+            }
+            if (ours) return
+        }
+    }
+
+    /**
      * Fill the cache for one owner before anything asks for it — the
      * background walk ([com.regolith.data.artwork.ArtworkWorker]).
      *
@@ -639,14 +671,32 @@ class ArtworkRepository @Inject constructor(
      * Only [SmbFailure.Unreachable] and [SmbFailure.AuthFailed] are about the
      * connection rather than the file, and only those stop the pass.
      */
-    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>, retry: Boolean = true): Boolean {
-        return try {
+    private suspend fun resolveOwner(owner: ArtworkOwner, kinds: List<ArtworkKind>): Boolean =
+        guarded(owner.toString(), listOf(owner), kinds) {
             when (owner) {
                 is ArtworkOwner.File -> resolveFile(owner, kinds)
                 is ArtworkOwner.Folder -> resolveFolder(owner, kinds)
-                is ArtworkOwner.Moment -> resolveMoments(owner, kinds)
+                is ArtworkOwner.Moment -> resolveMoments(owner.fileId, listOf(owner.startMs), kinds)
                 is ArtworkOwner.Picture -> resolvePicture(owner)
             }
+        }
+
+    /**
+     * [body] under [resolveOwner]'s rules, for the [owners] it makes pictures
+     * for, named [what] in the log. A failure that is about the file gives
+     * each owner still without a picture a placeholder. One that leaves no
+     * row at all leaves the frames saved so far alone: a batch of moments
+     * saves each as it lands.
+     */
+    private suspend fun guarded(
+        what: String,
+        owners: List<ArtworkOwner>,
+        kinds: List<ArtworkKind>,
+        retry: Boolean = true,
+        body: suspend () -> Unit,
+    ): Boolean {
+        return try {
+            body()
             true
         } catch (e: SmbFailure) {
             if (e.isAboutTheServer) {
@@ -660,21 +710,33 @@ class ArtworkRepository @Inject constructor(
                 // the side that opens files.
                 val pause = if (retry) listingRetryDelayMs(attempt = 1, failure = e) else null
                 if (pause != null) {
-                    Log.i(TAG, "artwork for $owner hit ${e.message}; one more go in ${pause}ms")
+                    Log.i(TAG, "artwork for $what hit ${e.message}; one more go in ${pause}ms")
                     delay(pause)
-                    return resolveOwner(owner, kinds, retry = false)
+                    return guarded(what, owners, kinds, retry = false, body)
                 }
-                Log.w(TAG, "artwork for $owner deferred: ${e.message}")
+                Log.w(TAG, "artwork for $what deferred: ${e.message}")
                 return false
             }
             // This file, not the share. Placeholder it and keep going.
-            Log.w(TAG, "artwork for $owner skipped: ${e.message}")
-            placeholder(owner, kinds)
+            Log.w(TAG, "artwork for $what skipped: ${e.message}")
+            placeholderUnmade(owners, kinds)
             true
         } catch (e: Exception) {
-            Log.w(TAG, "artwork for $owner failed: $e")
-            placeholder(owner, kinds)
+            Log.w(TAG, "artwork for $what failed: $e")
+            placeholderUnmade(owners, kinds)
             true
+        }
+    }
+
+    /** A placeholder for each of [owners] that has nothing usable cached; a picture already made stays. */
+    private suspend fun placeholderUnmade(owners: List<ArtworkOwner>, kinds: List<ArtworkKind>) {
+        if (owners.size == 1) {
+            placeholder(owners.single(), kinds)
+            return
+        }
+        for (owner in owners) {
+            val unmade = kinds.filter { cached(ArtworkRequest(owner, it)) == null }
+            if (unmade.isNotEmpty()) placeholder(owner, unmade)
         }
     }
 
@@ -858,18 +920,19 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * The frames for a film's named marks: [owner]'s own, and every other
-     * named mark in the same film that has none yet, on ONE open of the file.
+     * The frames at [timesMs] in film [fileId], and at every named mark in it
+     * that has none yet, on ONE open of the file.
      *
      * Why together: nearly all of a single frame's cost is setup — opening
      * the file over SMB, reading its index, standing up a decoder — and the
      * seek itself is the cheap part. A film's marks are usually shown
      * together (Search lists them side by side, the walk reaches them in a
-     * row), so paying the setup once per film rather than once per mark is
-     * the saving. Each frame is saved as it lands, and the fallbacks run only
-     * after the extraction slot is handed back: [fallBackToFilm] resolves the
-     * film, which needs a slot of its own, and holding one while waiting on
-     * another is how two slots deadlock.
+     * row, the chapter sheet wants one per chapter), so paying the setup once
+     * per film rather than once per mark is the saving. Each frame is saved
+     * as it lands, and the fallbacks run only after the extraction slot is
+     * handed back: [fallBackToFilm] resolves the film, which needs a slot of
+     * its own, and holding one while waiting on another is how two slots
+     * deadlock.
      *
      * **Media3 only, no retriever fallback.** [grabFrame] tries the platform
      * `MediaMetadataRetriever` when Media3 comes up empty, and can afford to:
@@ -887,16 +950,16 @@ class ArtworkRepository @Inject constructor(
      * placeholder: a point of interest showed the film's thumb before this
      * feature existed, and it must never come out worse than that.
      */
-    private suspend fun resolveMoments(owner: ArtworkOwner.Moment, kinds: List<ArtworkKind>) {
-        val file = mediaFileDao.byId(owner.fileId)
+    private suspend fun resolveMoments(fileId: Long, timesMs: List<Long>, kinds: List<ArtworkKind>) {
+        val file = mediaFileDao.byId(fileId)
         if (file == null) {
-            placeholder(owner, kinds)
+            for (at in timesMs) placeholder(ArtworkOwner.Moment(fileId, at), kinds)
             return
         }
-        val wanted = (chapterDao.namedStartsForFile(owner.fileId) + owner.startMs)
+        val wanted = (chapterDao.namedStartsForFile(fileId) + timesMs)
             .distinct()
             .sorted()
-            .filter { cached(ArtworkRequest(ArtworkOwner.Moment(owner.fileId, it), ArtworkKind.THUMB)) == null }
+            .filter { cached(ArtworkRequest(ArtworkOwner.Moment(fileId, it), ArtworkKind.THUMB)) == null }
         if (wanted.isEmpty()) return
 
         val misses = mutableListOf<Long>()
@@ -909,10 +972,10 @@ class ArtworkRepository @Inject constructor(
             val startedAt = System.currentTimeMillis()
             var firstFrameMs = 0L
             var next = 0
-            grabber.framesAt(owner.fileId, wanted, MOMENT_FRAME_MAX_WIDTH, MOMENT_FRAME_MAX_HEIGHT).collect { grabbed ->
+            grabber.framesAt(fileId, wanted, MOMENT_FRAME_MAX_WIDTH, MOMENT_FRAME_MAX_HEIGHT).collect { grabbed ->
                 if (next == 0) firstFrameMs = System.currentTimeMillis() - startedAt
                 val at = wanted.getOrNull(next++) ?: return@collect
-                if (!keepMoment(file, ArtworkOwner.Moment(owner.fileId, at), grabbed, kinds)) misses += at
+                if (!keepMoment(file, ArtworkOwner.Moment(fileId, at), grabbed, kinds)) misses += at
             }
             // A grabber that stopped short owes the rest; treat them as misses.
             misses += wanted.drop(next)
@@ -928,7 +991,7 @@ class ArtworkRepository @Inject constructor(
                     if (wanted.size > 1) ", then ${rest / (wanted.size - 1)}ms each" else "",
             )
         }
-        for (at in misses) fallBackToFilm(ArtworkOwner.Moment(owner.fileId, at), kinds)
+        for (at in misses) fallBackToFilm(ArtworkOwner.Moment(fileId, at), kinds)
     }
 
     /**
@@ -1027,16 +1090,17 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
-     * Drop the moment frames for [fileId] that no longer stand on a mark.
+     * Drop the moment frames for [fileId] that no chapter takes its picture
+     * from any more.
      *
      * Called after a film's chapters are rewritten. Because a frame is keyed
      * by its TIME, a renamed mark keeps its picture and a moved one is simply
      * a miss that re-grabs — but the frame at the time it moved AWAY from
      * would sit in the cache for good with nothing pointing at it, so it is
-     * collected here.
+     * collected here, with the pictures of the chapters the new set replaced.
      */
-    override suspend fun pruneMoments(fileId: Long, keepStartMs: Collection<Long>) {
-        val keep = keepStartMs.mapTo(mutableSetOf()) { it.toString() }
+    override suspend fun pruneMoments(fileId: Long, keepTimesMs: Collection<Long>) {
+        val keep = keepTimesMs.mapTo(mutableSetOf()) { it.toString() }
         for (row in artworkDao.momentsOf(fileId)) {
             if (row.ownerVariant in keep) continue
             val startMs = row.ownerVariant.toLongOrNull() ?: continue
@@ -1673,6 +1737,12 @@ class ArtworkRepository @Inject constructor(
          */
         const val MOMENT_FRAME_MAX_WIDTH = 640
         const val MOMENT_FRAME_MAX_HEIGHT = 360
+        /**
+         * How many runs already going for a film [makeMoments] will wait out
+         * before starting its own. Each one ends, so this is a guard rather
+         * than a limit anyone meets.
+         */
+        const val MOMENT_JOINS = 3
         val BACKDROP_ONLY = listOf(ArtworkKind.BACKDROP)
         val THUMB_ONLY = listOf(ArtworkKind.THUMB)
         val PICTURE_ONLY = listOf(ArtworkKind.PICTURE)
