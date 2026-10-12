@@ -11,6 +11,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import com.regolith.domain.artwork.DeckShape
+import com.regolith.domain.artwork.DeckLayout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -205,6 +211,10 @@ private class PendingMark {
  * design's grey "No match" in its place belonged to a film library, and a
  * folder of clips is not one (the owner's model, 2026-10-05). [dimmed] is
  * the out-of-reach state (45%).
+ *
+ * A folder whose picture is a deck kept as a pile ([pile]) has no box at
+ * all: the pile stands in the tile's place on the wall's own ground, and the
+ * badge, the chip, the pick marker and the picked ring sit on its front card.
  */
 @Composable
 fun MediaTile(
@@ -273,6 +283,13 @@ fun MediaTile(
      * Home's moment names are. Not with [chip], which has the same corner.
      */
     titleOnArt: Boolean = false,
+    /**
+     * The picture ([artwork], asked for as [ArtworkRequest.pile]) is a deck's
+     * pile, standing this way: drawn with no box or background, reaching past
+     * the tile for its shadows, its overlays on the front card ([PileArt]).
+     * Only a poster-shaped collection tile on the Library's wall has one.
+     */
+    pile: DeckShape? = null,
 ) {
     val colors = RegolithTheme.colors
     val picked = checked == true
@@ -291,7 +308,9 @@ fun MediaTile(
             )
             .testTag(testTag),
     ) {
-        Box(
+        if (pile != null) {
+            PileArt(artwork, pile, count, chip, checked, onCheckClick, dimmed, flight, pad)
+        } else Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(kind.width.toFloat() / kind.height)
@@ -350,6 +369,75 @@ fun MediaTile(
         if (meta != null) {
             if (titleOnArt) Spacer(Modifier.height(Spacing.s4))
             Text(meta, style = TextStyles.tileMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * [MediaTile]'s art for a folder whose picture is a deck kept as a pile
+ * ([DeckLayout.pileCards]): no box and no background, the cards standing in
+ * the tile's 2:3 on the wall's own ground. The picture reaches past the tile
+ * on every side ([bleedByWidth]), so the cards' shadows fade out instead of
+ * stopping at its edge, and a flight starts from all of it.
+ *
+ * What a poster carries on its box, the pile carries on its front card
+ * ([DeckLayout.pileFront]), turned with it: the badge top-left, the chip
+ * bottom-left, the pick marker top-right, and when picked a ring round the
+ * card rather than round the tile.
+ */
+@Composable
+private fun PileArt(
+    artwork: ArtworkRequest?,
+    shape: DeckShape,
+    count: Int?,
+    chip: String?,
+    checked: Boolean?,
+    onCheckClick: (() -> Unit)?,
+    dimmed: Boolean,
+    flight: ArtworkOwner?,
+    pad: FlightLaunchPad?,
+) {
+    val colors = RegolithTheme.colors
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
+        val tileWidth = constraints.maxWidth.toFloat()
+        val tileHeight = constraints.maxHeight.toFloat()
+        val front = remember(shape, tileWidth, tileHeight) { DeckLayout.pileFront(shape, tileWidth, tileHeight) }
+        ArtworkImage(
+            artwork,
+            Modifier
+                .bleedByWidth(DeckLayout.PILE_SIDE, DeckLayout.PILE_ABOVE, DeckLayout.PILE_BELOW)
+                .posterFlight(flight)
+                .then(pad?.modifier ?: Modifier)
+                .graphicsLayer { alpha = (if (dimmed) 0.45f else 1f) * (if (pad?.hidden == true) 0f else 1f) },
+            // Nothing while it loads: the reading look's box is the one thing a pile is meant not to show.
+            bare = true,
+        )
+        // The front card's place, and the ring's room round it, turned with
+        // the card about its middle (a layer turns about its own middle).
+        val ring = 4.dp
+        val ringPx = with(density) { ring.toPx() }
+        val corner = with(density) { (minOf(front.width, front.height) * DeckLayout.CARD_CORNER).toDp() }
+        Box(
+            Modifier
+                .offset { IntOffset((front.left - ringPx).roundToInt(), (front.top - ringPx).roundToInt()) }
+                .size(with(density) { front.width.toDp() } + ring * 2, with(density) { front.height.toDp() } + ring * 2)
+                .graphicsLayer {
+                    rotationZ = front.degrees
+                    alpha = if (dimmed) 0.45f else 1f
+                }
+                .then(if (checked == true) Modifier.border(2.dp, colors.ink, RoundedCornerShape(corner + ring)) else Modifier)
+                .padding(ring),
+        ) {
+            if (count != null) {
+                CollectionBadge(count, Modifier.align(Alignment.TopStart).padding(5.dp))
+            }
+            if (checked != null) {
+                TilePick(picked = checked, onClick = onCheckClick, modifier = Modifier.align(Alignment.TopEnd))
+            }
+            if (chip != null) {
+                Chip(chip, ChipStyle.OverArt, Modifier.align(Alignment.BottomStart).padding(start = 5.dp, bottom = 7.dp), tight = true)
+            }
         }
     }
 }

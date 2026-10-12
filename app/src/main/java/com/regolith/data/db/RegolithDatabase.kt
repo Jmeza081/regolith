@@ -59,7 +59,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UploadEntity::class,
         ShareFileEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -106,6 +106,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // additive: every picture reads as "not measured yet", and the next
         // artwork walk or the first look at its album measures it.
         AutoMigration(from = 16, to = 17),
+        // v18: which way a deck's pile stands, on its folder's poster row, so
+        // the Library's wall can draw the pile with no box and find its front
+        // card. Nullable and additive: every row reads as "no pile", and the
+        // decks are dealt again (artwork generation 8), piles and all.
+        AutoMigration(from = 17, to = 18),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

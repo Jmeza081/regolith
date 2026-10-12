@@ -383,6 +383,15 @@ data class ArtworkEntity(
      * a copy on the phone, or while the share could not be listed.
      */
     val sourceStamp: String? = null,
+    /**
+     * Schema v18: on a folder's poster row, when its picture is a deck
+     * ([com.regolith.domain.artwork.ArtworkSource.DECK]), which way the cards
+     * of its pile stand ([com.regolith.domain.artwork.DeckShape] name), which
+     * is what tells the Library's wall where the pile's front card is. Null for
+     * every other row, and for a deck dealt before v18, which the wall shows
+     * boxed until it is dealt again (artwork generation 8 deals them all).
+     */
+    val deckShape: String? = null,
 )
 
 @Entity(

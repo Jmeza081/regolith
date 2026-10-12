@@ -25,11 +25,21 @@ sealed interface RegolithKey : NavKey {
     /**
      * The poster wall; [folderId] opens one collection's wall, [onDevice] lands on the device tab (still the Library tab).
      * [filter] is the chip it opens with (Videos · Moments · Images): the one lit on the wall it was opened from.
+     *
+     * The last two are a video page's Path line opening a folder here
+     * (`pathStepKey`). [highlightFileId] is the video, when the collection is
+     * the one it is in: brought into view and ringed once on arrival, as
+     * [Browse]'s is. [phoneFolderId] is a phone video's album, which the
+     * Library keeps as a chip on its device tab rather than as a collection:
+     * the tab opens on that chip. Both ride on the key for the reason
+     * Browse's highlight does.
      */
     @Serializable data class Library(
         val folderId: Long? = null,
         val onDevice: Boolean = false,
         val filter: LibraryFilter = LibraryFilter.VIDEOS,
+        val highlightFileId: Long? = null,
+        val phoneFolderId: Long? = null,
     ) : RegolithKey
     /**
      * [highlightFileId] is a file to scroll to and ring once on arrival —

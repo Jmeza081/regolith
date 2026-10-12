@@ -38,12 +38,14 @@ class ArtworkFetcher(
         // A deck laid loose where one was asked for and the folder's picture
         // is a deck ([ArtworkRequest.loose]): its cards on a transparent ground.
         val loose = if (request.loose && row.source == ArtworkSource.DECK.name) repository.looseFileFor(request.owner) else null
-        val file = animated ?: loose ?: repository.fileFor(row)
+        // A deck as a pile, for its tile on the Library's wall ([ArtworkRequest.pile]): the same, reaching past the tile.
+        val pile = if (request.pile && row.source == ArtworkSource.DECK.name) repository.pileFileFor(request.owner) else null
+        val file = animated ?: loose ?: pile ?: repository.fileFor(row)
         return SourceFetchResult(
             source = ImageSource(file.toOkioPath(), FileSystem.SYSTEM),
             mimeType = when {
                 animated != null -> AnimatedPoster.MIME_TYPE
-                loose != null -> "image/webp"
+                loose != null || pile != null -> "image/webp"
                 else -> "image/jpeg"
             },
             dataSource = DataSource.DISK,
@@ -58,7 +60,7 @@ class ArtworkFetcher(
 /** Memory-cache key. Without a keyer Coil would not cache a custom model at all. */
 class ArtworkKeyer @Inject constructor() : Keyer<ArtworkRequest> {
     override fun key(data: ArtworkRequest, options: Options): String =
-        "${ownerPrefix(data.owner)}${data.owner.variant}:${data.kind.name.lowercase()}${if (data.animated) ":animated" else ""}${if (data.loose) ":loose" else ""}"
+        "${ownerPrefix(data.owner)}${data.owner.variant}:${data.kind.name.lowercase()}${if (data.animated) ":animated" else ""}${if (data.loose) ":loose" else ""}${if (data.pile) ":pile" else ""}"
 
     companion object {
         /**

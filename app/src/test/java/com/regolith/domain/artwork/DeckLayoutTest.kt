@@ -158,4 +158,69 @@ class DeckLayoutTest {
         val dy = card.top + card.height / 2f - card.pivotY
         return (card.pivotX + dx * cos(turn) - dy * sin(turn)).toFloat() to (card.pivotY + dx * sin(turn) + dy * cos(turn)).toFloat()
     }
+
+    // ---- The pile, for a tile on the Library's wall (112 × 168 on a phone).
+
+    private fun bounds(cards: List<DeckLayout.Card>): FloatArray {
+        val corners = cards.flatMap { it.corners }
+        return floatArrayOf(corners.minOf { it.first }, corners.minOf { it.second }, corners.maxOf { it.first }, corners.maxOf { it.second })
+    }
+
+    @Test fun `a tall pile is three prints, drawn back to front, the front one at full light`() {
+        val pile = DeckLayout.pileCards(DeckShape.TALL, 112f, 168f)
+        assertEquals(listOf(2, 1, 0), pile.map { it.rank })
+        assertEquals(1f, pile.last().brightness)
+        assertTrue(pile.first().brightness < pile[1].brightness)
+    }
+
+    @Test fun `a wide pile is four prints, climbing the tile from its front card at the bottom`() {
+        val pile = DeckLayout.pileCards(DeckShape.WIDE, 112f, 168f)
+        assertEquals(listOf(3, 2, 1, 0), pile.map { it.rank })
+        val middles = pile.sortedBy { it.rank }.map { it.top + it.height / 2f }
+        assertEquals("each print above the one before", middles.sortedDescending(), middles)
+        assertTrue("the front print near the bottom", middles.first() > 168f * 0.75f)
+    }
+
+    @Test fun `either pile stands as tall as a poster, inside its tile but for a little at the sides`() {
+        for (shape in DeckShape.entries) {
+            val (left, top, right, bottom) = bounds(DeckLayout.pileCards(shape, 112f, 168f)).toList()
+            assertTrue("$shape: ${bottom - top} of 168 tall", bottom - top > 168f * 0.97f)
+            assertTrue("$shape: top $top", top >= 0f)
+            assertTrue("$shape: bottom $bottom", bottom <= 168f)
+            assertTrue("$shape: reaches $left and $right", left >= -112f * 0.03f && right <= 112f * 1.03f)
+        }
+    }
+
+    @Test fun `every card is cut to the pile's shape, with a 2-3 card's area`() {
+        for (shape in DeckShape.entries) {
+            val pile = DeckLayout.pileCards(shape, 112f, 168f)
+            for (card in pile) assertEquals(shape.aspect, card.width / card.height, 0.001f)
+            assertEquals(1, pile.map { (it.width * it.height).toInt() }.distinct().size)
+        }
+    }
+
+    @Test fun `the front card is where the tile looks for it however many cards there are`() {
+        for (shape in DeckShape.entries) {
+            val whole = DeckLayout.pileCards(shape, 112f, 168f).single { it.rank == 0 }
+            assertEquals(whole, DeckLayout.pileFront(shape, 112f, 168f))
+            assertEquals(whole, DeckLayout.pileCards(shape, 112f, 168f, count = 2).single { it.rank == 0 })
+        }
+    }
+
+    @Test fun `a pile scales with its tile`() {
+        val small = DeckLayout.pileFront(DeckShape.TALL, 112f, 168f)
+        val big = DeckLayout.pileFront(DeckShape.TALL, 224f, 336f)
+        assertEquals(small.left * 2f, big.left, 0.01f)
+        assertEquals(small.width * 2f, big.width, 0.01f)
+        assertEquals(small.degrees, big.degrees)
+    }
+
+    @Test fun `a pile's shape is its front card's, and reads back by name`() {
+        assertEquals(DeckShape.TALL, DeckShape.of(9f / 16f))
+        assertEquals(DeckShape.WIDE, DeckShape.of(16f / 9f))
+        assertEquals(DeckShape.WIDE, DeckShape.of(1f))
+        assertEquals(DeckShape.WIDE, DeckShape.named("WIDE"))
+        assertEquals(null, DeckShape.named(null))
+        assertEquals(null, DeckShape.named("ROUND"))
+    }
 }

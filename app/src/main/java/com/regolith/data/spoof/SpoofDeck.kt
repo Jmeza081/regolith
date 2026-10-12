@@ -34,7 +34,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * library has one, and nothing of what is in it.
  *
  * [request] is the real picture's: it says whether that is a deck, and
- * whether this one is wanted laid loose ([ArtworkRequest.loose]).
+ * whether this one is wanted laid loose ([ArtworkRequest.loose]) or as a
+ * pile ([ArtworkRequest.pile]).
  */
 data class SpoofDeck(val request: ArtworkRequest, val photo: SpoofImage, val cards: List<SpoofImage>)
 
@@ -66,14 +67,19 @@ class SpoofDeckFetcher(
                 val fetched = photos.fetch(deck.photo)
                 return@withContext result(photos.file(deck.photo), "image/jpeg", fetched)
             }
-            val loose = deck.request.loose
+            val request = deck.request
             // Named by its cards too, so a deck dealt from other photos (an
             // update that changes them) is drawn again, not read from before.
             val hand = Integer.toHexString(deck.cards.hashCode())
-            val file = File(photos.directory, "deck-${deck.photo.seed}-$hand-${if (loose) "loose.webp" else "${deck.request.kind.name.lowercase()}.jpg"}")
+            val name = when {
+                request.loose -> "loose.webp"
+                request.pile -> "pile.webp"
+                else -> "${request.kind.name.lowercase()}.jpg"
+            }
+            val file = File(photos.directory, "deck-${deck.photo.seed}-$hand-$name")
             val fetched = !file.exists()
             if (fetched) deal(file)
-            result(file, if (loose) "image/webp" else "image/jpeg", fetched)
+            result(file, if (request.loose || request.pile) "image/webp" else "image/jpeg", fetched)
         }
     }
 
@@ -84,10 +90,12 @@ class SpoofDeckFetcher(
     )
 
     /**
-     * Draws the deck into [file]: boxed at its kind's size, or laid loose on
-     * a transparent ground (WebP, as the real loose deck is). Every card or
-     * none, so a photo that would not come is fetched again next time
-     * rather than leaving a deck a card short for good.
+     * Draws the deck into [file]: boxed at its kind's size, or laid loose or
+     * as a pile on a transparent ground (WebP, as the real ones are). Every
+     * card or none, so a photo that would not come is fetched again next time
+     * rather than leaving a deck a card short for good. The stand-ins are
+     * tall, so a pile of them stands tall, and the wall finds its front card
+     * there whatever the real deck's shape.
      */
     private fun deal(file: File) {
         val faces = mutableListOf<Bitmap>()
@@ -97,15 +105,15 @@ class SpoofDeckFetcher(
                 faces += BitmapFactory.decodeFile(photos.file(card).path) ?: throw IOException("stand-in card: not a picture")
             }
             val request = deck.request
-            val picture = if (request.loose) {
-                DeckPainter.paintLoose(faces, DeckPainter.LOOSE_WIDTH)
-            } else {
-                DeckPainter.paint(faces, request.kind.width, request.kind.height)
+            val picture = when {
+                request.loose -> DeckPainter.paintLoose(faces, DeckPainter.LOOSE_WIDTH)
+                request.pile -> DeckPainter.paintPile(faces).bitmap
+                else -> DeckPainter.paint(faces, request.kind.width, request.kind.height)
             }
             try {
                 // Written beside, then moved into place, as a photo is.
                 val partial = File.createTempFile(file.nameWithoutExtension, ".part", photos.directory)
-                val format = if (request.loose) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.JPEG
+                val format = if (request.loose || request.pile) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.JPEG
                 partial.outputStream().use { picture.compress(format, ArtworkStore.JPEG_QUALITY, it) }
                 if (!partial.renameTo(file)) partial.delete()
             } finally {
@@ -125,8 +133,8 @@ class SpoofDeckFetcher(
     }
 }
 
-/** Memory-cache key: a folder's stand-in at its kind, boxed or laid loose. */
+/** Memory-cache key: a folder's stand-in at its kind, boxed, laid loose or as a pile. */
 class SpoofDeckKeyer @Inject constructor() : Keyer<SpoofDeck> {
     override fun key(data: SpoofDeck, options: Options): String =
-        "spoof:deck:${data.photo.seed}:${data.request.kind.name.lowercase()}${if (data.request.loose) ":loose" else ""}"
+        "spoof:deck:${data.photo.seed}:${data.request.kind.name.lowercase()}${if (data.request.loose) ":loose" else ""}${if (data.request.pile) ":pile" else ""}"
 }

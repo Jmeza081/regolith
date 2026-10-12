@@ -922,6 +922,14 @@ interface ArtworkDao {
     suspend fun deleteFolderPlaceholder(folderId: Long): Int
 
     /**
+     * Every folder whose picture is a deck kept as a pile (schema v18), with
+     * which way the pile stands: the Library's wall draws those with no box.
+     * Bounded by the number of decks, not of folders, so no list of ids.
+     */
+    @Query("SELECT ownerId, deckShape FROM artwork WHERE ownerType = 'folder' AND kind = 'POSTER' AND source = 'DECK' AND deckShape IS NOT NULL")
+    fun observeFolderPiles(): Flow<List<FolderPileRow>>
+
+    /**
      * Every picture a folder listing can speak for: the folder's own and its
      * films' (every kind, no moments). One query, so checking a folder of a
      * thousand films after a listing costs one read, not a thousand.
@@ -1029,6 +1037,9 @@ interface TransferDao {
 
 /** Two sums from one query. Room maps the column names onto the constructor. */
 data class ByteTally(val total: Long, val done: Long)
+
+/** A folder whose picture is a deck kept as a pile, and which way it stands ([ArtworkDao.observeFolderPiles]). */
+data class FolderPileRow(val ownerId: Long, val deckShape: String)
 
 /**
  * The upload queue (P16). Like [TransferDao], the worker asks for the next

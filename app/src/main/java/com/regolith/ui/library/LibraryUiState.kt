@@ -3,6 +3,7 @@ package com.regolith.ui.library
 import com.regolith.ui.components.readingTheShare
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.artwork.DeckShape
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentOrder
@@ -67,6 +68,13 @@ sealed interface LibraryTile : SortKeys {
         /** Pictures beneath it, and how many of the folders directly in it hold any: the Images chip's line. */
         val pictureCount: Int = 0,
         val albumCount: Int = 0,
+        /**
+         * Its picture is a deck kept as a pile ([com.regolith.domain.artwork.DeckLayout.pileCards]),
+         * standing this way: the wall draws it with no box, its chips on the
+         * pile's front card. Null for a picture of its own, or a deck dealt
+         * before piles were, which is boxed as before.
+         */
+        val pile: DeckShape? = null,
     ) : LibraryTile {
         override val testTag get() = "library_collection_$folderId"
     }

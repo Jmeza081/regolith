@@ -11,6 +11,7 @@ import com.regolith.data.repository.LibraryRepository
 import com.regolith.data.repository.SourceRepository
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.prefs.AppPreferences
+import com.regolith.domain.display.HomeSection
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.data.scan.ScanRepository
 import com.regolith.data.transfer.TransferRepository
@@ -85,9 +86,10 @@ class HomeViewModel @Inject constructor(
 
     val uiState: StateFlow<HomeUiState> = combine(
         combine(sources.observeServers(), shares, ::Pair), resume, newest, runs,
-        combine(downloads, moments, prefs.postersPerRow, ::Triple),
-    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (downloadsAndCopies, momentNames, perRow) ->
+        combine(downloads, moments, combine(prefs.postersPerRow, prefs.homeSections, ::Pair), ::Triple),
+    ) { (servers, shareList), resumeItems, (newestFiles, newestProgress), runList, (downloadsAndCopies, momentNames, display) ->
         val (ready, deviceFiles) = downloadsAndCopies
+        val (perRow, sectionOrder) = display
         val running = runList.filter { it.status == ScanRunEntity.RUNNING }
         val progressById = newestProgress.associateBy { it.fileId }
         val deviceById = deviceFiles.associateBy { it.id }
@@ -124,12 +126,18 @@ class HomeViewModel @Inject constructor(
             neverScanned = shareList.isNotEmpty() && shareList.none { it.lastScanAtMs != null } && runList.none { it.status == ScanRunEntity.DONE },
             moments = momentNames,
             postersPerRow = perRow,
+            sections = sectionOrder,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     /** Pull to refresh: every enabled share is walked again. The rows stay tappable meanwhile. */
     fun refresh() {
         viewModelScope.launch { scans.scanAll() }
+    }
+
+    /** The Arrange sheet's new order for the sections, kept for every visit after this one. */
+    fun arrangeSections(order: List<HomeSection>) {
+        viewModelScope.launch { prefs.setHomeSections(order) }
     }
 
     /** A pinch's step on the Newly added wall: kept as Settings › Display › Posters per row, which the Library follows too. */

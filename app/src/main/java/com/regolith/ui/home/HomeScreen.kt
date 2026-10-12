@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +40,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
+import com.composables.icons.lucide.R as LucideR
+import com.regolith.domain.display.HomeSection
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.LocalNavPillInsets
 import com.regolith.ui.components.MediaTile
@@ -49,6 +56,10 @@ import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.RefreshLine
+import com.regolith.ui.components.RegolithSheet
+import com.regolith.ui.components.ReorderableColumn
+import com.regolith.ui.components.WallPinch
+import com.regolith.ui.components.bleedHorizontally
 import com.regolith.ui.components.ResumeCard
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
@@ -60,7 +71,9 @@ import com.regolith.ui.components.wallPinch
 import com.regolith.ui.library.wallColumns
 import com.regolith.ui.library.wallFitting
 import com.regolith.ui.library.wallFullWidth
+import com.regolith.ui.theme.CardShape
 import com.regolith.ui.theme.PillShape
+import com.regolith.ui.theme.designSp
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -70,8 +83,10 @@ import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.theme.scaledDp
 
 /**
- * Home tab (design section 04): resume first, then what arrived, then every
- * moment name in the library as a way into Search. The
+ * Home tab (design section 04): resume first, then what arrived, what is on
+ * the phone, then every moment name in the library as a way into Search;
+ * that is the default order, and the Arrange button in the top bar puts the
+ * sections in any other ([HomeSection], [ArrangeSheet]). The
  * states: first use (no server but this phone, and nothing on it), never
  * scanned, nothing found, resume, nothing started (no resume row at all:
  * its absence is the message), and the two halves of a pull to refresh,
@@ -112,6 +127,8 @@ fun HomeScreen(
     val wallWidth = wallFullWidth()
     val across = wallColumns(wallWidth, wide = true, state.postersPerRow.count, wallWidth)
     val pinch = rememberWallPinch(shown = across, most = wallFitting(wallWidth), onStep = viewModel::setPostersPerRow)
+    // The Arrange sheet, open over the page: kept through a rotation.
+    var arranging by rememberSaveable { mutableStateOf(false) }
 
     // BoxWithConstraints: the wide layout sizes the resume cards from the
     // real width (three edge to edge), which a plain Box cannot read.
@@ -140,15 +157,22 @@ fun HomeScreen(
                 .graphicsLayer { translationY = pull.offset }
                 .verticalScroll(rememberScrollState()),
         ) {
-            TopBar(
-                title = "Home",
-                actions = if (state.hasSource) listOf(TopBarAction(R.drawable.rg_ic_search, "Search", "home_search_button", onSearch)) else emptyList(),
-            )
-            if (!state.loaded) return@Column
             val nothingYet = state.resume.isEmpty() && state.newlyAdded.isEmpty() && state.onDevice.isEmpty()
             // First use. Phone storage alone is a source, but not one Home
             // fills from until it has videos, so it does not count here.
-            if (!state.hasNetworkSource && nothingYet) {
+            val firstUse = !state.hasNetworkSource && nothingYet
+            TopBar(
+                title = "Home",
+                actions = buildList {
+                    if (state.hasSource) add(TopBarAction(R.drawable.rg_ic_search, "Search", "home_search_button", onSearch))
+                    // The sections' order, once there are sections to put in one.
+                    if (state.loaded && !firstUse) {
+                        add(TopBarAction(LucideR.drawable.lucide_ic_list_chevrons_up_down, "Arrange Home", "home_arrange_button") { arranging = true })
+                    }
+                },
+            )
+            if (!state.loaded) return@Column
+            if (firstUse) {
                 EmptyState(
                     title = "Your library starts with a server",
                     body = "Regolith plays what is already on your own network. Add the SMB share your videos live on, and what you watch and what arrives shows up here.",
@@ -178,150 +202,36 @@ fun HomeScreen(
                         testTag = "home_empty",
                     )
                 }
-                if (state.resume.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        SectionHeader("Continue watching")
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = Spacing.s18),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                            modifier = Modifier.testTag("home_resume_row"),
-                        ) {
-                            items(state.resume, key = { it.fileId }) { item ->
-                                ResumeCard(
-                                    artwork = item.artwork,
-                                    title = item.name,
-                                    meta = item.meta,
-                                    timeLeft = formatRemaining(item.positionMs, item.durationMs),
-                                    progress = item.fraction,
-                                    onClick = { onPlay(item.fileId, item.positionMs) },
-                                    testTag = item.testTag,
-                                    modifier = Modifier.width(resumeWidth),
-                                    // Its picture flies into the player it opens.
-                                    flight = item.artwork.owner,
+                // In the order the Arrange sheet left them (HomeSection). A
+                // section with nothing in it stays off the page, keeping its
+                // place for when it has. Keyed, so each keeps its own scroll
+                // as the order changes.
+                for (section in state.sections) {
+                    key(section) {
+                        when (section) {
+                            HomeSection.CONTINUE_WATCHING -> if (state.resume.isNotEmpty()) {
+                                ResumeSection(state.resume, resumeWidth, onPlay, onOpenContinueWatching)
+                            }
+                            HomeSection.NEWLY_ADDED -> if (state.newlyAdded.isNotEmpty()) {
+                                NewlyAddedSection(state, wide, across, pinch, onOpenTitle)
+                            } else if (state.neverScanned && !refreshing) {
+                                // The whole page when nothing else is here yet; one
+                                // section among others when downloads already are.
+                                EmptyState(
+                                    title = "Nothing scanned yet",
+                                    body = "Regolith reads the share once to know what is on it. Nothing is copied off it.",
+                                    ghost = if (nothingYet) Ghost.Shelves else Ghost.Posters(rows = 1),
+                                    compact = !nothingYet,
+                                    action = EmptyAction("Scan now", viewModel::refresh, "home_scan_button"),
+                                    modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = if (nothingYet) Spacing.s12 else 0.dp),
+                                    testTag = "home_never_scanned",
                                 )
                             }
-                            item {
-                                SeeAllCard(
-                                    width = resumeWidth,
-                                    aspect = 16f / 9f,
-                                    onClick = onOpenContinueWatching,
-                                    testTag = "home_resume_all",
-                                )
+                            HomeSection.ON_THIS_DEVICE -> if (state.onDevice.isNotEmpty()) {
+                                OnDeviceSection(state.onDevice, state.downloadsBytes, onOpenTitle, onOpenDevice)
                             }
-                        }
-                    }
-                }
-
-                if (state.newlyAdded.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Eyebrow("Newly added", Modifier.padding(horizontal = Spacing.s18), large = true)
-                        if (wide) {
-                            // The wall: rows of posters, edge to edge, as many across
-                            // as the Library's walls. Home is a vertical scroll, so
-                            // this is plain rows rather than a LazyVerticalGrid
-                            // (which would need its own height). The tag stays the
-                            // same so the QA flows find it either way.
-                            Column(
-                                Modifier.padding(horizontal = Spacing.s18).wallPinch(pinch).testTag("home_new_row"),
-                                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-                            ) {
-                                state.newlyAdded.chunked(across).forEach { row ->
-                                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                        row.forEach { item -> NewPoster(item, onOpenTitle, Modifier.weight(1f)) }
-                                        repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
-                                    }
-                                }
-                            }
-                        } else {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = Spacing.s18),
-                                horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                                modifier = Modifier.testTag("home_new_row"),
-                            ) {
-                                items(state.newlyAdded, key = { it.fileId }) { item ->
-                                    NewPoster(item, onOpenTitle, Modifier.width(if (state.resume.isEmpty()) 96.scaledDp() else NEW_POSTER_WIDTH))
-                                }
-                            }
-                        }
-                    }
-                } else if (state.neverScanned && !refreshing) {
-                    // The whole page when nothing else is here yet; one
-                    // section among others when downloads already are.
-                    EmptyState(
-                        title = "Nothing scanned yet",
-                        body = "Regolith reads the share once to know what is on it. Nothing is copied off it.",
-                        ghost = if (nothingYet) Ghost.Shelves else Ghost.Posters(rows = 1),
-                        compact = !nothingYet,
-                        action = EmptyAction("Scan now", viewModel::refresh, "home_scan_button"),
-                        modifier = Modifier.padding(horizontal = Spacing.s18).padding(top = if (nothingYet) Spacing.s12 else 0.dp),
-                        testTag = "home_never_scanned",
-                    )
-                }
-
-                // What is already here, as the films themselves rather than a
-                // card counting them. Same tile as Newly added; the size the
-                // card used to carry moves into the header, where it is still
-                // the answer to "how much of the phone is this using".
-                if (state.onDevice.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        SectionHeader(
-                            title = "On this device",
-                            meta = formatBytes(state.downloadsBytes),
-                        )
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = Spacing.s18),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                            modifier = Modifier.testTag("home_on_device_row"),
-                        ) {
-                            items(state.onDevice, key = { it.fileId }) { item ->
-                                NewPoster(item, onOpenTitle, Modifier.width(NEW_POSTER_WIDTH))
-                            }
-                            item {
-                                SeeAllCard(
-                                    width = NEW_POSTER_WIDTH,
-                                    aspect = 2f / 3f,
-                                    onClick = onOpenDevice,
-                                    testTag = "home_device_all",
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Every name you have given a moment, A to Z, in a section of
-                // its own after the others: a grid of frames, one per name, each
-                // the moment most recently given it, with the name over the
-                // picture (the owner, 2026-10-11: rather than "a large list or
-                // chips"). Rows of tiles rather than a lazy grid, as the Newly
-                // added wall is, since Home is one vertical scroll. Last, because
-                // it is a way into the library rather than a shelf of things in
-                // it: a tap opens Search on that name, already picked, listing
-                // every place it appears.
-                if (state.moments.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        SectionHeader(
-                            title = "Moments",
-                            meta = "${state.moments.size} ${if (state.moments.size == 1) "name" else "names"} · A to Z",
-                        )
-                        Column(
-                            Modifier.padding(horizontal = Spacing.s18).testTag("home_moments"),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-                        ) {
-                            state.moments.chunked(momentsAcross).forEach { row ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                                    row.forEach { moment ->
-                                        MediaTile(
-                                            artwork = moment.frame,
-                                            kind = ArtworkKind.THUMB,
-                                            title = moment.title,
-                                            titleOnArt = true,
-                                            onClick = { onOpenMoment(moment.title) },
-                                            testTag = moment.testTag,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                                    repeat(momentsAcross - row.size) { Spacer(Modifier.weight(1f)) }
-                                }
+                            HomeSection.MOMENTS -> if (state.moments.isNotEmpty()) {
+                                MomentsSection(state.moments, momentsAcross, onOpenMoment)
                             }
                         }
                     }
@@ -332,6 +242,238 @@ fun HomeScreen(
         // The pinch's "N across" pill, under the top bar. A TopBar is s12
         // above a 44dp row and s18 below; s8 here lifts the pill onto that gap.
         WallPinchPill(pinch, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = Spacing.s12 + 44.dp + Spacing.s8))
+        if (arranging) ArrangeSheet(state, onArrange = viewModel::arrangeSections, onDismiss = { arranging = false })
+    }
+}
+
+/** "Continue watching": a card per film you have started, then See all. */
+@Composable
+private fun ResumeSection(
+    resume: List<ResumeItem>,
+    cardWidth: Dp,
+    onPlay: (fileId: Long, startMs: Long) -> Unit,
+    onOpenContinueWatching: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        SectionHeader("Continue watching")
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = Spacing.s18),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+            modifier = Modifier.testTag("home_resume_row"),
+        ) {
+            items(resume, key = { it.fileId }) { item ->
+                ResumeCard(
+                    artwork = item.artwork,
+                    title = item.name,
+                    meta = item.meta,
+                    timeLeft = formatRemaining(item.positionMs, item.durationMs),
+                    progress = item.fraction,
+                    onClick = { onPlay(item.fileId, item.positionMs) },
+                    testTag = item.testTag,
+                    modifier = Modifier.width(cardWidth),
+                    // Its picture flies into the player it opens.
+                    flight = item.artwork.owner,
+                )
+            }
+            item {
+                SeeAllCard(
+                    width = cardWidth,
+                    aspect = 16f / 9f,
+                    onClick = onOpenContinueWatching,
+                    testTag = "home_resume_all",
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Newly added": a row of posters on a phone, and on a wide window a wall,
+ * [across] posters to a row as the Library's walls have them, which [pinch]
+ * steps.
+ */
+@Composable
+private fun NewlyAddedSection(
+    state: HomeUiState,
+    wide: Boolean,
+    across: Int,
+    pinch: WallPinch,
+    onOpenTitle: (fileId: Long) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        Eyebrow("Newly added", Modifier.padding(horizontal = Spacing.s18), large = true)
+        if (wide) {
+            // The wall: rows of posters, edge to edge, as many across
+            // as the Library's walls. Home is a vertical scroll, so
+            // this is plain rows rather than a LazyVerticalGrid
+            // (which would need its own height). The tag stays the
+            // same so the QA flows find it either way.
+            Column(
+                Modifier.padding(horizontal = Spacing.s18).wallPinch(pinch).testTag("home_new_row"),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+            ) {
+                state.newlyAdded.chunked(across).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                        row.forEach { item -> NewPoster(item, onOpenTitle, Modifier.weight(1f)) }
+                        repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        } else {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = Spacing.s18),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                modifier = Modifier.testTag("home_new_row"),
+            ) {
+                items(state.newlyAdded, key = { it.fileId }) { item ->
+                    NewPoster(item, onOpenTitle, Modifier.width(if (state.resume.isEmpty()) 96.scaledDp() else NEW_POSTER_WIDTH))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * "On this device": what is already here, as the films themselves rather
+ * than a card counting them. Same tile as Newly added; the size the card
+ * used to carry moves into the header, where it is still the answer to "how
+ * much of the phone is this using".
+ */
+@Composable
+private fun OnDeviceSection(
+    onDevice: List<NewItem>,
+    bytes: Long,
+    onOpenTitle: (fileId: Long) -> Unit,
+    onOpenDevice: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        SectionHeader(
+            title = "On this device",
+            meta = formatBytes(bytes),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = Spacing.s18),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+            modifier = Modifier.testTag("home_on_device_row"),
+        ) {
+            items(onDevice, key = { it.fileId }) { item ->
+                NewPoster(item, onOpenTitle, Modifier.width(NEW_POSTER_WIDTH))
+            }
+            item {
+                SeeAllCard(
+                    width = NEW_POSTER_WIDTH,
+                    aspect = 2f / 3f,
+                    onClick = onOpenDevice,
+                    testTag = "home_device_all",
+                )
+            }
+        }
+    }
+}
+
+/**
+ * "Moments": every name you have given a moment, A to Z, as a grid of
+ * frames, one per name, each the moment most recently given it, with the
+ * name over the picture (the owner, 2026-10-11: rather than "a large list
+ * or chips"). Rows of tiles rather than a lazy grid, as the Newly added wall
+ * is, since Home is one vertical scroll. Last by default, because it is a
+ * way into the library rather than a shelf of things in it: a tap opens
+ * Search on that name, already picked, listing every place it appears.
+ */
+@Composable
+private fun MomentsSection(
+    moments: List<HomeMoment>,
+    across: Int,
+    onOpenMoment: (name: String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        SectionHeader(
+            title = "Moments",
+            meta = "${moments.size} ${if (moments.size == 1) "name" else "names"} · A to Z",
+        )
+        Column(
+            Modifier.padding(horizontal = Spacing.s18).testTag("home_moments"),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+        ) {
+            moments.chunked(across).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                    row.forEach { moment ->
+                        MediaTile(
+                            artwork = moment.frame,
+                            kind = ArtworkKind.THUMB,
+                            title = moment.title,
+                            titleOnArt = true,
+                            onClick = { onOpenMoment(moment.title) },
+                            testTag = moment.testTag,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(across - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Home's Arrange sheet: the sections in the order the page shows them, each
+ * dragged by its handle to a new place ([ReorderableColumn]). The page
+ * behind follows as soon as one is let go, and keeps the order for next
+ * time. A section with nothing in it says so, since the page leaves it out
+ * until it has something.
+ */
+@Composable
+private fun ArrangeSheet(
+    state: HomeUiState,
+    onArrange: (List<HomeSection>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = RegolithTheme.colors
+    RegolithSheet(
+        title = "Arrange Home",
+        subtitle = "Drag a section to move it",
+        onDismiss = onDismiss,
+        testTag = "home_arrange_sheet",
+    ) {
+        Spacer(Modifier.height(Spacing.s8))
+        ReorderableColumn(
+            items = state.sections,
+            key = { it },
+            label = { it.label },
+            onReorder = onArrange,
+        ) { section, handle, dragging ->
+            val tag = "home_arrange_${section.name.lowercase()}"
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    // The lifted row reaches into the sheet's gutters, so its
+                    // name stays in line with the title above.
+                    .bleedHorizontally(Spacing.s12)
+                    .then(if (dragging) Modifier.background(colors.lifted, CardShape).border(1.dp, colors.liftedBorder, CardShape) else Modifier)
+                    .defaultMinSize(minHeight = 56.dp)
+                    .padding(start = Spacing.s12)
+                    .testTag(tag),
+            ) {
+                Text(
+                    section.label,
+                    style = TextStyles.settingLabel.copy(lineHeight = 20.designSp()),
+                    color = colors.ink,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.isEmpty(section)) {
+                    Text("Empty", style = TextStyles.meta12, color = colors.metadata, modifier = Modifier.padding(horizontal = Spacing.s8))
+                }
+                // 44dp to grab, the glyph's end in line with the title's.
+                Box(handle.size(44.dp).testTag("${tag}_handle"), contentAlignment = Alignment.Center) {
+                    Icon(
+                        painterResource(LucideR.drawable.lucide_ic_grip_vertical),
+                        contentDescription = null,
+                        tint = if (dragging) colors.ink else colors.metadata,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

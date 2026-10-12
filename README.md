@@ -79,7 +79,9 @@ have started, with the time it has left (**See all** lists every one), **Newly
 added** the twelve newest files, **On this device** what you have downloaded, and
 **Moments** every name you have given a mark, A to Z, each as a frame of the
 moment you gave it to last, with the name across the picture; tap one to see
-every place it appears (see Chapters, below). Pull Home
+every place it appears (see Chapters, below). **Arrange**, at the top of Home,
+puts those sections in any order: drag one by its handle, and Home keeps the order
+you leave it in. Pull Home
 or the Library down to read every share again. On a collection, a pull reads
 just that collection and the folders inside it, so what you are looking at is up
 to date in seconds rather than after the whole share.
@@ -163,6 +165,14 @@ up as it starts, and **Watch from here** leaves the reel for the whole video,
 carrying on from that moment. A reel isn't watching: it leaves no resume points
 and adds nothing to Continue watching.
 
+A video's page says where it lives, and each folder in its Path line opens that
+folder's collection, so a film you reached from Home or Search is one tap from
+its neighbours. The collection it is in opens with the video ringed, so you can
+see where it sits. The share's own name opens the share's top level, and back
+returns to the video. A page opened from Browse opens its folders in Browse
+instead, and a phone video's album opens on the Library's **On this device**
+tab, with that album picked.
+
 ### Pictures on the share
 
 The photos on your share are part of the library, not only artwork. Chips under
@@ -227,7 +237,7 @@ arrives late.
 Tap a poster and it flies to where its page shows it. A video's poster grows
 into the wide picture at the top of its page, uncropping as it goes, and a
 collection's poster settles into its place on the collection's page, while the
-page fades in around it (a deck's box fades away as its cards spread out). Back flies it home, and on a phone the back swipe
+page fades in around it (a pile of prints spreads out into its hand of cards). Back flies it home, and on a phone the back swipe
 holds it under your thumb. On the inner display it flies into the page beside
 the wall too; closing that page slides it away as before.
 
@@ -336,11 +346,6 @@ deletes like a video, but on its own: a subtitles file picked by itself leaves
 its video where it is. They never download, since what Download keeps on the
 phone is videos to play. Moving, renaming or deleting a folder's poster this
 way changes the folder's tile at once.
-
-A video's page says where it lives, and each folder in its Path line opens that
-folder here, so a film you reached from Home or Search is one tap from its
-neighbours. The folder it is in opens with the video ringed, so you can see
-where it sits.
 
 Because a folder moves and deletes whole, Move and Delete refuse when you have
 picked a folder and then taken something back out of it. Moving or deleting the
@@ -718,12 +723,14 @@ stand-in is tried again after a day, in case the grab only failed because the
 share was down.
 
 A folder with no poster of its own gets a deck of cards: five frames from the
-videos inside it, picked from the first video to the last and fanned like a hand
-of cards over a blurred copy of the front one. The frames come from the folder's
-tall videos, its phone clips, whenever it has any, so the cards are tall; a
-folder with only wide videos deals wide cards. Each card is the shape of its own
-video, with any black bars baked into the video left off. An album deals its
-newest pictures the same way. If a folder is scanned while it is still empty, and the videos are
+videos inside it, picked from the first video to the last. The frames come from
+the folder's tall videos, its phone clips, whenever it has any, so the cards are
+tall; a folder with only wide videos deals wide cards, with any black bars baked
+into the video left off. An album deals its newest pictures the same way. On the
+Library's wall the deck is a pile of prints with no box round it, as tall as the
+posters beside it: three tall prints askew, or four wide ones climbing the tile,
+with the tile's count and resolution on the front print. A collection's own page
+fans the whole hand out instead, and a list row keeps a small boxed copy. If a folder is scanned while it is still empty, and the videos are
 copied in later, the next scan that finds them clears the "no picture" record so
 the deck gets dealt.
 
