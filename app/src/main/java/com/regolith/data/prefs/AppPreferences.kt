@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.regolith.domain.display.HomeSection
 import com.regolith.domain.display.NavHideAfter
 import com.regolith.domain.display.PicturesAcross
 import com.regolith.domain.display.PostersPerRow
@@ -67,6 +68,7 @@ class AppPreferences @Inject constructor(
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
         val navHideAfter = stringPreferencesKey("nav_hide_after")
         val postersPerRow = stringPreferencesKey("posters_per_row")
+        val homeSections = stringPreferencesKey("home_sections")
         val titleParserVersion = intPreferencesKey("title_parser_version")
         val spoofMode = booleanPreferencesKey("spoof_mode")
         val spoofSalt = longPreferencesKey("spoof_salt")
@@ -297,6 +299,16 @@ class AppPreferences @Inject constructor(
 
     suspend fun setPostersPerRow(perRow: PostersPerRow) {
         store.edit { it[Keys.postersPerRow] = perRow.name }
+    }
+
+    /**
+     * The order of Home's sections, as its Arrange sheet left it: the
+     * default ([HomeSection.entries]) until the owner first moves one.
+     */
+    val homeSections: Flow<List<HomeSection>> = store.data.map { HomeSection.orderOf(it[Keys.homeSections]) }
+
+    suspend fun setHomeSections(order: List<HomeSection>) {
+        store.edit { it[Keys.homeSections] = HomeSection.store(order) }
     }
 
     /**

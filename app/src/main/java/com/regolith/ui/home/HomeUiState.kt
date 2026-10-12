@@ -1,6 +1,7 @@
 package com.regolith.ui.home
 
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.display.HomeSection
 import com.regolith.domain.display.PostersPerRow
 
 /** One card in "Continue watching": 16:9 so the frame is recognisable, labelled with time left. */
@@ -75,13 +76,28 @@ data class HomeUiState(
     val downloadsBytes: Long = 0,
     /**
      * Every name the library's moments carry, A to Z, each as a frame of
-     * one of its moments: Home's last section, where a tap opens Search on
+     * one of its moments: a section of Home's (the last, unless the owner
+     * has arranged them otherwise), where a tap opens Search on
      * that name. Empty while spoof mode is on, and on a library nobody has
      * marked yet, which leaves the section out.
      */
     val moments: List<HomeMoment> = emptyList(),
     /** Settings › Display › Posters per row: the inner display's Newly added wall follows it, as the Library's walls do. */
     val postersPerRow: PostersPerRow = PostersPerRow.DEFAULT,
+    /**
+     * The order the sections come in, as the Arrange sheet left it. Every
+     * section is in it, shown or not: an empty one is left off the page but
+     * keeps its place, for when it has something in it.
+     */
+    val sections: List<HomeSection> = HomeSection.entries,
 ) {
+    /** Whether [section] has nothing in it, so the page leaves it out for now (the Arrange sheet says so). */
+    fun isEmpty(section: HomeSection): Boolean = when (section) {
+        HomeSection.CONTINUE_WATCHING -> resume.isEmpty()
+        HomeSection.NEWLY_ADDED -> newlyAdded.isEmpty()
+        HomeSection.ON_THIS_DEVICE -> onDevice.isEmpty()
+        HomeSection.MOMENTS -> moments.isEmpty()
+    }
+
     val hasSource: Boolean get() = serverNames.isNotEmpty()
 }
