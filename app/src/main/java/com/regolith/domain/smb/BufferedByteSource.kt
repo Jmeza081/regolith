@@ -79,5 +79,13 @@ class BufferedByteSource(
 
     companion object {
         const val DEFAULT_BLOCK_SIZE = 1 shl 20 // 1 MiB: ~130 ms of 60 Mbps 4K per fetch
+
+        /**
+         * For a frame grab, whichever decoder does it: it hops between the index
+         * (often at the end of the file) and the frame's bytes (anywhere), so
+         * several smaller blocks rather than one big one. 2 MiB resident.
+         */
+        const val FRAME_BLOCK_SIZE = 256 * 1024
+        const val FRAME_BLOCK_COUNT = 8
     }
 }

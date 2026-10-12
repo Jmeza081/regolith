@@ -56,7 +56,7 @@ object ArtworkFreshness {
      * A known stamp is simply compared. An unknown one (null: a row from
      * before stamps, or a picture made from a copy on the phone) is judged by
      * where the picture came from: an image read off the share cannot be
-     * checked, so it is read once more; a generated one (a frame, a mosaic,
+     * checked, so it is read once more; a generated one (a frame, a deck,
      * cover art) only loses to a share image, so it goes only if the share
      * has one now; and a placeholder is left to expire on its own within the
      * day, rather than retrying a file that would not decode on every listing.

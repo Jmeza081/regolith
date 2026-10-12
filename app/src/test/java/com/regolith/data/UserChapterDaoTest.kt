@@ -89,6 +89,46 @@ class UserChapterDaoTest {
     }
 
     @Test
+    fun `a chip lists every film carrying its name, and its marks are in exactly those films`() = runTest {
+        val alien = file("Films/Alien.mkv")
+        val heat = file("Films/Heat.1995.mkv")
+        val zodiac = file("Films/Zodiac.mkv")
+        val gone = file("Films/Gone.mkv", missing = true)
+        val plain = file("Films/Plain.mkv")
+        db.userChapterDao().replaceForFile(zodiac, listOf(row(zodiac, 5_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 9_000, "big reveal"), row(heat, 2_000, "Big reveal"), row(heat, 4_000, "Intro")))
+        db.userChapterDao().replaceForFile(alien, listOf(row(alien, 1_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(gone, listOf(row(gone, 1_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(plain, listOf(row(plain, 1_000, "Intro")))
+
+        // Every present film carrying it, by name, any case; no cap.
+        assertEquals(listOf(alien, heat, zodiac), db.userChapterDao().filesWithChapter("Big reveal").first().map { it.id })
+        // Every mark of it, in exactly those films, by film then time.
+        assertEquals(
+            listOf(alien to 1_000L, heat to 2_000L, heat to 9_000L, zodiac to 5_000L),
+            db.userChapterDao().occurrencesOf("Big reveal").first().map { it.fileId to it.startMs },
+        )
+    }
+
+    @Test
+    fun `words typed after a chip narrow its films and its marks alike`() = runTest {
+        val heat = file("Films/Heat.1995.mkv", titleParsed = "Heat")
+        val heathers = file("Films/Heathers.1989.mkv", titleParsed = "Heathers")
+        val zodiac = file("Films/Zodiac.mkv")
+        db.userChapterDao().replaceForFile(heat, listOf(row(heat, 2_000, "Big reveal"), row(heat, 9_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(heathers, listOf(row(heathers, 3_000, "Big reveal")))
+        db.userChapterDao().replaceForFile(zodiac, listOf(row(zodiac, 5_000, "Big reveal")))
+
+        // "hea" by Search's prefix rule finds Heat and Heathers, not Zodiac.
+        val match = LibraryRepository.ftsMatch("hea")!!
+        assertEquals(listOf(heat, heathers), db.userChapterDao().filesWithChapterMatching("Big reveal", match).first().map { it.id })
+        assertEquals(
+            listOf(heat to 2_000L, heat to 9_000L, heathers to 3_000L),
+            db.userChapterDao().occurrencesMatching("Big reveal", match).first().map { it.fileId to it.startMs },
+        )
+    }
+
+    @Test
     fun `facets list every name, including one that is only on a single film`() = runTest {
         val heat = file("Films/Heat.1995.mkv")
         val ocean = file("Films/Oceans.Eleven.mkv")
@@ -102,6 +142,24 @@ class UserChapterDaoTest {
         // Commonest first; a name on one film is still offered (it used to be
         // dropped by `HAVING films > 1`); a name only on a missing file is not.
         assertEquals(listOf("The heist" to 2, "Finale" to 1), facets.map { it.title to it.films })
+    }
+
+    @Test
+    fun `each name's cover is the mark given it most recently, on a present film`() = runTest {
+        val heat = file("Films/Heat.1995.mkv")
+        val ocean = file("Films/Oceans.Eleven.mkv")
+        val gone = file("Films/Gone.mkv", missing = true)
+        fun named(fileId: Long, startMs: Long, title: String?, at: Long) = UserChapterEntity(fileId = fileId, startMs = startMs, title = title, updatedAtMs = at)
+        db.userChapterDao().replaceForFile(heat, listOf(named(heat, 0, "The heist", at = 10), named(heat, 60_000, "Finale", at = 30), named(heat, 90_000, null, at = 99)))
+        // Named later, and only the case differs: the same name, with this the newer mark.
+        db.userChapterDao().replaceForFile(ocean, listOf(named(ocean, 5_000, "the heist", at = 20)))
+        // Newest of all, but the film is off the share.
+        db.userChapterDao().replaceForFile(gone, listOf(named(gone, 0, "The heist", at = 50)))
+
+        val covers = db.userChapterDao().observeMomentCovers().first().associateBy { it.title.lowercase() }
+        assertEquals(setOf("the heist", "finale"), covers.keys)
+        assertEquals(ocean to 5_000L, covers.getValue("the heist").let { it.fileId to it.startMs })
+        assertEquals(heat to 60_000L, covers.getValue("finale").let { it.fileId to it.startMs })
     }
 
     @Test

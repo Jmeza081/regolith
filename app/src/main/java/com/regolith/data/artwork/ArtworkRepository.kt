@@ -2,9 +2,7 @@ package com.regolith.data.artwork
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.ImageDecoder
-import androidx.core.graphics.createBitmap
 import android.util.Log
 import coil3.ImageLoader
 import com.regolith.data.db.ArtworkDao
@@ -18,11 +16,13 @@ import com.regolith.data.db.UserChapterDao
 import com.regolith.data.pictures.PictureRepository
 import com.regolith.domain.media.LocalSource
 import com.regolith.domain.media.MediaFileTypes
+import com.regolith.domain.media.ShortsRule
 import com.regolith.data.repository.SourceRepository
 import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkFreshness
 import com.regolith.domain.artwork.CachedPicture
+import com.regolith.domain.artwork.DeckLayout
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -37,6 +37,12 @@ import com.regolith.domain.smb.listingRetryDelayMs
 import kotlinx.coroutines.delay
 import com.regolith.domain.smb.SmbGateway
 import com.regolith.domain.smb.SmbHost
+import com.regolith.domain.artwork.FrameLook
+import com.regolith.domain.media.UnindexedVideo
+import com.regolith.domain.smb.BufferedByteSource
+import com.regolith.domain.smb.FileByteSource
+import com.regolith.domain.smb.SeekableByteSource
+import com.regolith.domain.smb.SplicedByteSource
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -310,7 +316,73 @@ class ArtworkRepository @Inject constructor(
                 for (row in borrowed) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
                 artworkDao.deleteFilePicturesFromFolders()
             }
+            if (from < 4) {
+                // Only the folders' 2×2 grids: each is dealt again as a deck
+                // the next time its tile asks, from five frames of its own.
+                // Every video's own picture stays.
+                val mosaics = artworkDao.withSource(MOSAIC)
+                Log.i(TAG, "artwork generation $from -> 4: dropping ${mosaics.size} folder mosaics; they come back as decks")
+                for (row in mosaics) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteWithSource(MOSAIC)
+            }
+            if (from < 5) {
+                // Decks dealt before each kept a loose copy for its page
+                // (only the first test builds of decks made any).
+                val decks = artworkDao.withSource(ArtworkSource.DECK.name)
+                Log.i(TAG, "artwork generation $from -> 5: dealing ${decks.size} decks again, laid loose too")
+                for (row in decks) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteWithSource(ArtworkSource.DECK.name)
+            }
+            if (from < 6) {
+                // Frames grabbed while nothing knew a video's runtime came from
+                // its first moment. A file with no index now gives its runtime
+                // and a frame from its middle, and a deck's cards come the same
+                // careful way, so both are made again; nothing else is.
+                val starts = artworkDao.framesFromTheStart()
+                val decks = artworkDao.withSource(ArtworkSource.DECK.name)
+                Log.i(TAG, "artwork generation $from -> 6: grabbing ${starts.size} frames again from the middle, and dealing ${decks.size} decks again")
+                for (row in starts + decks) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteFramesFromTheStart()
+                artworkDao.deleteWithSource(ArtworkSource.DECK.name)
+            }
+            if (from < 7) {
+                // A mark Media3 could not reach showed its film's thumb, and a
+                // film Media3 could not seek in kept the opening frame it handed
+                // back before a landing was checked, on a row that knew its
+                // runtime, which step 6 left alone: the intros on Home's moments.
+                // Such a mark gets a frame of its own now, cut from the file
+                // (cutMoments), and its film a frame from its middle. So the
+                // marks borrowing a film's thumb go, with those films' frames,
+                // and so does any film's frame that is all but black or a logo
+                // on black (FrameLook), judged from the copy on this phone.
+                val borrowing = artworkDao.momentsBorrowingFilms()
+                val blank = artworkDao.filmFrames(ArtworkKind.THUMB.name).filter { looksBlank(it.relPath) }.map { it.ownerId }
+                val films = (borrowing.map { it.ownerId } + blank).distinct()
+                Log.i(TAG, "artwork generation $from -> 7: ${borrowing.size} marks borrowing a film's thumb; grabbing ${films.size} films' frames again, ${blank.size} of them blank")
+                artworkDao.deleteMomentsBorrowingFilms()
+                for (chunk in films.chunked(GENERATION_CHUNK)) {
+                    for (row in artworkDao.filmFramesOf(chunk)) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                    artworkDao.deleteFilmFramesOf(chunk)
+                }
+            }
             store.setGeneration(ArtworkStore.GENERATION)
+        }
+    }
+
+    /**
+     * Whether the picture kept at [relPath] says nothing about its video
+     * ([FrameLook.blank]: all but black, one flat colour, a logo on black),
+     * from a small decode of the copy on this phone. False when it will not
+     * decode, so a picture that cannot be judged is left alone.
+     */
+    private fun looksBlank(relPath: String): Boolean {
+        if (relPath.isEmpty()) return false
+        val options = BitmapFactory.Options().apply { inSampleSize = BLANK_CHECK_SAMPLE }
+        val bitmap = BitmapFactory.decodeFile(store.fileFor(relPath).path, options) ?: return false
+        return try {
+            FrameLook.blank(bitmap.lumaGrid())
+        } finally {
+            bitmap.recycle()
         }
     }
 
@@ -393,22 +465,22 @@ class ArtworkRepository @Inject constructor(
      * neither should anything above it.
      *
      * The case this exists for: a folder is made on the share, the scan
-     * finds it empty, the walk finds nothing to build a mosaic from and
+     * finds it empty, the walk finds nothing to deal a deck from and
      * records a placeholder — then the videos are copied in. The next scan
      * lists them, but the placeholder is good for a day and the walk skips
      * anything already cached, so the folder stayed blank. Seen on the
      * owner's phone: a folder of 96 films placeholdered five hours before
      * they arrived.
      *
-     * Every ancestor too, because a mosaic walks DOWN into subfolders
-     * ([mosaicFiles]): a show folder whose seasons were empty is waiting on
-     * exactly the same videos. Only placeholders go; a real image or mosaic
+     * Every ancestor too, because a deck walks DOWN into subfolders
+     * ([deckFiles]): a show folder whose seasons were empty is waiting on
+     * exactly the same videos. Only placeholders go; a real image or deck
      * above is left alone. Database only, a few rows per listing.
      */
     private suspend fun forgetFolderPlaceholders(folderId: Long) {
         var id: Long? = folderId
         var depth = 0
-        while (id != null && depth++ < MOSAIC_MAX_FOLDERS) {
+        while (id != null && depth++ < DECK_MAX_FOLDERS) {
             if (artworkDao.deleteFolderPlaceholder(id) > 0) Log.i(TAG, "folder $id holds videos now; dropped its placeholder")
             id = folderDao.byId(id)?.parentId
         }
@@ -490,6 +562,20 @@ class ArtworkRepository @Inject constructor(
 
     /** [owner]'s moving poster, when it has one ([AnimatedPoster]): for the Library tiles that play it. */
     fun animatedFileFor(owner: ArtworkOwner): java.io.File? = store.animatedFile(owner)
+
+    /**
+     * Whether the folder picture [request] asks for is a deck the app dealt
+     * ([ArtworkSource.DECK]), made first if need be ([resolve]): spoof mode
+     * asks, to deal a deck of stand-in photos in its place. False for any
+     * other owner, and when it cannot be told with the share out of reach.
+     */
+    suspend fun isDeck(request: ArtworkRequest): Boolean {
+        if (request.owner !is ArtworkOwner.Folder) return false
+        return resolve(request.copy(animated = false, loose = false))?.source == ArtworkSource.DECK.name
+    }
+
+    /** [owner]'s deck laid loose, for its collection's page ([ArtworkRequest.loose]), or null when its picture is not a deck. */
+    fun looseFileFor(owner: ArtworkOwner): java.io.File? = store.looseFile(owner)
 
     /**
      * Beside a folder's still poster, the GIF it was made from, kept as it
@@ -606,10 +692,10 @@ class ArtworkRepository @Inject constructor(
 
     /**
      * Steps 3 and 4 on an already-open file: embedded cover art, else a
-     * frame from the midpoint. True when something was written.
+     * frame from the middle ([frameAround]). True when something was written.
      *
-     * The log line here is the one to read when a tile looks wrong — it
-     * says where the frame was taken from and how the runtime behind that
+     * The log lines here are the ones to read when a tile looks wrong: they
+     * say where the frame was taken from and how the runtime behind that
      * decision was arrived at (`adb logcat -s Regolith/Artwork`).
      */
     private suspend fun grabFrame(
@@ -627,36 +713,124 @@ class ArtworkRepository @Inject constructor(
             }
         }
         val duration = runtimeOf(file, source)
-        val at = ArtworkCandidates.framePositionMs(duration)
-
-        // Media3 first: the same extractors and the same data source the
-        // player uses, and it says which frame it actually gave you. The
-        // platform retriever cannot, and returns the OPENING frame when it
-        // fails to seek — the one failure this whole path exists to avoid.
-        grabber.frameAt(file.id, at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT)?.let { grabbed ->
-            val off = grabbed.presentationTimeMs - at
-            if (duration > 0 && abs(off) > SEEK_TOLERANCE_MS) {
-                // Not fatal — a file whose key frames really are minutes apart
-                // is legitimately far off — but it is the line to read when a
-                // tile looks like a title card.
-                Log.w(TAG, "${file.name}: asked for ${at}ms, got ${grabbed.presentationTimeMs}ms (${off}ms off)")
-            } else {
-                Log.i(TAG, "${file.name}: frame at ${grabbed.presentationTimeMs}ms of ${duration}ms (media3)")
-            }
-            try {
-                if (saveBitmap(grabbed.bitmap, owner, ArtworkSource.FRAMEGRAB, kinds, stamp)) return true
-            } finally {
-                grabbed.bitmap.recycle()
-            }
-        }
-
-        // Fallback: the platform retriever on the file we already have open.
-        val frame = source.frameAt(at, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
-        Log.i(TAG, "${file.name}: frame at ${at}ms of ${duration}ms (retriever)")
+        val frame = frameAround(file, source, duration, MIDDLE, FRAME_MAX_WIDTH, FRAME_MAX_HEIGHT) ?: return false
         return try {
             saveBitmap(frame, owner, ArtworkSource.FRAMEGRAB, kinds, stamp)
         } finally {
             frame.recycle()
+        }
+    }
+
+    /**
+     * A frame from around [fraction] of [file]'s runtime that shows what the
+     * video is, for its tile or a card in its folder's deck. Null when none
+     * could be had at all. The caller owns, and recycles, the bitmap.
+     *
+     * A frame that is blank ([FrameLook]: black, or all one flat colour) is
+     * tried again at other points ([ArtworkCandidates.blankRetryFractions]),
+     * and kept only if every other point is blank too.
+     */
+    private suspend fun frameAround(file: MediaFileEntity, source: FrameSource, durationMs: Long, fraction: Double, maxWidth: Int, maxHeight: Int): Bitmap? {
+        // A container that says nothing of its length may have no index, and
+        // then the cut is the way in: Media3 can only reach the middle of such
+        // a file by decoding the whole first half of it, off the share.
+        val unindexed = if (source.durationMs == null) unindexedLayout(file) else null
+        var blank: Bitmap? = null
+        for (point in listOf(fraction) + ArtworkCandidates.blankRetryFractions(fraction)) {
+            val frame = frameAt(file, source, durationMs, point, unindexed, maxWidth, maxHeight) ?: continue
+            if (!FrameLook.blank(frame.lumaGrid())) {
+                blank?.recycle()
+                return frame
+            }
+            Log.i(TAG, "${file.name}: the frame at ${(point * 100).roundToInt()}% is blank; trying elsewhere")
+            if (blank == null) blank = frame else frame.recycle()
+            // With no runtime every point is the same point.
+            if (durationMs <= 0 && unindexed == null) break
+        }
+        return blank
+    }
+
+    /**
+     * The frame at [fraction] of the runtime, the surest way there is:
+     *  1. for a file with no index ([unindexed]), which nothing can seek in,
+     *     a frame cut from that point of the file ([cutFrame]);
+     *  2. Media3, which seeks with the player's own extractors and says where
+     *     its frame really came from: kept if it landed near where it was
+     *     sent, and if it came back from the start instead, the file turns
+     *     out to have no index after all, so 1;
+     *  3. the platform's retriever, as a last resort: it cannot say where its
+     *     frame came from, and gives the opening one when it cannot seek.
+     */
+    private suspend fun frameAt(
+        file: MediaFileEntity,
+        source: FrameSource,
+        durationMs: Long,
+        fraction: Double,
+        unindexed: UnindexedVideo.Layout?,
+        maxWidth: Int,
+        maxHeight: Int,
+    ): Bitmap? {
+        if (unindexed != null) cutFrame(file, unindexed, fraction, maxWidth, maxHeight)?.let { return it }
+        val at = (durationMs * fraction).toLong()
+        if (unindexed == null && durationMs > 0) grabber.frameAt(file.id, at, maxWidth, maxHeight)?.let { grabbed ->
+            val landed = grabbed.presentationTimeMs
+            if (at < LANDED_EARLY_MIN_MS || landed >= at / 4) {
+                if (abs(landed - at) > SEEK_TOLERANCE_MS) {
+                    // Not fatal — key frames minutes apart are legitimately far
+                    // off — but it is the line to read when a tile looks wrong.
+                    Log.w(TAG, "${file.name}: asked for ${at}ms, got ${landed}ms (${landed - at}ms off)")
+                } else {
+                    Log.i(TAG, "${file.name}: frame at ${landed}ms of ${durationMs}ms (media3)")
+                }
+                return grabbed.bitmap.software()
+            }
+            // Sent to the middle, back at the start: a file with no index.
+            Log.w(TAG, "${file.name}: asked for ${at}ms, landed at ${landed}ms; it cannot seek")
+            grabbed.bitmap.recycle()
+            unindexedLayout(file)?.let { layout -> cutFrame(file, layout, fraction, maxWidth, maxHeight)?.let { return it } }
+        }
+        val frame = source.frameAt(at, maxWidth, maxHeight) ?: return null
+        Log.i(TAG, "${file.name}: frame at ${at}ms of ${durationMs}ms (retriever)")
+        return frame
+    }
+
+    /**
+     * For a file with no index ([UnindexedVideo]: an MKV without Cues, a
+     * fragmented MP4 without a `sidx`): its header with a cut from [fraction]
+     * of the way through spliced on, its clock started again at zero, decoded
+     * by Media3. Reads the header and a few megabytes around the cut, never
+     * the half of the file it would take to decode up to the middle.
+     */
+    private suspend fun cutFrame(file: MediaFileEntity, layout: UnindexedVideo.Layout, fraction: Double, maxWidth: Int, maxHeight: Int): Bitmap? {
+        val open = bytesOf(file) ?: return null
+        val cut = open().use { bytes -> UnindexedVideo.cutNear(bytes, layout, fraction) } ?: return null
+        val grabbed = grabber.frameFromBytes({ SplicedByteSource(open(), layout.headerEnd, cut.offset, cut.prefix) }, file.name, maxWidth, maxHeight)
+            ?: return null
+        Log.i(TAG, "${file.name}: no index; frame at ${cut.timeMs}ms, cut from the file")
+        return grabbed.bitmap.software()
+    }
+
+    /** [file]'s layout when it is a video with no index ([UnindexedVideo.layout]), from its first bytes; null for any other. */
+    private suspend fun unindexedLayout(file: MediaFileEntity): UnindexedVideo.Layout? {
+        val open = bytesOf(file) ?: return null
+        return open().use { bytes -> UnindexedVideo.layout(bytes) }
+    }
+
+    /**
+     * How to open [file]'s bytes, each call a new handle: a copy on this
+     * device, else the share, read the way a frame grab reads it. Null when
+     * the share cannot be located. The location is looked up once, here, so
+     * the opener itself does not suspend: Media3 calls it on its own thread.
+     */
+    private suspend fun bytesOf(file: MediaFileEntity): (() -> SeekableByteSource)? {
+        local.file(file.id)?.let { copy -> return { FileByteSource(copy) } }
+        val location = locate(file.shareId) ?: return null
+        return {
+            BufferedByteSource(
+                gateway.open(location.host, location.credentials, location.share, file.relPath),
+                blockSize = BufferedByteSource.FRAME_BLOCK_SIZE,
+                blockCount = BufferedByteSource.FRAME_BLOCK_COUNT,
+            )
         }
     }
 
@@ -719,6 +893,10 @@ class ArtworkRepository @Inject constructor(
             }
             // A grabber that stopped short owes the rest; treat them as misses.
             misses += wanted.drop(next)
+            // A file with no index seeks only from its start, so Media3 lands
+            // at the opening frames whatever time it is sent to. Its marks get
+            // their own frames from cuts of the file instead, as its tile does.
+            if (misses.isNotEmpty()) misses.removeAll(cutMoments(file, misses, kinds))
             val rest = System.currentTimeMillis() - startedAt - firstFrameMs
             Log.i(
                 TAG,
@@ -728,6 +906,36 @@ class ArtworkRepository @Inject constructor(
             )
         }
         for (at in misses) fallBackToFilm(ArtworkOwner.Moment(owner.fileId, at), kinds)
+    }
+
+    /**
+     * The marks at [times] in [file], which Media3 could not reach, each
+     * given its own frame from a cut of the file at a key frame by it
+     * ([UnindexedVideo.cutAtTime]), when the file is one with no index; the
+     * times saved. A mark's frame is drawn under its clock, so a cut that
+     * cannot land within [MOMENT_SEEK_TOLERANCE_MS] saves nothing, and the
+     * mark falls back to the film's thumb as before.
+     */
+    private suspend fun cutMoments(file: MediaFileEntity, times: List<Long>, kinds: List<ArtworkKind>): Set<Long> {
+        val layout = unindexedLayout(file) ?: return emptySet()
+        val open = bytesOf(file) ?: return emptySet()
+        val runtime = file.durationMs?.takeIf { it > 0 } ?: open().use { UnindexedVideo.runtimeMs(it, layout) } ?: return emptySet()
+        val saved = mutableSetOf<Long>()
+        for (at in times) {
+            val cut = open().use { UnindexedVideo.cutAtTime(it, layout, at, runtime, MOMENT_SEEK_TOLERANCE_MS) } ?: continue
+            val grabbed = grabber.frameFromBytes(
+                { SplicedByteSource(open(), layout.headerEnd, cut.offset, cut.prefix) },
+                file.name, MOMENT_FRAME_MAX_WIDTH, MOMENT_FRAME_MAX_HEIGHT,
+            ) ?: continue
+            val frame = grabbed.bitmap.software()
+            try {
+                Log.i(TAG, "${file.name}: no index; frame at ${cut.timeMs}ms for its mark at ${at}ms, cut from the file")
+                if (saveBitmap(frame, ArtworkOwner.Moment(file.id, at), ArtworkSource.FRAMEGRAB, kinds)) saved += at
+            } finally {
+                frame.recycle()
+            }
+        }
+        return saved
     }
 
     /** Save [grabbed] as [owner]'s frame if it landed close enough to the mark. False means fall back. */
@@ -834,35 +1042,50 @@ class ArtworkRepository @Inject constructor(
      */
     private suspend fun runtimeOf(file: MediaFileEntity, source: FrameSource): Long {
         source.durationMs?.let { return it }
-        file.durationMs?.let { known ->
+        file.durationMs?.takeIf { it > 0 }?.let { known ->
             Log.d(TAG, "no runtime from the container for ${file.name}; using the ${known}ms already on the row")
             return known
         }
-        val probed = durations.durationMs(file.id)
-        if (probed == null || probed <= 0) {
-            Log.w(TAG, "no runtime for ${file.name} from the container, the row or the probe: grabbing at 0")
-            return 0L
+        durations.durationMs(file.id)?.takeIf { it > 0 }?.let { probed ->
+            Log.i(TAG, "no runtime from the container for ${file.name}; the probe says ${probed}ms")
+            mediaFileDao.fillBasics(file.id, probed, null, null, null)
+            return probed
         }
-        Log.i(TAG, "no runtime from the container for ${file.name}; the probe says ${probed}ms")
-        mediaFileDao.fillBasics(file.id, probed, null, null, null)
-        return probed
+        // A recording with no index says nowhere how long it runs, so nothing
+        // above can tell; the time of its last cluster or fragment can.
+        unindexedRuntime(file)?.let { read ->
+            Log.i(TAG, "${file.name} has no index; its last cluster or fragment says it runs ${read}ms")
+            mediaFileDao.fillBasics(file.id, read, null, null, null)
+            return read
+        }
+        Log.w(TAG, "no runtime for ${file.name} from the container, the row, the probe or its end: grabbing at 0")
+        return 0L
+    }
+
+    /** How long a file with no index runs, read off its end ([UnindexedVideo.runtimeMs]), or null. */
+    private suspend fun unindexedRuntime(file: MediaFileEntity): Long? {
+        val open = bytesOf(file) ?: return null
+        return open().use { bytes -> UnindexedVideo.layout(bytes)?.let { UnindexedVideo.runtimeMs(bytes, it) } }?.takeIf { it > 0 }
     }
 
     private suspend fun resolveFolder(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
         val folder = folderDao.byId(owner.id) ?: return
-        // A sidecar always wins, but it lives on the share, and the mosaic
+        // A sidecar always wins, but it lives on the share, and the deck
         // below may not need the share at all — the demo library and anything
         // downloaded have local copies. So an unreachable share is remembered
-        // rather than thrown here, and only re-thrown if the mosaic also
+        // rather than thrown here, and only re-thrown if the deck also
         // could not be made: "try again later" must not become a placeholder.
         var unreachable: SmbFailure? = null
-        // Null while the share cannot be listed: a mosaic made from local
+        // Null while the share cannot be listed: a deck made from local
         // copies then carries no stamp, and the next real listing judges it.
         var stamp: String? = null
         // The demo library has no share to list: its albums' pictures are on
         // the phone, its own poster among them.
         if (isLocal(folder.shareId)) {
-            if (localSidecar(folder.id, owner, kinds)) return
+            if (localSidecar(folder.id, owner, kinds)) {
+                forgetLoose(owner, kinds)
+                return
+            }
         } else try {
             locate(folder.shareId)?.let { location ->
                 val entries = listing(location, folder.shareId, folder.relPath)
@@ -873,6 +1096,7 @@ class ArtworkRepository @Inject constructor(
                     val bytes = readImage(location, path) ?: continue
                     if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) {
                         keepAnimated(owner, folder.relPath, bytes, kinds)
+                        forgetLoose(owner, kinds)
                         return
                     }
                 }
@@ -882,93 +1106,155 @@ class ArtworkRepository @Inject constructor(
         }
         // No picture of its own any more, so nothing to move either.
         keepAnimated(owner, folder.relPath, null, kinds)
-        if (mosaic(owner, kinds, stamp)) return
+        if (deck(owner, kinds, stamp)) return
         // An album: no videos to take frames from, so its own pictures.
-        if (unreachable == null && pictureCover(owner, kinds, stamp)) return
+        if (unreachable == null && pictureDeck(owner, kinds, stamp)) return
         unreachable?.let { throw it }
         placeholder(owner, kinds, stamp)
     }
 
     /**
      * A folder with no picture of its own gets one made out of its contents:
-     * [ArtworkCandidates.MOSAIC_CELLS] frames stitched into a grid, the way a
-     * photo album shows four of the photos inside it.
+     * a deck, [DeckLayout.MAX_CARDS] frames of the videos inside fanned like
+     * a hand of cards ([DeckPainter]), which says "a handful of whatever is
+     * in here" the way a tidy grid of four did not.
      *
-     * Written at each kind's own aspect rather than once and cropped: a 16:9
-     * grid squeezed into a 2:3 poster would slice the outer columns in half.
-     * Same four frames, composed twice — the seeks are the expensive part.
+     * Drawn at each kind's own shape rather than once and cropped: the 2:3
+     * poster and the 16:9 thumb each hold the whole hand. Same frames, drawn
+     * twice — the seeks are the expensive part.
      *
-     * All-or-nothing: a grid with a black hole in it looks broken in a way a
-     * plain placeholder does not.
+     * A frame that will not come leaves the deck a card short rather than
+     * failing it, since a hand of four has no hole in it to look broken.
      */
-    private suspend fun mosaic(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
-        val files = mosaicFiles(owner.id)
+    private suspend fun deck(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
+        val files = deckFiles(owner.id)
         if (files.isEmpty()) return false
-        // Fewer videos than cells: the ones there are each give several
-        // frames, so a folder holding one film still reads as that film.
+        // Fewer videos than cards: the ones there are each give several
+        // frames, so a folder holding one film still deals a full hand.
         val slots = IntArray(files.size)
-        for (i in 0 until ArtworkCandidates.MOSAIC_CELLS) slots[i % files.size]++
+        for (i in 0 until DeckLayout.MAX_CARDS) slots[i % files.size]++
 
-        val cells = mutableListOf<Bitmap>()
+        val hands = mutableListOf<List<Bitmap>>()
         try {
             for ((index, file) in files.withIndex()) {
-                openFrames(file)?.use { source ->
-                    val duration = runtimeOf(file, source)
-                    for (position in ArtworkCandidates.mosaicPositionsMs(duration, slots[index])) {
-                        cells += source.frameAt(position, MOSAIC_FRAME_MAX, MOSAIC_FRAME_MAX) ?: return false
+                val hand = mutableListOf<Bitmap>()
+                hands += hand
+                try {
+                    openFrames(file)?.use { source ->
+                        val duration = runtimeOf(file, source)
+                        // The same care a video's own tile gets: from the middle
+                        // and not blank, cut from a file with no index.
+                        for (fraction in ArtworkCandidates.frameFractions(slots[index])) {
+                            frameAround(file, source, duration, fraction, DECK_FRAME_MAX, DECK_FRAME_MAX)?.let { hand += it }
+                        }
                     }
+                } catch (e: SmbFailure) {
+                    // The server going quiet stops the deck, to be dealt
+                    // again later ([resolveOwner]); one file it would not
+                    // hand over (gone since the scan, say) is a card fewer.
+                    if (e.isAboutTheServer) throw e
+                    Log.w(TAG, "deck for folder ${owner.id}: no frames from ${file.name}: ${e.message}")
                 }
             }
-            if (cells.size != ArtworkCandidates.MOSAIC_CELLS) return false
+            val cards = DeckLayout.deal(hands)
+            if (cards.isEmpty()) return false
             var wrote = false
             for (kind in kinds) {
-                val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
-                val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
-                val grid = createBitmap(kind.width, kind.height)
-                val canvas = Canvas(grid)
+                val deck = DeckPainter.paint(cards, kind.width, kind.height)
                 try {
-                    cells.forEachIndexed { i, frame ->
-                        val cell = ArtworkStore.centerCrop(frame, cellW, cellH)
-                        canvas.drawBitmap(
-                            cell,
-                            (i % ArtworkCandidates.MOSAIC_COLUMNS * cellW).toFloat(),
-                            (i / ArtworkCandidates.MOSAIC_COLUMNS * cellH).toFloat(),
-                            null,
-                        )
-                        if (cell !== frame) cell.recycle()
-                    }
-                    if (store.saveExact(grid, owner, kind)) {
-                        record(owner, kind, ArtworkSource.MOSAIC, stamp)
+                    if (store.saveExact(deck, owner, kind)) {
+                        record(owner, kind, ArtworkSource.DECK, stamp)
                         wrote = true
                     }
                 } finally {
-                    grid.recycle()
+                    deck.recycle()
                 }
             }
-            if (wrote) Log.d(TAG, "mosaic for folder ${owner.id} from ${files.size} file(s)")
+            if (wrote) {
+                keepLoose(owner, cards, kinds)
+                Log.d(TAG, "deck for folder ${owner.id}: ${cards.size} card(s) from ${files.size} file(s)")
+            }
             return wrote
         } finally {
-            cells.forEach { it.recycle() }
+            hands.forEach { hand -> hand.forEach { it.recycle() } }
         }
     }
 
     /**
-     * Up to [ArtworkCandidates.MOSAIC_CELLS] videos to draw the mosaic from.
-     * A show folder holds seasons rather than files, so this walks down
-     * breadth-first until it has enough — that is what makes "Severance"
-     * get a tile at all.
+     * Up to [DeckLayout.MAX_CARDS] videos to deal the deck from: the folder's
+     * tall ones (a phone's clips) where it has any, its wide ones where it
+     * has none ([DeckLayout.dealFrom]), spread through it rather than its
+     * first few. A show folder holds seasons rather than files, so this
+     * walks down breadth-first until it has enough tall ones, or has looked
+     * everywhere — that is what makes "Severance" get a tile at all.
+     *
+     * Which way up a video is comes from its row, its rotation applied
+     * ([ShortsRule.displayAspect]), as Shorts reads it. A video not measured
+     * yet is opened to find out ([measure]), a few at most and only while
+     * the tall ones are short of a hand.
      */
-    private suspend fun mosaicFiles(folderId: Long): List<MediaFileEntity> {
-        val out = mutableListOf<MediaFileEntity>()
+    private suspend fun deckFiles(folderId: Long): List<MediaFileEntity> {
+        val found = mutableListOf<MediaFileEntity>()
+        val shapes = mutableListOf<Float?>()
+        fun tallCount() = shapes.count { it != null && it < 1f }
         val queue = ArrayDeque(listOf(folderId))
         var visited = 0
-        while (queue.isNotEmpty() && out.size < ArtworkCandidates.MOSAIC_CELLS && visited < MOSAIC_MAX_FOLDERS) {
+        while (queue.isNotEmpty() && tallCount() < DeckLayout.MAX_CARDS && visited < DECK_MAX_FOLDERS) {
             val id = queue.removeFirst()
             visited++
-            out += mediaFileDao.inFolder(id).take(ArtworkCandidates.MOSAIC_CELLS - out.size)
-            if (out.size < ArtworkCandidates.MOSAIC_CELLS) queue += folderDao.children(id).map { it.id }
+            for (file in mediaFileDao.inFolder(id)) {
+                found += file
+                shapes += ShortsRule.displayAspect(file.width, file.height, file.rotationDegrees)
+            }
+            queue += folderDao.children(id).map { it.id }
         }
-        return out
+        if (tallCount() < DeckLayout.MAX_CARDS) {
+            val unmeasured = shapes.indices.filter { shapes[it] == null }
+            for (pick in DeckLayout.picks(unmeasured.size, DECK_MEASURE_MAX)) {
+                val index = unmeasured[pick]
+                shapes[index] = measure(found[index])
+                if (tallCount() >= DeckLayout.MAX_CARDS) break
+            }
+        }
+        return DeckLayout.dealFrom(shapes).map { found[it] }
+    }
+
+    /**
+     * Opens [file] for its stored size and rotation, keeps them on its row as
+     * a frame grab would, and returns its shape as shown: width over height.
+     * Null when it will not open or does not say. The server going quiet
+     * stops the deck, as a frame that will not come does.
+     */
+    private suspend fun measure(file: MediaFileEntity): Float? = try {
+        openFrames(file)?.use { source ->
+            mediaFileDao.fillBasics(file.id, source.durationMs, source.width, source.height, source.rotationDegrees)
+            ShortsRule.displayAspect(source.width, source.height, source.rotationDegrees)
+        }
+    } catch (e: SmbFailure) {
+        if (e.isAboutTheServer) throw e
+        Log.w(TAG, "deck: could not measure ${file.name}: ${e.message}")
+        null
+    }
+
+    /**
+     * Beside a folder's deck, the same [cards] laid loose ([DeckPainter.paintLoose]):
+     * the hand out of its box, for the collection's page to show. Only with a
+     * poster among [kinds], so a pass that makes something else (a backdrop
+     * alone) leaves it as it is.
+     */
+    private fun keepLoose(owner: ArtworkOwner.Folder, cards: List<Bitmap>, kinds: List<ArtworkKind>) {
+        if (ArtworkKind.POSTER !in kinds) return
+        val loose = DeckPainter.paintLoose(cards, DeckPainter.LOOSE_WIDTH)
+        try {
+            if (!store.saveLoose(loose, owner)) Log.w(TAG, "deck for folder ${owner.id}: could not keep it laid loose")
+        } finally {
+            loose.recycle()
+        }
+    }
+
+    /** A folder that wears a picture of its own now: a loose deck kept from before goes. Only with a poster among [kinds], as [keepLoose]. */
+    private fun forgetLoose(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
+        if (ArtworkKind.POSTER in kinds) store.deleteLoose(owner)
     }
 
     /** The file's frames, from a copy on this device if there is one, else the share. */
@@ -1109,69 +1395,60 @@ class ArtworkRepository @Inject constructor(
     }.getOrNull()
 
     /**
-     * An album's cover, when it has no picture of its own and no videos to
-     * take frames from: its four newest pictures in a 2×2 grid, the way a
-     * folder of videos gets four frames ([mosaic]), or the newest alone when
-     * it holds fewer than four. Made from the pictures' own thumbnails,
-     * which are made first where they do not exist yet.
+     * An album's picture, when it has none of its own and no videos to take
+     * frames from: a deck of its newest pictures, dealt the way a folder of
+     * videos deals frames ([deck]), with as many cards as it has pictures up
+     * to [DeckLayout.MAX_CARDS] (a picture has only the one frame to give).
+     * Made from the pictures' own thumbnails, which are made first where
+     * they do not exist yet.
      */
-    private suspend fun pictureCover(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
-        val picks = coverPictures(owner.id)
+    private suspend fun pictureDeck(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>, stamp: String?): Boolean {
+        val picks = deckPictures(owner.id)
         if (picks.isEmpty()) return false
-        val cells = mutableListOf<Bitmap>()
+        val cards = mutableListOf<Bitmap>()
         try {
-            for (id in picks) pictureThumb(ArtworkOwner.Picture(id))?.let { cells += it }
-            if (cells.isEmpty()) return false
+            for (id in picks) pictureThumb(ArtworkOwner.Picture(id))?.let { cards += it }
+            if (cards.isEmpty()) return false
             var wrote = false
             for (kind in kinds) {
-                val saved = if (cells.size < ArtworkCandidates.MOSAIC_CELLS) {
-                    store.save(cells.first(), owner, kind)
-                } else {
-                    val cellW = kind.width / ArtworkCandidates.MOSAIC_COLUMNS
-                    val cellH = kind.height / ArtworkCandidates.MOSAIC_ROWS
-                    val grid = createBitmap(kind.width, kind.height)
-                    try {
-                        val canvas = Canvas(grid)
-                        cells.take(ArtworkCandidates.MOSAIC_CELLS).forEachIndexed { i, picture ->
-                            val cell = ArtworkStore.centerCrop(picture, cellW, cellH)
-                            canvas.drawBitmap(cell, (i % ArtworkCandidates.MOSAIC_COLUMNS * cellW).toFloat(), (i / ArtworkCandidates.MOSAIC_COLUMNS * cellH).toFloat(), null)
-                            if (cell !== picture) cell.recycle()
-                        }
-                        store.saveExact(grid, owner, kind)
-                    } finally {
-                        grid.recycle()
+                val deck = DeckPainter.paint(cards, kind.width, kind.height)
+                try {
+                    if (store.saveExact(deck, owner, kind)) {
+                        record(owner, kind, ArtworkSource.DECK, stamp)
+                        wrote = true
                     }
-                }
-                if (saved) {
-                    record(owner, kind, ArtworkSource.MOSAIC, stamp)
-                    wrote = true
+                } finally {
+                    deck.recycle()
                 }
             }
-            if (wrote) Log.d(TAG, "cover for album ${owner.id} from ${cells.size} picture(s)")
+            if (wrote) {
+                keepLoose(owner, cards, kinds)
+                Log.d(TAG, "deck for album ${owner.id} from ${cards.size} picture(s)")
+            }
             return wrote
         } finally {
-            cells.forEach { it.recycle() }
+            cards.forEach { it.recycle() }
         }
     }
 
     /**
-     * Up to four pictures for an album's cover, newest first: the folder's
-     * own, then its subfolders' as [mosaicFiles] walks them, so a folder of
-     * albums gets a cover too.
+     * Up to [DeckLayout.MAX_CARDS] pictures for an album's deck, newest
+     * first: the folder's own, then its subfolders' as [deckFiles] walks
+     * them, so a folder of albums gets a deck too.
      */
-    private suspend fun coverPictures(folderId: Long): List<Long> {
+    private suspend fun deckPictures(folderId: Long): List<Long> {
         val out = mutableListOf<Long>()
         val queue = ArrayDeque(listOf(folderId))
         var visited = 0
-        while (queue.isNotEmpty() && out.size < ArtworkCandidates.MOSAIC_CELLS && visited < MOSAIC_MAX_FOLDERS) {
+        while (queue.isNotEmpty() && out.size < DeckLayout.MAX_CARDS && visited < DECK_MAX_FOLDERS) {
             val id = queue.removeFirst()
             visited++
             out += shareFileDao.inFolder(id)
                 .filter { MediaFileTypes.isPicture(it.name) && !ArtworkCandidates.isSidecarName(it.name) }
                 .sortedByDescending { it.takenAtMs ?: it.modifiedAtMs }
-                .take(ArtworkCandidates.MOSAIC_CELLS - out.size)
+                .take(DeckLayout.MAX_CARDS - out.size)
                 .map { it.id }
-            if (out.size < ArtworkCandidates.MOSAIC_CELLS) queue += folderDao.children(id).map { it.id }
+            if (out.size < DeckLayout.MAX_CARDS) queue += folderDao.children(id).map { it.id }
         }
         return out
     }
@@ -1282,10 +1559,34 @@ class ArtworkRepository @Inject constructor(
         // Grab at poster height so the 500×750 crop is not upscaled from a 16:9 frame.
         const val FRAME_MAX_WIDTH = 1334
         const val FRAME_MAX_HEIGHT = 750
-        /** A mosaic cell is at most 250×375, so this covers it without decoding a full frame per cell. */
-        const val MOSAIC_FRAME_MAX = 720
+        /** Where a video's own picture comes from: half way through, past every intro and short of the credits. */
+        const val MIDDLE = 0.5
+        /**
+         * A frame asked for this far in or later that comes back from its first
+         * quarter landed at the start: the file could not be seeked. Nearer the
+         * start than this, a key frame a few seconds early is ordinary.
+         */
+        const val LANDED_EARLY_MIN_MS = 10_000L
+        /**
+         * A deck's card is at most 280×420 on the poster, cut from the middle
+         * of a 16:9 frame: 800 wide is 450 tall, enough for the card without
+         * decoding a full frame per card.
+         */
+        const val DECK_FRAME_MAX = 800
         /** Give up looking for videos after this many folders; a deep tree is not worth a tile. */
-        const val MOSAIC_MAX_FOLDERS = 24
+        const val DECK_MAX_FOLDERS = 24
+        /** How many ids a generation step hands SQLite at once, well inside its limit on a query's parameters. */
+        const val GENERATION_CHUNK = 500
+        /** A thumb is judged blank from a quarter of its width: 80 pixels, more than [FrameLook]'s grid needs. */
+        const val BLANK_CHECK_SAMPLE = 4
+        /**
+         * The most videos a deck opens to learn which way up they are, when
+         * their rows do not say yet. The artwork walk measures every video
+         * in time; this is for a folder dealt before it has.
+         */
+        const val DECK_MEASURE_MAX = 8
+        /** What a folder's 2×2 grid was stored as, before decks ([ensureGeneration] 4). */
+        const val MOSAIC = "MOSAIC"
 
         /**
          * How far from the requested position a frame may land before it is

@@ -5,6 +5,7 @@ import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
+import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.LibraryRepository
@@ -22,6 +23,7 @@ import com.regolith.domain.playback.VideoInfo
 import com.regolith.domain.smb.SmbFailure
 import com.regolith.player.MediaProbe
 import com.regolith.domain.fileops.FileOpTarget
+import com.regolith.ui.components.PathCrumb
 import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDurationShort
@@ -76,8 +78,8 @@ class TitleDetailViewModel @AssistedInject constructor(
             }
         }
         viewModelScope.launch {
-            // The name through spoof mode; the path below is shown as text,
-            // so it is made up part by part from the real one.
+            // The name through spoof mode; the path's folders below are made
+            // up one by one, each as its own tile is.
             library.observeFile(fileId).spoofed(spoof) { it?.let(::file) }.collect { file ->
                 if (file == null) return@collect
                 val progress = playback.progress(fileId)?.takeUnless { it.completed }
@@ -85,8 +87,14 @@ class TitleDetailViewModel @AssistedInject constructor(
                 val isPhone = phone.isPhoneFile(fileId)
                 val realFolder = file.relPath.substringBeforeLast('/', "")
                 val spoofed = spoof.current
-                val folderPath = spoofed?.path(realFolder) ?: realFolder
                 val phoneFolderShown = spoofed?.phonePath(realFolder) ?: PhonePaths.display(realFolder)
+                // A phone video's path is where it sits on the phone, "DCIM/Camera",
+                // not the absolute path it is keyed by.
+                val crumbs = if (isPhone) {
+                    phoneCrumbs(phoneFolderShown, file.folderId)
+                } else {
+                    shareCrumbs(folderChain(file.folderId), share) { name -> spoofed?.folderName(name) ?: name }
+                }
                 _uiState.update {
                     it.copy(
                         loaded = true,
@@ -94,13 +102,7 @@ class TitleDetailViewModel @AssistedInject constructor(
                         chips = chipsFor(file),
                         progressMs = progress?.positionMs?.takeIf { p -> p > 0 },
                         durationMs = progress?.durationMs ?: file.durationMs,
-                        // A phone video's path is where it sits on the phone —
-                        // "DCIM/Camera/" — not the absolute path it is keyed by.
-                        path = if (isPhone) {
-                            "$phoneFolderShown/"
-                        } else {
-                            "/$share/" + folderPath.let { p -> if (p.isEmpty()) "" else "$p/" }
-                        },
+                        pathCrumbs = crumbs,
                         phone = isPhone,
                         spoofed = spoof.current != null,
                         phoneFolder = if (isPhone) phoneFolderShown.substringAfterLast('/') else "",
@@ -223,6 +225,19 @@ class TitleDetailViewModel @AssistedInject constructor(
         }
     }
 
+    /** [folderId] and every folder above it, the share's root first. */
+    private suspend fun folderChain(folderId: Long): List<FolderEntity> {
+        val chain = ArrayDeque<FolderEntity>()
+        var next: Long? = folderId
+        // A loop in the rows would be a bug elsewhere; it must not hang this page.
+        while (next != null && chain.size < MAX_PATH_DEPTH) {
+            val folder = library.folder(next) ?: break
+            chain.addFirst(folder)
+            next = folder.parentId
+        }
+        return chain
+    }
+
     private fun chipsFor(file: MediaFileEntity): List<String> = listOfNotNull(
         VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null },
         if (file.hdr == true) "HDR" else null,
@@ -244,3 +259,29 @@ class TitleDetailViewModel @AssistedInject constructor(
         audioSampleRate = file.audioSampleRate,
     )
 }
+
+/**
+ * A share video's path as crumbs: [chain] is its folder and every folder
+ * above it, the share's root first. The root reads as the share's name,
+ * [shareName], and every other folder as [nameOf] its name (spoof mode makes
+ * them up, as it does their tiles). Each opens its own folder.
+ */
+internal fun shareCrumbs(chain: List<FolderEntity>, shareName: String, nameOf: (String) -> String): List<PathCrumb> {
+    val crumbs = chain.map { f -> PathCrumb(if (f.parentId == null) shareName else nameOf(f.name), f.id) }
+    // A chain cut short by a missing row still starts at the share, which then cannot be opened.
+    return if (chain.firstOrNull()?.parentId == null) crumbs else listOf(PathCrumb(shareName, null)) + crumbs
+}
+
+/**
+ * A phone video's path as crumbs: [shown] is where it sits as the app shows
+ * it ("DCIM/Camera", "SD card · Movies"). Only the last step, the album the
+ * video is in, is a folder of the library's ([folderId]); the phone's
+ * folders above it are not.
+ */
+internal fun phoneCrumbs(shown: String, folderId: Long): List<PathCrumb> {
+    val parts = shown.split('/').filter { it.isNotEmpty() }
+    return parts.mapIndexed { i, part -> PathCrumb(part, folderId.takeIf { i == parts.lastIndex }) }
+}
+
+/** Deeper than any real share; past it the path stops, rather than following a loop in the rows. */
+private const val MAX_PATH_DEPTH = 64

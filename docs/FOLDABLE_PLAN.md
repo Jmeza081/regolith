@@ -423,6 +423,9 @@ frames from the videos inside it, stitched 2×2 and composed separately at
 poster and thumb aspect. A sidecar still wins: dropping one in and
 rescanning drops the mosaic row and the next request finds the real image.
 
+*Since 2026-10-10 a folder without a picture deals a deck of cards instead
+of the mosaic; see the decision log in `ARCHITECTURE.md`.*
+
 
 Verified on the `Pixel_Fold` AVD — 2076×2152 @ 390 dpi, since replaced by
 `Samsung_Galaxy_Main_Display` — the detached rail button, both Settings

@@ -1,5 +1,7 @@
 package com.regolith.ui.library
 
+import com.regolith.domain.smb.SmbFailure
+import kotlinx.coroutines.Job
 import com.regolith.data.spoof.spoofed
 import com.regolith.data.spoof.SpoofMode
 import androidx.lifecycle.ViewModel
@@ -33,6 +35,7 @@ import kotlinx.coroutines.withContext
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.artwork.ArtworkSource
 import com.regolith.domain.artwork.AnimatedPoster
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.library.FolderKind
@@ -53,6 +56,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -199,8 +203,17 @@ class LibraryViewModel @AssistedInject constructor(
             // The pictures (schema v17) and the named moments, for the chips.
             val others = parents.flatMapLatest { ps -> library.observeOtherFilesInShares(ps.map { it.shareId }.distinct()) }.spoofed(spoof) { otherFiles(it) }
             val momentCounts = parents.flatMapLatest { ps -> chapters.observeNamedCounts(ps.map { it.shareId }.distinct()) }
+            // Whether this collection's picture is a deck the app dealt, which
+            // its page lays out loose. The first wall is no collection.
+            val deckPoster = if (folderId == null) {
+                flowOf(false)
+            } else {
+                artwork.observe(ArtworkRequest(ArtworkOwner.Folder(folderId), ArtworkKind.POSTER))
+                    .map { it?.source == ArtworkSource.DECK.name }
+                    .distinctUntilChanged()
+            }
 
-            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts) { values ->
+            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts, deckPoster) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val shareList = values[0] as List<com.regolith.domain.model.Share>
                 @Suppress("UNCHECKED_CAST")
@@ -223,7 +236,8 @@ class LibraryViewModel @AssistedInject constructor(
                 val otherList = values[9] as List<ShareFileEntity>
                 @Suppress("UNCHECKED_CAST")
                 val momentMap = values[10] as Map<Long, Int>
-                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap)
+                val deck = values[11] as Boolean
+                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap, deck)
             }.collect { built ->
                 unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
@@ -375,6 +389,7 @@ class LibraryViewModel @AssistedInject constructor(
         marks: List<ChapterMatch> = emptyList(),
         others: List<ShareFileEntity> = emptyList(),
         momentCounts: Map<Long, Int> = emptyMap(),
+        deck: Boolean = false,
     ): Built {
         val byFolder = allFiles.groupBy { it.folderId }
         val byParent = children.filter { it.parentId != null }.groupBy { it.parentId }
@@ -495,6 +510,7 @@ class LibraryViewModel @AssistedInject constructor(
                 marks = marks,
                 pictures = ownPictures,
                 hasCollections = hasCollections,
+                deck = deck,
             )
         }
         val state = LibraryUiState(
@@ -506,6 +522,7 @@ class LibraryViewModel @AssistedInject constructor(
             loaded = true,
             noSource = shares.isEmpty(),
             scanning = runs.any { it.status == ScanRunEntity.RUNNING },
+            scanFiles = runs.filter { it.status == ScanRunEntity.RUNNING }.sumOf { it.filesFound },
             scannedOnce = shares.any { it.lastScanAtMs != null } || runs.any { it.status == ScanRunEntity.DONE },
             unreachable = servers.filter { s -> s.unreachableSinceMs != null && shares.any { it.serverId == s.id } }
                 .map { UnreachableServer(it.id, it.name, it.lastSeenAtMs) },
@@ -707,9 +724,36 @@ class LibraryViewModel @AssistedInject constructor(
         measuring = viewModelScope.launch { pictures.measureFolder(id) }
     }
 
-    /** "Scan first" nudge and pull-to-refresh both land here. */
+    /** "Scan first" nudge, and pull to refresh on the first wall ([refresh]). */
     fun scanAll() {
         viewModelScope.launch { scans.scanAll() }
+    }
+
+    /** A collection's walk for pull to refresh, while it runs, so a second pull does not start another. */
+    private var walk: Job? = null
+
+    /**
+     * Pull to refresh. On the first wall every share is walked again in the
+     * background, as Home's pull does ([scanAll]). On a collection, this
+     * folder and every folder under it are listed now
+     * ([LibraryRepository.refreshTree]): what is on screen comes back in
+     * seconds rather than after the whole share. Leaving the page stops it.
+     */
+    fun refresh() {
+        val id = folderId ?: return scanAll()
+        if (walk?.isActive == true) return
+        walk = viewModelScope.launch {
+            _uiState.update { it.copy(walkFiles = 0) }
+            try {
+                val start = library.folder(id) ?: return@launch
+                library.refreshTree(start) { _, _, files -> _uiState.update { it.copy(walkFiles = files) } }
+            } catch (e: SmbFailure) {
+                // The server itself went away. The listing has marked it out
+                // of reach already, which the page's subtitle says.
+            } finally {
+                _uiState.update { it.copy(walkFiles = null) }
+            }
+        }
     }
 
     /** "Try again" on the out-of-reach card: one cheap listing per server. */

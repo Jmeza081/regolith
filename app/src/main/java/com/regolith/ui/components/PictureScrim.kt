@@ -35,12 +35,17 @@ enum class ScrimEdge { TOP, BOTTOM }
  * covers exactly the content and the fade exactly [tail], whatever the
  * status bar or the content's height. Web analogy: a `linear-gradient` whose
  * stops are set in pixels from the far edge, not in percent.
+ *
+ * [strength] scales how dark it gets: 1 for a picture filling the screen,
+ * less for a tile's name on its own picture, where a lighter wash and the
+ * text's shadow are enough and the picture should stay the tile.
  */
 @Composable
 fun PictureScrim(
     edge: ScrimEdge,
     modifier: Modifier = Modifier,
     tail: Dp = SCRIM_TAIL,
+    strength: Float = 1f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -51,10 +56,10 @@ fun PictureScrim(
                 // From the picture's edge: darkest at the edge, still dark at
                 // the far side of the words, then an eased fall to nothing.
                 val stops = arrayOf(
-                    0f to Color.Black.copy(alpha = EDGE_ALPHA),
-                    (1f - fade) to Color.Black.copy(alpha = WORDS_ALPHA),
-                    (1f - fade * 0.6f) to Color.Black.copy(alpha = WORDS_ALPHA * 0.5f),
-                    (1f - fade * 0.25f) to Color.Black.copy(alpha = WORDS_ALPHA * 0.15f),
+                    0f to Color.Black.copy(alpha = EDGE_ALPHA * strength),
+                    (1f - fade) to Color.Black.copy(alpha = WORDS_ALPHA * strength),
+                    (1f - fade * 0.6f) to Color.Black.copy(alpha = WORDS_ALPHA * strength * 0.5f),
+                    (1f - fade * 0.25f) to Color.Black.copy(alpha = WORDS_ALPHA * strength * 0.15f),
                     1f to Color.Transparent,
                 )
                 val brush = if (edge == ScrimEdge.TOP) {

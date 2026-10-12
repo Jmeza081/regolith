@@ -23,7 +23,8 @@ import javax.inject.Inject
 /**
  * A stock photo standing in for a picture of the library while spoof mode
  * is on ([Spoof.image]): what [com.regolith.ui.components.ArtworkImage]
- * hands Coil instead of the real [com.regolith.domain.artwork.ArtworkRequest].
+ * hands Coil instead of the real [com.regolith.domain.artwork.ArtworkRequest],
+ * and what a folder's stand-in deck is dealt from ([SpoofDeck]).
  *
  * The photos come from Lorem Picsum, which serves Unsplash's photographs
  * by seed at any size, with no key: the same [seed] is the same photo every
@@ -38,31 +39,49 @@ data class SpoofImage(val seed: String, val width: Int, val height: Int) {
 }
 
 /**
- * Fetches a [SpoofImage] once and keeps it in the app's cache directory,
- * which Android may clear when space runs short: the photo is simply
- * fetched again. Offline, the fetch fails and the tile shows its no-picture
- * art with the made-up name, which is a fine demo too.
- *
- * Plain `HttpURLConnection` rather than an HTTP library: it is one GET of
- * a small file that follows Picsum's redirect to its CDN, and the app has
- * no other use for one.
+ * Fetches a [SpoofImage] once and keeps it ([SpoofPhotos]). Offline, the
+ * fetch fails and the tile shows its no-picture art with the made-up name,
+ * which is a fine demo too.
  */
 class SpoofImageFetcher(
     private val image: SpoofImage,
-    private val directory: File,
+    private val photos: SpoofPhotos,
 ) : Fetcher {
     override suspend fun fetch(): FetchResult = withContext(Dispatchers.IO) {
-        val file = File(directory, "${image.seed}-${image.width}x${image.height}.jpg")
-        val fetched = !file.exists()
-        if (fetched) download(file)
+        val fetched = photos.fetch(image)
         SourceFetchResult(
-            source = ImageSource(file.toOkioPath(), FileSystem.SYSTEM),
+            source = ImageSource(photos.file(image).toOkioPath(), FileSystem.SYSTEM),
             mimeType = "image/jpeg",
             dataSource = if (fetched) DataSource.NETWORK else DataSource.DISK,
         )
     }
 
-    private fun download(file: File) {
+    class Factory @Inject constructor(@ApplicationContext private val context: Context) : Fetcher.Factory<SpoofImage> {
+        override fun create(data: SpoofImage, options: Options, imageLoader: ImageLoader): Fetcher =
+            SpoofImageFetcher(data, SpoofPhotos.inCache(context))
+    }
+}
+
+/**
+ * The stand-in photos on this phone: each fetched once into [directory], in
+ * the app's cache directory, which Android may clear when space runs short.
+ * A photo is then simply fetched again.
+ *
+ * Plain `HttpURLConnection` rather than an HTTP library: it is one GET of
+ * a small file that follows Picsum's redirect to its CDN, and the app has
+ * no other use for one.
+ */
+class SpoofPhotos(val directory: File) {
+    /** Where [image] is kept, whether it has been fetched yet or not. */
+    fun file(image: SpoofImage): File = File(directory, "${image.seed}-${image.width}x${image.height}.jpg")
+
+    /**
+     * [image] on disk, fetched first when it is not: true when it had to be.
+     * Blocking, so off the main thread; throws when the photo will not come.
+     */
+    fun fetch(image: SpoofImage): Boolean {
+        val file = file(image)
+        if (file.exists()) return false
         directory.mkdirs()
         val connection = URL(image.url).openConnection() as HttpURLConnection
         try {
@@ -78,11 +97,7 @@ class SpoofImageFetcher(
         } finally {
             connection.disconnect()
         }
-    }
-
-    class Factory @Inject constructor(@ApplicationContext private val context: Context) : Fetcher.Factory<SpoofImage> {
-        override fun create(data: SpoofImage, options: Options, imageLoader: ImageLoader): Fetcher =
-            SpoofImageFetcher(data, File(context.cacheDir, DIRECTORY))
+        return true
     }
 
     companion object {
@@ -90,6 +105,8 @@ class SpoofImageFetcher(
         const val DIRECTORY = "spoof"
 
         private const val TIMEOUT_MS = 10_000
+
+        fun inCache(context: Context) = SpoofPhotos(File(context.cacheDir, DIRECTORY))
     }
 }
 

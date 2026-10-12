@@ -46,4 +46,19 @@ class ChapterFacetOrderTest {
             names("Eclair", "Éclair").alphabetical(Locale.US).titles(),
         )
     }
+
+    @Test
+    fun `each name finds its cover the way the database groups names, capitals aside`() {
+        val facets = listOf(ChapterFacet("The heist", 2), ChapterFacet("Finale", 1), ChapterFacet("Encore", 1))
+        val covers = listOf(MomentCover("the HEIST", 7, 5_000), MomentCover("Finale", 3, 60_000))
+        val paired = facets.withCovers(covers)
+        assertEquals(listOf("The heist", "Finale", "Encore"), paired.map { it.first.title })
+        assertEquals(listOf(7L, 3L, null), paired.map { it.second?.fileId })
+    }
+
+    @Test
+    fun `only ASCII capitals fold, as SQLite's NOCASE does`() {
+        assertEquals("the heist", nocase("The HEIST"))
+        assertEquals("Éclair", nocase("Éclair"))
+    }
 }

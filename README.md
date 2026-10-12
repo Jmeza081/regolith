@@ -77,14 +77,21 @@ collection's page the rail comes once the top of the page has scrolled away.
 Home picks up where you were. **Continue watching** has a card for each film you
 have started, with the time it has left (**See all** lists every one), **Newly
 added** the twelve newest files, **On this device** what you have downloaded, and
-**Moments** every name you have given a mark (see Chapters, below). Pull Home
-down to read every share again.
+**Moments** every name you have given a mark, A to Z, each as a frame of the
+moment you gave it to last, with the name across the picture; tap one to see
+every place it appears (see Chapters, below). Pull Home
+or the Library down to read every share again. On a collection, a pull reads
+just that collection and the folders inside it, so what you are looking at is up
+to date in seconds rather than after the whole share.
 
 Search finds titles, filenames and folders as you type, and the moments you
 have named, each shown with the frame at its time: tap one and the film opens
 there. Chips narrow the results to **Unwatched**, **4K** or **On device** (downloaded,
 or on the phone to begin with), and **Moment** picks one name from all of the
-library's. Results come as rows or a grid, and your last
+library's: then the results are every video that carries it, with its marks of
+that name listed above them, and the other chips narrow both together. Typing
+lists up to 40 files and 40 folders, and says "40+" when it found more, so you can
+type more to narrow them down. Results come as rows or a grid, and your last
 eight searches wait under **Recent**.
 
 ### Shorts
@@ -138,7 +145,9 @@ carries on; leaving the app with picture-in-picture off pauses it too.
 
 Open a collection that holds videos or pictures, and no collections, and it
 opens as its own page rather than a plain wall. Its poster lights the top of the
-page, the way the player lights the room around a film. Under it, up to four
+page, the way the player lights the room around a film; a collection without a
+poster of its own shows its deck of cards there with no box round it, the whole
+hand fanned out over the light. Under it, up to four
 figures (how many videos and pictures it holds, how long they run, how much
 space they take, how many you have watched), then Play all, Shuffle, and its
 tabs. **Videos** is the wall you know. **Moments** lists every chapter you have
@@ -191,7 +200,7 @@ collection's poster. The lightbox has the same at hand: **Set as poster**,
 **Play from here** and **More** (Rename, Move to…, Save to phone, Details,
 Delete from share), up in its bar on the inner display. Renaming a video's own picture says it will stop being
 that video's, and deleting a collection's poster says what its tile falls back
-to — another picture of its own, or a mosaic.
+to — another picture of its own, or a deck of cards made from what's inside.
 
 **Set as poster** frames the picture 2:3: pinch and drag it behind the box, and
 the crop is saved as `poster.jpg` while the picture itself stays as it is. Or
@@ -218,7 +227,7 @@ arrives late.
 Tap a poster and it flies to where its page shows it. A video's poster grows
 into the wide picture at the top of its page, uncropping as it goes, and a
 collection's poster settles into its place on the collection's page, while the
-page fades in around it. Back flies it home, and on a phone the back swipe
+page fades in around it (a deck's box fades away as its cards spread out). Back flies it home, and on a phone the back swipe
 holds it under your thumb. On the inner display it flies into the page beside
 the wall too; closing that page slides it away as before.
 
@@ -284,8 +293,8 @@ it will keep, beside the new one.
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an
 `Arrival.2016.jpg` beside `Arrival.2016.mkv`, and the app makes the tile again the
-next time it lists that folder: when you open it, pull Home down, or scan the
-share. One uploaded from the phone is noticed as soon as the upload lands.
+next time it lists that folder: when you open it, pull it or Home down, or scan
+the share. One uploaded from the phone is noticed as soon as the upload lands.
 
 ### Manages the files, not just the library
 
@@ -314,7 +323,10 @@ When the folder you want to move something into doesn't exist yet, the move shee
 makes it for you and drops the files straight in. However long the folder list,
 the Move button stays at the foot of the sheet, and a folder with more than ten
 subfolders gets an A–Z rail down the edge: slide a thumb down it to jump from
-letter to letter.
+letter to letter. To reach a folder on the far side of the tree, type its name in
+the search at the top of the sheet: every folder on the share that matches comes
+up with its path under it, and tapping one takes the sheet there, ticked and
+ready to move into.
 
 Browse shows a folder the way a file manager would. After its folders and
 videos come all its other files, by their real names and sizes: the poster,
@@ -324,6 +336,11 @@ deletes like a video, but on its own: a subtitles file picked by itself leaves
 its video where it is. They never download, since what Download keeps on the
 phone is videos to play. Moving, renaming or deleting a folder's poster this
 way changes the folder's tile at once.
+
+A video's page says where it lives, and each folder in its Path line opens that
+folder here, so a film you reached from Home or Search is one tap from its
+neighbours. The folder it is in opens with the video ringed, so you can see
+where it sits.
 
 Because a folder moves and deletes whole, Move and Delete refuse when you have
 picked a folder and then taken something back out of it. Moving or deleting the
@@ -453,8 +470,9 @@ from your own library, for a demo, a screen recording or a screenshot. Videos,
 folders, paths and the chapters you named get believable made-up titles
 ("Quiet Lantern (2016)", keeping the year and "S01E02"), and every poster,
 thumbnail and backdrop is a low-resolution stock photo from Unsplash, through
-Lorem Picsum. Each video keeps the same stand-ins every time, so it still reads
-as one library. Only the phone's display changes: the share is never touched,
+Lorem Picsum. A folder that wears a deck of cards gets a deck dealt from stock
+photos instead, its cards tall. Each video keeps the same
+stand-ins every time, so it still reads as one library. Only the phone's display changes: the share is never touched,
 the lock screen (which shows no picture) and the download notification are made
 up too, and
 nothing can be moved, renamed, deleted or uploaded until it is switched off.
@@ -672,6 +690,14 @@ a second or two each. Rather than doing that while you scroll, a background job
 walks the share when its scan finishes and makes them all up front, showing a
 progress notification you can stop. One frame grab writes all three sizes.
 
+The frame comes from the middle of the video, past any intro and short of the
+credits. A frame that turns out black, or all one colour, is tried again a little
+either side. A recording with no index (an MKV without its Cues, a fragmented MP4,
+the way OBS and screen recorders often save them) cannot be seeked, so nothing can
+say how long it runs and a frame grab used to land on its first frame; its runtime
+is now read from its last cluster or fragment, and its frame is cut from the middle
+of the file by handing the decoder the file's header and a piece of the middle.
+
 A library scanned before this existed has no walk queued for it: tap **Settings ›
 Media › Prepare artwork**, or rescan the share. **Artwork cache**, above it, says
 how much room the pictures take and clears them.
@@ -683,15 +709,23 @@ single open of the file, which costs little more than one mark on its own. A mar
 named since the last walk is grabbed the first time Search shows it, along with any
 other marks in that film still missing a picture. Frames are kept under the mark's
 own time: move a mark and its old frame is dropped and a new one taken; rename it
-and nothing is re-read. If the file's key frames are too far apart to land within
-ten seconds of the mark, the row shows the film's own thumbnail instead, rather
-than a picture claiming to be a time it is not. That stand-in is tried again after
-a day, in case the grab only failed because the share was down.
+and nothing is re-read. A recording with no index, which the player can only read
+from its start, would hand back its opening frames for every mark; its marks are
+cut from the file at a key frame by each one instead, as its own tile is. If the
+frame still can't be had within ten seconds of the mark, the row shows the film's
+own thumbnail instead, rather than a picture claiming to be a time it is not. That
+stand-in is tried again after a day, in case the grab only failed because the
+share was down.
 
-A folder with no poster of its own gets a 2×2 mosaic of frames from the videos
-inside it. If a folder is scanned while it is still empty, and the videos are
+A folder with no poster of its own gets a deck of cards: five frames from the
+videos inside it, picked from the first video to the last and fanned like a hand
+of cards over a blurred copy of the front one. The frames come from the folder's
+tall videos, its phone clips, whenever it has any, so the cards are tall; a
+folder with only wide videos deals wide cards. Each card is the shape of its own
+video, with any black bars baked into the video left off. An album deals its
+newest pictures the same way. If a folder is scanned while it is still empty, and the videos are
 copied in later, the next scan that finds them clears the "no picture" record so
-the mosaic gets made.
+the deck gets dealt.
 
 </details>
 

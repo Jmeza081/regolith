@@ -68,6 +68,7 @@ fun FileActionsHost(actions: FileActions, tagPrefix: String) {
     state.moveSheet?.let { sheet ->
         MoveToSheet(
             state = sheet,
+            onQueryChange = actions::moveSearch,
             onUp = actions::moveUp,
             onOpen = actions::moveWalk,
             onChoose = actions::moveChoose,

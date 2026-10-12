@@ -2,6 +2,8 @@ package com.regolith.di
 
 import android.content.Context
 import coil3.ImageLoader
+import com.regolith.data.spoof.SpoofDeckFetcher
+import com.regolith.data.spoof.SpoofDeckKeyer
 import com.regolith.data.spoof.SpoofImageFetcher
 import com.regolith.data.spoof.SpoofImageKeyer
 import coil3.gif.AnimatedImageDecoder
@@ -75,6 +77,8 @@ abstract class ArtworkModule {
             uploadThumbKeyer: UploadThumbKeyer,
             spoofImages: SpoofImageFetcher.Factory,
             spoofImageKeyer: SpoofImageKeyer,
+            spoofDecks: SpoofDeckFetcher.Factory,
+            spoofDeckKeyer: SpoofDeckKeyer,
             pictureOriginals: com.regolith.data.pictures.PictureOriginalFetcher.Factory,
             pictureOriginalKeyer: com.regolith.data.pictures.PictureOriginalKeyer,
         ): ImageLoader = ImageLoader.Builder(context)
@@ -84,9 +88,12 @@ abstract class ArtworkModule {
                 add(uploadThumbKeyer)
                 add(uploadThumbs)
                 // Spoof mode's stand-in photos (SpoofImage), the one model that
-                // comes off the internet rather than the artwork directory.
+                // comes off the internet rather than the artwork directory, and
+                // the decks dealt from them for folders whose picture is a deck.
                 add(spoofImageKeyer)
                 add(spoofImages)
+                add(spoofDeckKeyer)
+                add(spoofDecks)
                 // A picture whole, for the lightbox (PictureOriginals): the one
                 // model that is not a small, still JPEG, so a GIF there moves.
                 add(pictureOriginalKeyer)

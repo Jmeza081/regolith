@@ -73,15 +73,16 @@ class ArtworkCandidatesTest {
         assertEquals(0L, ArtworkCandidates.framePositionMs(0))
     }
 
-    @Test fun `mosaic positions spread across the middle, one file or four`() {
-        // Four videos: one frame each, all from the midpoint.
-        assertEquals(listOf(30_000L), ArtworkCandidates.mosaicPositionsMs(60_000, 1))
-        // One video filling all four cells: 20% to 80%, evenly.
-        assertEquals(
-            listOf(12_000L, 24_000L, 36_000L, 48_000L),
-            ArtworkCandidates.mosaicPositionsMs(60_000, 4),
-        )
-        assertTrue(ArtworkCandidates.mosaicPositionsMs(0, 4).isEmpty())
-        assertTrue(ArtworkCandidates.mosaicPositionsMs(60_000, 0).isEmpty())
+    @Test fun `a deck's frames spread across the middle of one video, one card or five`() {
+        // Five videos: one frame each, from the middle.
+        assertEquals(listOf(0.5), ArtworkCandidates.frameFractions(1))
+        // One video dealing all five cards: 20% to 80%, evenly.
+        assertEquals(listOf(0.2, 0.35, 0.5, 0.65, 0.8), ArtworkCandidates.frameFractions(5).map { Math.round(it * 100) / 100.0 })
+        assertTrue(ArtworkCandidates.frameFractions(0).isEmpty())
+    }
+
+    @Test fun `a blank frame is tried again either side, out of the titles and credits`() {
+        assertEquals(listOf(0.35, 0.65, 0.2, 0.8), ArtworkCandidates.blankRetryFractions(0.5).map { Math.round(it * 100) / 100.0 })
+        assertEquals(listOf(0.35, 0.5), ArtworkCandidates.blankRetryFractions(0.2).map { Math.round(it * 100) / 100.0 })
     }
 }

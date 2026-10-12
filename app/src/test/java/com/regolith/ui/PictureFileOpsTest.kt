@@ -38,7 +38,7 @@ class PictureFileOpsTest {
         assertEquals("Delete 2 pictures?", FileOpMessages.deleteTitle(target))
         assertEquals("Delete 2 pictures", FileOpMessages.deleteConfirmLabel(target))
         assertEquals(
-            "6 MB leaves the share for good. This can't be undone. It’s Lake house 2024’s poster, so Lake house 2024 shows a mosaic of what’s in it instead.",
+            "6 MB leaves the share for good. This can't be undone. It’s Lake house 2024’s poster, so Lake house 2024 shows a deck of cards from what’s in it instead.",
             FileOpMessages.deleteBody(target),
         )
     }

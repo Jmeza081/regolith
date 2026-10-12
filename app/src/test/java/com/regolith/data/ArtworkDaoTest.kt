@@ -48,7 +48,7 @@ class ArtworkDaoTest {
     @Test
     fun `a folder's placeholder can go without its real pictures`() = runTest {
         // A folder placeholdered while it was still empty gets a second
-        // chance once a scan finds videos in it — but a mosaic or a poster
+        // chance once a scan finds videos in it — but a deck or a poster
         // already made, for this folder or any other, must survive that.
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
         fun folder(id: Long, kind: String, source: String) = ArtworkEntity(
@@ -59,7 +59,7 @@ class ArtworkDaoTest {
             db.artworkDao().upsert(folder(3, "POSTER", "PLACEHOLDER"))
             db.artworkDao().upsert(folder(3, "THUMB", "PLACEHOLDER"))
             db.artworkDao().upsert(folder(4, "POSTER", "PLACEHOLDER"))
-            db.artworkDao().upsert(folder(5, "POSTER", "MOSAIC"))
+            db.artworkDao().upsert(folder(5, "POSTER", "DECK"))
             db.artworkDao().upsert(row("THUMB", source = "PLACEHOLDER")) // file 7, same id space elsewhere
 
             db.artworkDao().deleteFolderPlaceholder(3)
@@ -68,8 +68,117 @@ class ArtworkDaoTest {
             assertEquals(null, db.artworkDao().get("folder", 3, "", "POSTER"))
             assertEquals(null, db.artworkDao().get("folder", 3, "", "THUMB"))
             assertEquals("PLACEHOLDER", db.artworkDao().get("folder", 4, "", "POSTER")!!.source)
-            assertEquals("MOSAIC", db.artworkDao().get("folder", 5, "", "POSTER")!!.source)
+            assertEquals("DECK", db.artworkDao().get("folder", 5, "", "POSTER")!!.source)
             assertEquals("PLACEHOLDER", db.artworkDao().get("file", 7, "", "THUMB")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `the old mosaics go on their own, and a deck counts as the app's own picture`() = runTest {
+        // ArtworkStore.GENERATION 4: a folder's 2×2 mosaic is dealt again as
+        // a deck, and nothing else is touched — above all not a video's own
+        // frame, each of which would be a trip to the share to make again.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        fun poster(type: String, id: Long, source: String) = ArtworkEntity(
+            ownerType = type, ownerId = id, kind = "POSTER", source = source, relPath = "$type/$id/poster.jpg",
+            width = 500, height = 750, updatedAtMs = 1,
+        )
+        try {
+            val dao = db.artworkDao()
+            dao.upsert(poster("folder", 1, "MOSAIC"))
+            dao.upsert(poster("folder", 2, "DECK"))
+            dao.upsert(poster("folder", 3, "SIDECAR"))
+            dao.upsert(poster("file", 4, "FRAMEGRAB"))
+
+            assertEquals(listOf(1L), dao.withSource("MOSAIC").map { it.ownerId })
+            assertEquals(listOf(2L), dao.withSource("DECK").map { it.ownerId })
+            assertEquals(setOf(1L, 2L, 4L), dao.generated().map { it.ownerId }.toSet())
+
+            dao.deleteWithSource("MOSAIC")
+            assertEquals(null, dao.get("folder", 1, "", "POSTER"))
+            assertEquals("DECK", dao.get("folder", 2, "", "POSTER")!!.source)
+            assertEquals("SIDECAR", dao.get("folder", 3, "", "POSTER")!!.source)
+            assertEquals("FRAMEGRAB", dao.get("file", 4, "", "POSTER")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `frames grabbed with no runtime known are found, and nothing else is`() = runTest {
+        // ArtworkStore.GENERATION 6: a frame on a row with no runtime came from
+        // the video's first moment. Not a cover image read off the file, not a
+        // frame of a video whose runtime is known, and no folder's picture.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            db.openHelper.writableDatabase.apply {
+                execSQL("INSERT INTO servers (id, name, host, port, authMode, username, lastSeenAtMs, createdAtMs) VALUES (1, 'TOWER', 'tower', 445, 'GUEST', NULL, NULL, 0)")
+                execSQL("INSERT INTO shares (id, serverId, name, enabled, freeBytes, totalBytes, lastScanAtMs) VALUES (1, 1, 'media', 1, NULL, NULL, NULL)")
+                execSQL("INSERT INTO folders (id, shareId, parentId, relPath, name, fileCount, byteCount, lastListedAtMs) VALUES (3, 1, NULL, 'Clips', 'Clips', 3, 30, NULL)")
+                for ((id, duration) in listOf(10 to "NULL", 11 to "0", 12 to "60000", 13 to "NULL")) {
+                    execSQL(
+                        "INSERT INTO media_files (id, shareId, folderId, relPath, name, ext, sizeBytes, modifiedAtMs, durationMs, missing, addedAtMs, lastSeenAtMs) " +
+                            "VALUES ($id, 1, 3, 'Clips/$id.mkv', '$id.mkv', 'mkv', 10, 0, $duration, 0, 0, 0)",
+                    )
+                }
+            }
+            fun art(type: String, id: Long, source: String, kind: String = "POSTER") = ArtworkEntity(
+                ownerType = type, ownerId = id, kind = kind, source = source, relPath = "$type/$id/$kind.jpg", width = 500, height = 750, updatedAtMs = 1,
+            )
+            val dao = db.artworkDao()
+            dao.upsert(art("file", 10, "FRAMEGRAB"))
+            dao.upsert(art("file", 10, "FRAMEGRAB", kind = "THUMB"))
+            dao.upsert(art("file", 11, "FRAMEGRAB"))
+            dao.upsert(art("file", 12, "FRAMEGRAB"))
+            dao.upsert(art("file", 13, "EMBEDDED"))
+            dao.upsert(art("folder", 3, "DECK"))
+
+            assertEquals(setOf(10L to "POSTER", 10L to "THUMB", 11L to "POSTER"), dao.framesFromTheStart().map { it.ownerId to it.kind }.toSet())
+            dao.deleteFramesFromTheStart()
+            assertEquals(null, dao.get("file", 10, "", "THUMB"))
+            assertEquals("FRAMEGRAB", dao.get("file", 12, "", "POSTER")!!.source)
+            assertEquals("EMBEDDED", dao.get("file", 13, "", "POSTER")!!.source)
+            assertEquals("DECK", dao.get("folder", 3, "", "POSTER")!!.source)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `marks borrowing their film's thumb are found apart from marks with frames of their own`() = runTest {
+        // ArtworkStore.GENERATION 7: a mark's row pointing at its film's
+        // picture (under file/) borrowed it; one under moment/ is its own.
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            val dao = db.artworkDao()
+            fun mark(fileId: Long, at: Long, relPath: String) = ArtworkEntity(
+                ownerType = "moment", ownerId = fileId, ownerVariant = at.toString(), kind = "THUMB", source = "FRAMEGRAB",
+                relPath = relPath, width = 320, height = 180, updatedAtMs = 1,
+            )
+            fun film(fileId: Long, kind: String, source: String = "FRAMEGRAB") = ArtworkEntity(
+                ownerType = "file", ownerId = fileId, kind = kind, source = source, relPath = "file/$fileId/$kind.jpg", width = 320, height = 180, updatedAtMs = 1,
+            )
+            dao.upsert(mark(10, 30_000, "file/10/thumb.jpg"))
+            dao.upsert(mark(10, 90_000, "moment/10/90000/thumb.jpg"))
+            dao.upsert(mark(11, 5_000, "moment/11/5000/thumb.jpg"))
+            dao.upsert(film(10, "POSTER"))
+            dao.upsert(film(10, "THUMB"))
+            dao.upsert(film(11, "THUMB"))
+            dao.upsert(film(12, "THUMB", source = "EMBEDDED"))
+
+            assertEquals(listOf(10L to "30000"), dao.momentsBorrowingFilms().map { it.ownerId to it.ownerVariant })
+            assertEquals(setOf(10L, 11L), dao.filmFrames("THUMB").map { it.ownerId }.toSet())
+            assertEquals(setOf("POSTER", "THUMB"), dao.filmFramesOf(listOf(10)).map { it.kind }.toSet())
+
+            dao.deleteMomentsBorrowingFilms()
+            dao.deleteFilmFramesOf(listOf(10))
+            assertEquals(null, dao.get("moment", 10, "30000", "THUMB"))
+            assertEquals("moment/10/90000/thumb.jpg", dao.get("moment", 10, "90000", "THUMB")!!.relPath)
+            assertEquals(null, dao.get("file", 10, "", "POSTER"))
+            assertEquals("FRAMEGRAB", dao.get("file", 11, "", "THUMB")!!.source)
+            assertEquals("EMBEDDED", dao.get("file", 12, "", "THUMB")!!.source)
         } finally {
             db.close()
         }

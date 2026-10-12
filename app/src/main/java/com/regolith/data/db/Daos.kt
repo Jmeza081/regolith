@@ -279,6 +279,10 @@ interface FolderDao {
     @Query("SELECT * FROM folders WHERE parentId = :parentId")
     suspend fun children(parentId: Long): List<FolderEntity>
 
+    /** Every folder on one share but its root: what the move sheet's search looks through. */
+    @Query("SELECT * FROM folders WHERE shareId = :shareId AND parentId IS NOT NULL")
+    suspend fun inShare(shareId: Long): List<FolderEntity>
+
     @Query("SELECT folders.* FROM folders JOIN folder_fts ON folders.id = folder_fts.rowid WHERE folder_fts MATCH :match AND folders.parentId IS NOT NULL LIMIT :limit")
     fun searchFolders(match: String, limit: Int): Flow<List<FolderEntity>>
 
@@ -838,11 +842,65 @@ interface ArtworkDao {
     @Query("DELETE FROM artwork WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
-    @Query("SELECT * FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
+    /** Every picture the app made itself rather than read off the share ('MOSAIC' is the deck's predecessor). */
+    @Query("SELECT * FROM artwork WHERE source IN ('FRAMEGRAB', 'DECK', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun generated(): List<ArtworkEntity>
 
-    @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'MOSAIC', 'PLACEHOLDER')")
+    @Query("DELETE FROM artwork WHERE source IN ('FRAMEGRAB', 'DECK', 'MOSAIC', 'PLACEHOLDER')")
     suspend fun deleteGenerated()
+
+    /**
+     * Every picture made one way ([com.regolith.domain.artwork.ArtworkSource]'s
+     * name, or a name it no longer has), for a generation step that throws
+     * those away (ArtworkStore.GENERATION): the 2×2 mosaics a deck replaced,
+     * the decks made before they were kept laid loose too.
+     */
+    @Query("SELECT * FROM artwork WHERE source = :source")
+    suspend fun withSource(source: String): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE source = :source")
+    suspend fun deleteWithSource(source: String)
+
+    /**
+     * Videos' own frames grabbed while nothing knew how long the video runs,
+     * so taken from its first moment: black, or an intro's logo. A grab fills
+     * in the runtime whenever anything knows it, so a frame on a row still
+     * without one is exactly such a frame (ArtworkStore.GENERATION 6).
+     */
+    @Query(
+        "SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND " +
+            "ownerId IN (SELECT id FROM media_files WHERE durationMs IS NULL OR durationMs <= 0)",
+    )
+    suspend fun framesFromTheStart(): List<ArtworkEntity>
+
+    @Query(
+        "DELETE FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND " +
+            "ownerId IN (SELECT id FROM media_files WHERE durationMs IS NULL OR durationMs <= 0)",
+    )
+    suspend fun deleteFramesFromTheStart()
+
+    /**
+     * Marks showing their film's thumb rather than a frame of their own
+     * (`ArtworkRepository.fallBackToFilm`): Media3 could not reach them,
+     * usually because the file has no index (ArtworkStore.GENERATION 7).
+     * Their row points at the film's picture, which lives under `file/`.
+     */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'moment' AND relPath LIKE 'file/%'")
+    suspend fun momentsBorrowingFilms(): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE ownerType = 'moment' AND relPath LIKE 'file/%'")
+    suspend fun deleteMomentsBorrowingFilms()
+
+    /** Videos' own frames of one [kind], each, for a generation step that looks at the pictures themselves. */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND kind = :kind")
+    suspend fun filmFrames(kind: String): List<ArtworkEntity>
+
+    /** Every kind of [fileIds]' own frames, to be grabbed again. */
+    @Query("SELECT * FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND ownerId IN (:fileIds)")
+    suspend fun filmFramesOf(fileIds: List<Long>): List<ArtworkEntity>
+
+    @Query("DELETE FROM artwork WHERE ownerType = 'file' AND source = 'FRAMEGRAB' AND ownerId IN (:fileIds)")
+    suspend fun deleteFilmFramesOf(fileIds: List<Long>)
 
     /**
      * Films' pictures taken from their folder's own picture (a `poster.jpg`
@@ -857,7 +915,7 @@ interface ArtworkDao {
 
     /**
      * Drops a folder's placeholder so the next request tries again. A folder
-     * scanned before its videos were copied in has nothing to make a mosaic
+     * scanned before its videos were copied in has nothing to deal a deck
      * from; this is how the scan that finds them undoes that.
      */
     @Query("DELETE FROM artwork WHERE ownerType = 'folder' AND ownerId = :folderId AND source = 'PLACEHOLDER'")
@@ -1104,6 +1162,9 @@ data class UserChapterHitRow(
 /** Where one named mark is: all a moment frame needs to be grabbed. */
 data class NamedMarkRow(val fileId: Long, val startMs: Long)
 
+/** The mark standing for a moment name on Home: its name as written, and where it is. */
+data class MomentCoverRow(val title: String, val fileId: Long, val startMs: Long, val updatedAtMs: Long)
+
 /** One film's count of named marks ([UserChapterDao.observeNamedCounts]). */
 data class NamedCountRow(val fileId: Long, val count: Int)
 
@@ -1230,6 +1291,22 @@ interface UserChapterDao {
     fun observeFacets(limit: Int): Flow<List<UserChapterFacetRow>>
 
     /**
+     * For each name [observeFacets] lists, grouped the same way (case
+     * aside), the mark given it most recently: Home's tile for the name
+     * shows that mark's frame. SQLite takes a grouped query's other columns
+     * from the row its one MAX() picked, which is what makes this a single
+     * pass rather than a query per name.
+     */
+    @Query(
+        "SELECT user_chapters.title AS title, user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, " +
+            "MAX(user_chapters.updatedAtMs) AS updatedAtMs " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "WHERE user_chapters.title IS NOT NULL AND user_chapters.title != '' AND media_files.missing = 0 " +
+            "GROUP BY user_chapters.title COLLATE NOCASE",
+    )
+    fun observeMomentCovers(): Flow<List<MomentCoverRow>>
+
+    /**
      * The same list, narrowed to the names matching what is being typed —
      * through `user_chapter_fts`, the index the chapter search already uses,
      * so "hei" reaches "The heist" exactly as it does in Search.
@@ -1248,27 +1325,57 @@ interface UserChapterDao {
     )
     fun observeNameMatches(match: String, limit: Int): Flow<List<UserChapterFacetRow>>
 
-    /** The films carrying a chapter of this exact name, for a chip's own listing. */
+    /**
+     * Every film carrying a chapter of this exact name, for a chip's own
+     * listing. No cap: a chip is a filter, and its list is what was asked for.
+     */
     @Query(
         "SELECT media_files.* FROM media_files JOIN user_chapters ON user_chapters.fileId = media_files.id " +
             "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
-            "GROUP BY media_files.id ORDER BY media_files.name LIMIT :limit",
+            "GROUP BY media_files.id ORDER BY media_files.name",
     )
-    fun filesWithChapter(title: String, limit: Int): Flow<List<MediaFileEntity>>
+    fun filesWithChapter(title: String): Flow<List<MediaFileEntity>>
+
+    /**
+     * [filesWithChapter], narrowed to the films whose filename, title or path
+     * also matches [match] (an FTS expression, as `MediaFileDao.search` takes):
+     * a chip with words typed after it, in one query, so neither can cut the
+     * other short.
+     */
+    @Query(
+        "SELECT media_files.* FROM media_files JOIN media_fts ON media_files.id = media_fts.rowid " +
+            "JOIN user_chapters ON user_chapters.fileId = media_files.id " +
+            "WHERE media_fts MATCH :match AND user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
+            "GROUP BY media_files.id ORDER BY media_files.name",
+    )
+    fun filesWithChapterMatching(title: String, match: String): Flow<List<MediaFileEntity>>
 
     /**
      * Every occurrence of one point of interest, so a chip can list the
-     * moments themselves rather than the files holding them. Same shape as
-     * [search], matched on the exact name instead of through the index.
+     * moments themselves above the films holding them. The same WHERE as
+     * [filesWithChapter], so the two are always the same films; same shape
+     * as [search], matched on the exact name instead of through the index;
+     * by film name, then time. No cap, as for the films.
      */
     @Query(
         "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
             "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
             "WHERE user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
-            "ORDER BY media_files.name, user_chapters.startMs LIMIT :limit",
+            "ORDER BY media_files.name, user_chapters.startMs",
     )
-    fun occurrencesOf(title: String, limit: Int): Flow<List<UserChapterHitRow>>
+    fun occurrencesOf(title: String): Flow<List<UserChapterHitRow>>
+
+    /** [occurrencesOf] in the films [filesWithChapterMatching] finds: the same WHERE, mark by mark. */
+    @Query(
+        "SELECT user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, user_chapters.title AS title, " +
+            "media_files.name AS fileName, media_files.titleParsed AS fileTitle, media_files.shareId AS shareId, media_files.relPath AS fileRelPath, user_chapters.updatedAtMs AS updatedAtMs " +
+            "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
+            "JOIN media_fts ON media_files.id = media_fts.rowid " +
+            "WHERE media_fts MATCH :match AND user_chapters.title = :title COLLATE NOCASE AND media_files.missing = 0 " +
+            "ORDER BY media_files.name, user_chapters.startMs",
+    )
+    fun occurrencesMatching(title: String, match: String): Flow<List<UserChapterHitRow>>
 
     /**
      * The named marks on the videos directly in one folder: a collection

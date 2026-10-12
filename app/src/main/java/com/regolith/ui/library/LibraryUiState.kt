@@ -1,5 +1,6 @@
 package com.regolith.ui.library
 
+import com.regolith.ui.components.readingTheShare
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
@@ -164,6 +165,13 @@ data class LibraryUiState(
     val noSource: Boolean = false,
     /** A scan is walking a share right now. */
     val scanning: Boolean = false,
+    /** The files the running scans have found so far, for the refresh line. */
+    val scanFiles: Int = 0,
+    /**
+     * A collection's pull to refresh is listing its folders
+     * (`LibraryViewModel.refresh`): the files listed so far. Null when it is not.
+     */
+    val walkFiles: Int? = null,
     /** True when at least one share has completed a scan; false shows the "scan first" nudge. */
     val scannedOnce: Boolean = true,
     /** Servers that cannot be reached right now (design: "TOWER is out of reach"). */
@@ -171,7 +179,15 @@ data class LibraryUiState(
     val checkingReachability: Boolean = false,
     /** "On this device" tab. */
     val device: DeviceUiState = DeviceUiState(),
-)
+) {
+    /**
+     * The refresh line's live status while the share is being read for this
+     * page, a collection's own walk or any scan, as Home shows a scan; null
+     * while nothing is reading it.
+     */
+    val refreshLine: String?
+        get() = walkFiles?.let(::readingTheShare) ?: if (scanning) readingTheShare(scanFiles) else null
+}
 
 data class UnreachableServer(val serverId: Long, val name: String, val lastSeenAtMs: Long?)
 
@@ -343,6 +359,7 @@ fun LibraryUiState.withWall(built: LibraryUiState, sortedTiles: List<LibraryTile
     loaded = built.loaded,
     noSource = built.noSource,
     scanning = built.scanning,
+    scanFiles = built.scanFiles,
     scannedOnce = built.scannedOnce,
     unreachable = built.unreachable,
 )
@@ -407,6 +424,11 @@ data class CollectionProfile(
     val moments: List<CollectionMoment>,
     /** The pictures in it, the poster and the videos' own among them, in no particular order ([inOrder] orders them). */
     val pictures: List<PictureTile> = emptyList(),
+    /**
+     * Its picture is a deck the app dealt rather than one of its own, so the
+     * page lays the cards out loose ([poster] asks for them that way).
+     */
+    val deck: Boolean = false,
 ) {
     /** Its tabs, in order: Videos and Moments where it holds videos, Images where it holds pictures. */
     internal val tabs: List<ProfileTab>
@@ -447,7 +469,8 @@ data class CollectionMoment(
  * the ids of videos played to the end. [marks] are the named chapters in the
  * folder; only those on the wall's own videos are kept, since a hidden or
  * vanished video's marks have nothing to play. [pictures] are the pictures
- * directly in it.
+ * directly in it. [deck] is whether its picture is a deck the app dealt
+ * ([com.regolith.domain.artwork.ArtworkSource.DECK]).
  */
 internal fun collectionProfile(
     tiles: List<LibraryTile>,
@@ -457,6 +480,7 @@ internal fun collectionProfile(
     marks: List<ChapterMatch>,
     pictures: List<PictureTile> = emptyList(),
     hasCollections: Boolean = tiles.any { it is LibraryTile.Collection },
+    deck: Boolean = false,
 ): CollectionProfile? {
     if (hasCollections) return null
     val videos = tiles.filterIsInstance<LibraryTile.Title>()
@@ -465,8 +489,11 @@ internal fun collectionProfile(
     val durations = videos.map { it.durationMs }
     return CollectionProfile(
         parentName = parentName,
-        poster = poster,
+        // A deck is shown loose on the page; the light is still the poster's,
+        // whose ground carries the front card's colours out to the edges.
+        poster = if (deck) poster.copy(loose = true) else poster,
         light = poster.copy(animated = false),
+        deck = deck,
         videoCount = videos.size,
         runtimeMs = if (durations.all { it != null }) durations.sumOf { it ?: 0L } else null,
         sizeBytes = videos.sumOf { it.sizeBytes },

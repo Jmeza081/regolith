@@ -42,7 +42,8 @@ film. The owner corrected that, twice.
   just counts as a single video is incorrect."
 
 Read here as: a folder without a poster is a collection too. It shows the
-mosaic made from its videos until it gets one, exactly as today. Tying the
+mosaic made from its videos until it gets one, exactly as today (a deck of
+cards since 2026-10-10). Tying the
 Library's structure to whether a poster exists would make it reshuffle the
 moment one is added.
 

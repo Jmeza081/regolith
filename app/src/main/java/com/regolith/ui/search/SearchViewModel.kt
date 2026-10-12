@@ -60,6 +60,31 @@ internal data class OnDevice(
     fun has(fileId: Long, shareId: Long): Boolean = fileId in doneFileIds || shareId in deviceShareIds
 }
 
+/**
+ * What a search found: [files] and [folders], whether anything was asked
+ * ([searched]), and whether a capped search found [more] than it holds.
+ */
+private data class Found(
+    val files: List<MediaFileEntity>,
+    val folders: List<FolderEntity>,
+    val searched: Boolean,
+    val more: Boolean = false,
+)
+
+/**
+ * The points of interest to show, from [matches] (a chip's marks, or the
+ * names the query found). With a [chip] they ARE the result, the moments
+ * beside the films listed, so only those in films the filter chips [kept]:
+ * one for one with the matches. Without one they show under All only: the
+ * other filters are about the file (watched, 4K, on device), and a moment
+ * is not a file.
+ */
+internal fun pointsOfInterest(matches: List<ChapterMatch>, chip: String?, filter: SearchFilter, kept: Set<Long>): List<ChapterMatch> = when {
+    chip != null -> matches.filter { it.fileId in kept }
+    filter == SearchFilter.ALL -> matches
+    else -> emptyList()
+}
+
 /** Whether a file passes this chip, given what is known about it. */
 internal fun SearchFilter.keeps(unwatched: Boolean, uhd: Boolean, onDevice: Boolean): Boolean = when (this) {
     SearchFilter.ALL -> true
@@ -149,8 +174,15 @@ data class SearchUiState(
     /** The chip currently on, if any. Narrows everything to films carrying it. */
     val poi: String? = null,
     val hits: List<SearchHit> = emptyList(),
-    /** Points of interest: chapters whose names match, shown above [hits]. */
+    /** A typed search found more files or folders than it lists: the count reads "40+". */
+    val moreMatches: Boolean = false,
+    /**
+     * Points of interest, shown above [hits]: with a chip, every mark of its
+     * name in the films listed; otherwise chapters whose names match.
+     */
     val moments: List<SearchHit.Moment> = emptyList(),
+    /** A typed search found more chapter names than it lists. */
+    val moreMoments: Boolean = false,
     val recent: List<String> = emptyList(),
     /** "Still reading /media/archive — matches will keep arriving." */
     val scanningPath: String? = null,
@@ -216,27 +248,29 @@ class SearchViewModel @AssistedInject constructor(
      */
     private val results = combine(query.debounce(150), poi) { q, p -> q to p }.flatMapLatest { (q, p) ->
         when {
-            p != null && q.isBlank() ->
-                userChapters.filesWith(p, LIMIT).map { Triple(it, emptyList<FolderEntity>(), true) }
-            p != null ->
-                combine(library.searchFiles(q, LIMIT), userChapters.filesWith(p, LIMIT)) { files, carrying ->
-                    val ids = carrying.mapTo(HashSet()) { it.id }
-                    Triple(files.filter { it.id in ids }, emptyList<FolderEntity>(), true)
-                }
-            q.isBlank() -> flowOf(Triple(emptyList<MediaFileEntity>(), emptyList<FolderEntity>(), false))
-            else -> combine(library.searchFiles(q, LIMIT), library.searchFolders(q, LIMIT)) { files, folders -> Triple(files, folders, true) }
+            // Every film carrying it, with any words typed narrowing them in
+            // the same query. A chip is a filter, not a guess: no cap.
+            p != null -> userChapters.filesWith(p, q).map { Found(it, emptyList(), searched = true) }
+            q.isBlank() -> flowOf(Found(emptyList(), emptyList(), searched = false))
+            // Typed: capped, with one more asked for than is shown, so the
+            // screen can say there are more rather than stop at 40 silently.
+            else -> combine(library.searchFiles(q, LIMIT + 1), library.searchFolders(q, LIMIT + 1)) { files, folders ->
+                Found(files.take(LIMIT), folders.take(LIMIT), searched = true, more = files.size > LIMIT || folders.size > LIMIT)
+            }
         }
-    }.spoofed(spoof) { (fs, ds, searched) -> Triple(files(fs), folders(ds), searched) }
-    private val progress = results.flatMapLatest { (files, _, _) -> library.observeProgress(files.map { it.id }) }
-    // Chapter names: every occurrence of the chip's name when one is on,
-    // otherwise whatever the query matches, through the same MATCH rule.
+    }.spoofed(spoof) { found -> found.copy(files = files(found.files), folders = folders(found.folders)) }
+    private val progress = results.flatMapLatest { found -> library.observeProgress(found.files.map { it.id }) }
+    // Chapter names. With a chip, every mark of its name in the films listed
+    // below: the same question of the same rows, so the two groups always
+    // hold the same films. Otherwise whatever the query matches, through the
+    // same MATCH rule, capped as the files are and saying so.
     private val moments = combine(query.debounce(150), poi) { q, p -> q to p }.flatMapLatest { (q, p) ->
         when {
-            p != null -> userChapters.occurrences(p, MOMENTS_LIMIT)
-            q.isBlank() -> flowOf(emptyList())
-            else -> userChapters.search(q, MOMENTS_LIMIT)
+            p != null -> userChapters.occurrences(p, q).map { it to false }
+            q.isBlank() -> flowOf(emptyList<ChapterMatch>() to false)
+            else -> userChapters.search(q, MOMENTS_LIMIT + 1).map { it.take(MOMENTS_LIMIT) to (it.size > MOMENTS_LIMIT) }
         }
-    }.spoofed(spoof) { matches(it) }
+    }.spoofed(spoof) { (found, more) -> matches(found) to more }
     private val onDevice = combine(transfers.observeDoneFileIds(), sources.observeDeviceShareIds(), ::OnDevice)
     private val running = sources.observeEnabledShares().flatMapLatest { list ->
         if (list.isEmpty()) flowOf(emptyList()) else scans.observeLatest(list.map { it.id })
@@ -247,11 +281,10 @@ class SearchViewModel @AssistedInject constructor(
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
-        @Suppress("UNCHECKED_CAST")
-        val result = values[2] as Triple<List<MediaFileEntity>, List<FolderEntity>, Boolean>
-        val files = result.first
-        val folders = result.second
-        val searched = result.third
+        val result = values[2] as Found
+        val files = result.files
+        val folders = result.folders
+        val searched = result.searched
         @Suppress("UNCHECKED_CAST")
         val progressById = (values[3] as List<com.regolith.data.db.PlaybackProgressEntity>).associateBy { it.fileId }
         @Suppress("UNCHECKED_CAST")
@@ -260,7 +293,8 @@ class SearchViewModel @AssistedInject constructor(
         val recent = (values[5] as List<com.regolith.data.db.RecentSearchEntity>).map { it.query }
         val sel = values[6] as SelectionUiState?
         @Suppress("UNCHECKED_CAST")
-        val matches = values[7] as List<ChapterMatch>
+        val momentsFound = values[7] as Pair<List<ChapterMatch>, Boolean>
+        val (matches, moreMoments) = momentsFound
         @Suppress("UNCHECKED_CAST")
         val facetList = values[8] as List<ChapterFacet>
         val chip = values[9] as String?
@@ -271,11 +305,14 @@ class SearchViewModel @AssistedInject constructor(
         fun shownDir(relPath: String): String = relPath.substringBeforeLast('/', "").let { spoofed?.path(it) ?: it }
 
         val hits = mutableListOf<SearchHit>()
+        // The films the filter chips kept, which a chip's moments follow.
+        val kept = HashSet<Long>()
         for (file in files) {
             val p = progressById[file.id]
             val unwatched = p == null || (p.positionMs == 0L && !p.completed)
             val uhd = VideoInfo.resolutionLabelFor(file.width, file.height) == "4K"
             if (!f.keeps(unwatched, uhd, here.has(file.id, file.shareId))) continue
+            kept += file.id
             val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
             val res = VideoInfo.resolutionLabelFor(file.width, file.height).ifEmpty { null }
             // ONE ROW PER FILE. A file whose name parses into a title wears
@@ -321,13 +358,7 @@ class SearchViewModel @AssistedInject constructor(
                 )
             }
         }
-        // Without a chip, points of interest only under "All": the other
-        // filters are about the file (watched, 4K, on device), and a moment
-        // is not a file. With a chip they ARE the result, so they stay —
-        // narrowed to the films that survived the filter above.
-        val visible = files.mapTo(HashSet()) { it.id }
-        val shown = if (chip != null) matches.filter { it.fileId in visible } else matches
-        val moments = if (chip != null || f == SearchFilter.ALL) shown.map { m ->
+        val moments = pointsOfInterest(matches, chip, f, kept).map { m ->
             SearchHit.Moment(
                 fileId = m.fileId,
                 startMs = m.startMs,
@@ -336,14 +367,17 @@ class SearchViewModel @AssistedInject constructor(
                 shareId = m.shareId,
                 relPath = m.fileRelPath.substringBeforeLast('/', ""),
             )
-        } else emptyList()
+        }
         SearchUiState(
             query = q,
             filter = f,
             facets = facetList,
             poi = chip.takeIf { spoofed == null },
             hits = hits,
+            moreMatches = result.more,
             moments = moments,
+            // Only where the names a query finds are shown: under All, with no chip.
+            moreMoments = moreMoments && chip == null && f == SearchFilter.ALL,
             // Earlier searches are the owner's own words about the library:
             // spoof mode keeps them out of sight, and keeps no new ones.
             recent = if (spoofed == null) recent else emptyList(),
@@ -442,9 +476,20 @@ class SearchViewModel @AssistedInject constructor(
     }
 
     private companion object {
+        /**
+         * How many files, and how many folders, a typed search lists. Typing
+         * is meant to narrow, and the query runs again at every letter and
+         * whenever a scan adds files. One more is asked for, so the count can
+         * say "40+" instead of stopping there silently. A chip has no cap: it
+         * is a filter, and every film carrying it is what was asked for.
+         */
         const val LIMIT = 40
 
-        /** Points of interest are one group above the files; more than this and it becomes the list. */
+        /**
+         * The names a typed query finds are one group above the files; more
+         * than this and it becomes the list. A chip's moments have no cap:
+         * they are every mark in the films listed.
+         */
         const val MOMENTS_LIMIT = 20
 
         /**

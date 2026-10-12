@@ -8,6 +8,7 @@ import com.regolith.data.media.ChapterSyncRepository
 import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.MomentCover
 import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.UserChapterStats
 import kotlinx.coroutines.flow.Flow
@@ -78,6 +79,13 @@ class UserChapterRepository @Inject constructor(
         dao.observeFacets(limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
 
     /**
+     * For every name [facets] lists, the mark given it most recently, whose
+     * frame stands for the name on Home ([withCovers] pairs them up).
+     */
+    fun momentCovers(): Flow<List<MomentCover>> =
+        dao.observeMomentCovers().map { rows -> rows.map { MomentCover(it.title, it.fileId, it.startMs) } }
+
+    /**
      * Names to offer while a chapter is being named: the ones matching what
      * has been typed so far, or the library's commonest when nothing has.
      *
@@ -92,12 +100,27 @@ class UserChapterRepository @Inject constructor(
         return dao.observeNameMatches(match, limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
     }
 
-    /** The films carrying a point of interest, for a chip standing on its own. */
-    fun filesWith(title: String, limit: Int): Flow<List<MediaFileEntity>> = dao.filesWithChapter(title, limit)
+    /**
+     * Every film carrying a point of interest: a chip's results. With words
+     * typed after the chip ([query]), only those whose filename, title or path
+     * matches them too, by Search's own rule.
+     */
+    fun filesWith(title: String, query: String = ""): Flow<List<MediaFileEntity>> {
+        val match = LibraryRepository.ftsMatch(query) ?: return dao.filesWithChapter(title)
+        return dao.filesWithChapterMatching(title, match)
+    }
 
-    /** Every occurrence of one point of interest, newest-listed film first. */
-    fun occurrences(title: String, limit: Int): Flow<List<ChapterMatch>> =
-        dao.occurrencesOf(title, limit).map { rows -> rows.map { it.toMatch() } }
+    /**
+     * Every occurrence of one point of interest in the films [filesWith]
+     * finds for the same [title] and [query], by film name and then time:
+     * the moments above those films, one for one, since both ask the same
+     * question of the same rows.
+     */
+    fun occurrences(title: String, query: String = ""): Flow<List<ChapterMatch>> {
+        val match = LibraryRepository.ftsMatch(query)
+        val rows = if (match == null) dao.occurrencesOf(title) else dao.occurrencesMatching(title, match)
+        return rows.map { list -> list.map { it.toMatch() } }
+    }
 
     /**
      * The named marks on the videos directly in [folderId], for a collection

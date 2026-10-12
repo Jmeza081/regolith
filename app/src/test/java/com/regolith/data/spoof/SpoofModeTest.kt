@@ -18,6 +18,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -75,6 +76,23 @@ class SpoofModeTest {
         assertEquals(320 to 180, thumb.width to thumb.height)
         assertEquals(poster.seed, thumb.seed)
         assertNotEquals(poster.seed, spoof.image(ArtworkRequest(ArtworkOwner.File(8), ArtworkKind.POSTER)).seed)
+    }
+
+    @Test
+    fun `a folder's stand-in is its photo and a hand of tall cards, a video's only a photo`() {
+        val spoof = Spoof(salt = 99)
+        val request = ArtworkRequest(ArtworkOwner.Folder(3), ArtworkKind.POSTER)
+        val deck = spoof.standIn(request) as SpoofDeck
+        assertEquals(request, deck.request)
+        assertEquals(spoof.image(request), deck.photo)
+        assertEquals(5, deck.cards.map { it.seed }.distinct().size)
+        // A phone clip's 9:16, as a deck is dealt from a folder's tall videos.
+        assertTrue(deck.cards.all { it.width == 360 && it.height == 640 })
+        assertEquals(deck, spoof.standIn(request))
+        val other = spoof.standIn(ArtworkRequest(ArtworkOwner.Folder(4), ArtworkKind.POSTER)) as SpoofDeck
+        assertTrue(other.cards.none { it.seed in deck.cards.map(SpoofImage::seed) })
+        val video = ArtworkRequest(ArtworkOwner.File(7), ArtworkKind.POSTER)
+        assertEquals(spoof.image(video), spoof.standIn(video))
     }
 
     @Test

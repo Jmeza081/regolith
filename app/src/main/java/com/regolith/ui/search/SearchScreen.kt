@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,17 +24,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,16 +39,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
@@ -76,6 +66,8 @@ import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.util.formatClock
 import com.regolith.ui.components.Tag
 import com.regolith.ui.components.SurfaceCard
+import com.regolith.ui.components.SearchField
+import com.regolith.ui.components.highlightMatches
 import com.regolith.ui.theme.PillShape
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
@@ -84,7 +76,6 @@ import com.regolith.ui.theme.designSp
 import com.regolith.ui.theme.scaledDp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.ui.draw.alpha
 import com.regolith.ui.util.SelectionUiState
 
 /**
@@ -150,38 +141,16 @@ fun SearchScreen(
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("search_screen")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = Spacing.s18, vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
-            Row(
-                Modifier.weight(1f).height(44.scaledDp()).clip(PillShape).background(colors.surface).border(1.dp, colors.raised, PillShape).padding(horizontal = Spacing.s12),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(painterResource(R.drawable.rg_ic_search), contentDescription = null, tint = colors.body, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(Spacing.s8))
-                BasicTextField(
-                    value = state.query,
-                    onValueChange = viewModel::setQuery,
-                    singleLine = true,
-                    textStyle = TextStyles.body.copy(fontSize = 14.designSp(), lineHeight = 14.designSp(), color = colors.ink),
-                    cursorBrush = SolidColor(colors.accent),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { viewModel.remember() }),
-                    decorationBox = { inner ->
-                        Box {
-                            if (state.query.isEmpty()) Text("Titles, filenames, folders", style = TextStyles.body.copy(fontSize = 14.designSp(), lineHeight = 14.designSp()), color = colors.metadata)
-                            inner()
-                        }
-                    },
-                    modifier = Modifier.weight(1f).focusRequester(focus).testTag("search_field"),
-                )
-                if (state.query.isNotEmpty()) {
-                    Spacer(Modifier.width(Spacing.s8))
-                    Box(
-                        Modifier.size(20.dp).background(colors.raised, PillShape).clickable(interactionSource = null, indication = null) { viewModel.setQuery("") }.testTag("search_clear_button"),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(painterResource(R.drawable.rg_ic_close_small), contentDescription = "Clear", tint = colors.ink, modifier = Modifier.size(11.dp))
-                    }
-                }
-            }
+            SearchField(
+                query = state.query,
+                onQueryChange = viewModel::setQuery,
+                placeholder = "Titles, filenames, folders",
+                testTag = "search_field",
+                clearTestTag = "search_clear_button",
+                focusRequester = focus,
+                onSearch = { viewModel.remember() },
+                modifier = Modifier.weight(1f),
+            )
             Spacer(Modifier.width(Spacing.s12))
             // While selecting, this is "Select all" rather than a second
             // Cancel: the word would otherwise mean "leave Search" here and
@@ -202,170 +171,199 @@ fun SearchScreen(
             )
         }
 
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = Spacing.s18, end = Spacing.s18,
-                bottom = LocalNavPillInsets.current.calculateBottomPadding(),
-            ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s18),
-        ) {
-            // The filter chips leave with the results: with no matches the empty state sits under the field (design frame 24).
-            // A filter or a point of interest that narrowed to nothing is the
-            // exception — the chips have to stay or there is no way to turn one off.
-            if (!(state.searched && state.hits.isEmpty()) || state.poi != null || state.filter != SearchFilter.ALL) item {
-                // One row, the moment chip in it like any other: five chips
-                // do not fit a 411dp portrait, so the row scrolls. It opens a
-                // sheet rather than toggling, because the names are the
-                // library's and there can be two of them or forty — and it
-                // wears the one in force, so the row says what is filtering.
-                Row(
-                    Modifier.horizontalScroll(chipScroll),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-                ) {
-                    SearchFilter.entries.forEach { f ->
-                        FilterChip(
-                            text = f.label,
-                            selected = f == state.filter,
-                            onClick = { viewModel.setFilter(f) },
-                            testTag = "search_filter_${f.name.lowercase()}",
-                        )
-                    }
-                    if (state.facets.isNotEmpty()) {
-                        FilterChip(
-                            text = state.poi ?: "Moment",
-                            selected = state.poi != null,
-                            onClick = { momentSheet = true },
-                            testTag = "search_filter_moment",
-                            icon = R.drawable.rg_ic_sliders,
-                            modifier = Modifier.widthIn(max = 160.dp),
-                        )
-                    }
+        // The list's own width, for the grid's columns: a grid row is an item
+        // of its own, so the count is needed before the items are built.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val columns = thumbColumns(maxWidth - Spacing.s18 * 2)
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = Spacing.s18, end = Spacing.s18,
+                    bottom = LocalNavPillInsets.current.calculateBottomPadding(),
+                ),
+                // No arrangement: each item sets its own gap (see `spaced`), so a
+                // group's rows can be items of their own, at the group's spacing.
+                // A chip can list every film carrying it, hundreds, and a row is
+                // only built, and its picture only fetched, as it comes into view.
+            ) {
+                // The gap above the next item: none above the first, then s18
+                // between items, as the design spaces this screen.
+                var gap = 0.dp
+                // Positional, as before: no keys, so two marks a sidecar put at
+                // the same time in one film can never be one key twice.
+                fun spaced(above: Dp = gap, content: @Composable () -> Unit) {
+                    item { Box(Modifier.padding(top = above)) { content() } }
+                    gap = Spacing.s18
                 }
-            }
-            // Points of interest first, under their own eyebrow, so a red
-            // match in a chapter's name is never mistaken for one in a
-            // file's. They are places, not files: no selection, no download.
-            if (state.searched && state.moments.isNotEmpty()) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        ResultsLabel("Points of interest", "search_moments", showToggle = true, state.viewMode, viewModel::toggleViewMode)
-                        if (state.viewMode == ViewMode.GRID) {
-                            HitGrid(state.moments) { hit, tileModifier ->
-                                HitTile(hit, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt, modifier = tileModifier)
+                /** A group's results under its label: rows, or rows of tiles, s8 under the label and s12 apart. */
+                fun results(hits: List<SearchHit>, row: @Composable (SearchHit) -> Unit, tile: @Composable (SearchHit, Modifier) -> Unit) {
+                    if (state.viewMode == ViewMode.GRID) {
+                        hits.chunked(columns).forEachIndexed { i, tiles ->
+                            spaced(above = if (i == 0) Spacing.s8 else Spacing.s12) {
+                                HitGridRow(tiles, columns, tile)
                             }
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                                state.moments.forEach { hit ->
-                                    HitRow(hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt)
-                                }
-                            }
+                        }
+                    } else {
+                        hits.forEachIndexed { i, hit ->
+                            spaced(above = if (i == 0) Spacing.s8 else Spacing.s12) { row(hit) }
                         }
                     }
                 }
-            }
-            if (state.searched && state.hits.isNotEmpty()) {
-                item {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-                        // s12 ON TOP OF the list's own s18 between items, so
-                        // the seam between the two groups is s30 where every
-                        // other gap on the screen is s18 — the next step up
-                        // the scale, and the thing that tells you the wall
-                        // has ended and another has started. Only when there
-                        // IS a group above: alone, the matches are just the
-                        // results and sit under the chips like anything else.
-                        modifier = Modifier.padding(top = if (state.moments.isEmpty()) 0.dp else Spacing.s12),
-                    ) {
-                        // One toggle for both groups: it sits on whichever label comes first.
-                        ResultsLabel(
-                            "${state.hits.size} match" + (if (state.hits.size == 1) "" else "es"), "search_count",
-                            showToggle = state.moments.isEmpty(), state.viewMode, viewModel::toggleViewMode,
-                        )
-                        if (state.viewMode == ViewMode.GRID) {
-                            HitGrid(state.hits) { hit, tileModifier ->
-                                HitTile(
-                                    hit, onOpenTitle, onOpenFolder, viewModel::remember,
-                                    selection = selection,
-                                    onToggle = viewModel::toggleSelection,
-                                    onLongPress = viewModel::beginSelection,
-                                    modifier = tileModifier,
-                                )
-                            }
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-                                state.hits.forEach { hit ->
-                                    HitRow(
-                                        hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember,
-                                        selection = selection,
-                                        onToggle = viewModel::toggleSelection,
-                                        onLongPress = viewModel::beginSelection,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (state.searched && state.hits.isEmpty() && state.moments.isEmpty()) {
-                item {
-                    // Narrowed to nothing: the way out is the filter, not the words.
-                    val narrowed = state.filter != SearchFilter.ALL || state.poi != null
-                    EmptyState(
-                        title = if (narrowed) "No matches with this filter" else "No matches for “${state.query.trim()}”",
-                        body = if (narrowed) {
-                            "Turn the filter off to search everything again."
-                        } else {
-                            "Search reads filenames as they are on the share, so spelling counts. Try fewer words, or drop the year."
-                        },
-                        ghost = if (state.viewMode == ViewMode.GRID) Ghost.Frames(rows = 1) else Ghost.Rows(count = 3),
-                        modifier = Modifier.padding(top = Spacing.s8),
-                        link = if (narrowed) {
-                            EmptyAction("Show all", { viewModel.setFilter(SearchFilter.ALL); viewModel.setPoi(null) }, "search_show_all_button")
-                        } else {
-                            EmptyAction("Clear the search", { viewModel.setQuery("") }, "search_clear_search_button")
-                        },
-                        testTag = "search_empty_card",
+                /** Under a capped group: there is more than this, and typing narrows it. */
+                fun more(what: String, tag: String) = spaced(above = Spacing.s12) {
+                    Text(
+                        "There are more $what than these. Type more to narrow them down.",
+                        style = TextStyles.meta, color = colors.metadata,
+                        modifier = Modifier.testTag(tag),
                     )
                 }
-            }
-            state.scanningPath?.let { path ->
-                item {
-                    SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("search_scanning_line"), contentPadding = PaddingValues(Spacing.s12)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(14.dp).border(1.5.dp, colors.raised, PillShape))
-                            Spacer(Modifier.width(Spacing.s12))
-                            Text("Still reading $path — matches will keep arriving.", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body)
+
+                // The filter chips leave with the results: with no matches the empty state sits under the field (design frame 24).
+                // A filter or a point of interest that narrowed to nothing is the
+                // exception — the chips have to stay or there is no way to turn one off.
+                if (!(state.searched && state.hits.isEmpty()) || state.poi != null || state.filter != SearchFilter.ALL) spaced {
+                    // One row, the moment chip in it like any other: five chips
+                    // do not fit a 411dp portrait, so the row scrolls. It opens a
+                    // sheet rather than toggling, because the names are the
+                    // library's and there can be two of them or forty — and it
+                    // wears the one in force, so the row says what is filtering.
+                    Row(
+                        Modifier.horizontalScroll(chipScroll),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+                    ) {
+                        SearchFilter.entries.forEach { f ->
+                            FilterChip(
+                                text = f.label,
+                                selected = f == state.filter,
+                                onClick = { viewModel.setFilter(f) },
+                                testTag = "search_filter_${f.name.lowercase()}",
+                            )
+                        }
+                        if (state.facets.isNotEmpty()) {
+                            FilterChip(
+                                text = state.poi ?: "Moment",
+                                selected = state.poi != null,
+                                onClick = { momentSheet = true },
+                                testTag = "search_filter_moment",
+                                icon = R.drawable.rg_ic_sliders,
+                                modifier = Modifier.widthIn(max = 160.dp),
+                            )
                         }
                     }
                 }
-            }
-            if (state.recent.isNotEmpty() && (state.query.isBlank() || (state.searched && state.hits.isEmpty()))) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Eyebrow("Recent", Modifier.weight(1f), muted = true)
-                            Text(
-                                "Clear", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
-                                modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = viewModel::clearRecent).testTag("search_clear_recent_button"),
+                // Points of interest first, under their own eyebrow, so a red
+                // match in a chapter's name is never mistaken for one in a
+                // file's. They are places, not files: no selection, no download.
+                if (state.searched && state.moments.isNotEmpty()) {
+                    spaced {
+                        ResultsLabel("Points of interest", "search_moments", showToggle = true, state.viewMode, viewModel::toggleViewMode)
+                    }
+                    results(
+                        state.moments,
+                        row = { hit -> HitRow(hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt) },
+                        tile = { hit, tileModifier -> HitTile(hit, onOpenTitle, onOpenFolder, viewModel::remember, onPlayAt = onPlayAt, modifier = tileModifier) },
+                    )
+                    if (state.moreMoments) more("moments", "search_more_moments")
+                }
+                if (state.searched && state.hits.isNotEmpty()) {
+                    // s12 ON TOP OF the usual s18 when there IS a group above, so
+                    // the seam between the two groups is s30 where every other gap
+                    // on the screen is s18 — the next step up the scale, and the
+                    // thing that tells you the wall has ended and another has
+                    // started. Alone, the matches are just the results and sit
+                    // under the chips like anything else.
+                    spaced(above = if (state.moments.isEmpty()) gap else gap + Spacing.s12) {
+                        // One toggle for both groups: it sits on whichever label comes first.
+                        // "40+" when a typed search found more than it lists.
+                        val count = "${state.hits.size}" + (if (state.moreMatches) "+" else "")
+                        ResultsLabel(
+                            "$count match" + (if (state.hits.size == 1 && !state.moreMatches) "" else "es"), "search_count",
+                            showToggle = state.moments.isEmpty(), state.viewMode, viewModel::toggleViewMode,
+                        )
+                    }
+                    results(
+                        state.hits,
+                        row = { hit ->
+                            HitRow(
+                                hit, state.query, onOpenTitle, onOpenFolder, viewModel::remember,
+                                selection = selection,
+                                onToggle = viewModel::toggleSelection,
+                                onLongPress = viewModel::beginSelection,
                             )
+                        },
+                        tile = { hit, tileModifier ->
+                            HitTile(
+                                hit, onOpenTitle, onOpenFolder, viewModel::remember,
+                                selection = selection,
+                                onToggle = viewModel::toggleSelection,
+                                onLongPress = viewModel::beginSelection,
+                                modifier = tileModifier,
+                            )
+                        },
+                    )
+                    if (state.moreMatches) more("matches", "search_more_matches")
+                }
+                if (state.searched && state.hits.isEmpty() && state.moments.isEmpty()) {
+                    spaced {
+                        // Narrowed to nothing: the way out is the filter, not the words.
+                        val narrowed = state.filter != SearchFilter.ALL || state.poi != null
+                        EmptyState(
+                            title = if (narrowed) "No matches with this filter" else "No matches for “${state.query.trim()}”",
+                            body = if (narrowed) {
+                                "Turn the filter off to search everything again."
+                            } else {
+                                "Search reads filenames as they are on the share, so spelling counts. Try fewer words, or drop the year."
+                            },
+                            ghost = if (state.viewMode == ViewMode.GRID) Ghost.Frames(rows = 1) else Ghost.Rows(count = 3),
+                            modifier = Modifier.padding(top = Spacing.s8),
+                            link = if (narrowed) {
+                                EmptyAction("Show all", { viewModel.setFilter(SearchFilter.ALL); viewModel.setPoi(null) }, "search_show_all_button")
+                            } else {
+                                EmptyAction("Clear the search", { viewModel.setQuery("") }, "search_clear_search_button")
+                            },
+                            testTag = "search_empty_card",
+                        )
+                    }
+                }
+                state.scanningPath?.let { path ->
+                    spaced {
+                        SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("search_scanning_line"), contentPadding = PaddingValues(Spacing.s12)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(14.dp).border(1.5.dp, colors.raised, PillShape))
+                                Spacer(Modifier.width(Spacing.s12))
+                                Text("Still reading $path — matches will keep arriving.", style = TextStyles.settingMeta.copy(lineHeight = 17.designSp()), color = colors.body)
+                            }
                         }
-                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                            state.recent.forEach { q ->
-                                Row(
-                                    Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
-                                        .clickable(interactionSource = null, indication = null) { viewModel.setQuery(q) }
-                                        .testTag("search_recent_$q"),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(painterResource(R.drawable.rg_ic_clock), contentDescription = null, tint = colors.body, modifier = Modifier.size(15.dp))
-                                    Spacer(Modifier.width(Spacing.s12))
-                                    Text(q, style = TextStyles.body.copy(lineHeight = 18.designSp()), color = colors.inkSoft)
+                    }
+                }
+                if (state.recent.isNotEmpty() && (state.query.isBlank() || (state.searched && state.hits.isEmpty()))) {
+                    spaced {
+                        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Eyebrow("Recent", Modifier.weight(1f), muted = true)
+                                Text(
+                                    "Clear", style = TextStyles.buttonSmall.copy(fontSize = 12.designSp()), color = colors.accent,
+                                    modifier = Modifier.clickable(interactionSource = null, indication = null, onClick = viewModel::clearRecent).testTag("search_clear_recent_button"),
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                                state.recent.forEach { q ->
+                                    Row(
+                                        Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp)
+                                            .clickable(interactionSource = null, indication = null) { viewModel.setQuery(q) }
+                                            .testTag("search_recent_$q"),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(painterResource(R.drawable.rg_ic_clock), contentDescription = null, tint = colors.body, modifier = Modifier.size(15.dp))
+                                        Spacer(Modifier.width(Spacing.s12))
+                                        Text(q, style = TextStyles.body.copy(lineHeight = 18.designSp()), color = colors.inkSoft)
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
             }
         }
     }
@@ -491,12 +489,12 @@ private fun HitRow(
                 ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
-            Text(highlight(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(highlightMatches(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             // The meta line is highlighted as well as the title. A row now
             // stands for the whole file, so the match is just as likely to
             // be in the filename or the path down here as in the name above
             // -- and a result with nothing marked on it reads as a mistake.
-            Text(highlight(hit.meta, query, colors.accent), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(highlightMatches(hit.meta, query, colors.accent), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (hit is SearchHit.Moment) Tag("Point of interest", Modifier.padding(top = Spacing.s2))
         }
         if (picked) {
@@ -579,24 +577,17 @@ private fun ResultsLabel(text: String, tag: String, showToggle: Boolean, mode: V
 }
 
 /**
- * Results as tiles: [thumbColumns] across, two on a phone and more on a
- * wide window. Plain rows of tiles rather than a lazy grid, because the
- * groups already sit inside Search's scrolling list, and a lazy grid cannot
- * scroll inside another list.
+ * One row of results as tiles: [columns] across ([thumbColumns]), two on a
+ * phone and more on a wide window. Each row is an item of Search's list, so
+ * rows of tiles are built as they scroll into view; a lazy grid of its own
+ * could not scroll inside that list.
  */
 @Composable
-private fun HitGrid(hits: List<SearchHit>, tile: @Composable (SearchHit, Modifier) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = thumbColumns(maxWidth)
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
-            hits.chunked(columns).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-                    row.forEach { hit -> tile(hit, Modifier.weight(1f)) }
-                    // The last row keeps the others' tile width instead of stretching.
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
+private fun HitGridRow(tiles: List<SearchHit>, columns: Int, tile: @Composable (SearchHit, Modifier) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        tiles.forEach { hit -> tile(hit, Modifier.weight(1f)) }
+        // The last row keeps the others' tile width instead of stretching.
+        repeat(columns - tiles.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 
@@ -668,22 +659,3 @@ private fun HitTile(
     }
 }
 
-/** The matched run in red: the first case-insensitive occurrence of each query word. */
-private fun highlight(text: String, query: String, accent: Color): AnnotatedString {
-    val words = query.split(Regex("""[\s.\-_/]+""")).filter { it.isNotEmpty() }
-    if (words.isEmpty()) return AnnotatedString(text)
-    val ranges = words.mapNotNull { w ->
-        val i = text.indexOf(w, ignoreCase = true)
-        if (i < 0) null else i until i + w.length
-    }.sortedBy { it.first }
-    return buildAnnotatedString {
-        var cursor = 0
-        for (r in ranges) {
-            if (r.first < cursor) continue
-            append(text.substring(cursor, r.first))
-            withStyle(SpanStyle(color = accent)) { append(text.substring(r.first, r.last + 1)) }
-            cursor = r.last + 1
-        }
-        append(text.substring(cursor))
-    }
-}

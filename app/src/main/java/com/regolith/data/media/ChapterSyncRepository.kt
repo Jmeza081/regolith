@@ -29,6 +29,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,9 +43,11 @@ import javax.inject.Singleton
  *  - **Import.** [onFolderListed] runs on every scan and Browse listing:
  *    a sidecar whose modified time moved since it was last imported
  *    replaces the rows. A sidecar that vanished takes its rows with it.
- *  - **Write.** [markDirty] after an edit; [syncDirty] (the worker) writes
- *    the file. A Forbidden is a read-only share: the rows stay, the sheet
- *    says so, and the next scan tries again.
+ *  - **Write.** [markDirty] after an edit; Save writes the file at once
+ *    ([writeNow]) and the worker ([syncDirty]) catches up whatever that
+ *    could not, never both at once on one film ([sidecarLocks]). A
+ *    Forbidden is a read-only share: the rows stay, the sheet says so, and
+ *    the next scan tries again.
  *  - **Conflict.** Both changed since the last sync: the newer one wins,
  *    whole, and a note says which way it went.
  *
@@ -64,6 +69,22 @@ class ChapterSyncRepository @Inject constructor(
     private val store: DownloadStore,
     private val moments: MomentFrames,
 ) {
+    /**
+     * One step at a time on each film's sidecar: the edit that makes a write
+     * due ([markDirty]), the write ([writeNow], [syncDirty]) and [revert].
+     *
+     * Save writes the file itself just as the worker it queued starts up,
+     * and the two used to run at once: both put the same `.part` file down,
+     * the second rename found it already moved, and that writer reported a
+     * failure for a file that had landed, then set its out-of-date row over
+     * the other's. Now the second waits, reads the row afresh and finds the
+     * work done. Per film, so a share that is timing out (20 s a try) never
+     * holds up a save on another. Web analogy: a promise chain per film.
+     */
+    private val sidecarLocks = ConcurrentHashMap<Long, Mutex>()
+
+    private fun lockFor(fileId: Long): Mutex = sidecarLocks.getOrPut(fileId) { Mutex() }
+
     /** The sheet's state for one film, live. */
     fun observe(fileId: Long): Flow<ChapterSync> {
         val writeEnabled = mediaFileDao.observe(fileId).flatMapLatest { file ->
@@ -81,12 +102,16 @@ class ChapterSyncRepository @Inject constructor(
      * beside the copy before the share ever hears of it.
      */
     suspend fun markDirty(fileId: Long) {
-        val row = syncDao.byFile(fileId)
-        syncDao.upsert(
-            ChapterSyncEntity(
-                fileId = fileId, shareMtimeMs = row?.shareMtimeMs, dirty = true, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis(),
-            ),
-        )
+        // After any write under way, which read the rows before this edit:
+        // marked first, its "written" would land on top and clear this one.
+        lockFor(fileId).withLock {
+            val row = syncDao.byFile(fileId)
+            syncDao.upsert(
+                ChapterSyncEntity(
+                    fileId = fileId, shareMtimeMs = row?.shareMtimeMs, dirty = true, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis(),
+                ),
+            )
+        }
         mirrorLocal(fileId, ChapterSidecar.format(chapterDao.forFile(fileId).map { Chapter(it.startMs, it.title) }))
         scheduler.enqueue()
     }
@@ -192,7 +217,7 @@ class ChapterSyncRepository @Inject constructor(
     suspend fun syncDirty(): Boolean {
         var reachable = true
         for (row in syncDao.dirty()) {
-            if (writeOne(row) == ChapterWriteOutcome.UNREACHABLE) reachable = false
+            if (writeOne(row.fileId) == ChapterWriteOutcome.UNREACHABLE) reachable = false
         }
         return reachable
     }
@@ -201,15 +226,26 @@ class ChapterSyncRepository @Inject constructor(
      * Save's own write: the film's sidecar, now, with the answer for the
      * line under the button. The rows are already saved and the film is
      * already marked dirty, so a failure here costs nothing — the worker
-     * and the next scan try again.
+     * and the next scan try again. When the worker got there first, this
+     * waits for it and answers with what it did.
      */
-    suspend fun writeNow(fileId: Long): ChapterWriteOutcome {
-        val row = syncDao.byFile(fileId) ?: return ChapterWriteOutcome.PHONE_ONLY
-        if (!row.dirty) return ChapterWriteOutcome.WRITTEN
-        return writeOne(row)
+    suspend fun writeNow(fileId: Long): ChapterWriteOutcome = writeOne(fileId)
+
+    /**
+     * Write one film's sidecar if it is still owed. The row is read once
+     * the film's lock is held, not before, so a write that waited behind
+     * another finds the file written and writes nothing.
+     */
+    private suspend fun writeOne(fileId: Long): ChapterWriteOutcome {
+        lockFor(fileId).withLock {
+            val row = syncDao.byFile(fileId) ?: return ChapterWriteOutcome.PHONE_ONLY
+            if (!row.dirty) return ChapterWriteOutcome.WRITTEN
+            return write(row)
+        }
     }
 
-    private suspend fun writeOne(row: ChapterSyncEntity): ChapterWriteOutcome {
+    /** The write itself, with the film's lock held. */
+    private suspend fun write(row: ChapterSyncEntity): ChapterWriteOutcome {
         val file = mediaFileDao.byId(row.fileId) ?: run { syncDao.delete(row.fileId); return ChapterWriteOutcome.PHONE_ONLY }
         val share = shareDao.byId(file.shareId) ?: return ChapterWriteOutcome.PHONE_ONLY
         val server = serverDao.byId(share.serverId) ?: return ChapterWriteOutcome.PHONE_ONLY
@@ -255,21 +291,25 @@ class ChapterSyncRepository @Inject constructor(
      * scan brings the chapters back from the file — which is the truth.
      */
     suspend fun revert(fileId: Long) {
-        chapterDao.deleteForFile(fileId)
-        moments.dropMoments(fileId)
-        dropLocal(fileId)
-        val row = syncDao.byFile(fileId)
-        if (row == null || (row.shareMtimeMs == null && !row.dirty)) { syncDao.delete(fileId); return }
-        val file = mediaFileDao.byId(fileId) ?: run { syncDao.delete(fileId); return }
-        val share = shareDao.byId(file.shareId) ?: run { syncDao.delete(fileId); return }
-        val server = serverDao.byId(share.serverId) ?: run { syncDao.delete(fileId); return }
-        if (LocalSource.isLocal(server.host) || !share.writeChapters || row.shareMtimeMs == null) { syncDao.delete(fileId); return }
-        try {
-            writer.delete(credentials.hostFor(server.id), credentials.credentialsFor(server.id), share.name, file.relPath.substringBeforeLast('/', ""), file.name)
-            syncDao.delete(fileId)
-        } catch (e: SmbFailure) {
-            Log.w(TAG, "sidecar delete for ${file.relPath} failed: $e")
-            syncDao.upsert(row.copy(dirty = false, note = ChapterSyncNote.FILE_STAYS.name, updatedAtMs = System.currentTimeMillis()))
+        // After any write under way, or the file it puts down would outlive
+        // the revert, and come back as the film's chapters at the next scan.
+        lockFor(fileId).withLock {
+            chapterDao.deleteForFile(fileId)
+            moments.dropMoments(fileId)
+            dropLocal(fileId)
+            val row = syncDao.byFile(fileId)
+            if (row == null || (row.shareMtimeMs == null && !row.dirty)) { syncDao.delete(fileId); return }
+            val file = mediaFileDao.byId(fileId) ?: run { syncDao.delete(fileId); return }
+            val share = shareDao.byId(file.shareId) ?: run { syncDao.delete(fileId); return }
+            val server = serverDao.byId(share.serverId) ?: run { syncDao.delete(fileId); return }
+            if (LocalSource.isLocal(server.host) || !share.writeChapters || row.shareMtimeMs == null) { syncDao.delete(fileId); return }
+            try {
+                writer.delete(credentials.hostFor(server.id), credentials.credentialsFor(server.id), share.name, file.relPath.substringBeforeLast('/', ""), file.name)
+                syncDao.delete(fileId)
+            } catch (e: SmbFailure) {
+                Log.w(TAG, "sidecar delete for ${file.relPath} failed: $e")
+                syncDao.upsert(row.copy(dirty = false, note = ChapterSyncNote.FILE_STAYS.name, updatedAtMs = System.currentTimeMillis()))
+            }
         }
     }
 

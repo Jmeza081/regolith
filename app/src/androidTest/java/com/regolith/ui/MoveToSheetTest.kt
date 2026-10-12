@@ -5,23 +5,29 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import com.regolith.ui.components.MoveChild
 import com.regolith.ui.components.MoveSheetState
 import com.regolith.ui.components.MoveToSheet
 import com.regolith.ui.components.RAIL_AFTER
 import com.regolith.ui.theme.RegolithTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
 /**
  * The move sheet with a folder too long to see at once: the button stays on
  * screen, the letter rail appears, and a letter brings its first folder up.
+ * And its search: the folders found, where each one is, and what a tap on
+ * one does.
  *
  * Driven through Compose's test API with a made-up folder, so it needs no
  * share — the sheet only ever draws what its [MoveSheetState] says.
@@ -54,7 +60,7 @@ class MoveToSheetTest {
 
     private fun show(state: MoveSheetState) = compose.setContent {
         RegolithTheme {
-            MoveToSheet(state = state, onUp = {}, onOpen = {}, onChoose = {}, onNewFolder = {}, onConfirm = {}, onDismiss = {})
+            MoveToSheet(state = state, onQueryChange = {}, onUp = {}, onOpen = {}, onChoose = {}, onNewFolder = {}, onConfirm = {}, onDismiss = {})
         }
     }
 
@@ -127,7 +133,7 @@ class MoveToSheetTest {
         var state by mutableStateOf(sheet(films))
         compose.setContent {
             RegolithTheme {
-                MoveToSheet(state = state, onUp = {}, onOpen = {}, onChoose = {}, onNewFolder = {}, onConfirm = {}, onDismiss = {})
+                MoveToSheet(state = state, onQueryChange = {}, onUp = {}, onOpen = {}, onChoose = {}, onNewFolder = {}, onConfirm = {}, onDismiss = {})
             }
         }
         compose.onNodeWithTag("move_sheet_list").performScrollToIndex(40)
@@ -138,5 +144,71 @@ class MoveToSheetTest {
         state = sheet(films, currentFolderId = 2)
         compose.waitForIdle()
         compose.onNodeWithTag("move_sheet_here").assertIsDisplayed()
+    }
+
+    /** Two folders called Sci-fi, found by a search for "sci". */
+    private fun searching(state: MoveSheetState = sheet(films), results: List<MoveChild>? = listOf(
+        MoveChild(folderId = 900, name = "Sci-fi", meta = "media / Films"),
+        MoveChild(folderId = 901, name = "Sci-fi", meta = "media / TV / Anthologies / Season 01"),
+    )) = state.copy(query = "sci", results = results)
+
+    @Test
+    fun whatIsTypedGoesToTheSearch() {
+        val typed = mutableListOf<String>()
+        compose.setContent {
+            RegolithTheme {
+                MoveToSheet(state = sheet(films), onQueryChange = { typed += it }, onUp = {}, onOpen = {}, onChoose = {}, onNewFolder = {}, onConfirm = {}, onDismiss = {})
+            }
+        }
+        compose.onNodeWithTag("move_sheet_search_field").performTextInput("sci")
+        assertEquals("sci", typed.last())
+    }
+
+    @Test
+    fun aSearchShowsTheFoldersFoundAndWhereEachIs() {
+        show(searching())
+        compose.onNodeWithTag("move_sheet_result_900").assertIsDisplayed()
+        compose.onNodeWithText("media / Films").assertIsDisplayed()
+        compose.onNodeWithTag("move_sheet_result_901").assertIsDisplayed()
+        // The walk gives way: no breadcrumb, no "here", no rail.
+        compose.onNodeWithTag("move_sheet_breadcrumb").assertDoesNotExist()
+        compose.onNodeWithTag("move_sheet_here").assertDoesNotExist()
+        compose.onNodeWithTag("move_sheet_rail").assertDoesNotExist()
+        // ...and so does the button: it names the folder chosen before the search.
+        compose.onNodeWithTag("move_sheet_confirm").assertDoesNotExist()
+    }
+
+    @Test
+    fun aResultIsChosenByItsRowAndWalkedIntoByItsChevron() {
+        var chosen: Long? = null
+        var opened: Long? = null
+        compose.setContent {
+            RegolithTheme {
+                MoveToSheet(
+                    state = searching(), onQueryChange = {}, onUp = {}, onOpen = { opened = it }, onChoose = { chosen = it },
+                    onNewFolder = {}, onConfirm = {}, onDismiss = {},
+                )
+            }
+        }
+        compose.onNodeWithTag("move_sheet_result_901_choose").performClick()
+        assertEquals(901L, chosen)
+        compose.onNodeWithTag("move_sheet_result_900_open").performClick()
+        assertEquals(900L, opened)
+    }
+
+    @Test
+    fun aSearchThatFindsNothingSaysSo() {
+        show(searching(results = emptyList()))
+        compose.onNodeWithTag("move_sheet_no_results").assertIsDisplayed()
+        compose.onNodeWithTag("move_sheet_no_results").assertTextEquals("No folder on media matches \u201csci\u201d.")
+    }
+
+    @Test
+    fun aResultChosenIsBroughtIntoViewWhereItLives() {
+        val zodiac = 100L + films.indexOf("Zodiac")
+        show(sheet(films).copy(chosenFolderId = zodiac, chosenName = "Zodiac", reveal = zodiac))
+        compose.waitForIdle()
+        compose.onNodeWithTag(folderTag("Zodiac")).assertIsDisplayed()
+        assertOffScreen("move_sheet_here")
     }
 }

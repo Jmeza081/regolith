@@ -38,7 +38,7 @@ enum class ArtworkKind(val width: Int, val height: Int, val fileName: String) {
     ;
 
     companion object {
-        /** What a grid needs, and what every frame grab, sidecar and mosaic writes together. */
+        /** What a grid needs, and what every frame grab, sidecar and deck writes together. */
         val stills = listOf(POSTER, THUMB)
     }
 }
@@ -57,8 +57,13 @@ enum class ArtworkSource {
     /** A frame grabbed from the middle of the runtime. */
     FRAMEGRAB,
 
-    /** A 2x2 stitch of frames from the videos inside a folder, when it has no sidecar. */
-    MOSAIC,
+    /**
+     * A folder's deck, when it has no picture of its own: frames of the
+     * videos inside (or an album's newest pictures) fanned like a hand of
+     * cards ([DeckLayout]). It replaced a 2×2 grid stored as `MOSAIC`;
+     * rows still named that are dropped by `ArtworkStore.GENERATION` 4.
+     */
+    DECK,
 
     /** Nothing readable: the tile carries the wedge and the filename. */
     PLACEHOLDER,
@@ -140,5 +145,16 @@ sealed interface ArtworkOwner {
  * ([AnimatedPoster]), and the still one where it has not. Only the
  * collection tiles on the Library's first screen ask, which is what keeps
  * the number of moving tiles to a handful.
+ *
+ * [loose] asks for a folder's deck laid loose, its cards on a transparent
+ * ground ([DeckLayout.looseCards]), where its picture is a deck, and its
+ * poster where it is not. Only a collection's page asks: it has the room to
+ * show the hand out of its box.
  */
-data class ArtworkRequest(val owner: ArtworkOwner, val kind: ArtworkKind, val revision: Int = 0, val animated: Boolean = false)
+data class ArtworkRequest(
+    val owner: ArtworkOwner,
+    val kind: ArtworkKind,
+    val revision: Int = 0,
+    val animated: Boolean = false,
+    val loose: Boolean = false,
+)

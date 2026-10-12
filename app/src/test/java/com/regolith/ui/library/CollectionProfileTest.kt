@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Only the last stop down a branch is a profile, and its stats say what is on its wall. */
@@ -53,6 +54,19 @@ class CollectionProfileTest {
     @Test
     fun `nothing on the wall is no profile`() {
         assertNull(profileOf(emptyList()))
+    }
+
+    @Test
+    fun `a deck is asked for loose, and the light stays the poster's`() {
+        val dealt = collectionProfile(listOf(video(1, "Cake")), parentName = null, poster = poster, completed = emptySet(), marks = emptyList(), deck = true)!!
+        assertTrue(dealt.deck)
+        assertTrue(dealt.poster.loose)
+        assertFalse("the light is drawn from the poster, ground and all", dealt.light.loose)
+        assertFalse(dealt.light.animated)
+
+        val own = profileOf(listOf(video(1, "Cake")))!!
+        assertFalse(own.deck)
+        assertFalse(own.poster.loose)
     }
 
     private fun picture(id: Long, name: String) = PictureTile(

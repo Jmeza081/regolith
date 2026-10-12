@@ -1,14 +1,12 @@
 package com.regolith.ui.home
 
 import androidx.compose.foundation.background
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,20 +21,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -44,13 +37,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.regolith.R
 import com.regolith.ui.adaptive.LocalWindowShape
 import com.regolith.ui.components.LocalNavPillInsets
+import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.thumbColumns
+import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.ui.components.ArtworkImage
+import com.regolith.ui.components.pagePull
 import com.regolith.ui.components.posterFlight
+import com.regolith.ui.components.rememberPagePull
 import com.regolith.ui.components.EmptyAction
 import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Eyebrow
-import com.regolith.ui.components.FilterChip
 import com.regolith.ui.components.Ghost
+import com.regolith.ui.components.RefreshLine
 import com.regolith.ui.components.ResumeCard
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TopBar
@@ -84,7 +82,6 @@ import com.regolith.ui.theme.scaledDp
  * light-haloed dot and no caption, 112dp of clearance under the last row
  * for the nav pill.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -95,22 +92,18 @@ fun HomeScreen(
     onPlay: (fileId: Long, startMs: Long) -> Unit,
     onOpenDevice: () -> Unit,
     onOpenContinueWatching: () -> Unit,
-    /** A chip in the Moments section: open Search with this moment name picked. */
+    /** A tile in the Moments section: open Search with this moment name picked. */
     onOpenMoment: (name: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
-    val pullState = rememberPullToRefreshState()
     val refreshing = state.refreshLine != null
     // The content follows the finger at 60% of the pull, which is what makes
     // the gesture feel like it is moving the page rather than arming a
     // hidden switch. It springs back on release, and drops away once the
-    // refresh line takes over the space.
-    val thresholdPx = with(LocalDensity.current) { PULL_THRESHOLD.toPx() }
-    val dragOffset = pullState.distanceFraction.coerceAtMost(MAX_PULL) * thresholdPx * PULL_FOLLOW
-    val settling by animateFloatAsState(if (refreshing) 0f else dragOffset, label = "pullSettle")
-    val pullOffset = if (refreshing) settling else dragOffset
+    // refresh line takes over the space (PagePull, shared with the Library).
+    val pull = rememberPagePull(refreshing)
     val wide = LocalWindowShape.current.wide
     // The inner display's Newly added wall follows Settings › Display ›
     // Posters per row, and a pinch on it steps that setting, as on the
@@ -125,30 +118,26 @@ fun HomeScreen(
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .pullToRefresh(
-                isRefreshing = refreshing,
-                state = pullState,
-                // Material's 80dp triggered on the smallest flick down; this
-                // asks for a deliberate pull instead.
-                threshold = PULL_THRESHOLD,
-                onRefresh = viewModel::refresh,
-            )
+            .pagePull(pull, refreshing, onRefresh = viewModel::refresh)
             .testTag("home_screen"),
     ) {
         // Wide: three cards fill the row. Phone: the design's card-and-a-half peek.
         // Read here, at the BoxWithConstraints level, since maxWidth is not in scope inside the Column.
         val resumeWidth = if (wide) (maxWidth - Spacing.s18 * 2 - Spacing.s8 * 2) / 3 else RESUME_CARD_WIDTH
+        // Moments: as many frames across as Search's results take at this width.
+        val momentsAcross = thumbColumns(maxWidth - Spacing.s18 * 2)
         // The design's refresh line: a 30dp ring with the arrow, then "Release to refresh" /
         // one line of live status, never a Material spinner.
         RefreshLine(
-            fraction = pullState.distanceFraction,
+            pull = pull,
             refreshing = refreshing,
             status = state.refreshLine,
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().graphicsLayer { translationY = pullOffset },
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().graphicsLayer { translationY = pull.offset },
+            testTag = "home_refresh_line",
         )
         Column(
             Modifier.fillMaxSize()
-                .graphicsLayer { translationY = pullOffset }
+                .graphicsLayer { translationY = pull.offset }
                 .verticalScroll(rememberScrollState()),
         ) {
             TopBar(
@@ -299,31 +288,40 @@ fun HomeScreen(
                     }
                 }
 
-                // Every name you have given a moment, A to Z, wrapping in a
-                // section of its own after the others (the owner, 2026-10-07:
-                // "not hidden behind a horizontal scroll ... left to right and
-                // wrapping"). Last, because it is a way into the library rather
-                // than a shelf of things in it: a tap opens Search on that name,
-                // already picked, listing every place it appears.
+                // Every name you have given a moment, A to Z, in a section of
+                // its own after the others: a grid of frames, one per name, each
+                // the moment most recently given it, with the name over the
+                // picture (the owner, 2026-10-11: rather than "a large list or
+                // chips"). Rows of tiles rather than a lazy grid, as the Newly
+                // added wall is, since Home is one vertical scroll. Last, because
+                // it is a way into the library rather than a shelf of things in
+                // it: a tap opens Search on that name, already picked, listing
+                // every place it appears.
                 if (state.moments.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                         SectionHeader(
                             title = "Moments",
                             meta = "${state.moments.size} ${if (state.moments.size == 1) "name" else "names"} · A to Z",
                         )
-                        FlowRow(
+                        Column(
                             Modifier.padding(horizontal = Spacing.s18).testTag("home_moments"),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
                             verticalArrangement = Arrangement.spacedBy(Spacing.s8),
                         ) {
-                            state.moments.forEach { moment ->
-                                FilterChip(
-                                    text = moment.title,
-                                    selected = false,
-                                    onClick = { onOpenMoment(moment.title) },
-                                    testTag = "home_moment_${moment.title.lowercase().replace(' ', '_')}",
-                                    trailing = moment.films.toString(),
-                                )
+                            state.moments.chunked(momentsAcross).forEach { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+                                    row.forEach { moment ->
+                                        MediaTile(
+                                            artwork = moment.frame,
+                                            kind = ArtworkKind.THUMB,
+                                            title = moment.title,
+                                            titleOnArt = true,
+                                            onClick = { onOpenMoment(moment.title) },
+                                            testTag = moment.testTag,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    repeat(momentsAcross - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                         }
                     }
@@ -440,37 +438,4 @@ private fun NewPoster(item: NewItem, onOpenTitle: (fileId: Long) -> Unit, modifi
  */
 private val NEW_POSTER_WIDTH = 112.scaledDp()
 
-/** How far the finger travels before a release refreshes. Material's default is 80dp. */
-private val PULL_THRESHOLD = 130.dp
-
-/** Content moves this fraction of the pull, so the page trails the finger. */
-private const val PULL_FOLLOW = 0.6f
-
-/** Past this much of the threshold the page stops following: the rubber band is spent. */
-private const val MAX_PULL = 1.6f
-
-/**
- * The refresh line (design: "Pull to refresh" / "Refreshing"): a 30dp
- * ring with a 22% hairline holding the arrow, and a tracked 10px label.
- * Released, the arrow becomes one line of live status.
- */
-@Composable
-private fun RefreshLine(fraction: Float, refreshing: Boolean, status: String?, modifier: Modifier = Modifier) {
-    val colors = RegolithTheme.colors
-    val visible = refreshing || fraction > 0.05f
-    if (!visible) return
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.s8),
-        modifier = modifier.padding(top = Spacing.s8).alpha(if (refreshing) 1f else fraction.coerceIn(0f, 1f)).testTag("home_refresh_line"),
-    ) {
-        Box(Modifier.size(30.scaledDp()).border(1.dp, colors.onMediaBorder, PillShape), contentAlignment = Alignment.Center) {
-            Icon(painterResource(if (refreshing) R.drawable.rg_ic_collapse else R.drawable.rg_ic_arrow_up), contentDescription = null, tint = colors.ink, modifier = Modifier.size(15.scaledDp()))
-        }
-        Text(
-            (status ?: if (fraction >= 1f) "Release to refresh" else "Pull to refresh").uppercase(),
-            style = TextStyles.refreshLabel, color = colors.navIdle,
-        )
-    }
-}
 

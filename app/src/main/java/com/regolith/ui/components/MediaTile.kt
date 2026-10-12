@@ -76,7 +76,8 @@ import com.regolith.ui.theme.scaledDp
  * Spoof mode for the pictures: non-null while Settings › Demo › Spoof mode
  * is on, and then [ArtworkImage] and [ArtworkLight] draw a stock photo
  * ([com.regolith.data.spoof.SpoofImage]) in place of every picture of the
- * library. Provided once, at the root of the app. A composition local
+ * library, and a deck of them for a folder whose picture is a deck
+ * ([com.regolith.data.spoof.SpoofDeck]). Provided once, at the root of the app. A composition local
  * rather than a check in the fetcher because switching it has to change
  * what is already on screen: a new model is what makes Coil load again.
  */
@@ -95,6 +96,11 @@ val LocalSpoof = staticCompositionLocalOf<Spoof?> { null }
  * [placeholder] is a smaller picture of the same thing to show while this
  * one is on its way, in place of the "reading" look: Title Detail's 720p
  * backdrop is made when the page opens, and its tile's thumb already exists.
+ *
+ * [bare] draws nothing at all until the picture is there, and nothing if
+ * there is none, for art that is not a box: a deck laid loose
+ * ([ArtworkRequest.loose]), where the reading look's box, or the filename's,
+ * would be the one thing it is meant not to show.
  */
 @Composable
 fun ArtworkImage(
@@ -103,6 +109,7 @@ fun ArtworkImage(
     fallbackLabel: String = "",
     contentScale: ContentScale = ContentScale.Crop,
     placeholder: ArtworkRequest? = null,
+    bare: Boolean = false,
 ) {
     if (artwork == null) {
         NoPictureArt(fallbackLabel, modifier)
@@ -116,8 +123,9 @@ fun ArtworkImage(
     // Settings › Accessibility › Remove animations turns off every animator
     // in the app; a moving poster is one more thing it should hold still.
     val still = if (artwork.animated && !ValueAnimator.areAnimatorsEnabled()) artwork.copy(animated = false) else artwork
-    // Spoof mode: a stock photo in its place, picked by the owner's id.
-    val model: Any = LocalSpoof.current?.image(still) ?: still
+    // Spoof mode: a stock photo in its place, picked by the owner's id, or
+    // for a folder whose picture is a deck, a deck of them.
+    val model: Any = LocalSpoof.current?.standIn(still) ?: still
     SubcomposeAsyncImage(
         model = model,
         contentDescription = null,
@@ -125,11 +133,11 @@ fun ArtworkImage(
         loading = {
             if (placeholder != null) {
                 ArtworkImage(placeholder, Modifier.fillMaxSize(), fallbackLabel = fallbackLabel, contentScale = contentScale)
-            } else {
+            } else if (!bare) {
                 ReadingArt()
             }
         },
-        error = { NoPictureArt(fallbackLabel, Modifier.fillMaxSize()) },
+        error = { if (!bare) NoPictureArt(fallbackLabel, Modifier.fillMaxSize()) },
         success = { SubcomposeAsyncImageContent(contentScale = contentScale) },
         onLoading = pending?.let { p -> { _ -> mark.start(p) } },
         onSuccess = pending?.let { p -> { _ -> mark.done(p) } },
@@ -259,6 +267,12 @@ fun MediaTile(
      * for a tile whose picture lands nowhere.
      */
     flight: ArtworkOwner? = null,
+    /**
+     * [title] on the picture, in its bottom-left corner over a light
+     * [PictureScrim], rather than under it: for a tile that is its name, as
+     * Home's moment names are. Not with [chip], which has the same corner.
+     */
+    titleOnArt: Boolean = false,
 ) {
     val colors = RegolithTheme.colors
     val picked = checked == true
@@ -320,14 +334,29 @@ fun MediaTile(
             if (progress != null && progress > 0f) {
                 ProgressEdge(progress, Modifier.align(Alignment.BottomStart))
             }
+            if (titleOnArt) {
+                PictureScrim(ScrimEdge.BOTTOM, Modifier.align(Alignment.BottomStart), tail = TITLE_SCRIM_TAIL, strength = TITLE_SCRIM_STRENGTH) {
+                    Text(
+                        title, style = TextStyles.rowLabel.onPicture(), color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = Spacing.s8 + Spacing.s2, end = Spacing.s8, bottom = Spacing.s8),
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(Spacing.s4))
-        Text(title, style = TextStyles.tileName, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!titleOnArt) {
+            Spacer(Modifier.height(Spacing.s4))
+            Text(title, style = TextStyles.tileName, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         if (meta != null) {
+            if (titleOnArt) Spacer(Modifier.height(Spacing.s4))
             Text(meta, style = TextStyles.tileMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
+
+/** How far above a name on its picture ([MediaTile]'s `titleOnArt`) the wash fades out, and how dark it is. */
+private val TITLE_SCRIM_TAIL = 28.dp
+private const val TITLE_SCRIM_STRENGTH = 0.6f
 
 /**
  * The pick marker on a tile in selection mode: a filled ink circle with a

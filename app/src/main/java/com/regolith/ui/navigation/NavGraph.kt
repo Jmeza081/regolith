@@ -865,6 +865,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onBack = { backStack.removeLastOrNull() },
                                 // The hero's picture flies into the player.
                                 onPlay = { backStack.add(RegolithKey.Player(it, flies = true)) },
+                                // The Path line's steps open their folders in Browse, pushed
+                                // so back comes here, as a folder found by Search does.
+                                onOpenFolder = { folderId, fileId -> backStack.add(RegolithKey.Browse(folderId, highlightFileId = fileId)) },
                                 inPane = LocalBesideWall.current,
                             )
                         }

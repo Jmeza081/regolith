@@ -8,6 +8,7 @@ import com.regolith.data.prefs.AppPreferences
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
+import com.regolith.domain.artwork.DeckLayout
 import com.regolith.domain.model.BrowseItem
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
@@ -32,7 +33,8 @@ import javax.inject.Singleton
  *
  * Spoof mode changes what the PHONE shows and nothing else: titles, file
  * and folder names, paths and chapter names are made up ([SpoofNames]), and
- * every picture of the library is a stock photo instead ([SpoofImage]). The
+ * every picture of the library is a stock photo instead ([SpoofImage]), a
+ * folder's deck a deck of them ([SpoofDeck]). The
  * rows in Room stay real, the share is never written, and the background
  * work (scans, artwork, transfers) keeps reading real names, because it is
  * fed straight from the database rather than through a screen.
@@ -162,6 +164,21 @@ class Spoof(val salt: Long) {
     }
 
     /**
+     * What spoof mode draws in place of [artwork]: its stand-in photo
+     * ([image]), or for a folder a [SpoofDeck], which is that photo too
+     * unless the folder's real picture is a deck, and then a deck of
+     * stand-in photos. Tall ones, a phone clip's 9:16, as a deck is dealt
+     * from a folder's tall videos; big enough for the biggest card a deck
+     * draws, one laid loose on a page.
+     */
+    fun standIn(artwork: ArtworkRequest): Any {
+        val owner = artwork.owner as? ArtworkOwner.Folder ?: return image(artwork)
+        val key = ownerKey(owner)
+        val cards = List(DeckLayout.MAX_CARDS) { index -> SpoofImage(SpoofNames.imageSeed("$key:card$index", salt), CARD_WIDTH, CARD_HEIGHT) }
+        return SpoofDeck(artwork, image(artwork), cards)
+    }
+
+    /**
      * The stand-in for a picture opened whole in the lightbox: the same photo
      * as its tile's ([image]), at a size that fills a screen.
      */
@@ -172,5 +189,9 @@ class Spoof(val salt: Long) {
 
     private companion object {
         const val SD_CARD = "SD card · "
+
+        /** A stand-in deck's card photo, in pixels: 9:16. */
+        const val CARD_WIDTH = 360
+        const val CARD_HEIGHT = 640
     }
 }
