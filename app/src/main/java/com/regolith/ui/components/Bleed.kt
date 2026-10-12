@@ -2,7 +2,9 @@ package com.regolith.ui.components
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import kotlin.math.roundToInt
 
 /**
  * Lays this out [amount] wider on each side than its parent allows, out past
@@ -47,4 +49,27 @@ fun Modifier.bleedEnd(by: Dp): Modifier = layout { measurable, constraints ->
     val extra = by.roundToPx()
     val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra))
     layout(placeable.width - extra, placeable.height) { placeable.placeRelative(0, 0) }
+}
+
+/**
+ * Lays this out past every edge of the space it is given, without the parent
+ * making room for it: [side] further out on the left and the right, [above]
+ * and [below], each a part of that space's width. For a picture on a
+ * transparent ground that reaches beyond its slot: a deck's pile on the
+ * Library's wall ([com.regolith.domain.artwork.DeckLayout.PILE_SIDE]), whose
+ * cards' shadows fall past the tile, and which a picture cut to the tile would
+ * end in a straight line.
+ */
+fun Modifier.bleedByWidth(side: Float, above: Float, below: Float): Modifier = layout { measurable, constraints ->
+    if (!constraints.hasBoundedWidth || !constraints.hasBoundedHeight) {
+        val placeable = measurable.measure(constraints)
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    val width = constraints.maxWidth
+    val height = constraints.maxHeight
+    val left = (width * side).roundToInt()
+    val top = (width * above).roundToInt()
+    val bottom = (width * below).roundToInt()
+    val placeable = measurable.measure(Constraints.fixed(width + 2 * left, height + top + bottom))
+    layout(width, height) { placeable.place(-left, -top) }
 }

@@ -37,6 +37,7 @@ import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
 import com.regolith.domain.artwork.AnimatedPoster
+import com.regolith.domain.artwork.DeckShape
 import com.regolith.domain.playback.ChapterMatch
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.LibraryOrder
@@ -219,7 +220,11 @@ class LibraryViewModel @AssistedInject constructor(
                     .distinctUntilChanged()
             }
 
-            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts, deckPoster) { values ->
+            // Which folders wear a deck kept as a pile, and which way each stands:
+            // those tiles are drawn with no box.
+            val piles = artwork.observeFolderPiles()
+
+            combine(shares, servers, parents, children, files, progress, scanState, artworkRevisions, marks, others, momentCounts, deckPoster, piles) { values ->
                 @Suppress("UNCHECKED_CAST")
                 val shareList = values[0] as List<com.regolith.domain.model.Share>
                 @Suppress("UNCHECKED_CAST")
@@ -243,7 +248,9 @@ class LibraryViewModel @AssistedInject constructor(
                 @Suppress("UNCHECKED_CAST")
                 val momentMap = values[10] as Map<Long, Int>
                 val deck = values[11] as Boolean
-                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap, deck)
+                @Suppress("UNCHECKED_CAST")
+                val pileMap = values[12] as Map<Long, DeckShape>
+                build(shareList, serverList, parentList, childList, fileList, progressList, runs, revisions, markList, otherList, momentMap, deck, pileMap)
             }.collect { built ->
                 unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
@@ -396,7 +403,11 @@ class LibraryViewModel @AssistedInject constructor(
         others: List<ShareFileEntity> = emptyList(),
         momentCounts: Map<Long, Int> = emptyMap(),
         deck: Boolean = false,
+        piles: Map<Long, DeckShape> = emptyMap(),
     ): Built {
+        // Spoof mode's stand-in decks are dealt from tall photos whatever the
+        // real deck's shape, so their piles stand tall (SpoofDeck).
+        val spoofing = spoof.current != null
         val byFolder = allFiles.groupBy { it.folderId }
         val byParent = children.filter { it.parentId != null }.groupBy { it.parentId }
         val progressById = progress.associateBy { it.fileId }
@@ -452,6 +463,7 @@ class LibraryViewModel @AssistedInject constructor(
                     momentCount = moments,
                     pictureCount = pictures,
                     albumCount = byParent[folder.id].orEmpty().count { child -> subtree(child).any { picturesByFolder.containsKey(it) } },
+                    pile = piles[folder.id]?.let { if (spoofing) DeckShape.TALL else it },
                 )
                 if (onVideos) walls.getValue(LibraryFilter.VIDEOS) += tile
                 if (moments > 0) walls.getValue(LibraryFilter.MOMENTS) += tile

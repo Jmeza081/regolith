@@ -237,7 +237,7 @@ arrives late.
 Tap a poster and it flies to where its page shows it. A video's poster grows
 into the wide picture at the top of its page, uncropping as it goes, and a
 collection's poster settles into its place on the collection's page, while the
-page fades in around it (a deck's box fades away as its cards spread out). Back flies it home, and on a phone the back swipe
+page fades in around it (a pile of prints spreads out into its hand of cards). Back flies it home, and on a phone the back swipe
 holds it under your thumb. On the inner display it flies into the page beside
 the wall too; closing that page slides it away as before.
 
@@ -723,12 +723,14 @@ stand-in is tried again after a day, in case the grab only failed because the
 share was down.
 
 A folder with no poster of its own gets a deck of cards: five frames from the
-videos inside it, picked from the first video to the last and fanned like a hand
-of cards over a blurred copy of the front one. The frames come from the folder's
-tall videos, its phone clips, whenever it has any, so the cards are tall; a
-folder with only wide videos deals wide cards. Each card is the shape of its own
-video, with any black bars baked into the video left off. An album deals its
-newest pictures the same way. If a folder is scanned while it is still empty, and the videos are
+videos inside it, picked from the first video to the last. The frames come from
+the folder's tall videos, its phone clips, whenever it has any, so the cards are
+tall; a folder with only wide videos deals wide cards, with any black bars baked
+into the video left off. An album deals its newest pictures the same way. On the
+Library's wall the deck is a pile of prints with no box round it, as tall as the
+posters beside it: three tall prints askew, or four wide ones climbing the tile,
+with the tile's count and resolution on the front print. A collection's own page
+fans the whole hand out instead, and a list row keeps a small boxed copy. If a folder is scanned while it is still empty, and the videos are
 copied in later, the next scan that finds them clears the "no picture" record so
 the deck gets dealt.
 

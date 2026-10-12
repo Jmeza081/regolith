@@ -16,6 +16,7 @@ import androidx.core.graphics.scale
 import androidx.core.graphics.withRotation
 import com.regolith.domain.artwork.BoxBlur
 import com.regolith.domain.artwork.DeckLayout
+import com.regolith.domain.artwork.DeckShape
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.roundToInt
@@ -24,7 +25,9 @@ import kotlin.math.roundToInt
  * Draws a folder's deck ([DeckLayout]): its frames dealt as cards, fanned
  * over a blurred, darkened copy of the front card, into one bitmap the
  * size of the picture being made. The picture a folder wears when it has
- * none of its own, written once and cached like any other.
+ * none of its own, written once and cached like any other. The same cards
+ * are drawn twice more on nothing: laid loose for the collection's page
+ * ([paintLoose]), and as a pile for the Library's wall ([paintPile]).
  *
  * Software drawing on purpose: this runs off the main thread into a bitmap
  * that becomes a JPEG, and a software canvas is the one that draws
@@ -77,6 +80,46 @@ object DeckPainter {
             out
         }
     }
+
+    /**
+     * How wide a pile's tile is made ([paintPile]): a poster's. The Library's
+     * tiles are about 300 pixels across on a phone and 400 on the inner
+     * display, so it is sharp on both.
+     */
+    const val PILE_WIDTH = 500
+
+    /**
+     * The same cards as a pile ([DeckLayout.pileCards]), for the Library's
+     * wall: on nothing, transparent round them but for their shadows, every
+     * card cut to the pile's shape, which the front card decides. [width] is
+     * the tile's. The picture is bigger, by [DeckLayout.PILE_SIDE] of it on
+     * each side, [DeckLayout.PILE_ABOVE] above and [DeckLayout.PILE_BELOW]
+     * below, so the shadows fade out inside it; the tile draws it as much
+     * bigger than itself.
+     */
+    fun paintPile(frames: List<Bitmap>, width: Int = PILE_WIDTH): Pile {
+        require(frames.isNotEmpty()) { "a deck needs a card" }
+        val height = width * 3f / 2f
+        val left = width * DeckLayout.PILE_SIDE
+        val top = width * DeckLayout.PILE_ABOVE
+        val outWidth = (width + 2f * left).roundToInt()
+        val outHeight = (height + top + width * DeckLayout.PILE_BELOW).roundToInt()
+        return withFaces(frames) { faces ->
+            val shape = DeckShape.of(shapeOf(faces.first()))
+            // A new bitmap starts transparent, which is the whole of the ground.
+            val out = createBitmap(outWidth, outHeight)
+            val canvas = Canvas(out)
+            // From the tile's own corner, so the cards are where the tile will look for them.
+            canvas.translate(left, top)
+            for (card in DeckLayout.pileCards(shape, width.toFloat(), height, faces.size)) {
+                card(canvas, faces[card.rank], card)
+            }
+            Pile(out, shape)
+        }
+    }
+
+    /** A pile's picture, and which way its cards stand: the tile needs that to find the front card. */
+    class Pile(val bitmap: Bitmap, val shape: DeckShape)
 
     /**
      * [frames] as the cards show them, handed to [draw]: black bars baked
@@ -142,7 +185,7 @@ object DeckPainter {
         // Corners, shadows and edges go by the card's short side, so a wide
         // card and a tall one look like the same kind of card.
         val side = minOf(card.width, card.height)
-        val radius = side * CORNER
+        val radius = side * DeckLayout.CARD_CORNER
         try {
             canvas.withRotation(card.degrees, card.pivotX, card.pivotY) {
                 // The shadow: like CSS box-shadow, drawn by a shape the face
@@ -223,7 +266,6 @@ object DeckPainter {
     private const val BLUR_RADIUS = 2
 
     /** Sizes in parts of the card's short side, so every kind of picture is the same deck at its own scale. */
-    private const val CORNER = 0.065f
     private const val EDGE = 0.009f
     private const val SHADOW_BLUR = 0.17f
     private const val SHADOW_DROP = 0.083f

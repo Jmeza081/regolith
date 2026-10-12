@@ -46,6 +46,30 @@ class ArtworkDaoTest {
     }
 
     @Test
+    fun `the wall's piles are the folders whose poster is a deck that knows its shape`() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), RegolithDatabase::class.java).allowMainThreadQueries().build()
+        fun folder(id: Long, kind: String = "POSTER", source: String = "DECK", shape: String? = "TALL") = ArtworkEntity(
+            ownerType = "folder", ownerId = id, kind = kind, source = source, relPath = "folder/$id/$kind.jpg",
+            width = 500, height = 750, updatedAtMs = 1, deckShape = shape,
+        )
+        try {
+            db.artworkDao().upsert(folder(1))
+            db.artworkDao().upsert(folder(2, shape = "WIDE"))
+            // A deck dealt before piles were, a folder's own picture, and a deck's thumb: none is a pile.
+            db.artworkDao().upsert(folder(3, shape = null))
+            db.artworkDao().upsert(folder(4, source = "SIDECAR", shape = null))
+            db.artworkDao().upsert(folder(5, kind = "THUMB", shape = null))
+            val piles = db.artworkDao().observeFolderPiles().first().associate { it.ownerId to it.deckShape }
+            assertEquals(mapOf(1L to "TALL", 2L to "WIDE"), piles)
+            // Its own picture now: the row is written again, and the pile goes with it.
+            db.artworkDao().upsert(folder(1, source = "SIDECAR", shape = null))
+            assertEquals(listOf(2L), db.artworkDao().observeFolderPiles().first().map { it.ownerId })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `a folder's placeholder can go without its real pictures`() = runTest {
         // A folder placeholdered while it was still empty gets a second
         // chance once a scan finds videos in it — but a deck or a poster

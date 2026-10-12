@@ -5,6 +5,7 @@ import android.graphics.Color
 import androidx.core.graphics.createBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.regolith.domain.artwork.DeckLayout
+import com.regolith.domain.artwork.DeckShape
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,5 +108,57 @@ class DeckPainterTest {
         assertEquals(320, deck.width)
         val front = DeckLayout.cards(320f, 180f, listOf(2f / 3f)).single()
         assertEquals(Color.GREEN, deck.on(front, 0.5f, 0.5f))
+    }
+
+    /** The pixel under a point on [card] of a pile laid out for a [tile]-wide tile, in the pile's picture, which reaches past the tile. */
+    private fun Bitmap.onPile(card: DeckLayout.Card, tile: Int, across: Float, down: Float): Int {
+        val turn = Math.toRadians(card.degrees.toDouble())
+        val dx = card.left + card.width * across - card.pivotX
+        val dy = card.top + card.height * down - card.pivotY
+        val x = card.pivotX + dx * cos(turn) - dy * sin(turn) + tile * DeckLayout.PILE_SIDE
+        val y = card.pivotY + dx * sin(turn) + dy * cos(turn) + tile * DeckLayout.PILE_ABOVE
+        return getPixel(x.toInt(), y.toInt())
+    }
+
+    @Test fun `a pile's picture reaches past its tile, with room for the shadows`() {
+        val pile = DeckPainter.paintPile(listOf(frame(Color.RED, 360, 640)), 500)
+        assertEquals((500 * (1 + 2 * DeckLayout.PILE_SIDE)).toInt(), pile.bitmap.width)
+        assertEquals((750 + 500 * (DeckLayout.PILE_ABOVE + DeckLayout.PILE_BELOW)).toInt(), pile.bitmap.height)
+    }
+
+    @Test fun `a pile stands on nothing`() {
+        val pile = DeckPainter.paintPile(List(3) { frame(Color.RED, 360, 640) }, 500).bitmap
+        for ((x, y) in listOf(0 to 0, pile.width - 1 to 0, 0 to pile.height - 1, pile.width - 1 to pile.height - 1)) {
+            assertEquals("corner $x,$y", 0, Color.alpha(pile.getPixel(x, y)))
+        }
+    }
+
+    @Test fun `tall frames make a tall pile, its front frame where the tile looks for the front card`() {
+        val frames = listOf(frame(Color.RED, 360, 640)) + List(2) { frame(Color.BLUE, 360, 640) }
+        val pile = DeckPainter.paintPile(frames, 500)
+        assertEquals(DeckShape.TALL, pile.shape)
+        val front = DeckLayout.pileFront(DeckShape.TALL, 500f, 750f)
+        assertEquals(Color.RED, pile.bitmap.onPile(front, 500, 0.5f, 0.5f))
+        assertEquals(Color.RED, pile.bitmap.onPile(front, 500, 0.15f, 0.9f))
+    }
+
+    @Test fun `wide frames make a wide pile, each print showing its own frame`() {
+        val frames = listOf(Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW).map { frame(it, 640, 360) }
+        val pile = DeckPainter.paintPile(frames, 500)
+        assertEquals(DeckShape.WIDE, pile.shape)
+        val cards = DeckLayout.pileCards(DeckShape.WIDE, 500f, 750f)
+        assertEquals(Color.RED, pile.bitmap.onPile(cards.single { it.rank == 0 }, 500, 0.5f, 0.5f))
+        // The top of each print behind shows above the one in front of it, dimmed.
+        val top = pile.bitmap.onPile(cards.single { it.rank == 3 }, 500, 0.5f, 0.2f)
+        assertTrue("got ${Integer.toHexString(top)}", Color.red(top) > 90 && Color.green(top) > 90 && Color.blue(top) < 40)
+    }
+
+    @Test fun `a pile with fewer frames than it holds keeps its front card in its place`() {
+        val pile = DeckPainter.paintPile(listOf(frame(Color.GREEN, 640, 360)), 500)
+        val front = DeckLayout.pileFront(DeckShape.WIDE, 500f, 750f)
+        assertEquals(Color.GREEN, pile.bitmap.onPile(front, 500, 0.5f, 0.5f))
+        // Nothing where the prints behind would be.
+        val behind = DeckLayout.pileCards(DeckShape.WIDE, 500f, 750f).single { it.rank == 3 }
+        assertEquals(0, Color.alpha(pile.bitmap.onPile(behind, 500, 0.5f, 0.2f)))
     }
 }

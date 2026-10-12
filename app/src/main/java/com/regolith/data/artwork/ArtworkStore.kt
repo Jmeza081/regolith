@@ -25,11 +25,12 @@ import kotlin.math.roundToInt
  *
  * Every image is stored at exactly its kind's size, centre-cropped, so a
  * tile never scales at draw time and a 40 MB poster.jpg on the share costs
- * 40 KB on the phone. Three exceptions: a top-level folder's GIF, kept as it
+ * 40 KB on the phone. Four exceptions: a top-level folder's GIF, kept as it
  * came beside the still poster made from it so that it can move
- * ([saveAnimated]); a deck laid loose for a collection's page, a WebP with a
- * transparent ground beside the deck's poster ([saveLoose]); and a picture's
- * own thumbnail, which keeps the picture's shape inside its box ([saveFitted]).
+ * ([saveAnimated]); a deck laid loose for a collection's page, and the same
+ * deck as a pile for its tile, WebPs with a transparent ground beside the
+ * deck's poster ([saveLoose], [savePile]); and a picture's own thumbnail,
+ * which keeps the picture's shape inside its box ([saveFitted]).
  */
 @Singleton
 class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
@@ -89,13 +90,36 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
     fun looseFile(owner: ArtworkOwner): File? =
         (owner as? ArtworkOwner.Folder)?.let { fileFor(looseRelPathFor(it)) }?.takeIf { it.exists() }
 
+    /** Keep [bitmap], [owner]'s deck laid loose, for its collection's page ([saveWebp]). */
+    fun saveLoose(bitmap: Bitmap, owner: ArtworkOwner.Folder): Boolean = saveWebp(bitmap, looseRelPathFor(owner))
+
+    /** Forget [owner]'s loose deck: its picture is no longer a deck. */
+    fun deleteLoose(owner: ArtworkOwner.Folder) {
+        fileFor(looseRelPathFor(owner)).delete()
+    }
+
+    /** `folder/12/pile.webp`: [owner]'s deck as a pile, for its tile on the Library's wall. */
+    fun pileRelPathFor(owner: ArtworkOwner.Folder): String = "${owner.typeName}/${owner.id}/$PILE_NAME"
+
+    /** [owner]'s deck as a pile, or null when it has none: only a folder whose picture is a deck does. */
+    fun pileFile(owner: ArtworkOwner): File? =
+        (owner as? ArtworkOwner.Folder)?.let { fileFor(pileRelPathFor(it)) }?.takeIf { it.exists() }
+
+    /** Keep [bitmap], [owner]'s deck as a pile, for its tile on the Library's wall ([saveWebp]). */
+    fun savePile(bitmap: Bitmap, owner: ArtworkOwner.Folder): Boolean = saveWebp(bitmap, pileRelPathFor(owner))
+
+    /** Forget [owner]'s pile: its picture is no longer a deck. */
+    fun deletePile(owner: ArtworkOwner.Folder) {
+        fileFor(pileRelPathFor(owner)).delete()
+    }
+
     /**
-     * Keep [bitmap], [owner]'s deck laid loose, for its collection's page.
-     * WebP, because the ground round the cards is transparent, which a JPEG
-     * cannot be, and a PNG of five photographs is several times the size.
+     * Keep [bitmap] at [relPath] as a WebP, because the ground round a deck's
+     * cards is transparent, which a JPEG cannot be, and a PNG of five
+     * photographs is several times the size.
      */
-    fun saveLoose(bitmap: Bitmap, owner: ArtworkOwner.Folder): Boolean {
-        val file = fileFor(looseRelPathFor(owner))
+    private fun saveWebp(bitmap: Bitmap, relPath: String): Boolean {
+        val file = fileFor(relPath)
         file.parentFile?.mkdirs()
         val tmp = File(file.path + ".tmp")
         return try {
@@ -105,11 +129,6 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
             tmp.delete()
             false
         }
-    }
-
-    /** Forget [owner]'s loose deck: its picture is no longer a deck. */
-    fun deleteLoose(owner: ArtworkOwner.Folder) {
-        fileFor(looseRelPathFor(owner)).delete()
     }
 
     /** Decode [bytes] (a sidecar or embedded cover) at roughly the target size, then crop and save. */
@@ -256,10 +275,14 @@ class ArtworkStore @Inject constructor(@ApplicationContext context: Context) {
          * 7: a mark in a file Media3 cannot seek gets its own frame from a cut
          *    of the file, so marks that borrowed their film's thumb go, with
          *    those films' frames, and any film's frame that is blank.
+         * 8: a deck is kept as a pile too, for its tile on the Library's wall,
+         *    and its row says which way the pile's cards stand, so decks dealt
+         *    before that are dealt again.
          */
-        const val GENERATION = 7
+        const val GENERATION = 8
         const val GENERATION_FILE = ".generation"
         const val LOOSE_DECK_NAME = "deck.webp"
+        const val PILE_NAME = "pile.webp"
 
         fun sampleSize(srcW: Int, srcH: Int, dstW: Int, dstH: Int): Int {
             var sample = 1

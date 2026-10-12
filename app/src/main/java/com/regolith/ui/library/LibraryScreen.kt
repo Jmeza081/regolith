@@ -1227,7 +1227,8 @@ private fun TileView(
             // last thing you could do to it. Inside a pick the marker is
             // still live: it takes this collection back out.
             MediaTile(
-                artwork = tile.artwork,
+                // A deck kept as a pile is asked for as one, and drawn with no box.
+                artwork = if (tile.pile != null) tile.artwork.copy(pile = true) else tile.artwork,
                 kind = ArtworkKind.POSTER,
                 title = tile.name,
                 meta = if (out > 0) "All but $out" else collectionMeta(tile, filter),
@@ -1246,6 +1247,7 @@ private fun TileView(
                 testTag = tile.testTag,
                 // Into the poster on its profile, where it has one.
                 flight = tile.artwork.owner,
+                pile = tile.pile,
             )
         }
         is LibraryTile.Title -> {

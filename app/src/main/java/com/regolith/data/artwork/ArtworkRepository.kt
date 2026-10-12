@@ -23,6 +23,7 @@ import com.regolith.domain.artwork.ArtworkCandidates
 import com.regolith.domain.artwork.ArtworkFreshness
 import com.regolith.domain.artwork.CachedPicture
 import com.regolith.domain.artwork.DeckLayout
+import com.regolith.domain.artwork.DeckShape
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
@@ -54,6 +55,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -365,6 +367,15 @@ class ArtworkRepository @Inject constructor(
                     artworkDao.deleteFilmFramesOf(chunk)
                 }
             }
+            if (from < 8) {
+                // A deck is kept as a pile too now, for its tile on the
+                // Library's wall, and its row says which way the pile stands.
+                // Decks dealt before have neither, so they are dealt again.
+                val decks = artworkDao.withSource(ArtworkSource.DECK.name)
+                Log.i(TAG, "artwork generation $from -> 8: dealing ${decks.size} decks again, as piles too")
+                for (row in decks) if (row.relPath.isNotEmpty()) store.fileFor(row.relPath).delete()
+                artworkDao.deleteWithSource(ArtworkSource.DECK.name)
+            }
             store.setGeneration(ArtworkStore.GENERATION)
         }
     }
@@ -576,6 +587,18 @@ class ArtworkRepository @Inject constructor(
 
     /** [owner]'s deck laid loose, for its collection's page ([ArtworkRequest.loose]), or null when its picture is not a deck. */
     fun looseFileFor(owner: ArtworkOwner): java.io.File? = store.looseFile(owner)
+
+    /** [owner]'s deck as a pile, for its tile on the Library's wall ([ArtworkRequest.pile]), or null when it has none. */
+    fun pileFileFor(owner: ArtworkOwner): java.io.File? = store.pileFile(owner)
+
+    /**
+     * Every folder whose picture is a deck kept as a pile, by id, with which
+     * way the pile stands: the Library's wall draws those with no box, and
+     * finds the front card for its chips from the shape ([DeckLayout.pileFront]).
+     */
+    fun observeFolderPiles(): Flow<Map<Long, DeckShape>> = artworkDao.observeFolderPiles().map { rows ->
+        rows.mapNotNull { row -> DeckShape.named(row.deckShape)?.let { row.ownerId to it } }.toMap()
+    }
 
     /**
      * Beside a folder's still poster, the GIF it was made from, kept as it
@@ -1083,7 +1106,7 @@ class ArtworkRepository @Inject constructor(
         // the phone, its own poster among them.
         if (isLocal(folder.shareId)) {
             if (localSidecar(folder.id, owner, kinds)) {
-                forgetLoose(owner, kinds)
+                forgetDeckCopies(owner, kinds)
                 return
             }
         } else try {
@@ -1096,7 +1119,7 @@ class ArtworkRepository @Inject constructor(
                     val bytes = readImage(location, path) ?: continue
                     if (saveEncoded(bytes, owner, candidate.source, kinds, stamp)) {
                         keepAnimated(owner, folder.relPath, bytes, kinds)
-                        forgetLoose(owner, kinds)
+                        forgetDeckCopies(owner, kinds)
                         return
                     }
                 }
@@ -1158,22 +1181,8 @@ class ArtworkRepository @Inject constructor(
             }
             val cards = DeckLayout.deal(hands)
             if (cards.isEmpty()) return false
-            var wrote = false
-            for (kind in kinds) {
-                val deck = DeckPainter.paint(cards, kind.width, kind.height)
-                try {
-                    if (store.saveExact(deck, owner, kind)) {
-                        record(owner, kind, ArtworkSource.DECK, stamp)
-                        wrote = true
-                    }
-                } finally {
-                    deck.recycle()
-                }
-            }
-            if (wrote) {
-                keepLoose(owner, cards, kinds)
-                Log.d(TAG, "deck for folder ${owner.id}: ${cards.size} card(s) from ${files.size} file(s)")
-            }
+            val wrote = saveDeck(owner, cards, kinds, stamp)
+            if (wrote) Log.d(TAG, "deck for folder ${owner.id}: ${cards.size} card(s) from ${files.size} file(s)")
             return wrote
         } finally {
             hands.forEach { hand -> hand.forEach { it.recycle() } }
@@ -1237,6 +1246,52 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
+     * [cards], dealt, as every picture [owner] needs: each of [kinds] boxed
+     * ([DeckPainter.paint]), and with a poster among them, the pile its tile
+     * on the Library's wall draws ([keepPile]) and the hand laid loose for its
+     * page ([keepLoose]). The pile is drawn first, so the poster's row can say
+     * which way it stands as it is written. True when any picture was kept.
+     */
+    private suspend fun saveDeck(owner: ArtworkOwner.Folder, cards: List<Bitmap>, kinds: List<ArtworkKind>, stamp: String?): Boolean {
+        val pile = keepPile(owner, cards, kinds)
+        var wrote = false
+        for (kind in kinds) {
+            val deck = DeckPainter.paint(cards, kind.width, kind.height)
+            try {
+                if (store.saveExact(deck, owner, kind)) {
+                    record(owner, kind, ArtworkSource.DECK, stamp, deckShape = pile.takeIf { kind == ArtworkKind.POSTER })
+                    wrote = true
+                }
+            } finally {
+                deck.recycle()
+            }
+        }
+        if (wrote) keepLoose(owner, cards, kinds)
+        return wrote
+    }
+
+    /**
+     * Beside a folder's deck, the same [cards] as a pile ([DeckPainter.paintPile]):
+     * prints in a heap with no box, for its tile on the Library's wall. Only
+     * with a poster among [kinds], as [keepLoose]. Which way the pile stands,
+     * or null when there is none, so the wall boxes the deck as before.
+     */
+    private fun keepPile(owner: ArtworkOwner.Folder, cards: List<Bitmap>, kinds: List<ArtworkKind>): DeckShape? {
+        if (ArtworkKind.POSTER !in kinds) return null
+        val pile = DeckPainter.paintPile(cards)
+        return try {
+            if (store.savePile(pile.bitmap, owner)) {
+                pile.shape
+            } else {
+                Log.w(TAG, "deck for folder ${owner.id}: could not keep it as a pile")
+                null
+            }
+        } finally {
+            pile.bitmap.recycle()
+        }
+    }
+
+    /**
      * Beside a folder's deck, the same [cards] laid loose ([DeckPainter.paintLoose]):
      * the hand out of its box, for the collection's page to show. Only with a
      * poster among [kinds], so a pass that makes something else (a backdrop
@@ -1252,9 +1307,15 @@ class ArtworkRepository @Inject constructor(
         }
     }
 
-    /** A folder that wears a picture of its own now: a loose deck kept from before goes. Only with a poster among [kinds], as [keepLoose]. */
-    private fun forgetLoose(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
-        if (ArtworkKind.POSTER in kinds) store.deleteLoose(owner)
+    /**
+     * A folder that wears a picture of its own now: the loose deck and the
+     * pile kept from before go. Only with a poster among [kinds], as
+     * [keepLoose]; its row, rewritten, no longer says it is a deck.
+     */
+    private fun forgetDeckCopies(owner: ArtworkOwner.Folder, kinds: List<ArtworkKind>) {
+        if (ArtworkKind.POSTER !in kinds) return
+        store.deleteLoose(owner)
+        store.deletePile(owner)
     }
 
     /** The file's frames, from a copy on this device if there is one, else the share. */
@@ -1302,8 +1363,16 @@ class ArtworkRepository @Inject constructor(
      * [stamp] is [ArtworkFreshness.stamp] of the owner's share images as this
      * picture was made, or null when unknown. [size] is the image's own size
      * where it is not its kind's: a picture's thumbnail keeps its shape.
+     * [deckShape] is which way a deck's pile stands, on its poster's row.
      */
-    private suspend fun record(owner: ArtworkOwner, kind: ArtworkKind, source: ArtworkSource, stamp: String? = null, size: Pair<Int, Int>? = null) {
+    private suspend fun record(
+        owner: ArtworkOwner,
+        kind: ArtworkKind,
+        source: ArtworkSource,
+        stamp: String? = null,
+        size: Pair<Int, Int>? = null,
+        deckShape: DeckShape? = null,
+    ) {
         artworkDao.upsert(
             ArtworkEntity(
                 ownerType = owner.typeName,
@@ -1316,6 +1385,7 @@ class ArtworkRepository @Inject constructor(
                 height = size?.second ?: kind.height,
                 updatedAtMs = System.currentTimeMillis(),
                 sourceStamp = stamp,
+                deckShape = deckShape?.name,
             ),
         )
     }
@@ -1409,22 +1479,8 @@ class ArtworkRepository @Inject constructor(
         try {
             for (id in picks) pictureThumb(ArtworkOwner.Picture(id))?.let { cards += it }
             if (cards.isEmpty()) return false
-            var wrote = false
-            for (kind in kinds) {
-                val deck = DeckPainter.paint(cards, kind.width, kind.height)
-                try {
-                    if (store.saveExact(deck, owner, kind)) {
-                        record(owner, kind, ArtworkSource.DECK, stamp)
-                        wrote = true
-                    }
-                } finally {
-                    deck.recycle()
-                }
-            }
-            if (wrote) {
-                keepLoose(owner, cards, kinds)
-                Log.d(TAG, "deck for album ${owner.id} from ${cards.size} picture(s)")
-            }
+            val wrote = saveDeck(owner, cards, kinds, stamp)
+            if (wrote) Log.d(TAG, "deck for album ${owner.id} from ${cards.size} picture(s)")
             return wrote
         } finally {
             cards.forEach { it.recycle() }

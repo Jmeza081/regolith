@@ -150,6 +150,11 @@ sealed interface ArtworkOwner {
  * ground ([DeckLayout.looseCards]), where its picture is a deck, and its
  * poster where it is not. Only a collection's page asks: it has the room to
  * show the hand out of its box.
+ *
+ * [pile] asks for a folder's deck as a pile, prints in a heap on a
+ * transparent ground reaching past the tile ([DeckLayout.pileCards]), where
+ * it has one, and its poster where it has not. Only the Library's wall asks,
+ * for the tiles it knows are piles.
  */
 data class ArtworkRequest(
     val owner: ArtworkOwner,
@@ -157,4 +162,5 @@ data class ArtworkRequest(
     val revision: Int = 0,
     val animated: Boolean = false,
     val loose: Boolean = false,
+    val pile: Boolean = false,
 )

@@ -23,7 +23,9 @@ import kotlin.math.sqrt
  * wider, so a hand still fills a short, wide frame.
  *
  * A collection's page has room for the whole hand, so there it is laid
- * loose ([looseCards]): every card whole, with no box round them.
+ * loose ([looseCards]): every card whole, with no box round them. The
+ * Library's wall shows the same frames as a pile ([pileCards]): prints in a
+ * heap as tall as a poster, with no box either.
  */
 object DeckLayout {
     /** The most cards a deck holds: enough to read as a handful, and five frames to grab. */
@@ -123,6 +125,80 @@ object DeckLayout {
      * and the picture is made at it.
      */
     val looseAspect: Float get() = looseBox.width / looseBox.height
+
+    /**
+     * The same frames as a pile, for a tile on the Library's wall: prints
+     * dropped in a heap with no box round them, standing in the tile's
+     * [width] × [height] (its 2:3) as tall as a poster. Three tall prints, the
+     * front one nearly a poster's size; or four wide ones, each a little over
+     * half the one below, climbing the tile, since a short wide print alone
+     * would leave most of it empty. Every card is cut to its [shape]'s
+     * aspect and has a 2:3 card's area, as a hand's cards do.
+     *
+     * Laid out for a whole pile however many of it there are ([count]), so a
+     * pile's front card is in the same place whatever it holds: the tile puts
+     * its chips there ([pileFront]). In the order they are drawn, back to
+     * front. The cards may reach a little past the tile's sides, into the gap
+     * beside it; their shadows reach further, which is why a pile's picture is
+     * made bigger than its tile ([PILE_SIDE], [PILE_ABOVE], [PILE_BELOW]).
+     */
+    fun pileCards(shape: DeckShape, width: Float, height: Float, count: Int = pileSize(shape)): List<Card> {
+        if (width <= 0f || height <= 0f || count <= 0) return emptyList()
+        val prints = prints(shape)
+        val (w, h) = size(shape.aspect, 1f, maxWidth = Float.MAX_VALUE, maxHeight = Float.MAX_VALUE)
+        // Each print turns about its own middle.
+        val unit = prints.mapIndexed { rank, print ->
+            val cx = print.dx * w
+            val cy = print.dy * h
+            Card(rank, cx - w / 2f, cy - h / 2f, w, h, cx, cy, print.degrees, print.brightness)
+        }
+        // As big as fits the tile, reaching SPILL into the gaps beside it,
+        // centred, standing just inside its bottom edge, where posters end.
+        val corners = unit.flatMap { it.corners }
+        val x0 = corners.minOf { it.first }
+        val x1 = corners.maxOf { it.first }
+        val y0 = corners.minOf { it.second }
+        val y1 = corners.maxOf { it.second }
+        val scale = minOf((width * (1f + 2f * PILE_SPILL)) / (x1 - x0), (height * (1f - PILE_TOP - PILE_BOTTOM)) / (y1 - y0))
+        val dx = width / 2f - (x0 + x1) / 2f * scale
+        val dy = height * (1f - PILE_BOTTOM) - y1 * scale
+        return unit.take(count).reversed().map {
+            it.copy(
+                left = it.left * scale + dx,
+                top = it.top * scale + dy,
+                width = it.width * scale,
+                height = it.height * scale,
+                pivotX = it.pivotX * scale + dx,
+                pivotY = it.pivotY * scale + dy,
+            )
+        }
+    }
+
+    /** Where a pile's front card is in a [width] × [height] tile ([pileCards]): what the tile's chips sit on. */
+    fun pileFront(shape: DeckShape, width: Float, height: Float): Card = pileCards(shape, width, height, 1).single()
+
+    /** How many cards a pile of [shape] holds: three tall, four wide. */
+    fun pileSize(shape: DeckShape): Int = prints(shape).size
+
+    /** One print in a pile: its middle's offset from the front card's, in the front card's width and height, its turn, and its light. */
+    private class Print(val dx: Float, val dy: Float, val degrees: Float, val brightness: Float)
+
+    private fun prints(shape: DeckShape) = if (shape == DeckShape.TALL) TALL_PILE else WIDE_PILE
+
+    /** Three tall prints, the two behind askew to either side, peeking out round the front one. */
+    private val TALL_PILE = listOf(
+        Print(0f, 0f, -2.5f, 1f),
+        Print(0.07f, -0.02f, 6.5f, 0.8f),
+        Print(-0.07f, -0.035f, -8f, 0.66f),
+    )
+
+    /** Four wide prints, each 54% of a card above the one before, so each shows a little under half. */
+    private val WIDE_PILE = listOf(
+        Print(0f, 0f, -2.5f, 1f),
+        Print(0.03f, -0.54f, 6f, 0.82f),
+        Print(-0.03f, -1.08f, -5f, 0.68f),
+        Print(0.03f, -1.62f, 7f, 0.56f),
+    )
 
     /**
      * Cards of [sizes] (width, height; front card first) standing on
@@ -231,6 +307,27 @@ object DeckLayout {
     /** The standard card, a poster's 2:3: every card has its area, whatever its own shape. */
     private const val CARD_ASPECT = 2f / 3f
 
+    /** A card's corner radius, as a part of its short side: drawn by `DeckPainter`, and matched by a pile's picked ring. */
+    const val CARD_CORNER = 0.065f
+
+    /** How far a pile may reach past its tile's sides, into the gap beside it, as a part of the tile's width: 3 of 112. */
+    private const val PILE_SPILL = 0.027f
+
+    /** The room a pile leaves above and below it, as parts of the tile's height: it stands just inside the tile. */
+    private const val PILE_TOP = 0.012f
+    private const val PILE_BOTTOM = 0.006f
+
+    /**
+     * How far a pile's picture reaches past its tile, as parts of the tile's
+     * width: on each side, above, and below. Room for the cards' shadows
+     * (`DeckPainter`'s, blurred by a sixth of a card's short side and falling
+     * below it), which a picture cut to the tile would end in a straight line,
+     * the box all over again. The tile draws the picture that much bigger.
+     */
+    const val PILE_SIDE = 0.22f
+    const val PILE_ABOVE = 0.12f
+    const val PILE_BELOW = 0.26f
+
     /** How far below a 2:3 card's top the hand is, in its heights: far enough that the fan opens gently. */
     private const val PIVOT = 1.9f
 
@@ -264,4 +361,24 @@ object DeckLayout {
     private const val LOOSE_SIDE = 0.26f
     private const val LOOSE_ABOVE = 0.18f
     private const val LOOSE_BELOW = 0.34f
+}
+
+/**
+ * Which way a pile's cards stand ([DeckLayout.pileCards]), told by its front
+ * card: a phone's clips are tall, a film's frames wide. A pile cuts every card
+ * to its shape's [aspect], so its front card is always in the same place for
+ * its shape, and the tile can find it. Kept on the deck's poster row by name.
+ */
+enum class DeckShape(val aspect: Float) {
+    TALL(9f / 16f),
+    WIDE(16f / 9f),
+    ;
+
+    companion object {
+        /** The shape of a pile whose front card's picture is [aspect] (width over height) as it shows. */
+        fun of(aspect: Float): DeckShape = if (aspect < 1f) TALL else WIDE
+
+        /** A stored name read back: null for none, or for one this version does not know. */
+        fun named(name: String?): DeckShape? = entries.firstOrNull { it.name == name }
+    }
 }
