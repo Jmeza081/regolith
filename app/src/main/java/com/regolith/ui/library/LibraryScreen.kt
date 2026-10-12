@@ -99,6 +99,8 @@ import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.EyebrowAction
 import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.TileRing
+import com.regolith.ui.components.rememberTileRing
 import com.regolith.ui.components.ThumbCells
 import com.regolith.ui.components.PlayAllButton
 import com.regolith.ui.components.PlayAllSheet
@@ -150,6 +152,7 @@ import com.regolith.domain.media.PhoneAccess
 import com.regolith.ui.components.FilterChip
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -169,6 +172,7 @@ import com.regolith.ui.components.AlphabetIndex
 import com.regolith.ui.components.AlphabetRail
 import com.regolith.ui.components.AlphabetRailWidth
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.horizontalScroll
@@ -228,6 +232,12 @@ fun LibraryScreen(
      * null because Title Detail is a pushed screen, not a pane.
      */
     selectedFileId: Long? = null,
+    /**
+     * A video to ring once on arrival, scrolled into view first if it is out
+     * of it: a video's page opened the collection it is in, from its Path
+     * line. Browse rings Shorts' Locate's clip the same way.
+     */
+    highlightFileId: Long? = null,
     /**
      * Called just before a picker opens (adding videos or a poster to a
      * collection). The picker is another app's screen, so Regolith goes to
@@ -759,6 +769,31 @@ fun LibraryScreen(
                 }
             }
         }
+        // Arriving from a video's Path line (pathStepKey): the video brought
+        // into view, if it is not in it already, and ringed, as Browse rings
+        // the clip Shorts' Locate left. Once only: back on this wall from a
+        // video opened here, the wall stays where it was left.
+        val ring = rememberTileRing()
+        var toRing by rememberSaveable { mutableStateOf(highlightFileId) }
+        val ringScope = rememberCoroutineScope()
+        // A profile's top bar floats over the wall, so the video stops short of it.
+        val ringTop = with(LocalDensity.current) { (if (profile != null) profileBarHeight() + Spacing.s8 else 0.dp).roundToPx() }
+        LaunchedEffect(state.tiles, state.viewMode, showMoments, showPictures) {
+            val id = toRing ?: return@LaunchedEffect
+            if (showMoments || showPictures) return@LaunchedEffect
+            val tile = state.tiles.indexOfFirst { it is LibraryTile.Title && it.fileId == id }
+            if (tile < 0) return@LaunchedEffect
+            toRing = null
+            val index = leadingItems + tile
+            val grid = state.viewMode == ViewMode.GRID
+            // In a scope of its own, not this effect's: the tiles change again
+            // as their posters and progress come in, which would cut it short.
+            ringScope.launch {
+                // A finger on the wall stops the scroll; the ring still plays.
+                runCatching { if (grid) gridState.reveal(index, ringTop) else listState.reveal(index, ringTop) }
+                ring.ring(id)
+            }
+        }
 
         // The A–Z rail, as the move sheet has it ([AlphabetRail]), on a wall
         // that takes one ([wallTakesRail]). The wall makes room for it at its
@@ -919,6 +954,7 @@ fun LibraryScreen(
                                 onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
                                 filter = state.filter,
                                 onOpenPicture = { openPicture(it, true) },
+                                ring = ring,
                             )
                         }
                     }
@@ -975,6 +1011,7 @@ fun LibraryScreen(
                                 onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
                                 filter = state.filter,
                                 onOpenPicture = { openPicture(it, true) },
+                                ring = ring,
                             )
                         }
                     }
@@ -1130,12 +1167,37 @@ private const val NEAR_ITEMS = 12
 /** The same in rows of a mosaic: a picture is about a third of a screen tall. */
 private const val NEAR_ROWS = 3
 
-/** Is grid item [index] on screen from its top edge to its bottom one? */
-private fun LazyGridState.showsWhole(index: Int): Boolean {
+/** Is grid item [index] on screen from its top edge, [top] px down or more, to its bottom one? */
+private fun LazyGridState.showsWhole(index: Int, top: Int = 0): Boolean {
     val info = layoutInfo
     val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
-    return item.offset.y >= info.viewportStartOffset &&
+    return item.offset.y >= info.viewportStartOffset + top &&
         item.offset.y + item.size.height <= info.viewportEndOffset - info.afterContentPadding
+}
+
+/** The same for a row of the rows layout. */
+private fun LazyListState.showsWhole(index: Int, top: Int = 0): Boolean {
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
+    return item.offset >= info.viewportStartOffset + top &&
+        item.offset + item.size <= info.viewportEndOffset - info.afterContentPadding
+}
+
+/**
+ * Brings grid item [index] wholly into view, [top] px clear of the wall's
+ * top edge, unless it is in view already: the arrival ring's way to its
+ * video. Waits for the item to be laid out, since the wall may only just
+ * have been given its tiles.
+ */
+private suspend fun LazyGridState.reveal(index: Int, top: Int) {
+    snapshotFlow { layoutInfo.totalItemsCount > index }.first { it }
+    if (!showsWhole(index, top)) animateScrollToItem(index, -top)
+}
+
+/** The same for the rows layout. */
+private suspend fun LazyListState.reveal(index: Int, top: Int) {
+    snapshotFlow { layoutInfo.totalItemsCount > index }.first { it }
+    if (!showsWhole(index, top)) animateScrollToItem(index, -top)
 }
 
 /** One tile on the wall. Both layouts hand a [LibraryTile] to the same two components. */
@@ -1151,6 +1213,8 @@ private fun TileView(
     onLongPress: (LibraryTile) -> Unit = {},
     filter: LibraryFilter = LibraryFilter.VIDEOS,
     onOpenPicture: (PictureTile) -> Unit = {},
+    /** The wall's arrival ring ([TileRing]), which a video's tile wears. */
+    ring: TileRing? = null,
 ) {
     val selecting = selection != null
     when (tile) {
@@ -1200,6 +1264,7 @@ private fun TileView(
                 progress = tile.progress,
                 dimmed = dimmed,
                 selected = selected,
+                highlight = ring?.on(tile.fileId) ?: 0f,
                 onClick = if (selecting) {
                     { onToggle(tile) }
                 } else {
@@ -1338,6 +1403,8 @@ private fun TileRow(
     onLongPress: (LibraryTile) -> Unit = {},
     filter: LibraryFilter = LibraryFilter.VIDEOS,
     onOpenPicture: (PictureTile) -> Unit = {},
+    /** The wall's arrival ring ([TileRing]), which a video's row wears as a wash. */
+    ring: TileRing? = null,
 ) {
     val selecting = selection != null
     val alpha = if (dimmed) 0.45f else 1f
@@ -1379,6 +1446,8 @@ private fun TileRow(
         is LibraryTile.Title -> {
             val coming = selection?.pickedFiles?.contains(tile.fileId) == true ||
                 (selection?.coversFile(tile.shareId, tile.folderRelPath) == true && selection.excludedFiles.contains(tile.fileId).not())
+            // Nor art to ring on arrival: the row takes the ring as a wash instead.
+            val ringBg = if (!selected && ring != null && ring.on(tile.fileId) > 0f) Modifier.background(ring.rowTint(tile.fileId)) else Modifier
             ListRow(
                 title = tile.name,
                 meta = listOfNotNull(tile.resolutionLabel.ifEmpty { null }, tile.meta.ifEmpty { null }).joinToString(" · "),
@@ -1392,7 +1461,7 @@ private fun TileRow(
                 },
                 onLongClick = { onLongPress(tile) },
                 testTag = tile.testTag,
-                modifier = selectedBg.alpha(alpha),
+                modifier = selectedBg.then(ringBg).alpha(alpha),
             )
         }
         is LibraryTile.Picture -> ListRow(

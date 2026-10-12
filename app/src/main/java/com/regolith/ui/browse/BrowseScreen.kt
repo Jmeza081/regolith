@@ -14,12 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import kotlinx.coroutines.delay
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +55,7 @@ import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.util.formatRemaining
 import com.regolith.ui.components.viewModeAction
 import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.rememberTileRing
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.media.OtherFiles
 import com.regolith.domain.artwork.ArtworkKind
@@ -116,7 +114,7 @@ fun BrowseScreen(
      * a file covers the wall.
      */
     selectedFileId: Long? = null,
-    /** Scroll to this file on arrival and ring it briefly (Shorts' Locate). */
+    /** Scroll to this file on arrival and ring it briefly: Shorts' Locate, or the Path line of a page opened from Browse. */
     highlightFileId: Long? = null,
     /**
      * Called just before a picker opens (P16). The picker is another app's
@@ -296,7 +294,8 @@ private fun BrowseContent(
         }
 
         /*
-         * Arriving from Shorts' Locate: put the clip on screen and ring it.
+         * Arriving from Shorts' Locate, or from the Path line of a page
+         * opened here: put the file on screen and ring it ([TileRing]).
          *
          * GRID can scroll precisely — every file is its own lazy item. ROWS
          * cannot: the whole file section is ONE item holding a forEach, so
@@ -306,8 +305,7 @@ private fun BrowseContent(
          */
         val gridState = rememberLazyGridState()
         val listState = rememberLazyListState()
-        var flashed by remember { mutableStateOf<Long?>(null) }
-        val flash = remember { Animatable(0f) }
+        val ring = rememberTileRing()
         LaunchedEffect(highlightFileId, state.rows, state.viewMode) {
             val id = highlightFileId ?: return@LaunchedEffect
             val index = files.indexOfFirst { it.fileId == id }
@@ -322,11 +320,7 @@ private fun BrowseContent(
                     listState.animateScrollToItem(lead + (if (folders.isNotEmpty()) 1 else 0))
                 }
             }
-            flashed = id
-            flash.snapTo(1f)
-            delay(FLASH_HOLD_MS)
-            flash.animateTo(0f, tween(FLASH_FADE_MS))
-            flashed = null
+            ring.ring(id)
         }
         // The bar floats over the pill, so the last row has to clear both.
         // No extra room for a selection bar any more: the verbs are in the
@@ -430,7 +424,7 @@ private fun BrowseContent(
                                     modifier = when {
                                         row.fileId == selectedFileId -> Modifier.background(colors.skeleton)
                                         // A row has no art to ring, so it flashes instead.
-                                        row.fileId == flashed -> Modifier.background(colors.ink.copy(alpha = flash.value * 0.18f))
+                                        ring.on(row.fileId) > 0f -> Modifier.background(ring.rowTint(row.fileId))
                                         else -> Modifier
                                     },
                                 )
@@ -509,7 +503,7 @@ private fun BrowseContent(
                             // The pane's ring stands down while selecting, so one
                             // ring never means both "open" and "picked".
                             selected = !selecting && row.fileId == selectedFileId,
-                            highlight = if (row.fileId == flashed) flash.value else 0f,
+                            highlight = ring.on(row.fileId),
                             onClick = if (selecting) {
                                 { viewModel.toggleSelection(row) }
                             } else {
@@ -627,10 +621,6 @@ private fun NoSourceContent(onAddServer: () -> Unit) {
 
 /** What a screen with no folder (the Browse root) reads in place of its uploads. */
 private val NoUploads: StateFlow<UploadActionsState> = MutableStateFlow(UploadActionsState())
-
-/** Long enough to find with your eye, short enough not to look stuck. */
-private const val FLASH_HOLD_MS = 1_200L
-private const val FLASH_FADE_MS = 500
 
 /**
  * One file that is not a video, by its real name, its kind and its size.

@@ -100,6 +100,8 @@ class LibraryViewModel @AssistedInject constructor(
     @Assisted val folderId: Long?,
     /** The chip it opens with: the one lit on the wall it was opened from. */
     @Assisted initialFilter: LibraryFilter,
+    /** The device tab's chip it opens with: a phone album, for a phone video's Path line. */
+    @Assisted initialDeviceFilter: DeviceFilter,
     private val library: LibraryRepository,
     private val sources: SourceRepository,
     private val scans: ScanRepository,
@@ -117,12 +119,16 @@ class LibraryViewModel @AssistedInject constructor(
 
     @AssistedFactory
     interface Factory {
-        fun create(folderId: Long?, filter: LibraryFilter = LibraryFilter.VIDEOS): LibraryViewModel
+        fun create(
+            folderId: Long?,
+            filter: LibraryFilter = LibraryFilter.VIDEOS,
+            deviceFilter: DeviceFilter = DeviceFilter.All,
+        ): LibraryViewModel
     }
 
     private var showAllFailed = false
 
-    private val _uiState = MutableStateFlow(LibraryUiState(filter = initialFilter))
+    private val _uiState = MutableStateFlow(LibraryUiState(filter = initialFilter, device = DeviceUiState(filter = initialDeviceFilter)))
     val uiState: StateFlow<LibraryUiState> = _uiState
 
     /** Every chip's wall as built, before the wall's order is applied. */

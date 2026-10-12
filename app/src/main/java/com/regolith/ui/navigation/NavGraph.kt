@@ -136,6 +136,7 @@ import com.regolith.ui.components.BackgroundWorkTier
 import com.regolith.ui.components.NavPill
 import com.regolith.ui.home.ContinueWatchingScreen
 import com.regolith.ui.home.HomeScreen
+import com.regolith.ui.library.DeviceFilter
 import com.regolith.ui.library.LibraryScreen
 import com.regolith.ui.library.LibraryViewModel
 import com.regolith.ui.lightbox.LightboxScreen
@@ -772,7 +773,9 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             tabContent {
                                 LibraryScreen(
                                     viewModel = hiltViewModel<LibraryViewModel, LibraryViewModel.Factory>(
-                                        creationCallback = { it.create(key.folderId, key.filter) },
+                                        creationCallback = {
+                                            it.create(key.folderId, key.filter, key.phoneFolderId?.let { album -> DeviceFilter.Folder(album) } ?: DeviceFilter.All)
+                                        },
                                     ),
                                     onBack = if (key.folderId == null) null else ({ leaveWall(key) }),
                                     // Opens with the chip lit here: a profile on that tab.
@@ -782,6 +785,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
                                     startOnDevice = key.onDevice,
                                     selectedFileId = paneFileId,
+                                    highlightFileId = key.highlightFileId,
                                     // Only inside a collection: on the root, "all" would
                                     // mean every file on every share.
                                     onPlayAll = if (key.folderId != null) ::playAll else null,
@@ -865,9 +869,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onBack = { backStack.removeLastOrNull() },
                                 // The hero's picture flies into the player.
                                 onPlay = { backStack.add(RegolithKey.Player(it, flies = true)) },
-                                // The Path line's steps open their folders in Browse, pushed
-                                // so back comes here, as a folder found by Search does.
-                                onOpenFolder = { folderId, fileId -> backStack.add(RegolithKey.Browse(folderId, highlightFileId = fileId)) },
+                                // The Path line's steps open their folders in the tab this
+                                // page was opened from (pathStepKey), pushed so back comes here.
+                                onOpenFolder = { folderId, fileId, phone ->
+                                    val below = backStack.take(backStack.lastIndexOf(key).coerceAtLeast(0))
+                                    backStack.add(pathStepKey(below, folderId, fileId, phone))
+                                },
                                 inPane = LocalBesideWall.current,
                             )
                         }
@@ -1321,6 +1328,24 @@ private fun RegolithKey?.hostsMiniPlayer(): Boolean =
         this !is RegolithKey.AddServer && this !is RegolithKey.PosterEditor && this !is RegolithKey.SetPoster &&
         // The lightbox and a story are pictures on black, edge to edge: the film carries on underneath.
         this !is RegolithKey.Lightbox && this !is RegolithKey.Story
+
+/**
+ * Where a step of a video page's Path line goes: [folderId], in the tab the
+ * page was opened from, the nearest tab in [below] (the back stack under the
+ * page). From Browse, Browse's folder. From anywhere else, Home and Search
+ * included, the Library's collection, since the Library is how the owner
+ * walks the share. [highlightFileId] is the video when the folder is its own,
+ * for the folder to ring it. A [phone] video's album is no collection in the
+ * Library, which lists it as a chip on its device tab, so the tab opens on that.
+ */
+internal fun pathStepKey(below: List<NavKey>, folderId: Long, highlightFileId: Long?, phone: Boolean): RegolithKey {
+    val fromBrowse = below.lastOrNull { MainTab.forKey(it as? RegolithKey) != null } is RegolithKey.Browse
+    return when {
+        fromBrowse -> RegolithKey.Browse(folderId, highlightFileId = highlightFileId)
+        phone -> RegolithKey.Library(onDevice = true, phoneFolderId = folderId)
+        else -> RegolithKey.Library(folderId, highlightFileId = highlightFileId)
+    }
+}
 
 /**
  * How long the mini player takes to fade in, around a picture that has just

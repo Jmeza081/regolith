@@ -163,6 +163,14 @@ up as it starts, and **Watch from here** leaves the reel for the whole video,
 carrying on from that moment. A reel isn't watching: it leaves no resume points
 and adds nothing to Continue watching.
 
+A video's page says where it lives, and each folder in its Path line opens that
+folder's collection, so a film you reached from Home or Search is one tap from
+its neighbours. The collection it is in opens with the video ringed, so you can
+see where it sits. The share's own name opens the share's top level, and back
+returns to the video. A page opened from Browse opens its folders in Browse
+instead, and a phone video's album opens on the Library's **On this device**
+tab, with that album picked.
+
 ### Pictures on the share
 
 The photos on your share are part of the library, not only artwork. Chips under
@@ -336,11 +344,6 @@ deletes like a video, but on its own: a subtitles file picked by itself leaves
 its video where it is. They never download, since what Download keeps on the
 phone is videos to play. Moving, renaming or deleting a folder's poster this
 way changes the folder's tile at once.
-
-A video's page says where it lives, and each folder in its Path line opens that
-folder here, so a film you reached from Home or Search is one tap from its
-neighbours. The folder it is in opens with the video ringed, so you can see
-where it sits.
 
 Because a folder moves and deletes whole, Move and Delete refuse when you have
 picked a folder and then taken something back out of it. Moving or deleting the

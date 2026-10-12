@@ -96,8 +96,10 @@ fun TitleDetailScreen(
     /**
      * A step of the Path line was tapped: open [folderId]. [highlightFileId]
      * is this file when the folder is its own, for the folder to show it.
+     * [phone] says the folder is a phone video's album, which the Library
+     * shows on its device tab rather than as a collection.
      */
-    onOpenFolder: (folderId: Long, highlightFileId: Long?) -> Unit,
+    onOpenFolder: (folderId: Long, highlightFileId: Long?, phone: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     /**
      * True when this is the page beside a wall on a wide window (`WallScene`,
@@ -133,7 +135,7 @@ private fun TitleDetailContent(
     stateFlow: StateFlow<TitleDetailUiState>,
     onBack: () -> Unit,
     onPlay: (fileId: Long) -> Unit,
-    onOpenFolder: (folderId: Long, highlightFileId: Long?) -> Unit,
+    onOpenFolder: (folderId: Long, highlightFileId: Long?, phone: Boolean) -> Unit,
     onKeep: () -> Unit,
     onRemove: () -> Unit,
     onStartRename: () -> Unit,
@@ -277,13 +279,14 @@ private fun TitleDetailContent(
 
                 SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     FactRow("Path", loading = state.pathCrumbs.isEmpty()) {
-                        // Each step opens its folder in Browse; the file's own
+                        // Each step opens its folder, in the Library or in Browse,
+                        // whichever the page was opened from; the file's own
                         // folder shows the file, ringed, as Shorts' Locate does.
                         PathCrumbs(
                             crumbs = state.pathCrumbs,
                             onOpen = { index, crumb ->
                                 val folderId = crumb.folderId
-                                if (folderId != null) onOpenFolder(folderId, state.fileId.takeIf { index == state.pathCrumbs.lastIndex })
+                                if (folderId != null) onOpenFolder(folderId, state.fileId.takeIf { index == state.pathCrumbs.lastIndex }, state.phone)
                             },
                             testTag = "detail_path",
                             leadingSlash = !state.phone,
