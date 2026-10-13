@@ -163,6 +163,36 @@ class UserChapterDaoTest {
     }
 
     @Test
+    fun `a name's cover comes from the video that best fills a wide tile, then the most recent`() = runTest {
+        suspend fun video(path: String, width: Int?, height: Int?, rotation: Int? = null): Long =
+            file(path).also { id -> if (width != null && height != null) db.mediaFileDao().fillBasics(id, null, width, height, rotation) }
+        fun named(fileId: Long, startMs: Long, title: String, at: Long) = UserChapterEntity(fileId = fileId, startMs = startMs, title = title, updatedAtMs = at)
+        val film = video("Films/Heat.mkv", 1920, 1080)
+        val clip = video("Phone/VID_1.mp4", 1080, 1920)
+        val turned = video("Phone/VID_2.mp4", 1920, 1080, rotation = 90) // stored wide, shown tall
+        val square = video("Phone/VID_3.mp4", 1080, 1080)
+        val oldTv = video("Tapes/Birthday.avi", 640, 480)
+        val unmeasured = video("Films/Ronin.mkv", null, null)
+        // The tall clip is the newest, but the film fills the tile.
+        db.userChapterDao().replaceForFile(film, listOf(named(film, 1_000, "Car chase", at = 10), named(film, 2_000, "Birthday", at = 10)))
+        db.userChapterDao().replaceForFile(clip, listOf(named(clip, 0, "Car chase", at = 90), named(clip, 5_000, "Beach day", at = 50)))
+        // Shown tall after its quarter turn, so it loses to a square clip only on recency.
+        db.userChapterDao().replaceForFile(turned, listOf(named(turned, 0, "Beach day", at = 60)))
+        db.userChapterDao().replaceForFile(square, listOf(named(square, 0, "Beach day", at = 40)))
+        // 4:3 is wide but not 16:9: the film wins it though the tape is newer.
+        db.userChapterDao().replaceForFile(oldTv, listOf(named(oldTv, 0, "Birthday", at = 70)))
+        // Not measured yet ranks under any wide video and over a tall one.
+        db.userChapterDao().replaceForFile(unmeasured, listOf(named(unmeasured, 0, "Opening", at = 5)))
+        db.userChapterDao().replaceForFile(clip, listOf(named(clip, 0, "Car chase", at = 90), named(clip, 5_000, "Beach day", at = 50), named(clip, 9_000, "Opening", at = 80)))
+
+        val covers = db.userChapterDao().observeMomentCovers().first().associateBy { it.title }
+        assertEquals(film to 1_000L, covers.getValue("Car chase").let { it.fileId to it.startMs })
+        assertEquals(film to 2_000L, covers.getValue("Birthday").let { it.fileId to it.startMs })
+        assertEquals("only square and tall clips carry it: the newest of them", turned to 0L, covers.getValue("Beach day").let { it.fileId to it.startMs })
+        assertEquals(unmeasured to 0L, covers.getValue("Opening").let { it.fileId to it.startMs })
+    }
+
+    @Test
     fun `name matches prefix-search the chapter index and group by name`() = runTest {
         val heat = file("Films/Heat.1995.mkv")
         val ocean = file("Films/Oceans.Eleven.mkv")

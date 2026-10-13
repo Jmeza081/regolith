@@ -88,8 +88,9 @@ class UserChapterRepository @Inject constructor(
         dao.observeFacets(limit).map { rows -> rows.map { ChapterFacet(it.title, it.films) } }
 
     /**
-     * For every name [facets] lists, the mark given it most recently, whose
-     * frame stands for the name on Home ([withCovers] pairs them up).
+     * For every name [facets] lists, the mark whose frame stands for the name
+     * on Home ([withCovers] pairs them up): the most recent from a wide video
+     * when there is one, so the frame fills its tile.
      */
     fun momentCovers(): Flow<List<MomentCover>> =
         dao.observeMomentCovers().map { rows -> rows.map { MomentCover(it.title, it.fileId, it.startMs) } }

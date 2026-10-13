@@ -70,7 +70,8 @@ class HomeViewModel @Inject constructor(
     // Every name the library's moments carry, A to Z: the names Search's
     // moment sheet offers, without its cap and in reading order, since Home
     // lists all of them as a section of its own, each as the frame of the
-    // mark given that name most recently. Spoof mode lists none, as the
+    // mark given that name most recently, in a wide video where the name has
+    // one (MomentCover). Spoof mode lists none, as the
     // sheet does: a made-up label would open a Search that finds nothing,
     // and the real names are the owner's own words.
     private val moments = combine(userChapters.facets(MOMENTS_GUARD), userChapters.momentCovers(), spoof.state) { names, covers, spoofed ->

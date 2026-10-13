@@ -10,6 +10,7 @@ import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.LibraryRepository
 import com.regolith.domain.playback.Chapter
+import com.regolith.domain.playback.ChapterStills
 import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.repository.PhoneLibrary
 import com.regolith.data.repository.PlaybackRepository
@@ -33,7 +34,13 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -45,6 +52,7 @@ import kotlinx.coroutines.launch
  * instant.
  */
 @UnstableApi
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel(assistedFactory = TitleDetailViewModel.Factory::class)
 class TitleDetailViewModel @AssistedInject constructor(
     @Assisted private val fileId: Long,
@@ -56,6 +64,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val phone: PhoneLibrary,
     private val spoof: SpoofMode,
     private val chapters: UserChapterRepository,
+    private val artwork: com.regolith.data.artwork.ArtworkRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -76,11 +85,30 @@ class TitleDetailViewModel @AssistedInject constructor(
 
     init {
         viewModelScope.launch {
-            // Its moments, live: naming one in the player and coming back shows it here.
-            // Through spoof mode, which makes the names up, as it does everywhere else.
-            chapters.observe(fileId).spoofed(spoof) { chapters(it) }.collect { marks ->
-                _uiState.update { it.copy(moments = namedMoments(marks)) }
-            }
+            // Its chapters, live: marking or naming one in the player and
+            // coming back shows it here. The same list and pictures as the
+            // player's sheet, worked out the way the chapter-picture walk does
+            // (ArtworkRepository.shownChapters), so a film it has been through
+            // costs no read of the share. Names through spoof mode, which
+            // makes them up, as it does everywhere else.
+            var making: Job? = null
+            combine(
+                chapters.observe(fileId),
+                library.observeFile(fileId).map { it?.durationMs ?: 0L }.distinctUntilChanged(),
+                spoof.state,
+            ) { user, durationMs, spoofed -> Triple(user, durationMs, spoofed) }
+                .mapLatest { (user, durationMs, spoofed) ->
+                    val shown = artwork.shownChapters(fileId, user, durationMs)
+                    val frames = ChapterStills.timesFor(shown.chapters, durationMs, shown.source)
+                    titleChapters(spoofed?.chapters(shown.chapters) ?: shown.chapters, frames)
+                }
+                .collect { list ->
+                    _uiState.update { it.copy(chapters = list) }
+                    // One batch for any pictures the walk has not made yet,
+                    // which each tile then joins, rather than a tile at a time.
+                    making?.cancel()
+                    making = launch { artwork.makeMoments(fileId, list.map { it.frameMs }) }
+                }
         }
         viewModelScope.launch {
             transfers.observeForFile(fileId).collect { row ->
@@ -293,9 +321,13 @@ internal fun phoneCrumbs(shown: String, folderId: Long): List<PathCrumb> {
     return parts.mapIndexed { i, part -> PathCrumb(part, folderId.takeIf { i == parts.lastIndex }) }
 }
 
-/** A video's moments for its page: the chapters with a name, in the order they play. */
-internal fun namedMoments(chapters: List<Chapter>): List<TitleMoment> =
-    chapters.mapNotNull { c -> c.title?.trim()?.takeIf { it.isNotEmpty() }?.let { TitleMoment(c.startMs, it) } }.sortedBy { it.startMs }
+/**
+ * A video's chapters for its page, in the order they play: each named as the
+ * player's sheet names it ([Chapter.label]: its name, else "Part n"), with the
+ * time its picture is taken from, [framesMs] in the same order.
+ */
+internal fun titleChapters(chapters: List<Chapter>, framesMs: List<Long>): List<TitleChapter> =
+    chapters.mapIndexed { i, c -> TitleChapter(c.startMs, c.label(i).trim(), framesMs.getOrElse(i) { c.startMs }) }
 
 /** Deeper than any real share; past it the path stops, rather than following a loop in the rows. */
 private const val MAX_PATH_DEPTH = 64

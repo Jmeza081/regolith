@@ -78,7 +78,8 @@ Home picks up where you were. **Continue watching** has a card for each film you
 have started, with the time it has left (**See all** lists every one), **Newly
 added** the twelve newest files, **On this device** what you have downloaded, and
 **Moments** every name you have given a mark, A to Z, each as a frame of the
-moment you gave it to last, with the name across the picture; tap one to see
+moment you gave it to last (from a wide video when the name has one, so the frame
+fills its tile), with the name across the picture; tap one to see
 every place it appears (see Chapters, below). **Arrange**, at the top of Home,
 puts those sections in any order: drag one by its handle, and Home keeps the order
 you leave it in. Pull Home
@@ -287,9 +288,11 @@ how many videos use it, wrapping across the screen rather than hiding in a
 sideways row. Tap one and Search opens with that name already picked, listing
 every place it appears and every video it is in.
 
-A video's own page shows its moments too, under the Play button: each mark you
-named, in the order they come, as the frame at its time. Tap one to play the video
-from there.
+A video's own page shows its chapters too, under the Play button: every one the
+player's Chapters sheet shows, with the same pictures, whether you marked it, the
+file came with it, or it is one of the even parts. A mark you named shows the frame
+at its time and its name; any other chapter is "Part 3" and a frame from a little
+way into it. Tap one to play the video from there.
 
 ### Posters you choose
 

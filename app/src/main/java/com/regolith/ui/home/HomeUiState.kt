@@ -44,7 +44,7 @@ data class HomeMoment(
     val title: String,
     /** How many videos carry the name. */
     val films: Int,
-    /** The frame at the mark given this name most recently; null when none was found. */
+    /** The frame of the name's cover mark ([com.regolith.domain.playback.MomentCover]); null when none was found. */
     val frame: ArtworkRequest?,
 ) {
     val testTag get() = "home_moment_${title.lowercase().replace(' ', '_')}"

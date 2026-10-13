@@ -63,16 +63,23 @@ data class TitleDetailUiState(
      */
     val phoneDeleteRequest: android.content.IntentSender? = null,
     /**
-     * The chapters someone named in this video, its moments, in the order
-     * they play ([namedMoments]): a row of them between the Play button and
-     * the facts, each playing from its time. Empty leaves the row out.
+     * Every chapter of this video, the list the player's Chapters sheet shows
+     * ([titleChapters]): the ones you wrote, else the file's own markers, else
+     * its runtime cut into even parts. A row of them between the Play button
+     * and the facts, each playing from where it starts. Empty leaves the row
+     * out: a clip too short to split, or a runtime not known yet.
      */
-    val moments: List<TitleMoment> = emptyList(),
+    val chapters: List<TitleChapter> = emptyList(),
 )
 
-/** One of a video's moments on its page: a chapter's [name] and the time it starts. */
-data class TitleMoment(val startMs: Long, val name: String) {
-    val testTag get() = "detail_moment_$startMs"
+/**
+ * One of a video's chapters on its page: its [name] ("Part 3" when it has
+ * none, as on the player's sheet), where it starts, and the time its picture
+ * is taken from ([com.regolith.domain.playback.ChapterStills]), the picture
+ * the player's sheet shows for it.
+ */
+data class TitleChapter(val startMs: Long, val name: String, val frameMs: Long = startMs) {
+    val testTag get() = "detail_chapter_$startMs"
 }
 
 /** The download's state as the detail screen shows it. */

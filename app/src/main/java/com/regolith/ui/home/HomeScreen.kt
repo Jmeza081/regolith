@@ -373,8 +373,9 @@ private fun OnDeviceSection(
 
 /**
  * "Moments": every name you have given a moment, A to Z, as a grid of
- * frames, one per name, each the moment most recently given it, with the
- * name over the picture (the owner, 2026-10-11: rather than "a large list
+ * frames, one per name, each the moment most recently given it in a wide
+ * video where there is one (a tall clip's frame fills a third of the tile),
+ * with the name over the picture (the owner, 2026-10-11: rather than "a large list
  * or chips"). Rows of tiles rather than a lazy grid, as the Newly added wall
  * is, since Home is one vertical scroll. Last by default, because it is a
  * way into the library rather than a shelf of things in it: a tap opens

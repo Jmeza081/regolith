@@ -104,7 +104,7 @@ fun TitleDetailScreen(
      * shows on its device tab rather than as a collection.
      */
     onOpenFolder: (folderId: Long, highlightFileId: Long?, phone: Boolean) -> Unit,
-    /** One of its moments was tapped: play [fileId] from [startMs]. */
+    /** One of its chapters was tapped: play [fileId] from [startMs]. */
     onPlayAt: (fileId: Long, startMs: Long) -> Unit,
     modifier: Modifier = Modifier,
     /**
@@ -285,7 +285,7 @@ private fun TitleDetailContent(
                     TransferLine(state.transfer, onKeep, onRemove)
                 }
 
-                if (state.moments.isNotEmpty()) MomentsRow(state.fileId, state.moments, onPlayAt)
+                if (state.chapters.isNotEmpty()) ChaptersRow(state.fileId, state.chapters, onPlayAt)
 
                 SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     FactRow("Path", loading = state.pathCrumbs.isEmpty()) {
@@ -474,26 +474,28 @@ private fun TransferLine(transfer: TransferView?, onKeep: () -> Unit, onRemove: 
 }
 
 /**
- * The video's moments, the chapters someone named in it: a row of their
- * frames in the order they play, each with its time and name, that scrolls
- * sideways past the page's gutters. A tap plays the video from there.
+ * The video's chapters, every one of them: the row of frames the player's
+ * Chapters sheet shows, in the order they play, each with its time and name
+ * ("Part 3" for one with none), scrolling sideways past the page's gutters.
+ * A tap plays the video from there.
  */
 @Composable
-private fun MomentsRow(fileId: Long, moments: List<TitleMoment>, onPlayAt: (fileId: Long, startMs: Long) -> Unit) {
+private fun ChaptersRow(fileId: Long, chapters: List<TitleChapter>, onPlayAt: (fileId: Long, startMs: Long) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-        Eyebrow("Moments", muted = true)
+        Eyebrow("Chapters", muted = true)
         LazyRow(
             // Edge to edge, the first frame in line with the page's text.
-            modifier = Modifier.bleedHorizontally(Spacing.s18).testTag("detail_moments"),
+            modifier = Modifier.bleedHorizontally(Spacing.s18).testTag("detail_chapters"),
             contentPadding = PaddingValues(horizontal = Spacing.s18),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
         ) {
-            items(moments, key = { it.startMs }) { moment ->
+            items(chapters, key = { it.startMs }) { chapter ->
                 MomentTile(
-                    fileId, moment.startMs, moment.name,
-                    onPlay = { onPlayAt(fileId, moment.startMs) },
-                    testTag = moment.testTag,
+                    fileId, chapter.startMs, chapter.name,
+                    onPlay = { onPlayAt(fileId, chapter.startMs) },
+                    testTag = chapter.testTag,
                     modifier = Modifier.width(MOMENT_WIDTH),
+                    frameMs = chapter.frameMs,
                 )
             }
         }
