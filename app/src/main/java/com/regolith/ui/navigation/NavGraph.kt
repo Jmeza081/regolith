@@ -875,6 +875,8 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     val below = backStack.take(backStack.lastIndexOf(key).coerceAtLeast(0))
                                     backStack.add(pathStepKey(below, folderId, fileId, phone))
                                 },
+                                // A moment plays from its time, as on a collection's Moments tab.
+                                onPlayAt = { fileId, ms -> backStack.add(RegolithKey.Player(fileId, startMs = ms)) },
                                 inPane = LocalBesideWall.current,
                             )
                         }

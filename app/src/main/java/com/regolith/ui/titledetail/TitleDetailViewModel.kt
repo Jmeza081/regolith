@@ -9,6 +9,8 @@ import com.regolith.data.db.FolderEntity
 import com.regolith.data.db.MediaFileEntity
 import com.regolith.data.fileops.FileOpsRepository
 import com.regolith.data.repository.LibraryRepository
+import com.regolith.domain.playback.Chapter
+import com.regolith.data.repository.UserChapterRepository
 import com.regolith.data.repository.PhoneLibrary
 import com.regolith.data.repository.PlaybackRepository
 import com.regolith.domain.media.PhonePaths
@@ -53,6 +55,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val fileOps: FileOpsRepository,
     private val phone: PhoneLibrary,
     private val spoof: SpoofMode,
+    private val chapters: UserChapterRepository,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -72,6 +75,13 @@ class TitleDetailViewModel @AssistedInject constructor(
     private var probed = false
 
     init {
+        viewModelScope.launch {
+            // Its moments, live: naming one in the player and coming back shows it here.
+            // Through spoof mode, which makes the names up, as it does everywhere else.
+            chapters.observe(fileId).spoofed(spoof) { chapters(it) }.collect { marks ->
+                _uiState.update { it.copy(moments = namedMoments(marks)) }
+            }
+        }
         viewModelScope.launch {
             transfers.observeForFile(fileId).collect { row ->
                 _uiState.update { it.copy(transfer = row?.let { r -> TransferView(r.statusEnum(), r.bytesDone, r.totalBytes, r.causeEnum(), r.causeBytes) }) }
@@ -282,6 +292,10 @@ internal fun phoneCrumbs(shown: String, folderId: Long): List<PathCrumb> {
     val parts = shown.split('/').filter { it.isNotEmpty() }
     return parts.mapIndexed { i, part -> PathCrumb(part, folderId.takeIf { i == parts.lastIndex }) }
 }
+
+/** A video's moments for its page: the chapters with a name, in the order they play. */
+internal fun namedMoments(chapters: List<Chapter>): List<TitleMoment> =
+    chapters.mapNotNull { c -> c.title?.trim()?.takeIf { it.isNotEmpty() }?.let { TitleMoment(c.startMs, it) } }.sortedBy { it.startMs }
 
 /** Deeper than any real share; past it the path stops, rather than following a loop in the rows. */
 private const val MAX_PATH_DEPTH = 64

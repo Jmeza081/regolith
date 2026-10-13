@@ -99,6 +99,7 @@ import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.EyebrowAction
 import com.regolith.ui.components.MediaTile
+import com.regolith.ui.components.MomentTile
 import com.regolith.ui.components.TileRing
 import com.regolith.ui.components.rememberTileRing
 import com.regolith.ui.components.ThumbCells
@@ -924,7 +925,14 @@ fun LibraryScreen(
                             if (moments.isEmpty()) {
                                 item(key = "library_moments_empty", span = { GridItemSpan(maxLineSpan) }) { NoMoments(rows = false) }
                             } else {
-                                items(moments, key = { it.testTag }) { moment -> MomentTile(moment, onPlayAt) }
+                                items(moments, key = { it.testTag }) { moment ->
+                                    MomentTile(
+                                        moment.fileId, moment.startMs, moment.title,
+                                        onPlay = { onPlayAt(moment.fileId, moment.startMs) },
+                                        testTag = moment.testTag,
+                                        video = moment.videoName,
+                                    )
+                                }
                             }
                             return@LazyVerticalGrid
                         }
