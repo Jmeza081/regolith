@@ -37,8 +37,9 @@ interface ScrubThumbnails {
      *
      * [exact] means "this position's own frame or nothing". Pass it wherever
      * the frame is LABELLED with a time — the filmstrip — so a tile can never
-     * show a neighbour's picture under someone else's clock. Leave it off for the scrub preview, where a near miss while the
-     * finger moves is better than a blank.
+     * show a neighbour's picture under someone else's clock. Leave it off for
+     * the scrub preview, where a near miss while the finger moves is better
+     * than a blank.
      */
     fun nearest(positionMs: Long, exact: Boolean = false): Bitmap?
 

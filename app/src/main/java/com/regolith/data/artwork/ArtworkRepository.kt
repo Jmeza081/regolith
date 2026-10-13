@@ -318,12 +318,10 @@ class ArtworkRepository @Inject constructor(
      * show ([ShownChapters]): the user's, else the file's own, else the even
      * split of the runtime.
      *
-     * The even split is checked FIRST, from the row's runtime, because it is
-     * what nearly every film shows and reading the file's own markers means
-     * opening the file. A wall already made is then a handful of cached-row
-     * lookups, so a walk after every scan costs next to nothing for the films
-     * it has done. Only a film whose split is not all there has its container
-     * read, to tell its own markers from the split.
+     * Which chapters, [shownChapters] works out without opening the file
+     * when it can, so a wall already made is a handful of cached-row
+     * lookups and a walk after every scan costs next to nothing for the
+     * films it has done.
      *
      * The runtime is the row's, filled by the artwork pass; a film that pass
      * never measured (its poster came off the share) is measured here by
@@ -341,15 +339,8 @@ class ArtworkRepository @Inject constructor(
             // Nowhere to put the parts. The player makes them if it ever can.
             ?: return true
         val user = chapterDao.forFile(fileId).map { Chapter(it.startMs, it.title) }
-        val times = if (user.isNotEmpty()) {
-            ChapterStills.timesFor(user, durationMs, ChapterSource.USER)
-        } else {
-            val split = ChapterStills.timesFor(ChapterMarks.evenly(durationMs), durationMs, ChapterSource.EVEN)
-            if (unmadeMoments(fileId, split).isEmpty()) return true
-            val shown = ShownChapters.of(emptyList(), containerChapters.chapters(fileId), durationMs)
-            ChapterStills.timesFor(shown.chapters, durationMs, shown.source)
-        }
-        val missing = unmadeMoments(fileId, times)
+        val shown = shownChapters(fileId, user, durationMs)
+        val missing = unmadeMoments(fileId, ChapterStills.timesFor(shown.chapters, durationMs, shown.source))
         if (missing.isEmpty()) return true
         return joinOrStart(MomentBatch(fileId)) {
             prefetchSlots.withPermit {
@@ -364,6 +355,31 @@ class ArtworkRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * The chapters film [fileId] shows, given the user's own ([user]) and its
+     * runtime: [ShownChapters.of], with the file's own markers read only when
+     * it has to.
+     *
+     * With no marks of the user's, a film whose even split already has every
+     * picture made is taken to show the split, without opening the file. A
+     * wall is only made once the file's own markers have been read: by the
+     * walk, here, or by the player, which shows the markers when there are
+     * any. Reading them means opening the file, and almost no file has any,
+     * so this is the difference between a few cached-row lookups and a read
+     * off the share.
+     *
+     * The chapter-picture walk ([prefetchChapterWall]) and a video's page
+     * share it, so both draw the list the player's sheet draws.
+     */
+    suspend fun shownChapters(fileId: Long, user: List<Chapter>, durationMs: Long): ShownChapters {
+        if (user.isNotEmpty()) return ShownChapters(user, ChapterSource.USER)
+        val split = ChapterMarks.evenly(durationMs)
+        if (split.isNotEmpty() && unmadeMoments(fileId, ChapterStills.timesFor(split, durationMs, ChapterSource.EVEN)).isEmpty()) {
+            return ShownChapters(split, ChapterSource.EVEN)
+        }
+        return ShownChapters.of(emptyList(), containerChapters.chapters(fileId), durationMs)
     }
 
     /** Which of [timesMs] in film [fileId] have no moment frame cached yet. */

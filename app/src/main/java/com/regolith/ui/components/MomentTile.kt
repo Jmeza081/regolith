@@ -8,11 +8,15 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.ui.util.formatClock
 
 /**
- * One moment, a chapter someone named, as a tile: the frame at its time
- * ([ArtworkOwner.Moment], the picture Search caches for it too) with the time
- * over it, and its [name] under it. [video] names the video it is in, under the
- * name, where moments from several videos sit together (a collection's
- * Moments tab); a video's own page leaves it out. A tap plays from the time.
+ * One moment or chapter as a tile: its frame ([ArtworkOwner.Moment], the
+ * picture Search caches for it too) with its start time over it, and its
+ * [name] under it. [video] names the video it is in, under the name, where
+ * moments from several videos sit together (a collection's Moments tab); a
+ * video's own page leaves it out. A tap plays from the time.
+ *
+ * [frameMs] is where the picture is taken from: a named mark's own time, the
+ * default, or a quarter into a chapter's part, as the player's Chapters sheet
+ * takes it ([com.regolith.domain.playback.ChapterStills]).
  *
  * Used by a collection's Moments tab and a video's page.
  */
@@ -25,9 +29,10 @@ fun MomentTile(
     testTag: String,
     modifier: Modifier = Modifier,
     video: String? = null,
+    frameMs: Long = startMs,
 ) {
     MediaTile(
-        artwork = ArtworkRequest(ArtworkOwner.Moment(fileId, startMs), ArtworkKind.THUMB),
+        artwork = ArtworkRequest(ArtworkOwner.Moment(fileId, frameMs), ArtworkKind.THUMB),
         kind = ArtworkKind.THUMB,
         title = name,
         meta = video,

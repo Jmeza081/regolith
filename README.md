@@ -287,9 +287,11 @@ how many videos use it, wrapping across the screen rather than hiding in a
 sideways row. Tap one and Search opens with that name already picked, listing
 every place it appears and every video it is in.
 
-A video's own page shows its moments too, under the Play button: each mark you
-named, in the order they come, as the frame at its time. Tap one to play the video
-from there.
+A video's own page shows its chapters too, under the Play button: every one the
+player's Chapters sheet shows, with the same pictures, whether you marked it, the
+file came with it, or it is one of the even parts. A mark you named shows the frame
+at its time and its name; any other chapter is "Part 3" and a frame from a little
+way into it. Tap one to play the video from there.
 
 ### Posters you choose
 
