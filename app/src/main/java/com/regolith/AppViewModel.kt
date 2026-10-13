@@ -273,11 +273,13 @@ class AppViewModel @Inject constructor(
         scans.observeRunning(),
         prefetcher.observe(),
         uploadTier(),
-    ) { runs, prefetch, upload ->
+        prefetcher.observeWalls(),
+    ) { runs, prefetch, upload, walls ->
         backgroundWork(
             scan = runs.takeIf { it.isNotEmpty() }?.let { ScanTally(shares = it.size, files = it.sumOf { r -> r.filesFound }) },
             artwork = prefetch.takeIf { it.running }?.let { ArtworkTally(done = it.done, total = it.total) },
             upload = upload,
+            walls = walls.takeIf { it.running }?.let { ArtworkTally(done = it.done, total = it.total) },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 

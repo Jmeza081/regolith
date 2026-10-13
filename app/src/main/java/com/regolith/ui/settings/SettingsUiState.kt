@@ -76,6 +76,8 @@ data class SettingsUiState(
     val clearing: Boolean = false,
     /** The background artwork walk, so the app says what the notification says. */
     val prefetch: PrefetchStatus = PrefetchStatus(),
+    /** The chapter-picture pass that follows the artwork walk, on Wi-Fi. */
+    val walls: PrefetchStatus = PrefetchStatus(),
     /** The download queue, so Settings says what the notification says. */
     val downloads: DownloadsStatus = DownloadsStatus(),
     /** Chapters the user wrote, across every film (P9). */

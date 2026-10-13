@@ -267,8 +267,12 @@ scan finishes, rather than while you are scrolling.
 
 ### Chapters you can write
 
-Every file has chapters: the container's own markers, or an even split. The
-player's chapter sheet has a pencil — mark a place at the playhead, name it, drag
+Every file has chapters: the container's own markers, or an even split (a clip
+under 20 seconds has none until you mark one). The chapter sheet is a wall of
+pictures, one per chapter, and the Chapters pill waits until every one is in.
+They are kept, so a film you have opened before has its wall at once, and a
+chapter you named shows the same frame it does in Search. The chapter sheet has
+a pencil — mark a place at the playhead, name it, drag
 its handle — and those become the film's chapters. Save writes a small
 `mkvmerge`-format text file beside the video on the share, so the work is
 readable by other tools and survives a reinstall; **Settings › Chapters** can keep
@@ -725,6 +729,14 @@ frame still can't be had within ten seconds of the mark, the row shows the film'
 own thumbnail instead, rather than a picture claiming to be a time it is not. That
 stand-in is tried again after a day, in case the grab only failed because the
 share was down.
+
+Then, on Wi-Fi only, the chapter pictures: every video's chapter sheet, one
+picture per chapter, so even a video you have never opened shows its whole sheet
+at once. It runs once the posters are done, newest videos first, and shows as
+**Making chapter pictures** in the same places. A sheet already made costs
+nothing on the next walk. Each picture is a small thumbnail of about 10 to 20 KB,
+so a twelve-part sheet is around 200 KB, and a thousand videos about 200 MB of
+the artwork cache.
 
 A folder with no poster of its own gets a deck of cards: five frames from the
 videos inside it, picked from the first video to the last. The frames come from

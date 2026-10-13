@@ -40,6 +40,7 @@ import com.regolith.domain.playback.ChapterSyncNote
 import com.regolith.domain.playback.ChapterSyncState
 import com.regolith.domain.playback.ReelClip
 import com.regolith.domain.playback.RepeatMode
+import com.regolith.domain.playback.ShownChapters
 import com.regolith.domain.playback.VideoInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -156,6 +157,13 @@ data class PlaybackState(
      * itself when the real ones arrived.
      */
     val chaptersScanned: Boolean = false,
+    /**
+     * True once the player has the file ready and still cannot say how long
+     * it is: no index and no stated duration (an MKV recorded to a stream,
+     * say). Nothing in such a file can be jumped to, so it has no chapters,
+     * and this tells "not known yet" from "never will be".
+     */
+    val runtimeUnknown: Boolean = false,
     val error: String? = null,
     /** A Moments reel playing instead of one film ([PlaybackSession.loadReel]); null the rest of the time. */
     val reel: ReelState? = null,
@@ -169,22 +177,28 @@ data class PlaybackState(
      * which arrives from the player a moment after the file does.
      */
     val chapters: List<Chapter>
-        get() = userChapters.ifEmpty { containerChapters.ifEmpty { ChapterMarks.evenly(durationMs) } }
+        get() = shown.chapters
 
     /** True when a person named these; false when they are even divisions. */
     val chapterSource: ChapterSource
-        get() = when {
-            userChapters.isNotEmpty() -> ChapterSource.USER
-            containerChapters.isNotEmpty() -> ChapterSource.CONTAINER
-            else -> ChapterSource.EVEN
-        }
+        get() = shown.source
+
+    /** The rule itself, shared with the walk that makes chapter pictures ahead of time. */
+    private val shown: ShownChapters
+        get() = ShownChapters.of(userChapters, containerChapters, durationMs)
 
     /**
      * Settled: the container has been read AND the runtime is known, so the
      * list will not change shape under the sheet. The pill spins until this
      * is true rather than opening onto a list that then resizes itself.
+     *
+     * Settled can be EMPTY: a clip under [ChapterMarks.MIN_DURATION_MS] with
+     * no chapters of its own has none to show, and a file whose runtime the
+     * player cannot tell ([runtimeUnknown]) has nothing to divide. This used
+     * to demand a runtime and a non-empty list, and both left the pill
+     * spinning for good.
      */
-    val chaptersReady: Boolean get() = chaptersScanned && durationMs > 0 && chapters.isNotEmpty()
+    val chaptersReady: Boolean get() = chaptersScanned && (durationMs > 0 || runtimeUnknown)
 
     /** Just the starts, for the ticks [com.regolith.ui.components.Scrubber] draws. */
     /** The chapter the playhead is inside, or null when the file has none. */
@@ -440,11 +454,14 @@ class PlaybackSession @Inject constructor(
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             Log.d(TAG, "playbackState=$playbackState pos=${_player.value?.currentPosition}")
+            val duration = current().duration
             _state.update {
                 it.copy(
                     isBuffering = playbackState == Player.STATE_BUFFERING,
                     ended = playbackState == Player.STATE_ENDED,
-                    durationMs = current().duration.coerceAtLeast(0),
+                    durationMs = duration.coerceAtLeast(0),
+                    // Ready to play and still no length: it is not coming.
+                    runtimeUnknown = duration == C.TIME_UNSET && (it.runtimeUnknown || playbackState == Player.STATE_READY),
                 )
             }
             if (playbackState == Player.STATE_ENDED) {

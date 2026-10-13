@@ -439,15 +439,19 @@ fun SettingsScreen(
                     // The background walk, said here as well as in the
                     // notification: the shade is where you find out about it
                     // by accident, and this is where you come to look.
+                    // The chapter pictures follow the posters, so the row
+                    // reports whichever pass is running, the posters first.
+                    val pass = if (state.prefetch.running) state.prefetch else state.walls
                     Row(Modifier.defaultMinSize(minHeight = SettingsRowHeight).padding(vertical = Spacing.s12), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Prepare artwork", style = TextStyles.settingLabel, color = colors.ink)
                             Text(
                                 when {
-                                    state.prefetch.running && state.prefetch.total > 0 ->
-                                        "Working · ${state.prefetch.done} of ${state.prefetch.total}"
+                                    state.prefetch.running && pass.total > 0 -> "Working · ${pass.done} of ${pass.total}"
                                     state.prefetch.running -> "Working out what needs a picture"
-                                    else -> "Makes every poster and thumbnail up front, so the library is not still drawing itself while you scroll."
+                                    pass.running && pass.total > 0 -> "Chapter pictures · ${pass.done} of ${pass.total} videos"
+                                    pass.running -> "Chapter pictures · working out what needs one"
+                                    else -> "Makes every poster and thumbnail up front, so the library is not still drawing itself while you scroll. Then, on Wi-Fi, every video's chapter pictures."
                                 },
                                 style = TextStyles.settingMeta, color = colors.metadata,
                                 modifier = Modifier.testTag("settings_prefetch_meta"),
@@ -455,14 +459,14 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.width(Spacing.s12))
                         SecondaryButton(
-                            text = if (state.prefetch.running) "Stop" else "Prepare",
-                            onClick = { if (state.prefetch.running) viewModel.stopArtwork() else prepareArtwork() },
+                            text = if (pass.running) "Stop" else "Prepare",
+                            onClick = { if (pass.running) viewModel.stopArtwork() else prepareArtwork() },
                             compact = true, testTag = "settings_prefetch_button",
                         )
                     }
-                    if (state.prefetch.running && state.prefetch.total > 0) {
+                    if (pass.running && pass.total > 0) {
                         Box(Modifier.fillMaxWidth().padding(bottom = Spacing.s12).height(3.dp).background(colors.hairline, PillShape).testTag("settings_prefetch_progress")) {
-                            Box(Modifier.fillMaxWidth(state.prefetch.fraction).height(3.dp).background(colors.ink, PillShape))
+                            Box(Modifier.fillMaxWidth(pass.fraction).height(3.dp).background(colors.ink, PillShape))
                         }
                     }
                 }

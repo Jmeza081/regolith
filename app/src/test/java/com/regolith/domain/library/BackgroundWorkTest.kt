@@ -48,6 +48,26 @@ class BackgroundWorkTest {
         assertEquals("the scan is the one changing what is IN the library", "Reading the share · 12 files", work.line)
     }
 
+    @Test
+    fun `chapter pictures say what they are, with a real fraction`() {
+        val work = backgroundWork(scan = null, artwork = null, walls = ArtworkTally(done = 30, total = 120))!!
+        assertEquals("Making chapter pictures · 30 of 120", work.line)
+        assertEquals(0.25f, work.fraction!!, 0.0001f)
+    }
+
+    @Test
+    fun `chapter pictures that have not counted their work yet sweep`() {
+        val work = backgroundWork(scan = null, artwork = null, walls = ArtworkTally(done = 0, total = 0))!!
+        assertEquals("Making chapter pictures", work.line)
+        assertNull(work.fraction)
+    }
+
+    @Test
+    fun `the artwork walk outranks the chapter pictures that follow it`() {
+        val work = backgroundWork(scan = null, artwork = ArtworkTally(done = 3, total = 9), walls = ArtworkTally(done = 1, total = 50))!!
+        assertEquals("Preparing artwork · 3 of 9", work.line)
+    }
+
     // ── Uploads (P16) ───────────────────────────────────────────────────
 
     private val uploading = com.regolith.domain.transfer.UploadTally(

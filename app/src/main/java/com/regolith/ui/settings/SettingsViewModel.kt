@@ -106,6 +106,7 @@ class SettingsViewModel @Inject constructor(
             }.collect { rows -> _uiState.update { it.copy(servers = rows) } }
         }
         viewModelScope.launch { prefetcher.observe().collect { p -> _uiState.update { it.copy(prefetch = p) } } }
+        viewModelScope.launch { prefetcher.observeWalls().collect { w -> _uiState.update { it.copy(walls = w) } } }
         viewModelScope.launch {
             combine(transfers.observeAll(), transfers.observePendingPicks()) { rows, pendingPicks ->
                 val active = rows.filter { it.statusEnum() in TransferRepository.ACTIVE_STATUSES }
@@ -169,7 +170,11 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Settings › Media › Prepare: walk every enabled share and make what is missing. */
+    /**
+     * Settings › Media › Prepare: walk every enabled share and make what is
+     * missing. Each walk queues its share's chapter pictures when it is done
+     * (on Wi-Fi), and Stop stops both.
+     */
     fun prepareArtwork() {
         viewModelScope.launch { sources.observeEnabledShares().first().forEach { prefetcher.enqueue(it.id) } }
     }

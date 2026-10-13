@@ -40,7 +40,7 @@ data class UploadTier(val tally: UploadTally, val folderName: String?, val serve
 /** Shares being walked right now, and how many files they have turned up between them. */
 data class ScanTally(val shares: Int, val files: Int)
 
-/** The artwork walk: pictures made, out of pictures to make. */
+/** The artwork walk, or the chapter-picture pass after it: items done, out of items to do. */
 data class ArtworkTally(val done: Int, val total: Int)
 
 /**
@@ -52,9 +52,10 @@ data class ArtworkTally(val done: Int, val total: Int)
  * changes what is IN the library: while it runs, folders read "Not listed
  * yet" and films are still arriving on the wall, which is the thing a
  * person needs explaining. Artwork only changes how what is already there
- * looks.
+ * looks, and the chapter pictures ([walls]) come last: they only change what
+ * a sheet inside the player shows, and they run for longest.
  */
-fun backgroundWork(scan: ScanTally?, artwork: ArtworkTally?, upload: UploadTier? = null): BackgroundWork? = when {
+fun backgroundWork(scan: ScanTally?, artwork: ArtworkTally?, upload: UploadTier? = null, walls: ArtworkTally? = null): BackgroundWork? = when {
     upload != null -> BackgroundWork(
         line = UploadWording.tierLine(upload.tally, upload.serverName, upload.folderName),
         fraction = upload.tally.fraction ?: 0f,
@@ -78,5 +79,10 @@ fun backgroundWork(scan: ScanTally?, artwork: ArtworkTally?, upload: UploadTier?
     )
     // Running, but it has not worked out how much there is to do yet.
     artwork != null -> BackgroundWork(line = "Preparing artwork", fraction = null)
+    walls != null && walls.total > 0 -> BackgroundWork(
+        line = "Making chapter pictures · ${"%,d".format(walls.done)} of ${"%,d".format(walls.total)}",
+        fraction = (walls.done.toFloat() / walls.total).coerceIn(0f, 1f),
+    )
+    walls != null -> BackgroundWork(line = "Making chapter pictures", fraction = null)
     else -> null
 }

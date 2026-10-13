@@ -209,14 +209,13 @@ fun PlayerScreen(
     val scrubThumbnails by viewModel.scrubThumbnails.collectAsStateWithLifecycle()
     val scrubFrame by viewModel.scrubFrame.collectAsStateWithLifecycle()
     val ambientLight by viewModel.ambientLight.collectAsStateWithLifecycle()
-    val chapterFrames by viewModel.chapterFrames.collectAsStateWithLifecycle()
+    val chapterWall by viewModel.chapterWall.collectAsStateWithLifecycle()
     val gesturesSeen by viewModel.gesturesSeen.collectAsStateWithLifecycle()
     val orientation by viewModel.orientation.collectAsStateWithLifecycle()
     val brightness by viewModel.brightness.collectAsStateWithLifecycle()
     val transfer by viewModel.transfer.collectAsStateWithLifecycle()
     val onPhone by viewModel.onPhone.collectAsStateWithLifecycle()
     val draft by viewModel.chapterDraft.collectAsStateWithLifecycle()
-    val chaptersOpenable by viewModel.chaptersOpenable.collectAsStateWithLifecycle()
     val chapterSaving by viewModel.chapterSaving.collectAsStateWithLifecycle()
     val nameSuggestions by viewModel.chapterNameSuggestions.collectAsStateWithLifecycle()
     // "Saved to the share", at the bottom, gone on its own.
@@ -574,13 +573,6 @@ fun PlayerScreen(
     LaunchedEffect(state.fileId) { if (sheet == Sheet.Chapters) sheet = null }
     // A sync note is read once: it goes when the sheet that showed it closes.
     LaunchedEffect(sheet) { if (sheet != Sheet.Chapters && state.chapterSyncNote != null) viewModel.clearChapterNote() }
-    // The prefetch in the ViewModel does this when the chapter list settles,
-    // long before the tap. This stays as a safety net for a film whose list
-    // changed under an open sheet: `requestAll` skips buckets already in the
-    // index, so asking twice costs nothing.
-    LaunchedEffect(sheet, state.fileId, state.durationMs) {
-        if (sheet == Sheet.Chapters) viewModel.requestChapterFrames()
-    }
     var drag by remember { mutableStateOf<DragOverlay?>(null) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
@@ -757,7 +749,7 @@ fun PlayerScreen(
         canKeep = !onPhone,
         onShuffle = viewModel::toggleShuffle,
         onRepeat = viewModel::cycleRepeat,
-        chaptersOpenable = chaptersOpenable,
+        chaptersOpenable = chapterWall.complete,
         onReelClip = { viewModel.reelTo(it); controlsVisible = true },
         onWatchFromHere = viewModel::watchFromHere,
         onReelShuffle = viewModel::toggleReelShuffle,
@@ -1058,7 +1050,7 @@ fun PlayerScreen(
         Sheet.Chapters -> PlayerSheetHost(onDismiss = { sheet = null }, testTag = "player_chapters_sheet") {
             ChaptersSheetContent(
                 chapters = state.chapters,
-                frames = chapterFrames,
+                frames = chapterWall.frames,
                 positionMs = state.positionMs,
                 durationMs = state.durationMs,
                 source = state.chapterSource,
@@ -1148,8 +1140,9 @@ private class ChromeCallbacks(
     /** Steps the repeat mode on one: off -> all -> one -> off. */
     val onRepeat: () -> Unit,
     /**
-     * False while the chapter sheet's pictures are still coming, which keeps
-     * the Chapters pill spinning rather than opening onto empty tiles.
+     * False until every tile on the chapter sheet has its picture
+     * ([com.regolith.domain.playback.ChapterWall.complete]), which keeps the
+     * Chapters pill spinning rather than opening onto empty tiles.
      *
      * A value among lambdas, which is not lovely, but it rides here because
      * every chrome already carries this object -- the alternative was the
@@ -1499,13 +1492,17 @@ private fun PillRow(
     }
     // The pill is drawn as soon as the film is loaded, but it spins until the
     // list has SETTLED — the container has been read and the runtime is
-    // known — and until the sheet's PICTURES have settled too. Opening before
-    // the list settled meant a sheet that resized itself as the parts were
-    // recounted underneath it; opening before the pictures meant a grid of
-    // empty tiles filling in one at a time (see [chapterFramesSettled], which
-    // is also where the ways out of waiting are).
+    // known — and until every tile on the sheet has its PICTURE. Opening
+    // before the list settled meant a sheet that resized itself as the parts
+    // were recounted underneath it; opening before the pictures meant empty
+    // tiles, and the pictures are what the sheet is for (see
+    // [com.regolith.domain.playback.ChapterWallLoader], which is also where
+    // a picture that cannot be had still ends in one).
     val centre = @Composable {
-        PillButton(
+        // A file the player cannot measure has nothing to jump between, and
+        // nothing can be marked in it either: no pill, rather than one that
+        // does nothing.
+        if (!(state.runtimeUnknown && state.chapters.isEmpty())) PillButton(
             text = "Chapters",
             onClick = { if (state.chaptersReady && cb.chaptersOpenable) cb.onChapters() },
             onMedia = onMedia,

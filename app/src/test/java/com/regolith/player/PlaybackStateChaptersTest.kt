@@ -3,7 +3,9 @@ package com.regolith.player
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** P9: the player shows one kind of chapter at a time — yours, the file's own, or the even split, in that order. */
@@ -46,5 +48,25 @@ class PlaybackStateChaptersTest {
     @Test
     fun `no runtime yet means no label`() {
         assertNull(PlaybackState().chapterLabelAt(0))
+    }
+
+    @Test
+    fun `a clip too short to split settles with no chapters, so the pill stops spinning`() {
+        val s = PlaybackState(durationMs = 12_000L, chaptersScanned = true)
+        assertTrue(s.chapters.isEmpty())
+        assertTrue(s.chaptersReady)
+    }
+
+    @Test
+    fun `a file the player cannot measure settles with nothing to divide`() {
+        val s = PlaybackState(chaptersScanned = true, runtimeUnknown = true)
+        assertTrue(s.chapters.isEmpty())
+        assertTrue(s.chaptersReady)
+    }
+
+    @Test
+    fun `the list is not settled before the container is read or the runtime is known`() {
+        assertFalse(PlaybackState(durationMs = 40 * 60_000L).chaptersReady)
+        assertFalse(PlaybackState(chaptersScanned = true).chaptersReady)
     }
 }

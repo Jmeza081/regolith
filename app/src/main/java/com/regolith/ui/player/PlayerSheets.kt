@@ -58,6 +58,9 @@ import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.ui.util.note
 import com.regolith.ui.components.DisplayText
+import com.regolith.ui.components.EmptyAction
+import com.regolith.ui.components.EmptyState
+import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.SecondaryButton
@@ -348,14 +351,19 @@ private fun DecoderRow(title: String, meta: String, selected: Boolean, onClick: 
  * you were looking for.
  *
  * Columns come from the width, so the phone gets two and the inner display
- * three or four. Frames arrive one at a time through the scrub pipeline and
- * fade in over the card's own ground; the cards never resize, so the sheet
- * does not jump as they land.
+ * three or four. Every picture is in before the sheet can open
+ * ([com.regolith.domain.playback.ChapterWallLoader]); one that lands later,
+ * taking over from the film's picture standing in for it, changes in place.
+ * The cards never resize, so the sheet does not jump.
+ *
+ * A clip too short to cut into parts has no chapters until someone marks one,
+ * so it opens on an empty state that offers the editor.
  */
 @Composable
 fun ChaptersSheetContent(
     chapters: List<Chapter>,
-    frames: Map<Long, android.graphics.Bitmap?>,
+    /** Each chapter's picture, by its start. */
+    frames: Map<Long, android.graphics.Bitmap>,
     positionMs: Long,
     durationMs: Long,
     source: ChapterSource,
@@ -390,7 +398,7 @@ fun ChaptersSheetContent(
                     }
                 }
                 ChapterSource.CONTAINER -> "${chapters.size} marked in this file"
-                ChapterSource.EVEN -> everyLabel(ChapterMarks.intervalFor(durationMs))
+                ChapterSource.EVEN -> if (chapters.isEmpty()) "Too short to split" else everyLabel(ChapterMarks.intervalFor(durationMs))
             },
             style = TextStyles.meta12, color = colors.metadata,
             modifier = Modifier.testTag("player_chapters_source"),
@@ -408,7 +416,17 @@ fun ChaptersSheetContent(
     }
     if (onEdit != null) RowAction(LucideR.drawable.lucide_ic_pencil, "Edit chapters", onEdit, "player_chapters_edit_button")
     }
-    BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {
+    if (chapters.isEmpty()) {
+        EmptyState(
+            title = "Nothing to jump between yet",
+            body = if (onEdit != null) "Mark a moment and it shows up here, with its picture." else null,
+            ghost = Ghost.Frames(rows = 1),
+            compact = true,
+            action = onEdit?.let { EmptyAction("Mark a moment", it, "player_chapters_mark_button") },
+            testTag = "player_chapters_empty",
+        )
+    }
+    if (chapters.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {
         val columns = (maxWidth / CHAPTER_CARD_MIN).toInt().coerceIn(2, 4)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
             chapters.chunked(columns).forEach { row ->
@@ -449,6 +467,7 @@ fun ChaptersSheetContent(
 private fun ChapterCard(
     chapter: Chapter,
     index: Int,
+    /** Null only for a film with no picture anywhere ([com.regolith.domain.playback.ChapterWall]). */
     frame: android.graphics.Bitmap?,
     playing: Boolean,
     endMs: Long,

@@ -54,6 +54,7 @@ class ArtworkWorker @AssistedInject constructor(
     private val chapters: UserChapterDao,
     private val shareFiles: ShareFileDao,
     private val pictures: PictureRepository,
+    private val prefetcher: ArtworkPrefetcher,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -66,7 +67,7 @@ class ArtworkWorker @AssistedInject constructor(
         if (!pictures.measureShare(shareId)) return Result.retry()
 
         val owners = ownersOf(shareId)
-        if (owners.isEmpty()) return Result.success()
+        if (owners.isEmpty()) return finished(shareId)
 
         runCatching { setForeground(foregroundInfo(0, owners.size)) }
             .onFailure { Log.w(TAG, "no foreground: ${it.message}") }
@@ -89,6 +90,8 @@ class ArtworkWorker @AssistedInject constructor(
                     // would stall on the very first item — a pass that restarts
                     // for ever is worse than one that stops and says why.
                     logStuckThreads(owner, done, owners.size)
+                    // No chapter pictures after this either: they need the
+                    // same permits, and would only wedge behind it.
                     return Result.failure()
                 }
                 // False means the share stopped answering. Everything already
@@ -115,11 +118,13 @@ class ArtworkWorker @AssistedInject constructor(
                 return Result.retry()
             }
             Log.i(TAG, "share $shareId: artwork ready for ${owners.size} items")
-            Result.success()
+            finished(shareId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "artwork walk of share $shareId crashed", e)
+            // One bad item is no reason to hold back every chapter picture.
+            prefetcher.enqueueWalls(shareId)
             Result.failure()
         }
     }
@@ -152,6 +157,16 @@ class ArtworkWorker @AssistedInject constructor(
             .sortedByDescending { it.takenAtMs ?: it.modifiedAtMs }
             .map { ArtworkOwner.Picture(it.id) }
         return folders + marks + files + pictures
+    }
+
+    /**
+     * The walk is through: the chapter pictures come next, on Wi-Fi
+     * ([ChapterWallWorker]). Queued here, not at scan time, because a wall
+     * is laid out on the runtime this walk writes to each row.
+     */
+    private fun finished(shareId: Long): Result {
+        prefetcher.enqueueWalls(shareId)
+        return Result.success()
     }
 
     private suspend fun report(done: Int, total: Int) {
