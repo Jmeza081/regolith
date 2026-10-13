@@ -1174,7 +1174,8 @@ data class UserChapterHitRow(
 data class NamedMarkRow(val fileId: Long, val startMs: Long)
 
 /** The mark standing for a moment name on Home: its name as written, and where it is. */
-data class MomentCoverRow(val title: String, val fileId: Long, val startMs: Long, val updatedAtMs: Long)
+/** [UserChapterDao.observeMomentCovers]: a name's cover mark. [score] is the number the query maximised (how well its video fills a tile, then how recent). */
+data class MomentCoverRow(val title: String, val fileId: Long, val startMs: Long, val score: Long)
 
 /** One film's count of named marks ([UserChapterDao.observeNamedCounts]). */
 data class NamedCountRow(val fileId: Long, val count: Int)
@@ -1303,17 +1304,38 @@ interface UserChapterDao {
 
     /**
      * For each name [observeFacets] lists, grouped the same way (case
-     * aside), the mark given it most recently: Home's tile for the name
-     * shows that mark's frame. SQLite takes a grouped query's other columns
-     * from the row its one MAX() picked, which is what makes this a single
-     * pass rather than a query per name.
+     * aside), the mark whose frame stands for it on Home: the one given the
+     * name most recently, from the video whose picture best fills a tile.
+     *
+     * Home's tiles are 16:9, and a frame is stored at 16:9 with the video
+     * fitted inside it, so a tall phone clip's frame has black bars down both
+     * sides and fills a third of the tile. So the kind of video comes first:
+     * about 16:9 (shown 1.6 to 2.0 wide to 1 high), then any other wide one,
+     * then one not measured yet, then square and tall ones. The most recent
+     * mark is taken from the best kind the name has. A name carried only by
+     * tall clips still gets one of their frames.
+     *
+     * The shown shape is [com.regolith.domain.media.ShortsRule.displayAspect]'s:
+     * a quarter turn swaps width and height.
+     *
+     * SQLite takes a grouped query's other columns from the row its one MAX()
+     * picked, which is what makes this a single pass rather than a query per
+     * name. The kind is folded into the number it maximises, as a digit far
+     * above any timestamp.
      */
     @Query(
-        "SELECT user_chapters.title AS title, user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, " +
-            "MAX(user_chapters.updatedAtMs) AS updatedAtMs " +
+        "SELECT title, fileId, startMs, MAX(fill * 10000000000000 + updatedAtMs) AS score FROM (" +
+            "SELECT title, fileId, startMs, updatedAtMs, " +
+            "CASE WHEN aspect IS NULL THEN 1 WHEN aspect >= 1.6 AND aspect <= 2.0 THEN 3 WHEN aspect > 1.0 THEN 2 ELSE 0 END AS fill " +
+            "FROM (" +
+            "SELECT user_chapters.title AS title, user_chapters.fileId AS fileId, user_chapters.startMs AS startMs, " +
+            "user_chapters.updatedAtMs AS updatedAtMs, " +
+            "CASE WHEN media_files.width IS NULL OR media_files.height IS NULL OR media_files.width <= 0 OR media_files.height <= 0 THEN NULL " +
+            "WHEN ((COALESCE(media_files.rotationDegrees, 0) % 180) + 180) % 180 = 90 THEN CAST(media_files.height AS REAL) / media_files.width " +
+            "ELSE CAST(media_files.width AS REAL) / media_files.height END AS aspect " +
             "FROM user_chapters JOIN media_files ON media_files.id = user_chapters.fileId " +
-            "WHERE user_chapters.title IS NOT NULL AND user_chapters.title != '' AND media_files.missing = 0 " +
-            "GROUP BY user_chapters.title COLLATE NOCASE",
+            "WHERE user_chapters.title IS NOT NULL AND user_chapters.title != '' AND media_files.missing = 0" +
+            ")) GROUP BY title COLLATE NOCASE",
     )
     fun observeMomentCovers(): Flow<List<MomentCoverRow>>
 

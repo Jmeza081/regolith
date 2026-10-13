@@ -78,7 +78,8 @@ Home picks up where you were. **Continue watching** has a card for each film you
 have started, with the time it has left (**See all** lists every one), **Newly
 added** the twelve newest files, **On this device** what you have downloaded, and
 **Moments** every name you have given a mark, A to Z, each as a frame of the
-moment you gave it to last, with the name across the picture; tap one to see
+moment you gave it to last (from a wide video when the name has one, so the frame
+fills its tile), with the name across the picture; tap one to see
 every place it appears (see Chapters, below). **Arrange**, at the top of Home,
 puts those sections in any order: drag one by its handle, and Home keeps the order
 you leave it in. Pull Home

@@ -32,7 +32,11 @@ data class ChapterMatch(
  */
 data class ChapterFacet(val title: String, val films: Int)
 
-/** The mark whose frame stands for a moment name: the one given that name most recently. */
+/**
+ * The mark whose frame stands for a moment name on Home: the one given that
+ * name most recently, from a wide video when the name has one, so the frame
+ * fills its 16:9 tile (`UserChapterDao.observeMomentCovers`).
+ */
 data class MomentCover(val title: String, val fileId: Long, val startMs: Long)
 
 /**
