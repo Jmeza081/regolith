@@ -70,15 +70,29 @@ data class TitleDetailUiState(
      * out: a clip too short to split, or a runtime not known yet.
      */
     val chapters: List<TitleChapter> = emptyList(),
+    /**
+     * True when an unnamed chapter can be named from here (the dashed
+     * "Part 3" under its picture): never in spoof mode, whose names are made
+     * up, and only once the runtime is known.
+     */
+    val canNameChapters: Boolean = false,
 )
 
 /**
  * One of a video's chapters on its page: its [name] ("Part 3" when it has
  * none, as on the player's sheet), where it starts, and the time its picture
  * is taken from ([com.regolith.domain.playback.ChapterStills]), the picture
- * the player's sheet shows for it.
+ * the player's sheet shows for it. [named] is false for a "Part n", which
+ * the page offers to name; [endMs] is where the next one starts, or the end
+ * of the video.
  */
-data class TitleChapter(val startMs: Long, val name: String, val frameMs: Long = startMs) {
+data class TitleChapter(
+    val startMs: Long,
+    val name: String,
+    val frameMs: Long = startMs,
+    val named: Boolean = true,
+    val endMs: Long? = null,
+) {
     val testTag get() = "detail_chapter_$startMs"
 }
 

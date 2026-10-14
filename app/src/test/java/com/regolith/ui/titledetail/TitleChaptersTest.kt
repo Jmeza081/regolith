@@ -14,12 +14,12 @@ class TitleChaptersTest {
         val frames = listOf(7_000L, 30_000L, 67_000L, 90_000L)
         assertEquals(
             listOf(
-                TitleChapter(0, "Part 1", 7_000),
-                TitleChapter(30_000, "Opening shot", 30_000),
-                TitleChapter(60_000, "Part 3", 67_000),
-                TitleChapter(90_000, "Big reveal", 90_000),
+                TitleChapter(0, "Part 1", 7_000, named = false, endMs = 30_000),
+                TitleChapter(30_000, "Opening shot", 30_000, endMs = 60_000),
+                TitleChapter(60_000, "Part 3", 67_000, named = false, endMs = 90_000),
+                TitleChapter(90_000, "Big reveal", 90_000, endMs = 120_000),
             ),
-            titleChapters(chapters, frames),
+            titleChapters(chapters, frames, durationMs = 120_000),
         )
     }
 
@@ -28,7 +28,13 @@ class TitleChaptersTest {
         val split = ChapterMarks.evenly(hour)
         val row = titleChapters(split, ChapterStills.timesFor(split, hour, ChapterSource.EVEN))
         assertEquals(12, row.size)
-        assertEquals(TitleChapter(300_000, "Part 2", 375_000), row[1])
+        assertEquals(TitleChapter(300_000, "Part 2", 375_000, named = false, endMs = 600_000), row[1])
+    }
+
+    @Test fun `the last chapter runs to the end once the runtime is known`() {
+        val chapters = listOf(Chapter(0, "Opening"), Chapter(30_000, null))
+        assertEquals(null, titleChapters(chapters, listOf(0L, 37_000L)).last().endMs)
+        assertEquals(90_000L, titleChapters(chapters, listOf(0L, 37_000L), durationMs = 90_000).last().endMs)
     }
 
     @Test fun `no chapters, no row`() {

@@ -75,6 +75,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material3.SnackbarResult
+import com.regolith.ui.moments.MomentNameSheetHost
+import com.regolith.ui.components.PillSegment
+import com.regolith.ui.util.ChapterMessages
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
@@ -573,6 +577,17 @@ fun PlayerScreen(
     LaunchedEffect(state.fileId) { if (sheet == Sheet.Chapters) sheet = null }
     // A sync note is read once: it goes when the sheet that showed it closes.
     LaunchedEffect(sheet) { if (sheet != Sheet.Chapters && state.chapterSyncNote != null) viewModel.clearChapterNote() }
+    // A quick name went through: what and where, with a way back.
+    // The message is drawn on the player, under any sheet, so a name saved
+    // from the Chapters panel closes the panel too, or its Undo would be
+    // out of sight.
+    LaunchedEffect(viewModel) {
+        viewModel.namer.saved.collect { saved ->
+            if (sheet == Sheet.Chapters) sheet = null
+            val result = snackbar.showMessage(ChapterMessages.named(saved.title, saved.atMs, saved.outcome), MessageKind.DONE, actionLabel = "Undo")
+            if (result == SnackbarResult.ActionPerformed) saved.undo()
+        }
+    }
     var drag by remember { mutableStateOf<DragOverlay?>(null) }
     var seekLabel by remember { mutableStateOf<String?>(null) }
     var scrubPreviewMs by remember { mutableStateOf<Long?>(null) }
@@ -751,6 +766,9 @@ fun PlayerScreen(
         onRepeat = viewModel::cycleRepeat,
         chaptersOpenable = chapterWall.complete,
         onReelClip = { viewModel.reelTo(it); controlsVisible = true },
+        onMark = if (reel == null && draft == null && viewModel.canEditChapters()) {
+            { viewModel.markMoment(); controlsVisible = true }
+        } else null,
         onWatchFromHere = viewModel::watchFromHere,
         onReelShuffle = viewModel::toggleReelShuffle,
     )
@@ -1057,6 +1075,9 @@ fun PlayerScreen(
                 sync = state.chapterSync,
                 syncNote = state.chapterSyncNote,
                 onSeek = { ms -> viewModel.seekTo(ms); sheet = null },
+                // The name sheet opens over the panel, which shows the new
+                // name the moment it is saved.
+                onName = if (viewModel.canEditChapters() && draft == null) viewModel::nameChapterAt else null,
                 // Editing happens under the picture, so a chosen full screen
                 // is stepped out of first — the same thing back would do.
                 onEdit = if (viewModel.canEditChapters()) {
@@ -1081,6 +1102,15 @@ fun PlayerScreen(
         }
         null -> Unit
     }
+    // The quick name sheet, over everything else, the Chapters panel included.
+    // A new mark has no picture of its own yet: the paused film above is it.
+    MomentNameSheetHost(
+        viewModel.namer,
+        picture = { target ->
+            chapterWall.frames[target.frameMs]?.let { Image(it.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+        },
+        onNudged = viewModel::seekTo,
+    )
     // Landscape and half-open have no column under the picture, so the
     // editor is a sheet there, with its own timeline to mark on.
     draft?.let { d ->
@@ -1151,6 +1181,12 @@ private class ChromeCallbacks(
     val chaptersOpenable: Boolean = true,
     /** A reel's moment picked from its list (Reel.kt). */
     val onReelClip: (Int) -> Unit = {},
+    /**
+     * The Mark pill: pause and name a new moment at the play time. Null
+     * hides the pill, where nothing can be marked: a reel, a video with no
+     * library row, spoof mode, or while the chapter editor is open.
+     */
+    val onMark: (() -> Unit)? = null,
     /** Leave the reel for the whole video, carrying on from here. */
     val onWatchFromHere: () -> Unit = {},
     /** Shuffle what is left of the reel, or put it back in order. */
@@ -1509,6 +1545,12 @@ private fun PillRow(
             icon = R.drawable.rg_ic_chapters,
             testTag = "player_chapters_pill",
             loading = !state.chaptersReady || !cb.chaptersOpenable,
+            // Mark rides on the end of Chapters as a split button: a pill of
+            // its own pushed a phone's row past its width, and marking is a
+            // chapter verb anyway.
+            trailing = cb.onMark?.let { mark ->
+                PillSegment(LucideR.drawable.lucide_ic_bookmark_plus, "Mark a moment here", mark, "player_mark_pill")
+            },
         )
     }
     val right = @Composable {

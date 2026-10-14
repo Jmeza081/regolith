@@ -20,6 +20,10 @@ import com.regolith.domain.playback.ChapterSource
 import com.regolith.domain.playback.ChapterWall
 import com.regolith.domain.playback.ChapterWallLoader
 import com.regolith.domain.playback.ChapterWriteOutcome
+import com.regolith.ui.util.ChapterMessages
+import com.regolith.ui.moments.MomentNameTarget
+import com.regolith.ui.moments.MomentNamer
+import com.regolith.ui.moments.ShownChapters
 import com.regolith.domain.playback.Filmstrip
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -43,7 +47,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -282,20 +285,8 @@ class PlayerViewModel @AssistedInject constructor(
      * owner's call, and right — a film can have two "Opening credits", and
      * a list that hides what you have used is a list you cannot trust.
      */
-    val chapterNameSuggestions: StateFlow<List<String>> = combine(
-        openMarkTitle.debounce(SUGGEST_DEBOUNCE_MS).flatMapLatest { typed ->
-            if (typed == null) flowOf(emptyList()) else userChapters.nameSuggestions(typed, SUGGEST_QUERY_LIMIT)
-        },
-        _chapterDraft,
-    ) { found, draft ->
-        val open = draft?.selected
-        if (open == null) {
-            emptyList()
-        } else {
-            val typed = draft.marks.getOrNull(open)?.title?.trim().orEmpty()
-            found.map { it.title }.filter { !it.equals(typed, ignoreCase = true) }
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val chapterNameSuggestions: StateFlow<List<String>> = userChapters.suggestionsFor(openMarkTitle)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     // Opening a mark, or moving one, takes the film to it. Marking at the
     // playhead does not: the film is already there.
@@ -307,6 +298,67 @@ class PlayerViewModel @AssistedInject constructor(
     fun removeMark(index: Int) = editDraft { it.remove(index) }
     /** "Remove all chapters": back to a single unnamed start mark. Cancel still undoes it. */
     fun clearAllMarks() = editDraft { it.clearAll() }
+
+    // --- Quick names: the Mark pill and the Chapters panel's dashed names
+
+    /** True when a quick name paused the film, so closing the sheet plays it again. */
+    private var resumeAfterNaming = false
+
+    /**
+     * The quick name sheet (`ui.moments`), the same one the video page uses.
+     * Saves into the chapters on screen, whatever made them, so naming one
+     * part of the even split keeps the split as the user's chapters.
+     */
+    val namer = MomentNamer(
+        scope = viewModelScope,
+        chapters = userChapters,
+        current = {
+            val s = state.value
+            s.fileId?.takeIf { it != RegolithKey.Player.EXTERNAL }?.let { ShownChapters(it, s.chapters, s.durationMs) }
+        },
+        onClosed = {
+            if (resumeAfterNaming) {
+                resumeAfterNaming = false
+                if (!state.value.isPlaying) session.togglePlayPause()
+            }
+        },
+    )
+
+    /**
+     * The Mark pill: pause where the film is and open the sheet on a new
+     * mark there. Paused (the owner's call) so the picture holds on the
+     * moment being named; Save or Cancel plays on.
+     */
+    fun markMoment() {
+        if (!canEditChapters() || _chapterDraft.value != null) return
+        val s = state.value
+        if (s.isPlaying) {
+            session.togglePlayPause()
+            resumeAfterNaming = true
+        }
+        namer.open(
+            MomentNameTarget(
+                fileId = s.fileId!!, atMs = s.positionMs, isNew = true,
+                placeholder = MomentNamer.newMarkPlaceholder(s.positionMs),
+            ),
+        )
+    }
+
+    /** A dashed name on the Chapters panel: open the sheet on the chapter starting at [startMs]. */
+    fun nameChapterAt(startMs: Long) {
+        if (!canEditChapters() || _chapterDraft.value != null) return
+        val s = state.value
+        val index = s.chapters.indexOfFirst { it.startMs == startMs }.takeIf { it >= 0 } ?: return
+        namer.open(
+            MomentNameTarget(
+                fileId = s.fileId!!, atMs = startMs, isNew = false,
+                part = "Part ${index + 1} of ${s.chapters.size}", placeholder = "Part ${index + 1}",
+                endMs = s.chapters.getOrNull(index + 1)?.startMs ?: s.durationMs,
+                // The panel's pictures are keyed by the chapter's start.
+                frameMs = startMs,
+            ),
+        )
+    }
 
     /** True while Save is writing to the share; the button shows a ring. */
     val chapterSaving: StateFlow<Boolean> get() = _chapterSaving
@@ -353,15 +405,7 @@ class PlayerViewModel @AssistedInject constructor(
             val outcome = runCatching { userChapters.writeNow(draft.fileId) }.getOrDefault(ChapterWriteOutcome.FAILED)
             _chapterDraft.value = null
             _chapterSaving.value = false
-            _chapterSaveMessages.tryEmit(
-                when (outcome) {
-                    ChapterWriteOutcome.WRITTEN -> "Saved to the share"
-                    ChapterWriteOutcome.READ_ONLY -> "Saved on this phone — the share is read-only"
-                    ChapterWriteOutcome.UNREACHABLE -> "Saved on this phone — the share is out of reach, so it will be written later"
-                    ChapterWriteOutcome.PHONE_ONLY -> "Saved on this phone"
-                    ChapterWriteOutcome.FAILED -> "Saved on this phone — the share refused the file; it will be tried again"
-                },
-            )
+            _chapterSaveMessages.tryEmit(ChapterMessages.saved(outcome))
         }
     }
 
@@ -424,6 +468,7 @@ class PlayerViewModel @AssistedInject constructor(
         viewModelScope.launch {
             state.map { it.fileId }.distinctUntilChanged().collect { id ->
                 if (_chapterDraft.value?.let { it.fileId != id } == true) _chapterDraft.value = null
+                if (namer.naming.value?.let { it.target.fileId != id } == true) namer.cancel()
             }
         }
         session.playerScreenOpened()
@@ -529,17 +574,6 @@ class PlayerViewModel @AssistedInject constructor(
 
         /** The most often a handle being dragged may move the film. Four seeks a second is plenty to follow by eye. */
         const val MARK_SEEK_INTERVAL_MS = 250L
-
-        /** A pause in typing before the suggestions re-query: short, it is a local table. */
-        const val SUGGEST_DEBOUNCE_MS = 120L
-
-        /**
-         * How many names the chips can offer. The row scrolls, and the point
-         * is to show what the share HAS — so this is a safety rail against a
-         * pathological library, not an editorial cut. Same number as the
-         * moment filter's, for the same reason.
-         */
-        const val SUGGEST_QUERY_LIMIT = 50
 
         /** The middle of each of [STRIP_FRAMES] equal slices, or empty until the duration is known. */
         fun stripPositions(durationMs: Long): List<Long> = Filmstrip.positions(durationMs, STRIP_FRAMES)

@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -63,6 +65,7 @@ import com.regolith.ui.components.EmptyState
 import com.regolith.ui.components.Ghost
 import com.regolith.ui.components.RowAction
 import com.regolith.ui.components.Eyebrow
+import com.regolith.ui.components.NameItPill
 import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.SwitchControl
 import com.regolith.ui.theme.CardShape
@@ -376,6 +379,12 @@ fun ChaptersSheetContent(
     onEdit: (() -> Unit)? = null,
     /** Deletes the user's chapters; null unless [source] is [ChapterSource.USER]. */
     onRevert: (() -> Unit)? = null,
+    /**
+     * Names an unnamed chapter, by its start: its "Part n" is drawn as a
+     * dashed [NameItPill] that opens the quick name sheet. Null leaves every
+     * name plain (no library row, spoof mode, the editor open).
+     */
+    onName: ((startMs: Long) -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val currentIndex = chapters.indexOfLast { it.startMs <= positionMs }
@@ -426,6 +435,7 @@ fun ChaptersSheetContent(
             testTag = "player_chapters_empty",
         )
     }
+    val nameRow = onName != null && chapters.any { it.title.isNullOrBlank() }
     if (chapters.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth().testTag("player_chapters_list")) {
         val columns = (maxWidth / CHAPTER_CARD_MIN).toInt().coerceIn(2, 4)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s12)) {
@@ -443,6 +453,8 @@ fun ChaptersSheetContent(
                             // container never states.
                             endMs = chapters.getOrNull(index + 1)?.startMs ?: durationMs,
                             onClick = { onSeek(chapter.startMs) },
+                            onName = if (chapter.title.isNullOrBlank() && onName != null) { { onName(chapter.startMs) } } else null,
+                            nameRow = nameRow,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -472,6 +484,10 @@ private fun ChapterCard(
     playing: Boolean,
     endMs: Long,
     onClick: () -> Unit,
+    /** Drawn as a dashed pill in place of the label, for a "Part n" that can be named. */
+    onName: (() -> Unit)?,
+    /** True when any card on the sheet has a dashed name: every label then takes its height. */
+    nameRow: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val colors = RegolithTheme.colors
@@ -508,12 +524,19 @@ private fun ChapterCard(
             )
         }
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-            Text(
-                chapter.label(index),
-                style = TextStyles.rowLabelMedium,
-                color = if (playing) colors.ink else colors.body,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            if (onName != null) {
+                NameItPill(chapter.label(index), onName, "player_chapter_${index}_name")
+            } else {
+                Text(
+                    chapter.label(index),
+                    style = TextStyles.rowLabelMedium,
+                    color = if (playing) colors.ink else colors.body,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    // As tall as a dashed name beside it, so a row of cards
+                    // keeps its lengths on one line.
+                    modifier = if (nameRow) Modifier.heightIn(min = 40.dp).wrapContentHeight(Alignment.CenterVertically) else Modifier,
+                )
+            }
             if (endMs > chapter.startMs) {
                 Text(formatDurationShort(endMs - chapter.startMs), style = TextStyles.meta, color = colors.metadata, maxLines = 1)
             }

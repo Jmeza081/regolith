@@ -68,6 +68,10 @@ import com.regolith.ui.components.SecondaryButton
 import com.regolith.ui.components.Skeleton
 import com.regolith.ui.components.MessageKind
 import com.regolith.ui.components.RegolithSnackbarHost
+import com.regolith.ui.moments.MomentNameSheetHost
+import com.regolith.ui.moments.MomentNamer
+import com.regolith.ui.util.ChapterMessages
+import androidx.compose.material3.SnackbarResult
 import com.regolith.ui.components.showMessage
 import com.regolith.ui.components.SurfaceCard
 import com.regolith.ui.components.TertiaryButton
@@ -132,6 +136,8 @@ fun TitleDetailScreen(
         onDeletePhone = viewModel::startPhoneDelete,
         onPhoneDeleteLaunched = viewModel::phoneDeleteLaunched,
         onPhoneDeleteAnswered = viewModel::phoneDeleteAnswered,
+        namer = viewModel.namer,
+        onNameChapter = viewModel::nameChapter,
         modifier = modifier,
         inPane = inPane,
     )
@@ -156,6 +162,10 @@ private fun TitleDetailContent(
     onDeletePhone: () -> Unit,
     onPhoneDeleteLaunched: () -> Unit,
     onPhoneDeleteAnswered: (approved: Boolean) -> Unit,
+    /** The quick name sheet's state, opened by [onNameChapter]. */
+    namer: MomentNamer,
+    /** An unnamed chapter's dashed name was tapped: name the one starting at this time. */
+    onNameChapter: (startMs: Long) -> Unit,
     modifier: Modifier,
     inPane: Boolean,
 ) {
@@ -184,6 +194,13 @@ private fun TitleDetailContent(
         val message = state.fileOpError ?: return@LaunchedEffect
         snackbar.showMessage(message, MessageKind.FAILED)
         onDismissFileOpError()
+    }
+    // A quick name went through: say what and where, with a way back.
+    LaunchedEffect(namer) {
+        namer.saved.collect { saved ->
+            val result = snackbar.showMessage(ChapterMessages.named(saved.title, saved.atMs, saved.outcome), MessageKind.DONE, actionLabel = "Undo")
+            if (result == SnackbarResult.ActionPerformed) saved.undo()
+        }
     }
     // The hero's picture, which Play flies into the player (a flight by hand,
     // so it can leave a page beside a wall too).
@@ -285,7 +302,9 @@ private fun TitleDetailContent(
                     TransferLine(state.transfer, onKeep, onRemove)
                 }
 
-                if (state.chapters.isNotEmpty()) ChaptersRow(state.fileId, state.chapters, onPlayAt)
+                if (state.chapters.isNotEmpty()) {
+                    ChaptersRow(state.fileId, state.chapters, onPlayAt, onName = onNameChapter.takeIf { state.canNameChapters })
+                }
 
                 SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_facts_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                     FactRow("Path", loading = state.pathCrumbs.isEmpty()) {
@@ -400,6 +419,9 @@ private fun TitleDetailContent(
         // its own. One timed message, never a message AND a banner.
         RegolithSnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+    MomentNameSheetHost(namer, picture = { target ->
+        ArtworkImage(ArtworkRequest(ArtworkOwner.Moment(target.fileId, target.frameMs ?: target.atMs), ArtworkKind.THUMB), Modifier.fillMaxSize())
+    })
 }
 
 /**
@@ -480,7 +502,13 @@ private fun TransferLine(transfer: TransferView?, onKeep: () -> Unit, onRemove: 
  * A tap plays the video from there.
  */
 @Composable
-private fun ChaptersRow(fileId: Long, chapters: List<TitleChapter>, onPlayAt: (fileId: Long, startMs: Long) -> Unit) {
+private fun ChaptersRow(
+    fileId: Long,
+    chapters: List<TitleChapter>,
+    onPlayAt: (fileId: Long, startMs: Long) -> Unit,
+    /** Names an unnamed chapter, by its start; null leaves "Part n" as plain text (spoof mode). */
+    onName: ((startMs: Long) -> Unit)?,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
         Eyebrow("Chapters", muted = true)
         LazyRow(
@@ -496,6 +524,7 @@ private fun ChaptersRow(fileId: Long, chapters: List<TitleChapter>, onPlayAt: (f
                     testTag = chapter.testTag,
                     modifier = Modifier.width(MOMENT_WIDTH),
                     frameMs = chapter.frameMs,
+                    onName = if (!chapter.named && onName != null) { { onName(chapter.startMs) } } else null,
                 )
             }
         }

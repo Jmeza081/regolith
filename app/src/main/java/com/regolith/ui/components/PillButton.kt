@@ -2,6 +2,9 @@ package com.regolith.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -68,6 +71,13 @@ fun PillButton(
      * onto a second line — a pill two lines tall is not a pill.
      */
     fill: Boolean = false,
+    /**
+     * A second, glyph-only action inside the same pill, after a hairline: a
+     * split button. For a verb that belongs to the pill's own subject, where
+     * a pill of its own would crowd the row (the player's Mark, on the end of
+     * Chapters). The pill's own [onClick] keeps everything left of the line.
+     */
+    trailing: PillSegment? = null,
 ) {
     val colors = RegolithTheme.colors
     val background = when {
@@ -86,6 +96,41 @@ fun PillButton(
     // middle, no side padding. With the text padding kept it came out 38 wide
     // by 34 tall — a pill with nothing in the gap, which read as a mistake.
     val circle = text.isEmpty()
+    if (trailing != null && !circle) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = modifier.height(height).clip(PillShape).background(background).border(1.dp, border, PillShape),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxHeight()
+                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                    .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier)
+                    .padding(start = Spacing.s12, end = Spacing.s4)
+                    .testTag(testTag),
+            ) {
+                when {
+                    loading -> CircularProgressIndicator(color = ink, strokeWidth = 1.5.dp, modifier = Modifier.size(13.dp))
+                    icon != null -> Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
+                }
+                if (loading || icon != null) Spacer(Modifier.width(Spacing.s8))
+                Text(text, style = TextStyles.buttonSmall, color = ink)
+            }
+            Box(Modifier.width(1.dp).fillMaxHeight(0.5f).background(border))
+            Box(
+                contentAlignment = Alignment.Center,
+                // Narrower than a glyph-only circle: the segment shares the
+                // pill's padding, and a phone's player row has no width to spare.
+                modifier = Modifier.fillMaxHeight().width(height * 0.8f)
+                    .clickable(onClick = trailing.onClick)
+                    .semantics { this.contentDescription = trailing.contentDescription }
+                    .testTag(trailing.testTag),
+            ) {
+                Icon(painterResource(trailing.icon), contentDescription = null, tint = if (selected || onMedia) colors.ink else colors.inkSoft, modifier = Modifier.size(16.dp))
+            }
+        }
+        return
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (circle || fill) Arrangement.Center else Arrangement.Start,
@@ -123,6 +168,9 @@ fun PillButton(
         }
     }
 }
+
+/** The second action of a split [PillButton]: a glyph, what it does for a screen reader, and its tap. */
+data class PillSegment(val icon: Int, val contentDescription: String, val onClick: () -> Unit, val testTag: String)
 
 /** The smallest a [PillButton] label shrinks to with `fill`: still the size of the metadata line. */
 private val FILL_MIN_FONT = 11.sp

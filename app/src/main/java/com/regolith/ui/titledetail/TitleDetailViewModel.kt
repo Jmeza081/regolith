@@ -27,6 +27,9 @@ import com.regolith.domain.smb.SmbFailure
 import com.regolith.player.MediaProbe
 import com.regolith.domain.fileops.FileOpTarget
 import com.regolith.ui.components.PathCrumb
+import com.regolith.ui.moments.MomentNameTarget
+import com.regolith.ui.moments.MomentNamer
+import com.regolith.ui.moments.ShownChapters
 import com.regolith.ui.util.FileOpMessages
 import com.regolith.ui.util.formatBytes
 import com.regolith.ui.util.formatDurationShort
@@ -83,6 +86,27 @@ class TitleDetailViewModel @AssistedInject constructor(
 
     private var probed = false
 
+    /** The chapters as the page shows them, unspoofed: what a quick name is written into. */
+    private var shownChapters: ShownChapters? = null
+
+    /** The quick name sheet, opened from an unnamed chapter's dashed name. */
+    val namer = MomentNamer(viewModelScope, chapters, current = { shownChapters })
+
+    /** Open the name sheet on the chapter starting at [startMs]. */
+    fun nameChapter(startMs: Long) {
+        val list = _uiState.value.chapters
+        val index = list.indexOfFirst { it.startMs == startMs }.takeIf { it >= 0 } ?: return
+        if (!_uiState.value.canNameChapters) return
+        val chapter = list[index]
+        namer.open(
+            MomentNameTarget(
+                fileId = fileId, atMs = chapter.startMs, isNew = false,
+                part = "Part ${index + 1} of ${list.size}", placeholder = "Part ${index + 1}",
+                endMs = chapter.endMs, frameMs = chapter.frameMs,
+            ),
+        )
+    }
+
     init {
         viewModelScope.launch {
             // Its chapters, live: marking or naming one in the player and
@@ -99,11 +123,13 @@ class TitleDetailViewModel @AssistedInject constructor(
             ) { user, durationMs, spoofed -> Triple(user, durationMs, spoofed) }
                 .mapLatest { (user, durationMs, spoofed) ->
                     val shown = artwork.shownChapters(fileId, user, durationMs)
+                    shownChapters = ShownChapters(fileId, shown.chapters, durationMs)
                     val frames = ChapterStills.timesFor(shown.chapters, durationMs, shown.source)
-                    titleChapters(spoofed?.chapters(shown.chapters) ?: shown.chapters, frames)
+                    titleChapters(spoofed?.chapters(shown.chapters) ?: shown.chapters, frames, durationMs) to
+                        (spoofed == null && durationMs > 0)
                 }
-                .collect { list ->
-                    _uiState.update { it.copy(chapters = list) }
+                .collect { (list, canName) ->
+                    _uiState.update { it.copy(chapters = list, canNameChapters = canName) }
                     // One batch for any pictures the walk has not made yet,
                     // which each tile then joins, rather than a tile at a time.
                     making?.cancel()
@@ -324,10 +350,20 @@ internal fun phoneCrumbs(shown: String, folderId: Long): List<PathCrumb> {
 /**
  * A video's chapters for its page, in the order they play: each named as the
  * player's sheet names it ([Chapter.label]: its name, else "Part n"), with the
- * time its picture is taken from, [framesMs] in the same order.
+ * time its picture is taken from, [framesMs] in the same order, and where it
+ * ends: the next one's start, or [durationMs] for the last (none while the
+ * runtime is unknown).
  */
-internal fun titleChapters(chapters: List<Chapter>, framesMs: List<Long>): List<TitleChapter> =
-    chapters.mapIndexed { i, c -> TitleChapter(c.startMs, c.label(i).trim(), framesMs.getOrElse(i) { c.startMs }) }
+internal fun titleChapters(chapters: List<Chapter>, framesMs: List<Long>, durationMs: Long = 0L): List<TitleChapter> =
+    chapters.mapIndexed { i, c ->
+        TitleChapter(
+            startMs = c.startMs,
+            name = c.label(i).trim(),
+            frameMs = framesMs.getOrElse(i) { c.startMs },
+            named = !c.title.isNullOrBlank(),
+            endMs = chapters.getOrNull(i + 1)?.startMs ?: durationMs.takeIf { it > 0 },
+        )
+    }
 
 /** Deeper than any real share; past it the path stops, rather than following a loop in the rows. */
 private const val MAX_PATH_DEPTH = 64

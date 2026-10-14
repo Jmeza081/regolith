@@ -119,7 +119,7 @@ volume, swipe up for full screen and down to leave it or put the player away,
 and pinch to fill the screen or fit the picture. The first time you go full
 screen sideways, it shows where those zones are.
 
-Under the picture sit **Chapters**, an **A–B loop** that repeats a stretch until
+Under the picture sit **Chapters**, with **Mark** on its end, an **A–B loop** that repeats a stretch until
 you clear it, a rotation lock, **Keep on this device**, and **Playback**: speed
 (0.75× to 2×), the hardware or software decoder, scrub thumbnails, Ambient light,
 and **Keep playing**, which goes on to the next video in the folder after a
@@ -293,6 +293,15 @@ player's Chapters sheet shows, with the same pictures, whether you marked it, th
 file came with it, or it is one of the even parts. A mark you named shows the frame
 at its time and its name; any other chapter is "Part 3" and a frame from a little
 way into it. Tap one to play the video from there.
+
+Naming doesn't need the editor. An unnamed chapter's "Part 3" is drawn dashed, on
+the video's page and in the Chapters sheet; tap it and a small sheet opens with
+the chapter's picture, a name field and the names you already use elsewhere as
+chips. Tap a chip and it is saved, or type a name and Save. **Mark**, the bookmark
+on the end of the Chapters pill, does the same for the moment you are watching:
+it pauses there, offers ±1 s and ±5 s for a tap that came late, and plays on once
+you save or cancel. Each save says where it went, with **Undo**. Naming one part
+of the even split keeps the whole split as your chapters.
 
 ### Posters you choose
 
