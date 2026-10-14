@@ -52,6 +52,7 @@ import com.regolith.ui.components.DisplayText
 import com.regolith.ui.components.Eyebrow
 import com.regolith.ui.components.PillButton
 import com.regolith.ui.components.PrimaryButton
+import com.regolith.ui.components.NameSuggestionChips
 import com.regolith.ui.components.RegolithTextField
 import com.regolith.ui.components.Scrubber
 import com.regolith.ui.components.SecondaryButton
@@ -233,7 +234,7 @@ private fun MarkRow(
                     value = mark.title ?: "", onValueChange = { onRename(index, it) },
                     label = "Name", placeholder = "Part ${index + 1}", testTag = "player_chapter_name_field",
                 )
-                NameSuggestions(suggestions) { onRename(index, it) }
+                NameSuggestionChips(suggestions, onPick = { onRename(index, it) }, testTag = "player_chapter_suggestion")
                 if (index > 0) {
                     StartField(draft = draft, index = index, onMove = onMove)
                     NudgeStrip(index = index, onNudge = onNudge)
@@ -254,40 +255,6 @@ private fun MarkRow(
                         contentAlignment = Alignment.Center,
                     ) { Text("Done", style = TextStyles.buttonTertiary, color = colors.ink) }
                 }
-            }
-        }
-    }
-}
-
-/**
- * Names the library already uses, under the name field.
- *
- * A moment is only a filter in Search if it is spelled the same way twice,
- * and nothing used to show you what you called it last time — so the same
- * scene became "The heist", "the heist" and "Heist", three chips that each
- * found a third of the films. Tapping a chip writes that spelling exactly.
- *
- * One scrolling row rather than a wrapping block: the editor is a panel in
- * a column, and a block that grows by a line as you type pushes the fields
- * under your thumb around.
- */
-@Composable
-private fun NameSuggestions(suggestions: List<String>, onPick: (String) -> Unit) {
-    if (suggestions.isEmpty()) return
-    val colors = RegolithTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4), modifier = Modifier.testTag("player_chapter_suggestions")) {
-        Text("Used elsewhere in your library", style = TextStyles.meta, color = colors.metadata)
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
-        ) {
-            suggestions.forEach { name ->
-                PillButton(
-                    text = name,
-                    onClick = { onPick(name) },
-                    testTag = "player_chapter_suggestion_${name.lowercase().replace(' ', '_')}",
-                    onMedia = false,
-                )
             }
         }
     }

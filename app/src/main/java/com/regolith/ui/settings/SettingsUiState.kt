@@ -67,6 +67,8 @@ data class SettingsUiState(
     /** Wide windows only: whether the nav rail retracts after three idle seconds. */
     val autoHideRail: Boolean = true,
     val navHideAfter: NavHideAfter = NavHideAfter.DEFAULT,
+    /** Display › Share connection: the dot above the pill, or atop the rail. */
+    val showShareStatus: Boolean = true,
     /** How many posters across the Library's walls on the inner display. */
     val postersPerRow: PostersPerRow = PostersPerRow.DEFAULT,
     val ambientLight: AmbientLight = AmbientLight.DEFAULT,

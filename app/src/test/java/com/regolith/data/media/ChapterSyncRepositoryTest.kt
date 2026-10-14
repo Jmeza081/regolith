@@ -132,6 +132,20 @@ class ChapterSyncRepositoryTest {
     }
 
     @Test
+    fun `a share out of reach for a moment is tried once more before the phone keeps the edit`() = runTest {
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))
+        repo.markDirty(heat)
+        gateway.unreachableWrites = 1
+        assertEquals(ChapterWriteOutcome.WRITTEN, repo.writeNow(heat))
+        assertTrue(gateway.files.getValue("media").containsKey("Films/Heat.1995.chapters.txt"))
+
+        db.userChapterDao().replaceForFile(heat, localRows(0L to "Opening", at = 20_000))
+        repo.markDirty(heat)
+        gateway.unreachableWrites = 2
+        assertEquals(ChapterWriteOutcome.UNREACHABLE, repo.writeNow(heat))
+    }
+
+    @Test
     fun `a read-only share keeps the rows here and says so`() = runTest {
         gateway.readOnly = true
         db.userChapterDao().replaceForFile(heat, localRows(0L to "Intro", at = 10_000))

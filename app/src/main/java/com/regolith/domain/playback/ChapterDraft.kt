@@ -69,6 +69,19 @@ data class ChapterDraft(
         return copy(marks = marks.toMutableList().also { it[index] = current.copy(title = next) }, dirty = true)
     }
 
+    /**
+     * The quick name sheet's one verb: give the chapter at [ms] the name
+     * [title]. A mark already within [MIN_GAP_MS] of [ms] is renamed (the
+     * video page and the Chapters panel name a chapter by its start); any
+     * other time gets a new mark there first (Mark at the play time). A set
+     * already at [MAX_MARKS] takes no new mark and is returned as it was.
+     */
+    fun nameAt(ms: Long, title: String): ChapterDraft {
+        val marked = mark(ms)
+        val index = marked.selected ?: return this
+        return marked.rename(index, title).copy(selected = null)
+    }
+
     /** Drop a mark. The first cannot go; the selection follows the rows down. */
     fun remove(index: Int): ChapterDraft {
         if (index <= 0 || index >= marks.size) return this

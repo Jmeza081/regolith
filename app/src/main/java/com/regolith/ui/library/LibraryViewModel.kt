@@ -114,6 +114,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val chapters: UserChapterRepository,
     private val spoof: SpoofMode,
     private val pictures: PictureRepository,
+    private val connection: com.regolith.data.connection.ConnectionFocus,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -158,6 +159,8 @@ class LibraryViewModel @AssistedInject constructor(
     private val artworkRevisions = MutableStateFlow<Map<ArtworkOwner, Int>>(emptyMap())
 
     init {
+        // The connection dot watches the share of the collection being browsed.
+        folderId?.let { id -> viewModelScope.launch { connection.onFolder(id) } }
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }

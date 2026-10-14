@@ -290,6 +290,13 @@ fun MediaTile(
      * Only a poster-shaped collection tile on the Library's wall has one.
      */
     pile: DeckShape? = null,
+    /**
+     * Drawn under the picture in place of [title]: for a tile whose name is
+     * something to tap, as an unnamed chapter's [NameItPill] is. Its own
+     * click wins over the tile's. [title] still names the tile for the
+     * fallback picture. Not with [titleOnArt].
+     */
+    titleSlot: (@Composable () -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val picked = checked == true
@@ -362,7 +369,9 @@ fun MediaTile(
                 }
             }
         }
-        if (!titleOnArt) {
+        if (titleSlot != null) {
+            titleSlot()
+        } else if (!titleOnArt) {
             Spacer(Modifier.height(Spacing.s4))
             Text(title, style = TextStyles.tileName, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

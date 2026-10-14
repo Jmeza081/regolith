@@ -378,6 +378,14 @@ fun SettingsScreen(
                             )
                         }
                     }
+                    // The connection dot. Hiding it only stops the drawing:
+                    // the share is still checked, its address kept fresh, and
+                    // owed chapter files written when it comes back.
+                    RegolithSwitch(
+                        label = "Share connection",
+                        note = "A green dot on the tab you're on while the share you're browsing answers, a grey ring when it can't be reached. Hold the highlighted tab for details.",
+                        checked = state.showShareStatus, onCheckedChange = viewModel::setShowShareStatus, testTag = "settings_share_status_switch",
+                    )
                     // Three lights, one choice. The note follows the choice,
                     // because "Mirror" and "Color bleed" mean nothing until
                     // you have seen them — and the two live ones are the only

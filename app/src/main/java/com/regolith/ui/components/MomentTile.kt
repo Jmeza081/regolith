@@ -18,6 +18,9 @@ import com.regolith.ui.util.formatClock
  * default, or a quarter into a chapter's part, as the player's Chapters sheet
  * takes it ([com.regolith.domain.playback.ChapterStills]).
  *
+ * [onName], when given, puts a dashed [NameItPill] where the name goes:
+ * the video page's way to name a "Part n" in place. The picture still plays.
+ *
  * Used by a collection's Moments tab and a video's page.
  */
 @Composable
@@ -30,6 +33,7 @@ fun MomentTile(
     modifier: Modifier = Modifier,
     video: String? = null,
     frameMs: Long = startMs,
+    onName: (() -> Unit)? = null,
 ) {
     MediaTile(
         artwork = ArtworkRequest(ArtworkOwner.Moment(fileId, frameMs), ArtworkKind.THUMB),
@@ -41,5 +45,6 @@ fun MomentTile(
         onClick = onPlay,
         testTag = testTag,
         modifier = modifier,
+        titleSlot = onName?.let { tap -> { NameItPill(name, tap, "${testTag}_name") } },
     )
 }

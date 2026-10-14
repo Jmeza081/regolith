@@ -8,12 +8,20 @@ import com.regolith.data.media.ChapterSyncRepository
 import com.regolith.domain.artwork.MomentFrames
 import com.regolith.domain.playback.Chapter
 import com.regolith.domain.playback.ChapterMatch
+import com.regolith.domain.playback.ChapterDraft
 import com.regolith.domain.playback.ChapterSource
+import com.regolith.domain.playback.ChapterWriteOutcome
 import com.regolith.domain.playback.ChapterStills
 import com.regolith.domain.playback.MomentCover
 import com.regolith.domain.playback.ChapterFacet
 import com.regolith.domain.playback.UserChapterStats
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -59,6 +67,38 @@ class UserChapterRepository @Inject constructor(
         // costs no frame; naming or un-naming one moves its picture.
         moments.pruneMoments(fileId, ChapterStills.timesFor(sorted, durationMs, ChapterSource.USER))
         sync.markDirty(fileId)
+    }
+
+    /**
+     * Give the chapter at [atMs] the name [title], and write the set to the
+     * share: the quick name sheet's save, from the video page, the player's
+     * Chapters panel and its Mark pill.
+     *
+     * [shown] is the list on screen, whatever made it: the user's own, the
+     * file's markers or the even split. Only the user's own are stored, so
+     * naming one part of a split keeps the whole split as the user's
+     * chapters, exactly as opening the editor on it and saving would. A time
+     * with no chapter at it gets a new mark ([ChapterDraft.nameAt]).
+     */
+    suspend fun nameAt(fileId: Long, shown: List<Chapter>, durationMs: Long, atMs: Long, title: String): ChapterWriteOutcome {
+        val draft = ChapterDraft.seed(fileId, shown, durationMs).nameAt(atMs, title)
+        save(fileId, draft.chapters, durationMs)
+        return runCatching { writeNow(fileId) }.getOrDefault(ChapterWriteOutcome.FAILED)
+    }
+
+    /**
+     * Undo for [nameAt]: put back the user's chapters as they were
+     * ([before], read just before the save). None before means the set came
+     * from the file's markers or the even split, so the rows go again, and
+     * the chapter file on the share with them.
+     */
+    suspend fun restore(fileId: Long, before: List<Chapter>, durationMs: Long) {
+        if (before.isEmpty()) {
+            clear(fileId)
+        } else {
+            save(fileId, before, durationMs)
+            runCatching { writeNow(fileId) }
+        }
     }
 
     /** Back to whatever the file would show on its own: the rows go, and the sidecar on the share with them. */
@@ -111,6 +151,26 @@ class UserChapterRepository @Inject constructor(
     }
 
     /**
+     * The chips under a name field, following what is typed into it
+     * ([typed]; null while no field is open, which offers nothing).
+     *
+     * The query waits for a short pause in typing ([SUGGEST_DEBOUNCE_MS]),
+     * but the one name it drops, the one already in the box (tapping that
+     * chip would do nothing), follows every keystroke. Shared by the chapter
+     * editor and the quick name sheet, so both offer the same names.
+     */
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    fun suggestionsFor(typed: Flow<String?>): Flow<List<String>> {
+        val text = typed.distinctUntilChanged()
+        val found = text.debounce(SUGGEST_DEBOUNCE_MS).flatMapLatest { t ->
+            if (t == null) flowOf(emptyList()) else nameSuggestions(t, SUGGEST_QUERY_LIMIT)
+        }
+        return combine(found, text) { names, now ->
+            if (now == null) emptyList() else names.map { it.title }.filter { !it.equals(now.trim(), ignoreCase = true) }
+        }
+    }
+
+    /**
      * Every film carrying a point of interest: a chip's results. With words
      * typed after the chip ([query]), only those whose filename, title or path
      * matches them too, by Search's own rule.
@@ -155,4 +215,17 @@ class UserChapterRepository @Inject constructor(
         fileName = fileName, fileTitle = fileTitle, shareId = shareId, fileRelPath = fileRelPath,
         namedAtMs = updatedAtMs,
     )
+
+    companion object {
+        /** A pause in typing before the suggestions re-query: short, it is a local table. */
+        const val SUGGEST_DEBOUNCE_MS = 120L
+
+        /**
+         * How many names the chips can offer. The row scrolls, and the point
+         * is to show what the share HAS, so this is a safety rail against a
+         * pathological library, not an editorial cut. Same number as the
+         * moment filter's, for the same reason.
+         */
+        const val SUGGEST_QUERY_LIMIT = 50
+    }
 }

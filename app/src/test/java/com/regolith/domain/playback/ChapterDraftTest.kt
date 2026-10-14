@@ -129,4 +129,36 @@ class ChapterDraftTest {
         assertEquals(10_500L, draft.marks[1].startMs)
         assertTrue(draft.dirty)
     }
+
+    @Test
+    fun `naming at a chapter's start renames it and keeps the rest of the split`() {
+        val split = ChapterMarks.evenly(hour)
+        val d = ChapterDraft.seed(7, split, hour).nameAt(split[2].startMs, "Car chase")
+        assertEquals(split.map { it.startMs }, d.marksMs)
+        assertEquals("Car chase", d.chapters[2].title)
+        assertNull(d.chapters[1].title)
+        assertTrue(d.dirty)
+        assertNull(d.selected)
+    }
+
+    @Test
+    fun `naming at a new time adds a named mark there`() {
+        val d = ChapterDraft.seed(7, listOf(Chapter(0, null), Chapter(1_200_000, "Two")), hour).nameAt(1_453_000, "Car chase")
+        assertEquals(listOf(0L, 1_200_000L, 1_453_000L), d.marksMs)
+        assertEquals(listOf(null, "Two", "Car chase"), d.chapters.map { it.title })
+    }
+
+    @Test
+    fun `naming within a second of a mark renames that mark rather than adding one`() {
+        val d = ChapterDraft.seed(7, listOf(Chapter(0, null), Chapter(1_200_000, null)), hour).nameAt(1_200_400, "Two")
+        assertEquals(listOf(0L, 1_200_000L), d.marksMs)
+        assertEquals("Two", d.chapters[1].title)
+    }
+
+    @Test
+    fun `a blank name at a new time is an unnamed mark`() {
+        val d = ChapterDraft.seed(7, listOf(Chapter(0, null)), hour).nameAt(600_000, "  ")
+        assertEquals(listOf(0L, 600_000L), d.marksMs)
+        assertNull(d.chapters[1].title)
+    }
 }
