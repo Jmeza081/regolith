@@ -115,6 +115,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val spoof: SpoofMode,
     private val pictures: PictureRepository,
     private val connection: com.regolith.data.connection.ConnectionFocus,
+    private val regenerator: com.regolith.data.artwork.ArtworkRegenerator,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -157,6 +158,30 @@ class LibraryViewModel @AssistedInject constructor(
      * poster shows without leaving the wall. Only owners that changed are in it.
      */
     private val artworkRevisions = MutableStateFlow<Map<ArtworkOwner, Int>>(emptyMap())
+
+    /** One-off lines for the app's message capsule: "Making the artwork of Films again · 96 videos". */
+    val notices: kotlinx.coroutines.flow.SharedFlow<String> get() = _notices
+    private val _notices = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /**
+     * More › Regenerate artwork: throw away this collection's pictures (its
+     * poster, every folder's under it, every video's and picture's, and the
+     * videos' chapter frames) and have them made again from the share in the
+     * background, with the artwork walk's progress over the pill.
+     */
+    fun regenerateArtwork() {
+        val id = folderId ?: return
+        viewModelScope.launch {
+            val done = regenerator.regenerate(com.regolith.domain.artwork.ArtworkScope.Folder(id))
+            _notices.tryEmit(
+                when {
+                    done == null -> "This collection isn't in the library any more"
+                    done.files.isEmpty() -> "Making this collection's artwork again"
+                    else -> "Making this collection's artwork again · " + com.regolith.ui.util.formatCount(done.files.size, "video")
+                },
+            )
+        }
+    }
 
     init {
         // The connection dot watches the share of the collection being browsed.

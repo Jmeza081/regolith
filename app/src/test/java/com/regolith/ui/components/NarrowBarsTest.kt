@@ -62,4 +62,13 @@ class NarrowBarsTest {
         assertEquals(301, segmentWidths(301, full = listOf(10, 10, 10), bare = listOf(5, 5, 5)).sum())
         assertEquals(emptyList<Int>(), segmentWidths(301, full = emptyList(), bare = emptyList()))
     }
+
+    @Test fun `a bar with a menu counts its More button from the start`() {
+        // A phone's collection wall: back, four icons and More still leave the title its room.
+        assertEquals(4, topBarActionsShown(411.dp, hasBack = true, actions = 4, alwaysMore = true))
+        // Narrower than a phone: two icons fold in beside the menu, keeping the title its 120dp.
+        assertEquals(2, topBarActionsShown(360.dp, hasBack = true, actions = 4, alwaysMore = true))
+        // No actions but a menu: just More.
+        assertEquals(0, topBarActionsShown(411.dp, hasBack = true, actions = 0, alwaysMore = true))
+    }
 }

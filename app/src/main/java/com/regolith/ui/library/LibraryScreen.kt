@@ -7,6 +7,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.graphicsLayer
 import com.regolith.ui.components.RefreshLine
+import com.regolith.ui.components.TopBarMenuItem
+import com.regolith.ui.components.showMessage
+import com.regolith.ui.components.MessageKind
+import com.regolith.ui.components.LocalAppSnackbar
 import com.regolith.ui.components.pagePull
 import com.regolith.ui.components.rememberPagePull
 import androidx.compose.foundation.background
@@ -269,6 +273,18 @@ fun LibraryScreen(
     onPlayPictures: ((folderId: Long, shuffle: Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val appSnackbar = LocalAppSnackbar.current
+    LaunchedEffect(viewModel) { viewModel.notices.collect { appSnackbar.showMessage(it, MessageKind.DONE) } }
+    // More › Regenerate artwork, on a collection's wall and its profile alike.
+    val regenerateItem = if (viewModel.folderId != null) {
+        TopBarMenuItem(
+            com.composables.icons.lucide.R.drawable.lucide_ic_refresh_cw,
+            "Regenerate artwork",
+            "Its poster and every video's pictures, made again from the share",
+            "library_regenerate_artwork",
+            viewModel::regenerateArtwork,
+        )
+    } else null
     val uploadActions = viewModel.uploadActions
     val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
@@ -513,6 +529,9 @@ fun LibraryScreen(
                         viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode)
                     },
                 ),
+                // Kept out of the icons: a verb for after the share changed,
+                // not for every visit. Only a collection has one.
+                menu = listOfNotNull(regenerateItem),
             )
         }
 
@@ -1062,6 +1081,9 @@ fun LibraryScreen(
                     TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
                     viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
                 ),
+                // Kept out of the icons: a verb for after the share changed,
+                // not for every visit. Only a collection has one.
+                menu = listOfNotNull(regenerateItem),
             )
         }
     }

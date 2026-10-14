@@ -75,8 +75,8 @@ A wall shows as posters or as rows, sorted by name, date added, file size,
 runtime or resolution (tap the sort in use again to reverse it), and **Play all**
 on a collection plays it in order or shuffled. A video's own page shows its
 picture, its resolution, HDR and codec, **Resume** or **Play**, **Keep on this
-device**, where it lives and what its video and audio are, with Rename and
-Delete from share underneath.
+device**, where it lives and what its video and audio are, with Rename,
+Regenerate artwork and Delete from share underneath.
 
 A Library wall sorted by name, A to Z, with more than ten tiles gets the same
 A–Z rail as the move sheet down its edge: slide a thumb down it to jump from
@@ -737,6 +737,14 @@ of the file by handing the decoder the file's header and a piece of the middle.
 A library scanned before this existed has no walk queued for it: tap **Settings ›
 Media › Prepare artwork**, or rescan the share. **Artwork cache**, above it, says
 how much room the pictures take and clears them.
+
+Changed something on the share, a new `poster.jpg` or a re-encoded video, and
+want just that place's pictures again? A collection's **⋯ › Regenerate artwork**
+throws away its poster and every picture under it (each video's thumbnail,
+backdrop and chapter frames, the pictures in its albums, and every collection
+inside it) and makes them again in the background, with the same progress over
+the navigation as the walk. A video's page has the same thing under **Manage
+file**. Nothing on the share is touched: these are the phone's copies.
 
 Points of interest are made ahead of time too. After the folders, the walk grabs the
 frame at every *named* mark (the only kind Search shows), before it moves on to the

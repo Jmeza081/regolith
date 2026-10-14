@@ -69,7 +69,24 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val chapters: UserChapterRepository,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
     private val connection: com.regolith.data.connection.ConnectionFocus,
+    private val regenerator: com.regolith.data.artwork.ArtworkRegenerator,
 ) : ViewModel() {
+
+    /** One-off lines for the page's snackbar. */
+    val notices: kotlinx.coroutines.flow.SharedFlow<String> get() = _notices
+    private val _notices = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 1)
+
+    /**
+     * Manage › Regenerate artwork: throw this video's pictures away (its
+     * thumbnail, backdrop and chapter frames) and have them made again from
+     * the share, in the background with the artwork walk's progress.
+     */
+    fun regenerateArtwork() {
+        viewModelScope.launch {
+            val done = regenerator.regenerate(com.regolith.domain.artwork.ArtworkScope.File(fileId))
+            _notices.tryEmit(if (done != null) "Making this video's artwork again" else "This video isn't in the library any more")
+        }
+    }
 
     @AssistedFactory
     interface Factory {

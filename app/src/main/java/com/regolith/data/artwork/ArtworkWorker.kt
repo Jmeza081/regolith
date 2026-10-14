@@ -55,7 +55,11 @@ class ArtworkWorker @AssistedInject constructor(
     private val shareFiles: ShareFileDao,
     private val pictures: PictureRepository,
     private val prefetcher: ArtworkPrefetcher,
+    private val regenerator: ArtworkRegenerator,
 ) : CoroutineWorker(context, params) {
+
+    /** One collection or video's "Regenerate artwork", or null for the share's own walk. */
+    private val scope = ArtworkPrefetcher.scopeOf(params.inputData)
 
     override suspend fun doWork(): Result {
         val shareId = inputData.getLong(KEY_SHARE_ID, -1)
@@ -64,7 +68,8 @@ class ArtworkWorker @AssistedInject constructor(
         // Every picture's shape and date first: a few milliseconds each, and
         // what lets an album's mosaic lay itself out before any thumbnail
         // below exists (PictureRepository).
-        if (!pictures.measureShare(shareId)) return Result.retry()
+        // A scoped walk skips this: its pictures were measured by the share's.
+        if (scope == null && !pictures.measureShare(shareId)) return Result.retry()
 
         val owners = ownersOf(shareId)
         if (owners.isEmpty()) return finished(shareId)
@@ -124,7 +129,7 @@ class ArtworkWorker @AssistedInject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "artwork walk of share $shareId crashed", e)
             // One bad item is no reason to hold back every chapter picture.
-            prefetcher.enqueueWalls(shareId)
+            scope?.let { prefetcher.enqueueWalls(shareId, it) } ?: prefetcher.enqueueWalls(shareId)
             Result.failure()
         }
     }
@@ -145,6 +150,14 @@ class ArtworkWorker @AssistedInject constructor(
      * filled in: an album opened before its turn makes its own on demand.
      */
     private suspend fun ownersOf(shareId: Long): List<ArtworkOwner> {
+        // "Regenerate artwork": the same order, narrowed to what the scope
+        // covers, so the progress counts only those.
+        scope?.let { s ->
+            val contents = regenerator.contentsOf(s) ?: return emptyList()
+            val files = contents.files.toSet()
+            val marks = chapters.namedInShare(shareId).filter { it.fileId in files }.map { ArtworkOwner.Moment(it.fileId, it.startMs) }
+            return contents.folders.map { ArtworkOwner.Folder(it) } + marks + contents.files.map { ArtworkOwner.File(it) } + contents.pictures.map { ArtworkOwner.Picture(it) }
+        }
         val folders = library.observeFoldersInShares(listOf(shareId)).first()
             .filter { it.parentId != null }
             .map { ArtworkOwner.Folder(it.id) }
@@ -165,7 +178,7 @@ class ArtworkWorker @AssistedInject constructor(
      * is laid out on the runtime this walk writes to each row.
      */
     private fun finished(shareId: Long): Result {
-        prefetcher.enqueueWalls(shareId)
+        scope?.let { prefetcher.enqueueWalls(shareId, it) } ?: prefetcher.enqueueWalls(shareId)
         return Result.success()
     }
 

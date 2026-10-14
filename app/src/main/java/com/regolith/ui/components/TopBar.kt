@@ -37,6 +37,9 @@ import com.regolith.ui.theme.scaledDp
 /** One trailing icon in the top bar: a 44dp hit area around a 19dp glyph in #A0A0A0. */
 data class TopBarAction(val icon: Int, val contentDescription: String, val testTag: String, val onClick: () -> Unit)
 
+/** An action that lives only in a [TopBar]'s More sheet: its name, and a [note] under it saying what it does. */
+data class TopBarMenuItem(val icon: Int, val label: String, val note: String?, val testTag: String, val onClick: () -> Unit)
+
 /**
  * Screen header (design: every tab and pushed screen). Michroma title at
  * 15px, an optional subtitle at 12px underneath, an optional back arrow
@@ -51,6 +54,11 @@ data class TopBarAction(val icon: Int, val contentDescription: String, val testT
  * title's page on the inner display, which is narrower than a phone), the
  * ones that do not fit fold into a More button and its sheet
  * ([topBarActionsShown]), and a title still too long ends in an ellipsis.
+ *
+ * [menu] is for actions that always live in More, never as an icon: a verb
+ * used now and then, with a [TopBarMenuItem.note] to say what it does
+ * (a collection's Regenerate artwork). With any, the More button is always
+ * there and is counted as an icon when deciding what else fits.
  */
 @Composable
 fun TopBar(
@@ -61,20 +69,22 @@ fun TopBar(
     subtitleMuted: Boolean = false,
     actions: List<TopBarAction> = emptyList(),
     statusBarPadding: Boolean = true,
+    menu: List<TopBarMenuItem> = emptyList(),
 ) {
     var moreOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val shownCount = topBarActionsShown(maxWidth, onBack != null, actions.size)
+        val shownCount = topBarActionsShown(maxWidth, onBack != null, actions.size, alwaysMore = menu.isNotEmpty())
+        val folded = actions.drop(shownCount).map { TopBarMenuItem(it.icon, it.contentDescription, null, it.testTag, it.onClick) } + menu
         TopBarRow(
             title, onBack, subtitle, subtitleMuted, statusBarPadding,
             shown = actions.take(shownCount),
-            onMore = if (shownCount < actions.size) ({ moreOpen = true }) else null,
+            onMore = if (folded.isNotEmpty()) ({ moreOpen = true }) else null,
         )
-        if (moreOpen && shownCount < actions.size) {
+        if (moreOpen && folded.isNotEmpty()) {
             // The folded actions by name, each closing the sheet before it acts.
             RegolithSheet(title = title.ifEmpty { "More" }, onDismiss = { moreOpen = false }, testTag = "topbar_more_sheet") {
-                actions.drop(shownCount).forEach { action ->
-                    SheetChoice(action.icon, action.contentDescription, null, action.testTag) {
+                folded.forEach { action ->
+                    SheetChoice(action.icon, action.label, action.note, action.testTag) {
                         moreOpen = false
                         action.onClick()
                     }
@@ -138,12 +148,14 @@ private fun TopBarIcon(icon: Int, contentDescription: String, testTag: String, o
  * How many of [actions] trailing icons a bar [width] wide shows, the rest
  * going into More: all of them while the title keeps [TopBarTitleRoom],
  * otherwise as many as leave it that room beside More, which may be none.
+ * [alwaysMore]: More is there anyway (a bar with a [TopBar] menu), so it
+ * takes its icon's room from the start.
  */
-internal fun topBarActionsShown(width: Dp, hasBack: Boolean, actions: Int): Int {
-    if (actions <= 1) return actions
+internal fun topBarActionsShown(width: Dp, hasBack: Boolean, actions: Int, alwaysMore: Boolean = false): Int {
+    if (actions <= 1 && !alwaysMore) return actions
     val fixed = Spacing.s18 + Spacing.s8 + if (hasBack) TopBarBackWidth + Spacing.s12 else 0.dp
     fun room(icons: Int) = width - fixed - TopBarActionSize * icons
-    if (room(actions) >= TopBarTitleRoom) return actions
+    if (room(actions + if (alwaysMore) 1 else 0) >= TopBarTitleRoom) return actions
     return (actions - 1 downTo 0).firstOrNull { room(it + 1) >= TopBarTitleRoom } ?: 0
 }
 
