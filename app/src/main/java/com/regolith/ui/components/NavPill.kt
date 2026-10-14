@@ -3,6 +3,11 @@ package com.regolith.ui.components
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import com.regolith.domain.connection.ShareLink
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -102,11 +107,25 @@ fun NavPill(
      * and the rail on a wide window.
      */
     selection: SelectionChromeState? = null,
+    /**
+     * The share's connection, drawn as a dot in the upper-right corner of the
+     * tab you are on ([ShareStatusDot]): green while it answers, a grey ring
+     * when it cannot be reached. Null draws nothing (Settings › Display ›
+     * Share connection is off, or there is no share on the network).
+     */
+    connection: ShareLink? = null,
+    /** A long press on the tab you are on: the connection sheet. Null leaves the hold doing nothing. */
+    onHoldSelected: (() -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val frosted = Modifier.navChromeFrost(hazeState, PillShape)
     val cell: @Composable (MainTab, Modifier) -> Unit = { tab, cellModifier ->
-        NavCell(tab, selected = tab == selected, dimmed = tab in dimmed, dot = tab in dots, onSelect = onSelect, modifier = cellModifier)
+        val here = tab == selected
+        NavCell(
+            tab, selected = here, dimmed = tab in dimmed, dot = tab in dots, onSelect = onSelect, modifier = cellModifier,
+            connection = connection.takeIf { here },
+            onHold = onHoldSelected.takeIf { here },
+        )
     }
     if (vertical) {
         // The rail: one cell high per tab, 10dp of inner padding top and
@@ -388,8 +407,18 @@ fun NavRailSpine(
 
 /** One tab cell: glyph over label, the whole cell tappable. Shared by the pill and the rail. */
 @Composable
-private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, dot: Boolean, onSelect: (MainTab) -> Unit, modifier: Modifier) {
+private fun NavCell(
+    tab: MainTab,
+    selected: Boolean,
+    dimmed: Boolean,
+    dot: Boolean,
+    onSelect: (MainTab) -> Unit,
+    modifier: Modifier,
+    connection: ShareLink? = null,
+    onHold: (() -> Unit)? = null,
+) {
     val colors = RegolithTheme.colors
+    val haptics = LocalHapticFeedback.current
     val ink = when {
         selected -> colors.ink
         dimmed -> colors.navDimmed
@@ -400,20 +429,43 @@ private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, dot: Boole
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
         modifier = modifier
-            .clickable(interactionSource = interaction, indication = null, role = Role.Tab, onClick = { onSelect(tab) })
-            .semantics { this.selected = selected }
+            .combinedClickable(
+                interactionSource = interaction, indication = null, role = Role.Tab,
+                onClick = { onSelect(tab) },
+                // Holding the tab you are on opens the connection sheet. A
+                // buzz says the hold took, since nothing on screen says a
+                // hold does anything.
+                onLongClick = onHold?.let { hold -> { haptics.performHapticFeedback(HapticFeedbackType.LongPress); hold() } },
+                onLongClickLabel = onHold?.let { "Connection details" },
+            )
+            .semantics {
+                this.selected = selected
+                connection?.let { stateDescription = it.spoken() }
+            }
             .testTag(tab.testTag),
     ) {
         Box {
             Icon(painter = painterResource(tab.icon), contentDescription = tab.label, tint = ink, modifier = Modifier.size(19.scaledDp()))
+            if (connection != null) {
+                // The share's connection, in the corner a notification dot
+                // takes. The dot's own box is 2.5× the dot for its glow, so
+                // the offset puts the dot's centre where the red dot's is.
+                ShareStatusDot(
+                    connection,
+                    size = CONNECTION_DOT,
+                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 9.75.dp, y = (-7.75).dp).testTag("${tab.testTag}_connection"),
+                )
+            }
             if (dot) {
                 // Red, not white: on a nav cell white is what "you are here"
                 // means, and a dot must not say that. The accent is the
-                // app's one attention colour and this is attention.
+                // app's one attention colour and this is attention. On the
+                // tab carrying the connection dot it moves to the other
+                // corner: the dot looked at all the time keeps its place.
                 Box(
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 4.dp, y = (-2).dp)
+                        .align(if (connection != null) Alignment.TopStart else Alignment.TopEnd)
+                        .offset(x = if (connection != null) (-4).dp else 4.dp, y = (-2).dp)
                         .size(6.dp)
                         .background(colors.accent, PillShape)
                         .testTag("${tab.testTag}_dot"),
@@ -423,6 +475,16 @@ private fun NavCell(tab: MainTab, selected: Boolean, dimmed: Boolean, dot: Boole
         Spacer(Modifier.height(Spacing.s4))
         Text(tab.label.uppercase(), style = TextStyles.navLabel, color = ink)
     }
+}
+
+/** The connection dot on the tab you are on: a point larger than the red badge, so the glow and the ring read. */
+private val CONNECTION_DOT: Dp = 7.dp
+
+/** What a screen reader hears on the tab you are on, after its name. */
+private fun ShareLink.spoken(): String = when (this) {
+    ShareLink.CONNECTED -> "Share connected"
+    ShareLink.CHECKING -> "Checking the share"
+    ShareLink.OUT_OF_REACH -> "Share out of reach"
 }
 
 /** The rail's width on a wide window: the widest label ("SETTINGS") plus the pill's own 10dp each side. */

@@ -383,7 +383,7 @@ fun SettingsScreen(
                     // owed chapter files written when it comes back.
                     RegolithSwitch(
                         label = "Share connection",
-                        note = "A green dot by the navigation while the share you're browsing answers, a grey ring when it can't be reached. Tap it for details.",
+                        note = "A green dot on the tab you're on while the share you're browsing answers, a grey ring when it can't be reached. Hold the highlighted tab for details.",
                         checked = state.showShareStatus, onCheckedChange = viewModel::setShowShareStatus, testTag = "settings_share_status_switch",
                     )
                     // Three lights, one choice. The note follows the choice,

@@ -80,7 +80,6 @@ import com.regolith.ui.components.LocalNavChromeHold
 import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
 import com.regolith.ui.components.ChromeMessageHost
 import com.regolith.ui.util.formatCount
-import com.regolith.ui.components.ShareStatusButton
 import com.regolith.ui.components.ShareStatusSheet
 import com.regolith.domain.connection.ShareEvent
 import com.regolith.ui.components.LocalAppSnackbar
@@ -557,10 +556,16 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         appViewModel.shareEvents.collect { event ->
             launch {
                 when (event) {
-                    is ShareEvent.Dropped -> appSnackbar.showMessage(
-                        "Lost ${event.serverName} · " + if (event.owed > 0) "changes wait on this phone" else "out of reach",
-                        kind = MessageKind.INFO,
-                    )
+                    is ShareEvent.Dropped -> {
+                        // "Details" is the panel's one visible door: holding
+                        // the tab is the other, and nothing on screen says so.
+                        val result = appSnackbar.showMessage(
+                            "Lost ${event.serverName} · " + if (event.owed > 0) "changes wait on this phone" else "out of reach",
+                            kind = MessageKind.INFO,
+                            actionLabel = "Details",
+                        )
+                        if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) shareSheet = true
+                    }
                     is ShareEvent.Back -> appSnackbar.showMessage(
                         if (event.written > 0) "Back · ${formatCount(event.written, "change")} written to the share" else "${event.serverName} is back",
                         kind = MessageKind.DONE,
@@ -1270,15 +1275,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     SelectionSummaryTier(chrome, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                                 }
                                 ChromeMessageHost(appSnackbar, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
-                                // The connection dot, just above the pill at its
-                                // start, moving with it. Not while a selection
-                                // has the pill: its tier is above it then.
-                                val status = shareStatus
-                                if (status != null && showShareStatus && currentTab != null && selectionChrome.state == null) {
-                                    Box(Modifier.fillMaxWidth().padding(horizontal = Spacing.s8), contentAlignment = Alignment.CenterStart) {
-                                        ShareStatusButton(status, onClick = { shareSheet = true })
-                                    }
-                                }
                                 // Room for the mini player's bar, directly above
                                 // the pill: the bar itself is drawn outside this
                                 // group, because it stays when the pill slides
@@ -1291,11 +1287,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 ) {
                                     Spacer(Modifier.height(MINI_BAR_HEIGHT))
                                 }
-                            }
-                            // The connection dot, above the rail's tabs.
-                            val railStatus = shareStatus
-                            if (windowShape.wide && railStatus != null && showShareStatus && selectionChrome.state == null) {
-                                ShareStatusButton(railStatus, onClick = { shareSheet = true })
                             }
                             if (pillHere) NavPill(
                                 selected = currentTab,
@@ -1313,6 +1304,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 // bars, so that left a wide window with no way
                                 // to act on a selection at all.
                                 selection = selectionChrome.state,
+                                // The share's connection, on the tab you are
+                                // on; hold that tab for the sheet. The hold
+                                // works with the dot hidden too.
+                                connection = shareStatus?.link?.takeIf { showShareStatus },
+                                onHoldSelected = { if (shareStatus != null) shareSheet = true },
                             )
                             if (windowShape.wide) {
                                 // The circle under the rail is whichever control

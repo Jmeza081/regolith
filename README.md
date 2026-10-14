@@ -60,13 +60,13 @@ single video, since you may add more later. Playback is a custom
 Media3 data source reading SMB directly, so a file starts without being copied
 first. A LAN finder sweeps the Wi-Fi subnet if you don't know the address.
 
-A small dot by the navigation (above the pill on a phone, atop the rail on
-the inner display) says whether the share you're browsing answers: green while
-it does, a grey ring when it can't be reached. Tap it for the address, the
-network, how fast it answers and anything still waiting to be written, with
-**Check now** or **Try now**. Chapter files saved while the share was out of
-reach are written the moment it answers again, and a message says so.
-**Settings › Display › Share connection** hides the dot; the checking goes on.
+A small dot in the corner of the tab you're on says whether the share you're
+browsing answers: green while it does, a grey ring when it can't be reached.
+Hold that tab for the address, the network, how fast it answers and anything
+still waiting to be written, with **Check now** or **Try now** (the message
+when the share drops has a **Details** button too). Chapter files saved while
+the share was out of reach are written the moment it answers again, and a
+message says so. **Settings › Display › Share connection** hides the dot; the checking goes on.
 A server named by its `.local` name is reached at the address it last answered
 at, refreshed every minute while the app is open, so a missed name lookup no
 longer fails a save.

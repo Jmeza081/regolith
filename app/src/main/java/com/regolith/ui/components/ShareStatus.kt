@@ -7,8 +7,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,13 +23,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -77,48 +72,9 @@ fun ShareStatusDot(link: ShareLink, modifier: Modifier = Modifier, size: Dp = 8.
     }
 }
 
-/** "JESSES-MAC-MINI · MOVIES", or "· OUT OF REACH": what a screen reader calls the share in its state. */
-private fun ShareStatus.label(): String = when (link) {
-    ShareLink.OUT_OF_REACH -> "$serverName · Out of reach"
-    else -> listOfNotNull(serverName.ifEmpty { null }, shareName).joinToString(" · ")
-}
-
-private fun ShareStatus.spoken(): String = when (link) {
-    ShareLink.CONNECTED -> "${label()}: connected"
-    ShareLink.CHECKING -> "${label()}: checking"
-    ShareLink.OUT_OF_REACH -> label() + if (owed.isEmpty()) "" else ", ${owed.size} waiting to write"
-} + ". Tap for details."
-
 /**
- * The connection dot as a control: the dot alone in a small frosted circle
- * (so it reads over any poster), inside a 44dp touch target. No words: the
- * owner's call, the colour says it, and the sheet a tap opens says the rest.
- *
- * Used twice by the nav graph: just above the phone's nav pill, at its
- * start, sliding with it; and above the rail on the inner display.
- * Settings › Display › Share connection hides both.
- */
-@Composable
-fun ShareStatusButton(status: ShareStatus, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = RegolithTheme.colors
-    Box(
-        modifier
-            .size(44.dp)
-            .clip(PillShape)
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = status.spoken() }
-            .testTag("share_status_button"),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            Modifier.size(28.dp).background(colors.overArt, PillShape).border(1.dp, colors.pillBorder, PillShape),
-            contentAlignment = Alignment.Center,
-        ) { ShareStatusDot(status.link) }
-    }
-}
-
-/**
- * What tapping the dot opens: the share's connection in a few facts, and
+ * What holding the tab you are on opens (or the drop message's Details):
+ * the share's connection in a few facts, and
  * the chapter files it still owes.
  *
  * Connected: the address it is reached at, the network, how long a check
