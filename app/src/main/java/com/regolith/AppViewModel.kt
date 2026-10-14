@@ -81,6 +81,7 @@ class AppViewModel @Inject constructor(
     spoofMode: com.regolith.data.spoof.SpoofMode,
     posters: com.regolith.data.artwork.PosterRepository,
     pictureSaver: com.regolith.data.pictures.PictureSaver,
+    private val connection: com.regolith.data.connection.ShareConnectionMonitor,
 ) : ViewModel() {
 
     /**
@@ -424,6 +425,35 @@ class AppViewModel @Inject constructor(
     /** Settings › Display › Auto-hide the rail: whether the idle timer runs at all. */
     val autoHideRail: StateFlow<Boolean> = prefs.autoHideRail
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    // --- The connection dot: is the share being browsed there?
+
+    /**
+     * The share being browsed, and whether it can be reached. Checked only
+     * while the nav graph collects this, which `collectAsStateWithLifecycle`
+     * stops when the app goes to the background, so no checks run unseen.
+     * Collected whether or not the dot is shown: the checks are also what
+     * refresh the share's address every minute and write owed chapter files
+     * the moment it comes back.
+     *
+     * The names of the videos still owed go through spoof mode, as every
+     * name on screen does.
+     */
+    val shareStatus: StateFlow<com.regolith.domain.connection.ShareStatus?> =
+        kotlinx.coroutines.flow.combine(connection.status, spoofMode.state) { status, spoofed ->
+            if (status == null || spoofed == null) status
+            else status.copy(owed = status.owed.map { it.copy(name = spoofed.title(it.name)) })
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** "Lost the Mac" and "Back · 2 changes written", once each. */
+    val shareEvents: kotlinx.coroutines.flow.SharedFlow<com.regolith.domain.connection.ShareEvent> get() = connection.events
+
+    /** Settings › Display › Share connection: whether the dot is drawn. */
+    val showShareStatus: StateFlow<Boolean> = prefs.showShareStatus
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** The sheet's "Check now" and "Try now". */
+    fun checkShareNow() = connection.checkNow()
 
     /** Settings › Display › Hide after: how long that idle timer waits. */
     val navHideAfter: StateFlow<NavHideAfter> = prefs.navHideAfter

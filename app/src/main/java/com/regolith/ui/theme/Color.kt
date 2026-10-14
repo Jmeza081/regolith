@@ -21,6 +21,9 @@ val Ink = Color(0xFFFFFFFF)         // titles, labels, primary ink
 val InkSoft = Color(0xFFEDEDED)     // ink on red / on media
 val Red = Color(0xFFE11B17)         // THE accent. One filled red per screen.
 val RedTint = Color(0x14E11B17)     // 8% red: error card tint, never a fill
+// The one colour outside the greyscale and the red: the connection dot's
+// "live" (the owner's pick, 2026-10-14). A status light, never a fill or text.
+val Live = Color(0xFF3DDC84)
 val NavIdle = Color(0xFF8A8A8A)     // unselected nav labels and segmented tabs
 val NavDimmed = Color(0x38FFFFFF)   // rgba(255,255,255,.22): tabs with nothing behind them
 val Lifted = Color(0xFF1C1C1C)      // the one card that is open for editing, a step above surface
@@ -63,6 +66,7 @@ data class RegolithColors(
     val inkSoft: Color = InkSoft,
     val accent: Color = Red,
     val accentTint: Color = RedTint,
+    val live: Color = Live,
     val navIdle: Color = NavIdle,
     val navDimmed: Color = NavDimmed,
     val badgeBg: Color = BadgeBg,

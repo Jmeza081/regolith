@@ -66,6 +66,8 @@ class AppPreferences @Inject constructor(
         val pictureInPicture = booleanPreferencesKey("picture_in_picture")
         val playWithScreenOff = booleanPreferencesKey("play_with_screen_off")
         val autoHideRail = booleanPreferencesKey("auto_hide_rail")
+        val showShareStatus = booleanPreferencesKey("show_share_status")
+        val focusShareId = longPreferencesKey("focus_share_id")
         val navHideAfter = stringPreferencesKey("nav_hide_after")
         val postersPerRow = stringPreferencesKey("posters_per_row")
         val homeSections = stringPreferencesKey("home_sections")
@@ -275,6 +277,25 @@ class AppPreferences @Inject constructor(
      * independent of this, and counts on a wide window ONLY.
      */
     val autoHideRail: Flow<Boolean> = store.data.map { it[Keys.autoHideRail] ?: true }
+
+    /** Settings › Display › Share connection: the dot above the pill (and atop the rail). On by default. */
+    val showShareStatus: Flow<Boolean> = store.data.map { it[Keys.showShareStatus] ?: true }
+
+    suspend fun setShowShareStatus(enabled: Boolean) {
+        store.edit { it[Keys.showShareStatus] = enabled }
+    }
+
+    /**
+     * The share the connection dot watches: the one behind the folder or
+     * video opened last ([com.regolith.data.connection.ConnectionFocus]).
+     * Kept across launches so the dot has something to say before anything
+     * is opened.
+     */
+    val focusShareId: Flow<Long?> = store.data.map { it[Keys.focusShareId] }
+
+    suspend fun setFocusShareId(id: Long) {
+        store.edit { it[Keys.focusShareId] = id }
+    }
 
     suspend fun setAutoHideRail(enabled: Boolean) {
         store.edit { it[Keys.autoHideRail] = enabled }

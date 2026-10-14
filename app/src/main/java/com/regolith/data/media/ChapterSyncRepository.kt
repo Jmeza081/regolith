@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -263,10 +264,12 @@ class ChapterSyncRepository @Inject constructor(
         val folder = file.relPath.substringBeforeLast('/', "")
         val chapters = chapterDao.forFile(row.fileId).map { Chapter(it.startMs, it.title) }
         return try {
-            val mtime = if (chapters.isEmpty()) {
-                writer.delete(host, creds, share.name, folder, file.name); null
-            } else {
-                writer.write(host, creds, share.name, folder, file.name, ChapterSidecar.format(chapters))
+            val mtime = onceMoreIfOutOfReach(file.relPath) {
+                if (chapters.isEmpty()) {
+                    writer.delete(host, creds, share.name, folder, file.name); null
+                } else {
+                    writer.write(host, creds, share.name, folder, file.name, ChapterSidecar.format(chapters))
+                }
             }
             syncDao.upsert(row.copy(dirty = false, shareMtimeMs = mtime, origin = ORIGIN_LOCAL, note = null, updatedAtMs = System.currentTimeMillis()))
             ChapterWriteOutcome.WRITTEN
@@ -278,12 +281,30 @@ class ChapterSyncRepository @Inject constructor(
             syncDao.upsert(row.copy(note = ChapterSyncNote.READ_ONLY_NOTE, updatedAtMs = System.currentTimeMillis()))
             ChapterWriteOutcome.READ_ONLY
         } catch (e: SmbFailure.Unreachable) {
+            Log.w(TAG, "sidecar write for ${file.relPath} found the share out of reach: ${e.detail ?: e.message}")
             ChapterWriteOutcome.UNREACHABLE
         } catch (e: SmbFailure) {
             Log.w(TAG, "sidecar write for ${file.relPath} failed: $e")
             syncDao.upsert(row.copy(note = ChapterSyncNote.WRITE_FAILED.name, updatedAtMs = System.currentTimeMillis()))
             ChapterWriteOutcome.FAILED
         }
+    }
+
+    /**
+     * Run [block], and once more after [RETRY_AFTER_MS] if the share was out
+     * of reach. A chapter file is written to a `.part` and renamed over the
+     * real name, so writing it twice is safe; and a share that seems gone
+     * for a moment is usually back a moment later (a missed `.local` answer,
+     * a connection the Mac had closed while idle). One retry is the
+     * difference between "Saved to the share" and a phone and share that
+     * disagree until the background job's next try.
+     */
+    private suspend fun <T> onceMoreIfOutOfReach(what: String, block: suspend () -> T): T = try {
+        block()
+    } catch (e: SmbFailure.Unreachable) {
+        Log.w(TAG, "sidecar write for $what found the share out of reach (${e.detail ?: e.message}); trying once more")
+        delay(RETRY_AFTER_MS)
+        block()
     }
 
     /**
@@ -343,6 +364,9 @@ class ChapterSyncRepository @Inject constructor(
 
     companion object {
         private const val TAG = "Regolith/ChapterSync"
+
+        /** The pause before [onceMoreIfOutOfReach]'s second try: long enough for a missed answer to be asked again, short enough that Save still waits for it. */
+        private const val RETRY_AFTER_MS = 1_500L
         const val ORIGIN_LOCAL = "LOCAL"
         const val ORIGIN_SHARE = "SHARE"
     }

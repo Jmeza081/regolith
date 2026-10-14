@@ -82,6 +82,17 @@ fun formatWhen(thenMs: Long, nowMs: Long = System.currentTimeMillis()): String {
     }
 }
 
+/** "just now", "4 s ago", "3 min ago", "2 h ago": how long since something, for a status line that ticks. */
+fun formatAgo(thenMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+    val seconds = ((nowMs - thenMs) / 1000).coerceAtLeast(0)
+    return when {
+        seconds < 2 -> "just now"
+        seconds < 60 -> "$seconds s ago"
+        seconds < 3_600 -> "${seconds / 60} min ago"
+        else -> "${seconds / 3_600} h ago"
+    }
+}
+
 /** "1 picture", "1,204 pictures": a count and its noun, grouped as the wall's file count is. */
 fun formatCount(count: Int, noun: String): String = "%,d %s".format(count, if (count == 1) noun else "${noun}s")
 

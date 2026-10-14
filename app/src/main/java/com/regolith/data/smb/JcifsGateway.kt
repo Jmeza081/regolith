@@ -46,7 +46,20 @@ import javax.inject.Singleton
  * `Dispatchers.IO`; [open] is called by ExoPlayer on its own loader thread.
  */
 @Singleton
-class JcifsGateway @Inject constructor() : SmbGateway {
+class JcifsGateway @Inject constructor(
+    /**
+     * Each server's name → the address it last answered at, so a request
+     * goes to an address instead of looking the name up again (see
+     * [HostAddressCache]: the phone misses `.local` answers now and then,
+     * and each miss used to fail whatever was being asked).
+     */
+    private val addresses: HostAddressCache,
+    /** Where every answer and every "out of reach" is reported, for the connection dot. */
+    private val activity: SmbActivity,
+) : SmbGateway {
+
+    /** For tests that talk to a real server without the app's graph: a cache and a report of their own. */
+    constructor() : this(HostAddressCache(), SmbActivity())
 
     private companion object {
         const val TAG = "Regolith/SMB"
@@ -226,7 +239,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         val lenient = credentials is SmbCredentials.Guest || host in lenientHosts
         pinnedDialect[host]?.let { d ->
             try {
-                return wrap(host, path, d) { block(context(host, credentials, d, lenient)) }
+                return wrap(host, path, d) { block(context(host, credentials, d, lenient)) }.also { activity.answered(host.host) }
             } catch (e: SmbFailure.AuthFailed) {
                 throw e
             } catch (e: SmbFailure) {
@@ -255,6 +268,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
                         .also { lenientHosts += host }
                 }
                 pinnedDialect[host] = d
+                activity.answered(host.host)
                 return result
             } catch (e: SmbFailure.AuthFailed) {
                 throw e
@@ -467,7 +481,9 @@ class JcifsGateway @Inject constructor() : SmbGateway {
 
     /** Raw smb:// URL. jcifs-ng takes path characters as-is (no percent-decoding), so nothing is encoded. */
     private fun urlFor(host: SmbHost, share: String?, relPath: String): String = buildString {
-        append("smb://").append(host.host)
+        // The address, not the name: the name was looked up afresh for
+        // every new request, and a missed answer failed the request.
+        append("smb://").append(addresses.addressFor(host.host))
         if (host.port != SmbHost.DEFAULT_PORT) append(':').append(host.port)
         append('/')
         if (share != null) {
@@ -487,7 +503,7 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         throw SmbFailure.AuthFailed(e, detail(e, dialect))
     } catch (e: SmbException) {
         // The full cause chain: jcifs folds transport-thread failures into one status code.
-        Log.w(TAG, "SMB failure on $dialect for ${host.host}/$path", e)
+        Log.w(TAG, "SMB failure on $dialect for ${host.host}/$path: ${e.causes()}", e)
         throw when (e.ntStatus) {
             NtStatus.NT_STATUS_LOGON_FAILURE,
             NtStatus.NT_STATUS_ACCOUNT_DISABLED,
@@ -508,12 +524,13 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             NtStatus.NT_STATUS_DISK_FULL,
             NT_STATUS_QUOTA_EXCEEDED,
             -> SmbFailure.ShareFull(path, e, detail(e, dialect))
-            else -> if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
+            else -> if (e.isUnreachable()) unreachable(host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
         }
     } catch (e: CIFSException) {
-        Log.w(TAG, "CIFS failure on $dialect for ${host.host}/$path", e)
-        throw if (e.isUnreachable()) SmbFailure.Unreachable(host.host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
+        Log.w(TAG, "CIFS failure on $dialect for ${host.host}/$path: ${e.causes()}", e)
+        throw if (e.isUnreachable()) unreachable(host, e, detail(e, dialect)) else SmbFailure.Other(e.message ?: "SMB error", e, detail(e, dialect))
     } catch (e: UnknownHostException) {
+        activity.failed(host.host, outOfReachCause(e))
         throw SmbFailure.Unreachable(host.host, e, "DNS lookup failed · $dialect")
     }
 
@@ -526,6 +543,34 @@ class JcifsGateway @Inject constructor() : SmbGateway {
         val root = generateSequence<Throwable>(e) { it.cause }.last()
         val msg = root.message?.take(200)
         return listOfNotNull(status ?: root::class.java.simpleName, msg?.takeIf { it != status }, dialect).joinToString(" · ")
+    }
+
+    /**
+     * The whole cause chain on one line: "SmbException 0xC000020C: … ← UnknownHostException: …".
+     * In the message, not only as the throwable, because Android's logger
+     * prints NO stack trace for a chain that contains an
+     * [UnknownHostException] (its guard against log spam while offline),
+     * which hid exactly the failures this is for: a share whose name
+     * stopped resolving read as a bare "SMB failure" with no reason.
+     */
+    private fun Throwable.causes(): String =
+        generateSequence(this) { it.cause }.take(6).joinToString(" ← ") { t ->
+            val status = (t as? SmbException)?.ntStatus?.let { " 0x%08X".format(it) } ?: ""
+            "${t::class.java.simpleName}$status: ${t.message}"
+        }
+
+    /**
+     * The share is out of reach. When a connection was refused or timed out,
+     * the address it went to may be the one that is wrong (the Mac took a
+     * new one on the Wi-Fi), so the next request looks the name up again
+     * rather than trying the same address. A name that did not resolve
+     * leaves the cached address alone: it is the fallback for exactly that.
+     */
+    private fun unreachable(host: SmbHost, e: Throwable, detail: String?): SmbFailure.Unreachable {
+        val connectFailed = generateSequence(e) { it.cause }.any { it is ConnectException || it is SocketTimeoutException || it is java.net.NoRouteToHostException }
+        if (connectFailed) addresses.markStale(host.host)
+        activity.failed(host.host, outOfReachCause(e))
+        return SmbFailure.Unreachable(host.host, e, detail)
     }
 
     private fun Throwable.isTcpLevel(): Boolean =
@@ -582,9 +627,9 @@ class JcifsGateway @Inject constructor() : SmbGateway {
             } catch (e: SmbFailure) {
                 throw e
             } catch (e: java.io.IOException) {
-                Log.w(TAG, "write to ${host.host}/$path failed", e)
+                Log.w(TAG, "write to ${host.host}/$path failed: ${e.causes()}", e)
                 throw if (e.isTcpLevel() || e is java.net.SocketException) {
-                    SmbFailure.Unreachable(host.host, e, "${e::class.java.simpleName} · $dialect")
+                    unreachable(host, e, "${e::class.java.simpleName} · $dialect")
                 } else {
                     SmbFailure.Other(e.message ?: "SMB write failed", e, dialect)
                 }

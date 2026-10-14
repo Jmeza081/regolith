@@ -50,6 +50,7 @@ class BrowseViewModel @AssistedInject constructor(
     private val selection: SelectionPresenter,
     private val artwork: ArtworkRepository,
     private val spoof: SpoofMode,
+    private val connection: com.regolith.data.connection.ConnectionFocus,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -83,6 +84,8 @@ class BrowseViewModel @AssistedInject constructor(
 
     init {
         if (folderId == null) observeRoot() else observeFolder(folderId)
+        // The connection dot watches the share being browsed.
+        if (folderId != null) viewModelScope.launch { connection.onFolder(folderId) }
         viewModelScope.launch { prefs.browseViewMode.collect { mode -> _uiState.update { it.copy(viewMode = mode) } } }
         observeTree()
         viewModelScope.launch { selection.observe().collect { sel -> _uiState.update { it.copy(selection = sel) } } }

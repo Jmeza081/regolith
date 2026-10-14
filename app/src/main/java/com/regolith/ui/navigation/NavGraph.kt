@@ -79,6 +79,10 @@ import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.LocalNavChromeHold
 import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
 import com.regolith.ui.components.ChromeMessageHost
+import com.regolith.ui.util.formatCount
+import com.regolith.ui.components.ShareStatusButton
+import com.regolith.ui.components.ShareStatusSheet
+import com.regolith.domain.connection.ShareEvent
 import com.regolith.ui.components.LocalAppSnackbar
 import com.regolith.ui.poster.PosterEditorScreen
 import com.regolith.ui.poster.PosterEditorViewModel
@@ -277,6 +281,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val autoHideRail by appViewModel.autoHideRail.collectAsStateWithLifecycle()
     // How long "a few seconds" is: Settings › Display › Hide after.
     val navHideAfter by appViewModel.navHideAfter.collectAsStateWithLifecycle()
+    // The connection dot. Collected whether or not it is drawn: collecting is
+    // what runs the share's checks (and its once-a-minute address refresh),
+    // and only while the app is in front.
+    val shareStatus by appViewModel.shareStatus.collectAsStateWithLifecycle()
+    val showShareStatus by appViewModel.showShareStatus.collectAsStateWithLifecycle()
+    var shareSheet by remember { mutableStateOf(false) }
     var railIdle by remember { mutableStateOf(false) }
     // The selection toolbar lives in the nav chrome, so the chrome must be
     // there whenever a selection is. That outranks BOTH ways the rail goes
@@ -541,6 +551,27 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
         val folderId = openUploads ?: return@LaunchedEffect
         openUploadFolder(folderId.takeIf { it >= 0 })
         appViewModel.openedUploads()
+    }
+    // The share went, or came back: said once, over the pill.
+    LaunchedEffect(Unit) {
+        appViewModel.shareEvents.collect { event ->
+            launch {
+                when (event) {
+                    is ShareEvent.Dropped -> appSnackbar.showMessage(
+                        "Lost ${event.serverName} · " + if (event.owed > 0) "changes wait on this phone" else "out of reach",
+                        kind = MessageKind.INFO,
+                    )
+                    is ShareEvent.Back -> appSnackbar.showMessage(
+                        if (event.written > 0) "Back · ${formatCount(event.written, "change")} written to the share" else "${event.serverName} is back",
+                        kind = MessageKind.DONE,
+                    )
+                }
+            }
+        }
+    }
+    // What tapping the dot opens.
+    if (shareSheet) {
+        shareStatus?.let { ShareStatusSheet(it, onCheck = appViewModel::checkShareNow, onDismiss = { shareSheet = false }) }
     }
     // A poster made from a picture (Set as poster closes as it finishes).
     LaunchedEffect(Unit) {
@@ -1239,6 +1270,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     SelectionSummaryTier(chrome, hazeState, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
                                 }
                                 ChromeMessageHost(appSnackbar, Modifier.fillMaxWidth().padding(horizontal = Spacing.s18))
+                                // The connection dot, just above the pill at its
+                                // start, moving with it. Not while a selection
+                                // has the pill: its tier is above it then.
+                                val status = shareStatus
+                                if (status != null && showShareStatus && currentTab != null && selectionChrome.state == null) {
+                                    Box(Modifier.fillMaxWidth().padding(horizontal = Spacing.s8), contentAlignment = Alignment.CenterStart) {
+                                        ShareStatusButton(status, onClick = { shareSheet = true })
+                                    }
+                                }
                                 // Room for the mini player's bar, directly above
                                 // the pill: the bar itself is drawn outside this
                                 // group, because it stays when the pill slides
@@ -1251,6 +1291,11 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 ) {
                                     Spacer(Modifier.height(MINI_BAR_HEIGHT))
                                 }
+                            }
+                            // The connection dot, above the rail's tabs.
+                            val railStatus = shareStatus
+                            if (windowShape.wide && railStatus != null && showShareStatus && selectionChrome.state == null) {
+                                ShareStatusButton(railStatus, onClick = { shareSheet = true })
                             }
                             if (pillHere) NavPill(
                                 selected = currentTab,

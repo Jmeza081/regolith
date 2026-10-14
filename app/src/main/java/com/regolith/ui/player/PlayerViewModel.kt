@@ -68,6 +68,7 @@ import kotlin.math.absoluteValue
 class PlayerViewModel @AssistedInject constructor(
     @Assisted private val key: RegolithKey.Player,
     private val session: PlaybackSession,
+    private val connection: com.regolith.data.connection.ConnectionFocus,
     private val prefs: AppPreferences,
     private val transfers: TransferRepository,
     private val phone: com.regolith.data.repository.PhoneLibrary,
@@ -469,6 +470,8 @@ class PlayerViewModel @AssistedInject constructor(
             state.map { it.fileId }.distinctUntilChanged().collect { id ->
                 if (_chapterDraft.value?.let { it.fileId != id } == true) _chapterDraft.value = null
                 if (namer.naming.value?.let { it.target.fileId != id } == true) namer.cancel()
+                // The connection dot watches the share the film plays from.
+                id?.takeIf { it != RegolithKey.Player.EXTERNAL }?.let { connection.onFile(it) }
             }
         }
         session.playerScreenOpened()

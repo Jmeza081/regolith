@@ -130,6 +130,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.pictureInPicture.collect { v -> _uiState.update { it.copy(pictureInPicture = v) } } }
         viewModelScope.launch { prefs.playWithScreenOff.collect { v -> _uiState.update { it.copy(playWithScreenOff = v) } } }
         viewModelScope.launch { prefs.autoHideRail.collect { v -> _uiState.update { it.copy(autoHideRail = v) } } }
+        viewModelScope.launch { prefs.showShareStatus.collect { v -> _uiState.update { it.copy(showShareStatus = v) } } }
         viewModelScope.launch { prefs.navHideAfter.collect { v -> _uiState.update { it.copy(navHideAfter = v) } } }
         viewModelScope.launch { prefs.ambientLight.collect { v -> _uiState.update { it.copy(ambientLight = v) } } }
         viewModelScope.launch { prefs.postersPerRow.collect { v -> _uiState.update { it.copy(postersPerRow = v) } } }
@@ -296,6 +297,9 @@ class SettingsViewModel @Inject constructor(
     fun setPictureInPicture(enabled: Boolean) = viewModelScope.launch { prefs.setPictureInPicture(enabled) }.let { }
     fun setPlayWithScreenOff(enabled: Boolean) = viewModelScope.launch { prefs.setPlayWithScreenOff(enabled) }.let { }
     fun setAutoHideRail(enabled: Boolean) = viewModelScope.launch { prefs.setAutoHideRail(enabled) }.let { }
+
+    /** Settings › Display › Share connection: show or hide the connection dot. The checks run either way. */
+    fun setShowShareStatus(enabled: Boolean) = viewModelScope.launch { prefs.setShowShareStatus(enabled) }.let { }
 
     /** Settings › Display › Hide after: how long the navigation waits before it goes. */
     fun setNavHideAfter(after: NavHideAfter) = viewModelScope.launch { prefs.setNavHideAfter(after) }.let { }

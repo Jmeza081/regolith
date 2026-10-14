@@ -71,6 +71,9 @@ class FakeSmbGateway : SmbGateway {
     /** Every whole-file write fails with this, while renames and deletes still work: a share that is full, or refuses new files. */
     var writeFailure: SmbFailure? = null
 
+    /** The next this-many writes find the share out of reach, then it is back: a moment's drop. */
+    var unreachableWrites = 0
+
     /**
      * Runs at the start of every rename, before anything is checked. A test
      * holds a `writeReplacing` write here, its `.part` down and not yet
@@ -110,6 +113,7 @@ class FakeSmbGateway : SmbGateway {
     override suspend fun write(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, bytes: ByteArray): Long {
         checkWritable(host, credentials, share)
         writeFailure?.let { throw it }
+        if (unreachableWrites > 0) { unreachableWrites--; throw SmbFailure.Unreachable(host.host) }
         val at = clockMs
         clockMs += 1_000
         files.getValue(share)[relPath] = bytes.copyOf()

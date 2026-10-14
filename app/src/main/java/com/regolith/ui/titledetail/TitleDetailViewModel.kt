@@ -68,6 +68,7 @@ class TitleDetailViewModel @AssistedInject constructor(
     private val spoof: SpoofMode,
     private val chapters: UserChapterRepository,
     private val artwork: com.regolith.data.artwork.ArtworkRepository,
+    private val connection: com.regolith.data.connection.ConnectionFocus,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -108,6 +109,8 @@ class TitleDetailViewModel @AssistedInject constructor(
     }
 
     init {
+        // The connection dot watches the share this video is on.
+        viewModelScope.launch { connection.onFile(fileId) }
         viewModelScope.launch {
             // Its chapters, live: marking or naming one in the player and
             // coming back shows it here. The same list and pictures as the

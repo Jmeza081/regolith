@@ -126,6 +126,10 @@ interface ShareDao {
     @Query("SELECT * FROM shares WHERE serverId = :serverId ORDER BY name")
     fun observeForServer(serverId: Long): Flow<List<ShareEntity>>
 
+    /** Every share, for the connection dot's choice of which one it watches. */
+    @Query("SELECT * FROM shares ORDER BY serverId, name")
+    fun observeEvery(): Flow<List<ShareEntity>>
+
     @Query("SELECT * FROM shares WHERE enabled = 1 ORDER BY serverId, name")
     fun observeEnabled(): Flow<List<ShareEntity>>
 
@@ -1439,6 +1443,24 @@ interface ChapterSyncDao {
     @Query("SELECT * FROM chapter_sync WHERE dirty = 1")
     suspend fun dirty(): List<ChapterSyncEntity>
 
+    /**
+     * The chapter files [serverId]'s shares still owe, newest edit first: the
+     * connection sheet's "Waiting to write". A share with chapter writing
+     * turned off keeps its rows dirty on purpose and is left out; nothing is
+     * waiting there, it is staying on the phone.
+     */
+    @Query(
+        """
+        SELECT media_files.id AS fileId, media_files.name AS name
+        FROM chapter_sync
+        JOIN media_files ON media_files.id = chapter_sync.fileId
+        JOIN shares ON shares.id = media_files.shareId
+        WHERE chapter_sync.dirty = 1 AND shares.serverId = :serverId AND shares.writeChapters = 1
+        ORDER BY chapter_sync.updatedAtMs DESC
+        """,
+    )
+    fun observeOwedFor(serverId: Long): Flow<List<OwedChapterRow>>
+
     @Query("SELECT COUNT(*) FROM chapter_sync JOIN media_files ON media_files.id = chapter_sync.fileId WHERE media_files.folderId = :folderId")
     suspend fun countForFolder(folderId: Long): Int
 
@@ -1454,3 +1476,6 @@ interface ChapterSyncDao {
     @Query("DELETE FROM chapter_sync")
     suspend fun deleteAll()
 }
+
+/** One chapter file a server still owes: [ChapterSyncDao.observeOwedFor]. */
+data class OwedChapterRow(val fileId: Long, val name: String)
