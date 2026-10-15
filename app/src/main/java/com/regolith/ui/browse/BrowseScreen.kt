@@ -53,7 +53,8 @@ import com.regolith.ui.util.formatOtherFileCount
 import com.regolith.ui.util.formatFileCount
 import com.regolith.ui.util.formatFolderCount
 import com.regolith.ui.util.formatRemaining
-import com.regolith.ui.components.viewModeAction
+import com.regolith.ui.components.viewModeChoice
+import com.regolith.ui.components.TopBarMenuItem
 import com.regolith.ui.components.MediaTile
 import com.regolith.ui.components.rememberTileRing
 import com.regolith.domain.library.ViewMode
@@ -97,6 +98,8 @@ fun BrowseScreen(
     onOpenFile: (fileId: Long) -> Unit,
     onAddServer: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The bar's Search: the whole library's, as everywhere else (the owner's call). Null hides it. */
+    onSearch: (() -> Unit)? = null,
     /**
      * A jump from the share tree. Unlike [onOpenFolder] it does not push:
      * the tree is a way back to the top, so it restarts the Browse chain
@@ -155,7 +158,7 @@ fun BrowseScreen(
                     modifier = Modifier.width(SHARE_TREE_WIDTH).fillMaxHeight().padding(top = TREE_TOP_PADDING, bottom = Spacing.s18),
                 )
             }
-            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, onSendingAway, onSetPoster, Modifier.weight(1f))
+            BrowseContent(state, offline, viewModel, onOpenFolder, onOpenFile, onAddServer, onPlayAll, selectedFileId, highlightFileId, onSendingAway, onSetPoster, Modifier.weight(1f), onSearch)
         }
     }
 }
@@ -175,6 +178,7 @@ private fun BrowseContent(
     onSendingAway: () -> Unit,
     onSetPoster: (folderId: Long, pictureId: Long?, uri: String?) -> Unit,
     modifier: Modifier,
+    onSearch: (() -> Unit)?,
 ) {
     val colors = RegolithTheme.colors
     var playAllOpen by remember { mutableStateOf(false) }
@@ -213,12 +217,14 @@ private fun BrowseContent(
                 title = state.title,
                 subtitle = state.breadcrumb,
                 subtitleMuted = true,
-                actions = listOfNotNull(
+                // Search alone on the bar; everything else in More.
+                actions = listOfNotNull(onSearch?.let { TopBarAction(R.drawable.rg_ic_search_alt, "Search", "browse_search_button", it) }),
+                menu = listOfNotNull(
+                    viewModeChoice(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode),
                     // Upload into this folder (P16), only where a share is behind it:
                     // not at the Browse root, not in Phone storage, not in the demo.
-                    TopBarAction(R.drawable.rg_ic_upload, "Upload to this folder", "browse_upload_button") { uploadActions?.openSheet() }
+                    TopBarMenuItem(R.drawable.rg_ic_upload, "Upload to this folder", "Videos and pictures from this phone", "browse_upload_button") { uploadActions?.openSheet() }
                         .takeIf { uploads.canUpload },
-                    viewModeAction(state.viewMode, "browse_view_mode_button", viewModel::toggleViewMode),
                 ),
             )
         }

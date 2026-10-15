@@ -79,6 +79,21 @@ import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.LocalNavChromeHold
 import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
 import com.regolith.ui.components.ChromeMessageHost
+import com.regolith.ui.theme.scaledDp
+import com.regolith.ui.components.SEARCH_FLIGHT_MS
+import com.regolith.ui.components.SearchFlightCapsule
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
+import com.regolith.ui.components.SearchPullCapsule
+import com.regolith.ui.components.SEARCH_CANCEL_WIDTH
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.regolith.ui.util.formatCount
 import com.regolith.ui.components.ShareStatusSheet
 import com.regolith.domain.connection.ShareEvent
@@ -286,6 +301,41 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val shareStatus by appViewModel.shareStatus.collectAsStateWithLifecycle()
     val showShareStatus by appViewModel.showShareStatus.collectAsStateWithLifecycle()
     var shareSheet by remember { mutableStateOf(false) }
+    // The swipe off the nav that opens Search (SearchPull.kt): how far it has
+    // gone (1 is far enough), animated so a release short of the line springs
+    // it back down. One buzz as it crosses, so letting go is a decision.
+    val searchPull = remember { Animatable(0f) }
+    val pullScope = rememberCoroutineScope()
+    val pullHaptics = LocalHapticFeedback.current
+    val pullReady = searchPull.value >= 1f
+    LaunchedEffect(pullReady) { if (pullReady) pullHaptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+    // Where the capsule is on screen, and, once let go past the line, where
+    // it flies from: into Search's field, over Search as it fades in.
+    var pullCapsuleBounds by remember { mutableStateOf<Rect?>(null) }
+    // On a phone the pill itself becomes the bar, so the flight starts from it.
+    var pillBounds by remember { mutableStateOf<Rect?>(null) }
+    var searchFlightFrom by remember { mutableStateOf<Rect?>(null) }
+    val searchFlight = remember { Animatable(0f) }
+    val pullDensity = LocalDensity.current
+    val statusBarTop = WindowInsets.statusBars.getTop(pullDensity)
+    val onSearchPull: (Float) -> Unit = { p -> pullScope.launch { searchPull.snapTo(p) } }
+    val onSearchRelease: () -> Unit = {
+        val from = if (windowShape.wide) pullCapsuleBounds else pillBounds
+        if (searchPull.value >= 1f && from != null) {
+            pullScope.launch {
+                searchFlightFrom = from
+                searchFlight.snapTo(0f)
+                searchFlight.animateTo(1f, tween(SEARCH_FLIGHT_MS, easing = EaseOutCubic))
+                backStack.add(RegolithKey.Search())
+                // Over the field until Search has faded in beneath it.
+                delay(SEARCH_FADE_MS + 40)
+                searchFlightFrom = null
+                searchPull.snapTo(0f)
+            }
+        } else {
+            pullScope.launch { searchPull.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow)) }
+        }
+    }
     var railIdle by remember { mutableStateOf(false) }
     // The selection toolbar lives in the nav chrome, so the chrome must be
     // there whenever a selection is. That outranks BOTH ways the rail goes
@@ -850,7 +900,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 onPlay = { fileId, startMs -> backStack.add(RegolithKey.Player(fileId, startMs, flies = true)) },
                             )
                         }
-                        entry<RegolithKey.Search> { key ->
+                        entry<RegolithKey.Search>(metadata = searchScreen) { key ->
                             SearchScreen(
                                 viewModel = hiltViewModel<SearchViewModel, SearchViewModel.Factory>(
                                     creationCallback = { it.create(key.poi) },
@@ -877,6 +927,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onOpenFolder = { openFromWall(RegolithKey.Browse(it)) },
                                     onOpenFile = { openTitle(it) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                                    onSearch = { backStack.add(RegolithKey.Search()) },
                                     onPlayAll = ::playAll,
                                     onSendingAway = appViewModel::sendingAway,
                                     onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
@@ -1160,6 +1211,23 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                     LockScreen(authenticate = appViewModel::authenticate, onUnlocked = appViewModel::unlocked)
                 }
 
+                // Outside the nav chrome's block, which goes the moment Search
+                // is pushed: the capsule has to outlive it to land.
+                // Let go past the line: the capsule flies into Search's
+                // field (statusBars + s12, s18 in, the field's height,
+                // short of Cancel) over Search as it fades in.
+                searchFlightFrom?.let { from ->
+                    with(pullDensity) {
+                        val window = LocalWindowInfo.current.containerSize
+                        val to = Rect(
+                            left = Spacing.s18.toPx(),
+                            top = statusBarTop + Spacing.s12.toPx(),
+                            right = window.width - Spacing.s18.toPx() - Spacing.s12.toPx() - SEARCH_CANCEL_WIDTH.toPx(),
+                            bottom = statusBarTop + Spacing.s12.toPx() + 44.scaledDp().toPx(),
+                        )
+                        SearchFlightCapsule(from, to, searchFlight.value, placeholder = "Titles, filenames, folders")
+                    }
+                }
                 if ((currentTab != null || pushedChrome) && !splash && locked != true) {
                     // A wide window's message has no pill to ride above, so it
                     // docks to the bottom of the window instead, clear of the
@@ -1205,6 +1273,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 .padding(start = Spacing.s18, end = Spacing.s18 + miniCardBeside, top = Spacing.s18, bottom = Spacing.s18)
                                 .widthIn(max = BACKGROUND_WORK_MAX_WIDTH),
                             onOpen = { openUploadFolder(it.folderId) },
+                        )
+                    }
+                    // The inner display's search capsule, out beside the rail it is swiped from.
+                    if (windowShape.wide && searchPull.value > 0f && searchFlightFrom == null) {
+                        SearchPullCapsule(
+                            searchPull.value, "Swipe across to search",
+                            Modifier.align(Alignment.CenterStart).padding(start = NAV_RAIL_INSET + Spacing.s8)
+                                .onGloballyPositioned { pullCapsuleBounds = it.boundsInWindow() },
                         )
                     }
                     AnimatedVisibility(
@@ -1309,6 +1385,14 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 // works with the dot hidden too.
                                 connection = shareStatus?.link?.takeIf { showShareStatus },
                                 onHoldSelected = { if (shareStatus != null) shareSheet = true },
+                                // Swipe up off the pill (across from the rail)
+                                // for Search, the whole library's, from any tab.
+                                onSearchPull = onSearchPull.takeIf { currentTab != null && searchFlightFrom == null },
+                                onSearchRelease = onSearchRelease,
+                                // On a phone the pill becomes the bar as it is swiped.
+                                searchProgress = { if (windowShape.wide) 0f else searchPull.value },
+                                searchFlying = searchFlightFrom != null,
+                                onPillBounds = { pillBounds = it },
                             )
                             if (windowShape.wide) {
                                 // The circle under the rail is whichever control

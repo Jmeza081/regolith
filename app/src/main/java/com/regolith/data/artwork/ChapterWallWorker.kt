@@ -48,7 +48,11 @@ class ChapterWallWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val library: LibraryRepository,
     private val artwork: ArtworkRepository,
+    private val regenerator: ArtworkRegenerator,
 ) : CoroutineWorker(context, params) {
+
+    /** One collection or video's "Regenerate artwork", or null for the share's own pass. */
+    private val scope = ArtworkPrefetcher.scopeOf(params.inputData)
 
     override suspend fun doWork(): Result {
         val shareId = inputData.getLong(KEY_SHARE_ID, -1)
@@ -91,7 +95,7 @@ class ChapterWallWorker @AssistedInject constructor(
     }
 
     private suspend fun filmsOf(shareId: Long): List<Long> =
-        library.observeFilesInShares(listOf(shareId)).first()
+        scope?.let { regenerator.contentsOf(it)?.files.orEmpty() } ?: library.observeFilesInShares(listOf(shareId)).first()
             .sortedByDescending { it.addedAtMs }
             .map { it.id }
 

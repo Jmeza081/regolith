@@ -136,6 +136,8 @@ fun TitleDetailScreen(
         onDeletePhone = viewModel::startPhoneDelete,
         onPhoneDeleteLaunched = viewModel::phoneDeleteLaunched,
         onPhoneDeleteAnswered = viewModel::phoneDeleteAnswered,
+        onRegenerateArtwork = viewModel::regenerateArtwork,
+        notices = viewModel.notices,
         namer = viewModel.namer,
         onNameChapter = viewModel::nameChapter,
         modifier = modifier,
@@ -162,6 +164,10 @@ private fun TitleDetailContent(
     onDeletePhone: () -> Unit,
     onPhoneDeleteLaunched: () -> Unit,
     onPhoneDeleteAnswered: (approved: Boolean) -> Unit,
+    /** Manage › Regenerate artwork: this video's pictures, thrown away and made again. */
+    onRegenerateArtwork: () -> Unit,
+    /** One-off lines for the snackbar: "Making this video's artwork again". */
+    notices: kotlinx.coroutines.flow.Flow<String>,
     /** The quick name sheet's state, opened by [onNameChapter]. */
     namer: MomentNamer,
     /** An unnamed chapter's dashed name was tapped: name the one starting at this time. */
@@ -195,6 +201,7 @@ private fun TitleDetailContent(
         snackbar.showMessage(message, MessageKind.FAILED)
         onDismissFileOpError()
     }
+    LaunchedEffect(notices) { notices.collect { snackbar.showMessage(it, MessageKind.DONE) } }
     // A quick name went through: say what and where, with a way back.
     LaunchedEffect(namer) {
         namer.saved.collect { saved ->
@@ -346,6 +353,13 @@ private fun TitleDetailContent(
                         Eyebrow("Manage file", muted = true)
                         SurfaceCard(modifier = Modifier.fillMaxWidth().testTag("detail_manage_card"), contentPadding = PaddingValues(horizontal = Spacing.s12)) {
                             ManageRow(
+                                icon = com.composables.icons.lucide.R.drawable.lucide_ic_refresh_cw,
+                                label = "Regenerate artwork",
+                                meta = "Its pictures and chapter frames, made again",
+                                onClick = onRegenerateArtwork,
+                                testTag = "detail_regenerate_artwork_row",
+                            )
+                            ManageRow(
                                 icon = com.composables.icons.lucide.R.drawable.lucide_ic_eye_off,
                                 label = "Hide from Regolith",
                                 meta = "Stays in ${state.phoneFolder.ifEmpty { "its folder" }} — other apps still see it",
@@ -371,6 +385,16 @@ private fun TitleDetailContent(
                             meta = state.fileName,
                             onClick = onStartRename,
                             testTag = "detail_rename_row",
+                        )
+                        // Not the share's file: the phone's copies of its
+                        // pictures, thrown away and made again from it. For
+                        // after the file changed on the share.
+                        ManageRow(
+                            icon = com.composables.icons.lucide.R.drawable.lucide_ic_refresh_cw,
+                            label = "Regenerate artwork",
+                            meta = "Its pictures and chapter frames, made again",
+                            onClick = onRegenerateArtwork,
+                            testTag = "detail_regenerate_artwork_row",
                         )
                         ManageRow(
                             icon = R.drawable.rg_ic_trash,

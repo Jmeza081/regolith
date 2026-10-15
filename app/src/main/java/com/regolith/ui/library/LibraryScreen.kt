@@ -7,6 +7,12 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.graphics.graphicsLayer
 import com.regolith.ui.components.RefreshLine
+import com.regolith.ui.components.sortMenuItem
+import com.regolith.ui.components.viewModeChoice
+import com.regolith.ui.components.TopBarMenuItem
+import com.regolith.ui.components.showMessage
+import com.regolith.ui.components.MessageKind
+import com.regolith.ui.components.LocalAppSnackbar
 import com.regolith.ui.components.pagePull
 import com.regolith.ui.components.rememberPagePull
 import androidx.compose.foundation.background
@@ -269,6 +275,18 @@ fun LibraryScreen(
     onPlayPictures: ((folderId: Long, shuffle: Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val appSnackbar = LocalAppSnackbar.current
+    LaunchedEffect(viewModel) { viewModel.notices.collect { appSnackbar.showMessage(it, MessageKind.DONE) } }
+    // More › Regenerate artwork, on a collection's wall and its profile alike.
+    val regenerateItem = if (viewModel.folderId != null) {
+        TopBarMenuItem(
+            com.composables.icons.lucide.R.drawable.lucide_ic_refresh_cw,
+            "Regenerate artwork",
+            "Its poster and every video's pictures, made again from the share",
+            "library_regenerate_artwork",
+            viewModel::regenerateArtwork,
+        )
+    } else null
     val uploadActions = viewModel.uploadActions
     val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
     val colors = RegolithTheme.colors
@@ -443,6 +461,16 @@ fun LibraryScreen(
             else -> SortSheet(LibrarySort.entries, state.order.sort, state.order.direction, viewModel::pickSort, close)
         }
     }
+    // The same list's order, in words, for the More sheet's Sort row: the
+    // owner's rule is Search on the bar and every setting in More, showing
+    // its state, so the order is read without opening anything.
+    val currentSort: Pair<SortChoice, SortDirection> = when {
+        tab == LibraryTab.ON_DEVICE -> state.device.order.sort to state.device.order.direction
+        profile != null && profileTab == ProfileTab.MOMENTS -> state.momentOrder.sort to state.momentOrder.direction
+        showPictures -> state.pictureOrder.sort to state.pictureOrder.direction
+        else -> state.order.sort to state.order.direction
+    }
+    val sortItem = sortMenuItem(currentSort.first, currentSort.second, "library_sort_button") { viewModel.openSortSheet(true) }
 
     // No BackHandler: back walks out of the collection and the selection
     // comes with it, so a pick can span a wall and the folders under it.
@@ -499,19 +527,22 @@ fun LibraryScreen(
                 onBack = onBack,
                 subtitle = subtitle,
                 subtitleMuted = tab == LibraryTab.ON_DEVICE || unreachable.isNotEmpty(),
-                actions = listOfNotNull(
-                    TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
-                    TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
+                // Search alone on the bar; everything else in More.
+                actions = listOf(TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch)),
+                menu = listOfNotNull(
+                    // One setting, two lists: it switches whichever tab you are on.
+                    if (tab == LibraryTab.ON_DEVICE) {
+                        viewModeChoice(state.device.viewMode, "library_view_mode_button", viewModel::toggleDeviceViewMode)
+                    } else {
+                        viewModeChoice(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode)
+                    },
+                    sortItem,
                     // Videos and a poster into the collection on screen, only
                     // where a share is behind it: not the first wall, not the demo.
-                    TopBarAction(R.drawable.rg_ic_upload, "Add to this collection", "library_upload_button") { uploadActions?.openSheet() }
+                    TopBarMenuItem(R.drawable.rg_ic_upload, "Add to this collection", "Videos or a poster from this phone", "library_upload_button") { uploadActions?.openSheet() }
                         .takeIf { uploads.canUpload && tab == LibraryTab.NETWORK },
-                    // One button, two lists: it toggles whichever tab you are on.
-                    if (tab == LibraryTab.ON_DEVICE) {
-                        viewModeAction(state.device.viewMode, "library_view_mode_button", viewModel::toggleDeviceViewMode)
-                    } else {
-                        viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode)
-                    },
+                    // A verb for after the share changed. Only a collection has one.
+                    regenerateItem,
                 ),
             )
         }
@@ -1057,10 +1088,12 @@ fun LibraryScreen(
                 onBack = onBack,
                 // It moves with the page it floats over, a pull included.
                 modifier = Modifier.padding(top = lineRoom).graphicsLayer { translationY = pull.offset }.background(barGround).testTag("library_profile_topbar"),
-                actions = listOf(
-                    TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch),
-                    TopBarAction(R.drawable.rg_ic_sort, "Sort", "library_sort_button") { viewModel.openSortSheet(true) },
-                    viewModeAction(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
+                // Search alone on the bar; everything else in More.
+                actions = listOf(TopBarAction(R.drawable.rg_ic_search_alt, "Search", "library_search_button", onSearch)),
+                menu = listOfNotNull(
+                    viewModeChoice(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
+                    sortItem,
+                    regenerateItem,
                 ),
             )
         }

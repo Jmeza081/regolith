@@ -75,6 +75,26 @@ val tabScreen: Map<String, Any> =
         NavDisplay.predictivePopTransitionSpec { _ -> tabTransition }
 
 /*
+ * Search fades in where it is, and out again. It is a layer over whatever
+ * you were looking at rather than a step deeper, and it is where the swipe's
+ * capsule lands (SearchPull.kt): a slide from the right would carry the
+ * field sideways under the capsule as it settles onto it.
+ */
+private const val SEARCH_MS = 180
+
+private val searchTransition: ContentTransform
+    get() = fadeIn(tween(SEARCH_MS)) togetherWith fadeOut(tween(SEARCH_MS))
+
+/** Per-entry metadata for Search: `entry<RegolithKey.Search>(metadata = searchScreen)`. */
+val searchScreen: Map<String, Any> =
+    NavDisplay.transitionSpec { searchTransition } +
+        NavDisplay.popTransitionSpec { searchTransition } +
+        NavDisplay.predictivePopTransitionSpec { _ -> searchTransition }
+
+/** How long Search takes to fade in: the swipe's capsule stays over the field until it has. */
+const val SEARCH_FADE_MS = SEARCH_MS.toLong()
+
+/*
  * A page a poster flies into (PosterFlight.kt): Title Detail on a phone, or
  * filling a wide window. It fades in under the poster, rising a little,
  * instead of sliding in from the right — a slide would carry the poster's

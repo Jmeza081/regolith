@@ -12,6 +12,7 @@ import androidx.work.workDataOf
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.regolith.domain.artwork.ArtworkScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -86,6 +87,37 @@ class ArtworkPrefetcher @Inject constructor(
         WorkManager.getInstance(context).enqueueUniqueWork(wallsName(shareId), ExistingWorkPolicy.KEEP, request)
     }
 
+    /**
+     * "Regenerate artwork": walk just [scope] on [shareId], whose pictures
+     * `ArtworkRegenerator` has just thrown away, then its chapter pictures.
+     * The same worker and tag as the share's walk, so the progress tier and
+     * the notification show it, counting only what this scope covers.
+     *
+     * Its own unique name, and REPLACE: a second tap on the same collection
+     * starts the walk over rather than being dropped behind the first, and a
+     * share walk already running is left alone (it skips what this remakes).
+     */
+    fun regenerate(shareId: Long, scope: ArtworkScope) {
+        val request = OneTimeWorkRequestBuilder<ArtworkWorker>()
+            .setInputData(scopeData(shareId, scope))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .addTag(TAG)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(regenName(scope), ExistingWorkPolicy.REPLACE, request)
+    }
+
+    /** [scope]'s chapter pictures, after its regenerated stills: on Wi-Fi, as every wall is made. */
+    fun enqueueWalls(shareId: Long, scope: ArtworkScope) {
+        val request = OneTimeWorkRequestBuilder<ChapterWallWorker>()
+            .setInputData(scopeData(shareId, scope))
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .addTag(WALLS_TAG)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork("chapter-walls-" + regenName(scope), ExistingWorkPolicy.REPLACE, request)
+    }
+
     fun cancel(shareId: Long) {
         WorkManager.getInstance(context).cancelUniqueWork(uniqueName(shareId))
         WorkManager.getInstance(context).cancelUniqueWork(wallsName(shareId))
@@ -128,10 +160,31 @@ class ArtworkPrefetcher @Inject constructor(
 
     private fun uniqueName(shareId: Long) = "artwork-share-$shareId"
 
+    private fun regenName(scope: ArtworkScope) = when (scope) {
+        is ArtworkScope.Folder -> "artwork-regenerate-folder-${scope.folderId}"
+        is ArtworkScope.File -> "artwork-regenerate-file-${scope.fileId}"
+    }
+
     private fun wallsName(shareId: Long) = "chapter-walls-share-$shareId"
 
-    private companion object {
+    companion object {
         const val TAG = "regolith-artwork"
         const val WALLS_TAG = "regolith-chapter-walls"
+
+        /** A walk narrowed to one collection or video ("Regenerate artwork"); absent on a share's own walk. */
+        const val KEY_FOLDER_ID = "scopeFolderId"
+        const val KEY_FILE_ID = "scopeFileId"
+
+        private fun scopeData(shareId: Long, scope: ArtworkScope) = when (scope) {
+            is ArtworkScope.Folder -> workDataOf(ArtworkWorker.KEY_SHARE_ID to shareId, KEY_FOLDER_ID to scope.folderId)
+            is ArtworkScope.File -> workDataOf(ArtworkWorker.KEY_SHARE_ID to shareId, KEY_FILE_ID to scope.fileId)
+        }
+
+        /** The scope a walk was given, or null for a whole share. */
+        fun scopeOf(data: androidx.work.Data): ArtworkScope? = when {
+            data.getLong(KEY_FOLDER_ID, -1) >= 0 -> ArtworkScope.Folder(data.getLong(KEY_FOLDER_ID, -1))
+            data.getLong(KEY_FILE_ID, -1) >= 0 -> ArtworkScope.File(data.getLong(KEY_FILE_ID, -1))
+            else -> null
+        }
     }
 }

@@ -26,6 +26,7 @@ import com.regolith.domain.artwork.DeckLayout
 import com.regolith.domain.artwork.DeckShape
 import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
+import com.regolith.domain.artwork.ArtworkScopeContents
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.ArtworkSource
 import com.regolith.domain.artwork.MomentFrames
@@ -666,6 +667,31 @@ class ArtworkRepository @Inject constructor(
         keepAnimated(owner, folderRelPath, bytes, ArtworkKind.stills)
         announceReplaced(listOf(owner))
         Log.i(TAG, "poster in folder $folderId adopted")
+    }
+
+    /**
+     * "Regenerate artwork", the throwing-away half: every picture [contents]
+     * covers goes (the rows, the files, the decks and moving posters kept
+     * beside them, and each video's chapter frames), the image loader
+     * forgets them, and the screens are told, so the tiles fall back to
+     * their skeletons and ask again. `ArtworkRegenerator` then has just
+     * these walked to make them again.
+     *
+     * The folders' cached listings go too: they are up to five minutes old,
+     * and a poster.jpg put on the share since then would be missed by a
+     * picture made from them, which is the case this exists for.
+     */
+    suspend fun forget(contents: ArtworkScopeContents) {
+        val moments = contents.files.flatMap { fileId -> artworkDao.momentsOf(fileId).mapNotNull { row -> row.ownerVariant.toLongOrNull()?.let { ArtworkOwner.Moment(fileId, it) } } }
+        for (owner in contents.owners) {
+            artworkDao.deleteOwner(owner.typeName, owner.id)
+            store.delete(owner)
+        }
+        contents.files.forEach { dropMoments(it) }
+        val paths = contents.folders.mapNotNull { folderDao.byId(it)?.relPath }.toSet()
+        listingsLock.withLock { listings.keys.removeAll { (shareId, relPath) -> shareId == contents.shareId && relPath in paths } }
+        announceReplaced(contents.owners + moments)
+        Log.i(TAG, "forgot the artwork of ${contents.folders.size} folder(s), ${contents.files.size} video(s), ${contents.pictures.size} picture(s), ${moments.size} chapter frame(s)")
     }
 
     /** Forget everything: the `artwork` table and the directory. Settings › Media. */
