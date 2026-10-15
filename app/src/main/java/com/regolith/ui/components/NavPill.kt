@@ -3,6 +3,19 @@ package com.regolith.ui.components
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -129,6 +142,18 @@ fun NavPill(
      */
     onSearchPull: ((Float) -> Unit)? = null,
     onSearchRelease: () -> Unit = {},
+    /**
+     * How far that swipe has gone, read as the pill draws (1 is far enough).
+     * On a phone the pill BECOMES the search bar, the owner's pick of six
+     * variants ("Pull to Search"): the tabs fold away one after another, the
+     * pill rises with the thumb and lights its rim, and its search label
+     * fades in, popping at the line. The rail keeps the capsule beside it.
+     */
+    searchProgress: () -> Float = { 0f },
+    /** The pill is flying into Search's field as an overlay ([SearchFlightCapsule]): this one steps aside. */
+    searchFlying: Boolean = false,
+    /** Where the pill sits on screen, in window pixels: where the flight starts. */
+    onPillBounds: (Rect) -> Unit = {},
 ) {
     val colors = RegolithTheme.colors
     val frosted = Modifier.navChromeFrost(hazeState, PillShape)
@@ -153,6 +178,15 @@ fun NavPill(
                 onDragEnd = { onSearchRelease() },
                 onDragCancel = { travel = 0f; report() },
             )
+        }
+    }
+    // The pill becoming the bar (phone only): its pop at the line.
+    val ready by remember { derivedStateOf { searchProgress() >= 1f } }
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(ready) {
+        if (ready && !vertical) {
+            pop.animateTo(1.05f, tween(90))
+            pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
         }
     }
     val cell: @Composable (MainTab, Modifier) -> Unit = { tab, cellModifier ->
@@ -202,7 +236,10 @@ fun NavPill(
         return
     }
     Row(
-        modifier = modifier.padding(horizontal = Spacing.s18),
+        // The swipe lives on this row, which stays put: the pill inside it
+        // rises with the thumb, and a moving target would read the finger as
+        // hardly moving at all.
+        modifier = modifier.then(searchSwipe).padding(horizontal = Spacing.s18),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -220,8 +257,33 @@ fun NavPill(
                 .weight(1f)
                 .widthIn(max = NAV_PILL_MAX_WIDTH)
                 .height(NAV_PILL_HEIGHT)
-                .then(searchSwipe)
+                // Rises with the swipe. An offset, not a layer translation:
+                // the frost samples what is behind the pill's placed bounds.
+                .offset {
+                    val p = searchProgress()
+                    IntOffset(0, -(PILL_RISE.toPx() * p.coerceIn(0f, 1f) + PILL_OVERPULL.toPx() * (p - 1f).coerceAtLeast(0f)).roundToInt())
+                }
+                .graphicsLayer {
+                    scaleX = pop.value; scaleY = pop.value
+                    alpha = if (searchFlying) 0f else 1f
+                }
+                .onGloballyPositioned { onPillBounds(it.boundsInWindow()) }
                 .then(frosted)
+                // Its rim lights as it becomes the bar.
+                .drawWithContent {
+                    drawContent()
+                    val k = searchProgress().coerceIn(0f, 1f)
+                    if (k > 0f) {
+                        val w = 1.dp.toPx()
+                        drawRoundRect(
+                            color = colors.ink.copy(alpha = .85f * k * k),
+                            topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2),
+                            size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2),
+                            style = Stroke(w),
+                        )
+                    }
+                }
                 // 10dp, not 4: the end labels sit against a 50% radius, and
                 // a 4dp inset put SETTINGS right on the curve once the pill
                 // stopped stretching.
@@ -232,10 +294,23 @@ fun NavPill(
         // rather than slide — the same argument Transitions.kt makes for the
         // tab switch itself, at the same 140ms. Nothing moves and nothing
         // scales, so the pill stays exactly where the thumb left it.
+        Box(Modifier.weight(1f).fillMaxHeight()) {
         Crossfade(targetState = selection, animationSpec = tween(MODE_MS), label = "navPillMode") { mode ->
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 if (mode == null) {
-                    MainTab.entries.forEach { tab -> cell(tab, Modifier.weight(1f).fillMaxHeight()) }
+                    MainTab.entries.forEachIndexed { index, tab ->
+                        cell(
+                            tab,
+                            Modifier.weight(1f).fillMaxHeight().graphicsLayer {
+                                // One after another, left to right, as the swipe goes on.
+                                val k = ((searchProgress().coerceIn(0f, 1f) - index * TAB_FOLD_STAGGER) / TAB_FOLD_SPAN).coerceIn(0f, 1f)
+                                alpha = 1f - k
+                                translationY = k * 10.dp.toPx()
+                                scaleX = 1f - .5f * k
+                                scaleY = 1f - .5f * k
+                            },
+                        )
+                    }
                 } else {
                     // Cancel is NOT a cell: it is the circle beside the pill.
                     // Five labels in five cells left "Download" wrapping, and
@@ -255,6 +330,20 @@ fun NavPill(
                     }
                 }
             }
+        }
+        // The bar it becomes: the search label, in as the tabs go out.
+        if (selection == null) {
+            Row(
+                Modifier.fillMaxSize().padding(start = Spacing.s8).graphicsLayer {
+                    alpha = ((searchProgress().coerceIn(0f, 1f) - .45f) / .4f).coerceIn(0f, 1f)
+                },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(painterResource(R.drawable.rg_ic_search_alt), contentDescription = null, tint = colors.inkSoft, modifier = Modifier.size(18.dp))
+                Text(if (ready) "Let go to search" else "Swipe up to search", style = TextStyles.rowLabelMedium, color = if (ready) colors.ink else colors.body)
+            }
+        }
         }
     }
 }
@@ -514,6 +603,14 @@ private fun NavCell(
         Text(tab.label.uppercase(), style = TextStyles.navLabel, color = ink)
     }
 }
+
+/** How far the pill rises as it becomes the bar, and how much further a pull past the line takes it. */
+private val PILL_RISE: Dp = 44.dp
+private val PILL_OVERPULL: Dp = 12.dp
+
+/** The tabs fold away one after another: each starts this much later, and takes this much of the swipe. */
+private const val TAB_FOLD_STAGGER = .1f
+private const val TAB_FOLD_SPAN = .32f
 
 /** The connection dot on the tab you are on: a point larger than the red badge, so the glow and the ring read. */
 private val CONNECTION_DOT: Dp = 7.dp

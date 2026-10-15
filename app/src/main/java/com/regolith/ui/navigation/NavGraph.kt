@@ -312,13 +312,15 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // Where the capsule is on screen, and, once let go past the line, where
     // it flies from: into Search's field, over Search as it fades in.
     var pullCapsuleBounds by remember { mutableStateOf<Rect?>(null) }
+    // On a phone the pill itself becomes the bar, so the flight starts from it.
+    var pillBounds by remember { mutableStateOf<Rect?>(null) }
     var searchFlightFrom by remember { mutableStateOf<Rect?>(null) }
     val searchFlight = remember { Animatable(0f) }
     val pullDensity = LocalDensity.current
     val statusBarTop = WindowInsets.statusBars.getTop(pullDensity)
     val onSearchPull: (Float) -> Unit = { p -> pullScope.launch { searchPull.snapTo(p) } }
     val onSearchRelease: () -> Unit = {
-        val from = pullCapsuleBounds
+        val from = if (windowShape.wide) pullCapsuleBounds else pillBounds
         if (searchPull.value >= 1f && from != null) {
             pullScope.launch {
                 searchFlightFrom = from
@@ -1362,13 +1364,6 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     Spacer(Modifier.height(MINI_BAR_HEIGHT))
                                 }
                             }
-                            // The phone's search capsule, rising out of the pill.
-                            if (!windowShape.wide && searchPull.value > 0f && searchFlightFrom == null) {
-                                SearchPullCapsule(
-                                    searchPull.value, "Swipe up to search",
-                                    Modifier.padding(bottom = Spacing.s4).onGloballyPositioned { pullCapsuleBounds = it.boundsInWindow() },
-                                )
-                            }
                             if (pillHere) NavPill(
                                 selected = currentTab,
                                 onSelect = { tab ->
@@ -1394,6 +1389,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 // for Search, the whole library's, from any tab.
                                 onSearchPull = onSearchPull.takeIf { currentTab != null && searchFlightFrom == null },
                                 onSearchRelease = onSearchRelease,
+                                // On a phone the pill becomes the bar as it is swiped.
+                                searchProgress = { if (windowShape.wide) 0f else searchPull.value },
+                                searchFlying = searchFlightFrom != null,
+                                onPillBounds = { pillBounds = it },
                             )
                             if (windowShape.wide) {
                                 // The circle under the rail is whichever control
