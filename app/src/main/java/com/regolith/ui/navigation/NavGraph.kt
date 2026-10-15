@@ -79,6 +79,10 @@ import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.LocalNavChromeHold
 import com.regolith.ui.components.CHROME_MESSAGE_MAX_WIDTH
 import com.regolith.ui.components.ChromeMessageHost
+import com.regolith.ui.components.SearchPullCapsule
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.runtime.mutableFloatStateOf
 import com.regolith.ui.util.formatCount
 import com.regolith.ui.components.ShareStatusSheet
 import com.regolith.domain.connection.ShareEvent
@@ -286,6 +290,12 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     val shareStatus by appViewModel.shareStatus.collectAsStateWithLifecycle()
     val showShareStatus by appViewModel.showShareStatus.collectAsStateWithLifecycle()
     var shareSheet by remember { mutableStateOf(false) }
+    // The swipe off the nav that opens Search: how far it has gone (1 is far
+    // enough). One buzz as it crosses, so letting go is a decision.
+    var searchPull by remember { mutableFloatStateOf(0f) }
+    val pullHaptics = LocalHapticFeedback.current
+    val pullReady = searchPull >= 1f
+    LaunchedEffect(pullReady) { if (pullReady) pullHaptics.performHapticFeedback(HapticFeedbackType.LongPress) }
     var railIdle by remember { mutableStateOf(false) }
     // The selection toolbar lives in the nav chrome, so the chrome must be
     // there whenever a selection is. That outranks BOTH ways the rail goes
@@ -877,6 +887,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     onOpenFolder = { openFromWall(RegolithKey.Browse(it)) },
                                     onOpenFile = { openTitle(it) },
                                     onAddServer = { backStack.add(RegolithKey.AddServer.Search) },
+                                    onSearch = { backStack.add(RegolithKey.Search()) },
                                     onPlayAll = ::playAll,
                                     onSendingAway = appViewModel::sendingAway,
                                     onSetPoster = { folderId, pictureId, uri -> backStack.add(RegolithKey.SetPoster(folderId, pictureId, uri)) },
@@ -1207,6 +1218,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                             onOpen = { openUploadFolder(it.folderId) },
                         )
                     }
+                    // The inner display's search capsule, out beside the rail it is swiped from.
+                    if (windowShape.wide && searchPull > 0f) {
+                        SearchPullCapsule(
+                            searchPull, "Swipe across to search",
+                            Modifier.align(Alignment.CenterStart).padding(start = NAV_RAIL_INSET + Spacing.s8),
+                        )
+                    }
                     AnimatedVisibility(
                         visible = !railVisible && windowShape.wide && currentTab != null,
                         enter = fadeIn(),
@@ -1288,6 +1306,10 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                     Spacer(Modifier.height(MINI_BAR_HEIGHT))
                                 }
                             }
+                            // The phone's search capsule, rising out of the pill.
+                            if (!windowShape.wide && searchPull > 0f) {
+                                SearchPullCapsule(searchPull, "Swipe up to search", Modifier.padding(bottom = Spacing.s4))
+                            }
                             if (pillHere) NavPill(
                                 selected = currentTab,
                                 onSelect = { tab ->
@@ -1309,6 +1331,13 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
                                 // works with the dot hidden too.
                                 connection = shareStatus?.link?.takeIf { showShareStatus },
                                 onHoldSelected = { if (shareStatus != null) shareSheet = true },
+                                // Swipe up off the pill (across from the rail)
+                                // for Search, the whole library's, from any tab.
+                                onSearchPull = if (currentTab != null) ({ searchPull = it }) else null,
+                                onSearchRelease = {
+                                    if (searchPull >= 1f) backStack.add(RegolithKey.Search())
+                                    searchPull = 0f
+                                },
                             )
                             if (windowShape.wide) {
                                 // The circle under the rail is whichever control

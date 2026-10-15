@@ -37,8 +37,23 @@ import com.regolith.ui.theme.scaledDp
 /** One trailing icon in the top bar: a 44dp hit area around a 19dp glyph in #A0A0A0. */
 data class TopBarAction(val icon: Int, val contentDescription: String, val testTag: String, val onClick: () -> Unit)
 
-/** An action that lives only in a [TopBar]'s More sheet: its name, and a [note] under it saying what it does. */
-data class TopBarMenuItem(val icon: Int, val label: String, val note: String?, val testTag: String, val onClick: () -> Unit)
+/** One entry of a [TopBar]'s More sheet: an action ([TopBarMenuItem]) or a setting changed in place ([TopBarMenuChoice]). */
+sealed interface TopBarMenuEntry
+
+/**
+ * An action in a [TopBar]'s More sheet: its name, and a [note] under it,
+ * which says what it does or, for a setting that opens a sheet of its own
+ * (Sort), what it is set to now. Tapping it closes the More sheet first.
+ */
+data class TopBarMenuItem(val icon: Int, val label: String, val note: String?, val testTag: String, val onClick: () -> Unit) : TopBarMenuEntry
+
+/**
+ * A setting with a few named states, chosen in place in a [TopBar]'s More
+ * sheet as segments under its [label] (View: Grid | Rows). Choosing one
+ * applies at once and leaves the sheet open, so the page behind it can be
+ * seen to change. Each segment is tagged `<testTag>_<index>`.
+ */
+data class TopBarMenuChoice(val label: String, val options: List<String>, val selected: Int, val testTag: String, val onSelect: (Int) -> Unit) : TopBarMenuEntry
 
 /**
  * Screen header (design: every tab and pushed screen). Michroma title at
@@ -55,10 +70,12 @@ data class TopBarMenuItem(val icon: Int, val label: String, val note: String?, v
  * ones that do not fit fold into a More button and its sheet
  * ([topBarActionsShown]), and a title still too long ends in an ellipsis.
  *
- * [menu] is for actions that always live in More, never as an icon: a verb
- * used now and then, with a [TopBarMenuItem.note] to say what it does
- * (a collection's Regenerate artwork). With any, the More button is always
- * there and is counted as an icon when deciding what else fits.
+ * [menu] is for what always lives in More, never as an icon: the page's
+ * settings, shown with their state (View as Grid | Rows, Sort as "Name,
+ * A to Z"), and verbs used now and then, each with a note (Regenerate
+ * artwork). The owner's rule (2026-10-14): a bar carries Search, and the
+ * rest goes here. With a menu, the More button is always there and is
+ * counted as an icon when deciding what else fits.
  */
 @Composable
 fun TopBar(
@@ -69,7 +86,7 @@ fun TopBar(
     subtitleMuted: Boolean = false,
     actions: List<TopBarAction> = emptyList(),
     statusBarPadding: Boolean = true,
-    menu: List<TopBarMenuItem> = emptyList(),
+    menu: List<TopBarMenuEntry> = emptyList(),
 ) {
     var moreOpen by remember { mutableStateOf(false) }
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -83,10 +100,23 @@ fun TopBar(
         if (moreOpen && folded.isNotEmpty()) {
             // The folded actions by name, each closing the sheet before it acts.
             RegolithSheet(title = title.ifEmpty { "More" }, onDismiss = { moreOpen = false }, testTag = "topbar_more_sheet") {
-                folded.forEach { action ->
-                    SheetChoice(action.icon, action.label, action.note, action.testTag) {
-                        moreOpen = false
-                        action.onClick()
+                folded.forEach { entry ->
+                    when (entry) {
+                        is TopBarMenuItem -> SheetChoice(entry.icon, entry.label, entry.note, entry.testTag) {
+                            moreOpen = false
+                            entry.onClick()
+                        }
+                        is TopBarMenuChoice -> Column(
+                            Modifier.padding(vertical = Spacing.s8).testTag(entry.testTag),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                        ) {
+                            Eyebrow(entry.label, muted = true)
+                            SegmentedTabs(
+                                segments = entry.options.mapIndexed { i, option -> Segment(option, "${entry.testTag}_$i") },
+                                selected = entry.selected,
+                                onSelect = entry.onSelect,
+                            )
+                        }
                     }
                 }
             }
@@ -171,6 +201,22 @@ private val TopBarBackWidth = 32.dp
  * manager uses; the content description names it so screen readers and
  * argent read the action, not the current state.
  */
+/**
+ * View as a More-sheet setting: Grid | Rows, the one in use lit. Choosing
+ * the other toggles the page; the sheet stays open to show it.
+ */
+fun viewModeChoice(mode: ViewMode, testTag: String, onToggle: () -> Unit) = TopBarMenuChoice(
+    label = "View",
+    options = listOf("Grid", "Rows"),
+    selected = if (mode == ViewMode.GRID) 0 else 1,
+    testTag = testTag,
+    onSelect = { index -> if (index != (if (mode == ViewMode.GRID) 0 else 1)) onToggle() },
+)
+
+/** Sort as a More-sheet entry: its state as the note ("Name, A to Z"); a tap opens the sort sheet. */
+fun sortMenuItem(choice: com.regolith.domain.library.SortChoice, direction: com.regolith.domain.library.SortDirection, testTag: String, onOpen: () -> Unit) =
+    TopBarMenuItem(R.drawable.rg_ic_sort, "Sort", "${choice.label}, ${choice.directionLabel(direction)}", testTag, onOpen)
+
 fun viewModeAction(mode: ViewMode, testTag: String, onToggle: () -> Unit) = TopBarAction(
     icon = if (mode == ViewMode.GRID) R.drawable.rg_ic_view_rows else R.drawable.rg_ic_view_grid,
     contentDescription = if (mode == ViewMode.GRID) "Show as rows" else "Show as grid",

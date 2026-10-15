@@ -73,7 +73,13 @@ longer fails a save.
 
 A wall shows as posters or as rows, sorted by name, date added, file size,
 runtime or resolution (tap the sort in use again to reverse it), and **Play all**
-on a collection plays it in order or shuffled. A video's own page shows its
+on a collection plays it in order or shuffled. The bar at the top of the Library and
+Browse keeps **Search** and a **⋯**; the ⋯ holds the rest, each showing how it is
+set: View (Grid or Rows, switched in place), Sort ("Name, A to Z"), Add to this
+collection and Regenerate artwork. Home keeps its Arrange button beside Search.
+From any tab, **swipe up off the nav pill** (or across from the rail on the inner
+display) to search the whole library: a search capsule rises with your thumb,
+and letting go past it opens Search with the keyboard up. A video's own page shows its
 picture, its resolution, HDR and codec, **Resume** or **Play**, **Keep on this
 device**, where it lives and what its video and audio are, with Rename,
 Regenerate artwork and Delete from share underneath.

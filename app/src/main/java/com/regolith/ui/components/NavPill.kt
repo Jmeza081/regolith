@@ -3,6 +3,10 @@ package com.regolith.ui.components
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import com.regolith.domain.connection.ShareLink
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -116,9 +120,41 @@ fun NavPill(
     connection: ShareLink? = null,
     /** A long press on the tab you are on: the connection sheet. Null leaves the hold doing nothing. */
     onHoldSelected: (() -> Unit)? = null,
+    /**
+     * The swipe that opens Search: up off the phone's pill, across from the
+     * rail toward the page. Reported as it goes, as a fraction of
+     * [SEARCH_PULL_DISTANCE] (1 is far enough), then [onSearchRelease] when
+     * the finger lifts; the nav graph draws the capsule and decides. Null
+     * turns the swipe off (while selecting, the pill is a toolbar).
+     */
+    onSearchPull: ((Float) -> Unit)? = null,
+    onSearchRelease: () -> Unit = {},
 ) {
     val colors = RegolithTheme.colors
     val frosted = Modifier.navChromeFrost(hazeState, PillShape)
+    // The swipe for Search. A drag is only claimed past the touch slop, so a
+    // tap on a tab is still a tap; the travel is measured toward Search (up,
+    // or across toward the page), and a drag the other way reads as none.
+    val distance = with(LocalDensity.current) { SEARCH_PULL_DISTANCE.toPx() }
+    val searchSwipe = if (onSearchPull == null || selection != null) Modifier else Modifier.pointerInput(vertical, onSearchPull) {
+        var travel = 0f
+        val report = { onSearchPull((travel / distance).coerceIn(0f, 1.5f)) }
+        if (vertical) {
+            detectHorizontalDragGestures(
+                onDragStart = { travel = 0f },
+                onHorizontalDrag = { change, dx -> travel = (travel + dx).coerceAtLeast(0f); change.consume(); report() },
+                onDragEnd = { onSearchRelease() },
+                onDragCancel = { travel = 0f; report() },
+            )
+        } else {
+            detectVerticalDragGestures(
+                onDragStart = { travel = 0f },
+                onVerticalDrag = { change, dy -> travel = (travel - dy).coerceAtLeast(0f); change.consume(); report() },
+                onDragEnd = { onSearchRelease() },
+                onDragCancel = { travel = 0f; report() },
+            )
+        }
+    }
     val cell: @Composable (MainTab, Modifier) -> Unit = { tab, cellModifier ->
         val here = tab == selected
         NavCell(
@@ -133,6 +169,7 @@ fun NavPill(
         Column(
             modifier = modifier
                 .width(NAV_RAIL_WIDTH)
+                .then(searchSwipe)
                 .then(frosted)
                 .padding(vertical = 10.dp)
                 .testTag("nav_pill"),
@@ -183,6 +220,7 @@ fun NavPill(
                 .weight(1f)
                 .widthIn(max = NAV_PILL_MAX_WIDTH)
                 .height(NAV_PILL_HEIGHT)
+                .then(searchSwipe)
                 .then(frosted)
                 // 10dp, not 4: the end labels sit against a 50% radius, and
                 // a 4dp inset put SETTINGS right on the curve once the pill
