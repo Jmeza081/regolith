@@ -10,7 +10,10 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.spring
@@ -269,19 +272,24 @@ fun NavPill(
                 }
                 .onGloballyPositioned { onPillBounds(it.boundsInWindow()) }
                 .then(frosted)
-                // Its rim lights as it becomes the bar.
-                .drawWithContent {
-                    drawContent()
-                    val k = searchProgress().coerceIn(0f, 1f)
-                    if (k > 0f) {
-                        val w = 1.dp.toPx()
-                        drawRoundRect(
-                            color = colors.ink.copy(alpha = .85f * k * k),
-                            topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2),
-                            size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2),
-                            style = Stroke(w),
-                        )
+                // Its rim is a progress track: a faint outline as the swipe
+                // starts, and a bright line tracing it clockwise from the top
+                // centre, closing the loop exactly at the line (the pop and
+                // the buzz), where letting go opens Search. The owner's ask.
+                .drawWithCache {
+                    val w = 2.dp.toPx()
+                    val outline = pillOutline(size.width, size.height, inset = w / 2)
+                    val measure = PathMeasure().apply { setPath(outline, false) }
+                    val traced = Path()
+                    onDrawWithContent {
+                        drawContent()
+                        val k = searchProgress().coerceIn(0f, 1f)
+                        if (k > 0f) {
+                            drawPath(outline, colors.ink.copy(alpha = .16f * (k * 4f).coerceAtMost(1f)), style = Stroke(1.dp.toPx()))
+                            traced.reset()
+                            measure.getSegment(0f, measure.length * k, traced, true)
+                            drawPath(traced, colors.ink.copy(alpha = .9f), style = Stroke(w, cap = StrokeCap.Round))
+                        }
                     }
                 }
                 // 10dp, not 4: the end labels sit against a 50% radius, and
@@ -601,6 +609,26 @@ private fun NavCell(
         }
         Spacer(Modifier.height(Spacing.s4))
         Text(tab.label.uppercase(), style = TextStyles.navLabel, color = ink)
+    }
+}
+
+/**
+ * The pill's outline as one path that starts at the top centre and runs
+ * clockwise (right along the top, round the right end, back along the
+ * bottom, round the left end), so a progress segment of it grows the way
+ * a clock hand would. [inset] keeps a stroke inside the bounds.
+ */
+private fun pillOutline(width: Float, height: Float, inset: Float): Path {
+    val l = inset; val t = inset; val r = width - inset; val b = height - inset
+    val radius = (b - t) / 2f
+    val cx = width / 2f
+    return Path().apply {
+        moveTo(cx, t)
+        lineTo(r - radius, t)
+        arcTo(androidx.compose.ui.geometry.Rect(r - 2 * radius, t, r, b), -90f, 180f, false)
+        lineTo(l + radius, b)
+        arcTo(androidx.compose.ui.geometry.Rect(l, t, l + 2 * radius, b), 90f, 180f, false)
+        lineTo(cx, t)
     }
 }
 
