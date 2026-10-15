@@ -31,6 +31,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.regolith.R
 import com.regolith.ui.theme.RegolithTheme
@@ -208,12 +209,14 @@ fun SheetChoice(
     note: String?,
     testTag: String,
     tint: Color? = null,
+    /** The row's least height: 56dp in a list of choices, more where rows want air (a bar's More sheet). */
+    minHeight: Dp = 56.dp,
     onClick: () -> Unit,
 ) {
     val colors = RegolithTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 56.dp)
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = minHeight)
             .clickable(interactionSource = null, indication = null, onClick = onClick)
             .testTag(testTag),
     ) {

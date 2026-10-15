@@ -79,7 +79,7 @@ set: View (Grid or Rows, switched in place), Sort ("Name, A to Z"), Add to this
 collection and Regenerate artwork. Home keeps its Arrange button beside Search.
 From any tab, **swipe up off the nav pill** (or across from the rail on the inner
 display) to search the whole library: a search capsule rises with your thumb,
-and letting go past it opens Search with the keyboard up. A video's own page shows its
+and letting go past it flies it into Search's field, keyboard up. A video's own page shows its
 picture, its resolution, HDR and codec, **Resume** or **Play**, **Keep on this
 device**, where it lives and what its video and audio are, with Rename,
 Regenerate artwork and Delete from share underneath.

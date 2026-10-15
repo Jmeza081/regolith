@@ -100,15 +100,19 @@ fun TopBar(
         if (moreOpen && folded.isNotEmpty()) {
             // The folded actions by name, each closing the sheet before it acts.
             RegolithSheet(title = title.ifEmpty { "More" }, onDismiss = { moreOpen = false }, testTag = "topbar_more_sheet") {
+                // Room between the entries: the owner found them squished at the
+                // plain list's 56dp, so these rows are 64dp with a gap, and the
+                // View switch has air above and below.
+                Column(Modifier.padding(top = Spacing.s8, bottom = Spacing.s12), verticalArrangement = Arrangement.spacedBy(Spacing.s8)) {
                 folded.forEach { entry ->
                     when (entry) {
-                        is TopBarMenuItem -> SheetChoice(entry.icon, entry.label, entry.note, entry.testTag) {
+                        is TopBarMenuItem -> SheetChoice(entry.icon, entry.label, entry.note, entry.testTag, minHeight = 64.dp) {
                             moreOpen = false
                             entry.onClick()
                         }
                         is TopBarMenuChoice -> Column(
-                            Modifier.padding(vertical = Spacing.s8).testTag(entry.testTag),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.s8),
+                            Modifier.padding(top = Spacing.s4, bottom = Spacing.s12).testTag(entry.testTag),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s12),
                         ) {
                             Eyebrow(entry.label, muted = true)
                             SegmentedTabs(
@@ -118,6 +122,7 @@ fun TopBar(
                             )
                         }
                     }
+                }
                 }
             }
         }
