@@ -141,11 +141,12 @@ private fun zoneOf(offset: Offset, size: IntSize): Zone = when {
 }
 
 /**
- * How much of the width each edge zone takes: 15% a side, 70% in the middle.
- * The gesture map is laid out from this same number, so the picture you are
- * shown once is the map you are actually using.
+ * How much of the width each edge zone takes: 10% a side, 80% in the middle
+ * (narrowed from 15% at the owner's word that the sliders still took too
+ * much of the picture). The gesture map is laid out from this same number,
+ * so the picture you are shown once is the map you are actually using.
  */
-const val SIDE_ZONE = 0.15f
+const val SIDE_ZONE = 0.10f
 
 /** A flick down that leaves full screen or a finished film, however short the drag. */
 internal const val FLING_DOWN_PX_PER_S = 4_000f
