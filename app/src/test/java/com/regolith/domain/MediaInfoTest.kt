@@ -3,6 +3,8 @@ package com.regolith.domain
 import com.regolith.domain.media.MediaInfo
 import com.regolith.domain.playback.VideoInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaInfoTest {
@@ -24,7 +26,11 @@ class MediaInfoTest {
     }
 
     @Test fun `resolution chip from stored size`() {
+        assertEquals("8K", VideoInfo.resolutionLabelFor(7680, 4320))
         assertEquals("4K", VideoInfo.resolutionLabelFor(3840, 2160))
+        assertTrue(VideoInfo.isUhd(7680, 4320)) // Search's 4K chip keeps 8K too
+        assertTrue(VideoInfo.isUhd(3840, 2160))
+        assertFalse(VideoInfo.isUhd(1920, 1080))
         assertEquals("1080p", VideoInfo.resolutionLabelFor(1920, 800)) // scope crop still reads as 1080p
         assertEquals("", VideoInfo.resolutionLabelFor(null, null))
     }

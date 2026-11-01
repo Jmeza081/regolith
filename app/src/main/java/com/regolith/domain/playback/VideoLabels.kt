@@ -22,11 +22,15 @@ data class VideoInfo(
         get() = listOfNotNull(resolutionLabel.ifEmpty { null }, if (hdr) "HDR" else null, codecLabel.ifEmpty { null })
 
     companion object {
-        /** "4K", "1080p", "720p": the chip over a tile and in the player. Empty when unknown. */
+        /**
+         * "8K", "4K", "1080p", "720p": the chip over a tile and in the player. Empty when unknown.
+         * Read from the file's own dimensions, never the screen's, so an 8K file says 8K on any phone.
+         */
         fun resolutionLabelFor(width: Int?, height: Int?): String {
             val w = width ?: 0
             val h = height ?: 0
             return when {
+                w >= 7600 || h >= 4200 -> "8K"
                 w >= 3800 || h >= 2100 -> "4K"
                 h >= 1080 || w >= 1900 -> "1080p"
                 h >= 720 || w >= 1200 -> "720p"
@@ -34,6 +38,9 @@ data class VideoInfo(
                 else -> ""
             }
         }
+
+        /** True for 4K and above: what Search's "4K" chip keeps, so an 8K film is not filtered out. */
+        fun isUhd(width: Int?, height: Int?): Boolean = resolutionLabelFor(width, height).let { it == "4K" || it == "8K" }
 
         fun codecLabelFor(mime: String?): String = when (mime?.lowercase()) {
             "video/hevc", "video/x-hevc" -> "HEVC"

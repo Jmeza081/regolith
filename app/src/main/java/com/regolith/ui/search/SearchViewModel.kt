@@ -310,7 +310,7 @@ class SearchViewModel @AssistedInject constructor(
         for (file in files) {
             val p = progressById[file.id]
             val unwatched = p == null || (p.positionMs == 0L && !p.completed)
-            val uhd = VideoInfo.resolutionLabelFor(file.width, file.height) == "4K"
+            val uhd = VideoInfo.isUhd(file.width, file.height)
             if (!f.keeps(unwatched, uhd, here.has(file.id, file.shareId))) continue
             kept += file.id
             val parsed = ParsedName(file.titleParsed ?: file.name.substringBeforeLast('.'), file.year, file.season, file.episode)
