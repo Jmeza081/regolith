@@ -67,6 +67,8 @@ import com.regolith.player.PlaybackState
 import com.regolith.ui.components.ArtworkImage
 import com.regolith.ui.components.IconCircleButton
 import com.regolith.ui.components.navChromeFrost
+import com.regolith.ui.components.rememberSwipeAway
+import com.regolith.ui.components.swipeAway
 import com.regolith.ui.theme.RegolithTheme
 import com.regolith.ui.theme.Spacing
 import com.regolith.ui.theme.TextStyles
@@ -213,7 +215,8 @@ fun LandedPicture(landed: LandedFrame, slot: Rect, wide: Boolean, fadeMs: Int, o
 /**
  * The phone's mini player: the picture at the start of a frosted bar, the
  * title over where you are and where it lives, play/pause, close, and a red
- * line of progress along the foot. A tap anywhere else opens the player.
+ * line of progress along the foot. A tap anywhere else opens the player;
+ * a swipe sideways closes it, as ✕ does (swipeAway).
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -228,8 +231,10 @@ fun MiniPlayerBar(
 ) {
     val colors = RegolithTheme.colors
     val smooth = rememberSmoothProgress(player)
+    val swipe = rememberSwipeAway()
     Box(
         modifier
+            .swipeAway(swipe, dismissLabel = "Close the player", onSwiped = onClose)
             .fillMaxWidth()
             .height(MINI_BAR_HEIGHT)
             .navChromeFrost(hazeState, MiniShape)
@@ -270,7 +275,9 @@ fun MiniPlayerBar(
 /**
  * The wide window's mini player: a card in the bottom corner, the picture
  * across its top with the button that opens the player over it, and the
- * title, the time and the transport underneath.
+ * title, the time and the transport underneath. Swiping it sideways (toward
+ * the rail, usually) closes it, as ✕ does, the way YouTube's mini player
+ * goes: the ✕ is at the far end of the card from where a thumb reaches.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -287,8 +294,10 @@ fun MiniPlayerCard(
 ) {
     val colors = RegolithTheme.colors
     val smooth = rememberSmoothProgress(player)
+    val swipe = rememberSwipeAway()
     Column(
         modifier
+            .swipeAway(swipe, dismissLabel = "Close the player", onSwiped = onClose)
             .width(MINI_CARD_WIDTH)
             .navChromeFrost(hazeState, MiniShape)
             .testTag("mini_player_card"),

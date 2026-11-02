@@ -152,7 +152,7 @@ Put the player away (back, a swipe down, or its arrow) and the film shrinks into
 a bar above the nav on a phone, or a card in the corner of the inner display,
 and keeps playing while you browse. It lands whole, as the player showed it,
 so an upright phone video stays upright rather than cropped. Tap it to bring
-the player back, or ✕ to stop. A queue, a repeat or Keep playing goes on to the next film by itself while
+the player back, or ✕ (or swipe it away sideways, as on YouTube) to stop. A queue, a repeat or Keep playing goes on to the next film by itself while
 it is small; a film with nothing after it closes the bar when it ends.
 
 Leave Regolith while a film plays and it carries on in a small window over your
