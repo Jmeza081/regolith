@@ -152,6 +152,9 @@ fun ChromeMessageHost(state: SnackbarHostState, modifier: Modifier = Modifier) {
  *   rather than a race. An indefinite message shows a full ring.
  * - **Shape.** A pill while it is one line; a message that wraps rounds
  *   off at 24dp instead, because a 50% radius on a tall box is a lozenge.
+ * - **Swipe.** Sideways, either way, sends it off early ([swipeAway]),
+ *   as if its time had run out. Material's own host has no swipe, which
+ *   is why these could not be dismissed before.
  * - **Colour.** A lifted solid surface, not the pill's glass: the message is
  *   the newest thing on screen and should sit in front of the picture, not
  *   blend into it. A failure's ring, icon and hairline take the accent.
@@ -179,11 +182,17 @@ private fun MessageCapsule(data: SnackbarData, testTag: String) {
     val shape = if (lines > 1) WrappedCapsuleShape else PillShape
     val accentInk = if (failed) colors.accent else colors.ink
 
+    // Keyed on the data, like the fuse: the next message arrives in place.
+    val swipe = rememberSwipeAway(data)
+
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
+                // On the capsule, not the full-width Box around it: the Box's
+                // empty sides must keep passing touches to the screen beneath.
+                .swipeAway(swipe, dismissLabel = "Dismiss message", onSwiped = data::dismiss)
                 .shadow(10.dp, shape, ambientColor = colors.ground, spotColor = colors.ground)
                 .background(colors.lifted, shape)
                 .border(1.dp, if (failed) colors.accent.copy(alpha = 0.55f) else colors.liftedBorder, shape)
