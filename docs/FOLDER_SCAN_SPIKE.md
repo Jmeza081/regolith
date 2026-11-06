@@ -81,9 +81,18 @@ Limits that shape the design:
    Needs testing on the owner's real server first, since support is the
    unknown.
 
+## The owner's server
+
+macOS File Sharing on the owner's Mac, sharing `/Volumes/Regolith`. Since
+macOS 10.7 that is Apple's own SMB server (`smbd`), not Samba, so Samba's
+`change notify` setting does not apply. Apple's server answers change
+notifications from the file system's own event stream (Finder windows on
+other Macs refresh live because of it). Whether it honours a *recursive*
+watch from jcifs-ng is unverified: the next step is a read-only probe that
+watches one folder on the real share and prints what arrives when a file
+is copied in one and two levels down.
+
 ## Open questions for the owner
 
-- Which server software is the share on (Windows, Synology, TrueNAS, plain Samba)?
-  That decides whether step 3 works at all.
 - Should "Scan this folder" also regenerate artwork, or only make what is missing?
   (Recommendation: only what is missing; Regenerate already exists for the other.)
