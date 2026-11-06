@@ -21,13 +21,15 @@ import com.regolith.data.db.ScanRunDao
 import com.regolith.data.db.ScanRunEntity
 import com.regolith.data.artwork.ArtworkPrefetcher
 import com.regolith.data.repository.LibraryRepository
+import com.regolith.domain.artwork.ArtworkScope
 import com.regolith.domain.smb.SmbFailure
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
 
 /**
- * Walks one share top to bottom and reconciles Room with what it finds:
+ * Walks one share top to bottom (or, given [KEY_FOLDER_ID], one folder and
+ * everything under it: "Scan this folder") and reconciles Room with what it finds:
  * folders, playable files, parsed titles, folder kinds. A rescan marks
  * files that vanished as missing, never deletes them (guardrail G3).
  *
@@ -63,6 +65,8 @@ class ScanWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val shareId = inputData.getLong(KEY_SHARE_ID, -1)
         if (shareId < 0) return Result.failure()
+        // "Scan this folder" names the folder; a share's own scan does not.
+        val scopeFolderId = inputData.getLong(KEY_FOLDER_ID, -1).takeIf { it >= 0 }
         notify(force = true)
 
         var run = ScanRunEntity(
@@ -73,9 +77,17 @@ class ScanWorker @AssistedInject constructor(
         var lastWrite = 0L
 
         return try {
-            val root = library.rootFolder(shareId)
-            // The share's own name, so a phone with three sources says WHICH
-            // one it is reading rather than "the share".
+            val root = if (scopeFolderId == null) {
+                library.rootFolder(shareId)
+            } else {
+                // Deleted or moved away since the tap: nothing left to scan.
+                library.folder(scopeFolderId) ?: run {
+                    scanRunDao.update(run.copy(status = ScanRunEntity.DONE, finishedAtMs = System.currentTimeMillis()))
+                    return Result.success()
+                }
+            }
+            // The share's own name (or the folder's), so a phone with three
+            // sources says WHICH one it is reading rather than "the share".
             progress = progress.copy(shareName = root.name)
             notify(force = true)
             // Breadth-first from the root; a folder the server will not hand
@@ -93,7 +105,8 @@ class ScanWorker @AssistedInject constructor(
             }
             if (walked.skipped > 0) Log.w(TAG, "share $shareId: ${walked.skipped} folder(s) could not be read; the rest of the walk finished")
             scanRunDao.update(run.copy(status = ScanRunEntity.DONE, foldersDone = walked.folders, filesFound = walked.files, currentPath = "", finishedAtMs = System.currentTimeMillis()))
-            library.markScanned(shareId)
+            // "Last scanned" means the whole share; one folder does not reset it.
+            if (scopeFolderId == null) library.markScanned(shareId)
             // The walk knows what to make from the rows this just wrote, so
             // it starts here rather than being something the user has to ask
             // for. It skips whatever is already cached, so a rescan that
@@ -109,6 +122,10 @@ class ScanWorker @AssistedInject constructor(
             val slowLink = library.serverIdForShare(shareId)?.let { addresses.isSlowLinkFor(it) } ?: false
             if (slowLink) {
                 Log.i(TAG, "share $shareId: holding artwork back, the way in to this server is the slow one")
+            } else if (scopeFolderId != null) {
+                // Only the folder that was scanned, so the progress counts
+                // what this scan found rather than the whole share.
+                artwork.enqueue(shareId, ArtworkScope.Folder(scopeFolderId))
             } else {
                 artwork.enqueue(shareId)
             }
@@ -204,6 +221,8 @@ class ScanWorker @AssistedInject constructor(
 
     companion object {
         const val KEY_SHARE_ID = "shareId"
+        /** Optional: scan only this folder and the folders under it. */
+        const val KEY_FOLDER_ID = "folderId"
         private const val TAG = "Regolith/Scan"
         private const val PROGRESS_INTERVAL_MS = 400L
         private const val NOTIFICATION_INTERVAL_MS = 2_000L

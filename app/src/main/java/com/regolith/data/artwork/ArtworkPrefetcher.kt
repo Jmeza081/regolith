@@ -88,8 +88,10 @@ class ArtworkPrefetcher @Inject constructor(
     }
 
     /**
-     * "Regenerate artwork": walk just [scope] on [shareId], whose pictures
-     * `ArtworkRegenerator` has just thrown away, then its chapter pictures.
+     * Walk just [scope] on [shareId], then its chapter pictures. Two callers:
+     * "Regenerate artwork", after `ArtworkRegenerator` has thrown the scope's
+     * pictures away, and "Scan this folder", after a scoped scan has listed
+     * it (so only what is missing gets made: the walk skips anything cached).
      * The same worker and tag as the share's walk, so the progress tier and
      * the notification show it, counting only what this scope covers.
      *
@@ -97,7 +99,7 @@ class ArtworkPrefetcher @Inject constructor(
      * starts the walk over rather than being dropped behind the first, and a
      * share walk already running is left alone (it skips what this remakes).
      */
-    fun regenerate(shareId: Long, scope: ArtworkScope) {
+    fun enqueue(shareId: Long, scope: ArtworkScope) {
         val request = OneTimeWorkRequestBuilder<ArtworkWorker>()
             .setInputData(scopeData(shareId, scope))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())

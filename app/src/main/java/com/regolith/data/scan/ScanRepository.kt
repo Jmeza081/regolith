@@ -55,6 +55,23 @@ class ScanRepository @Inject constructor(
         WorkManager.getInstance(context).enqueueUniqueWork(uniqueName(shareId), ExistingWorkPolicy.KEEP, request)
     }
 
+    /**
+     * "Scan this folder": the same job as [enqueue], walking only [folderId]
+     * and the folders under it, then making the artwork that walk found
+     * missing. A whole-share scan reaches the folder too, but on a big share
+     * that can be an hour away; this is seconds.
+     *
+     * Its own unique name per folder, so it neither waits behind a share's
+     * scan nor stops one starting. KEEP: a second tap while it runs is dropped.
+     */
+    fun enqueueFolder(shareId: Long, folderId: Long) {
+        val request = OneTimeWorkRequestBuilder<ScanWorker>()
+            .setInputData(workDataOf(ScanWorker.KEY_SHARE_ID to shareId, ScanWorker.KEY_FOLDER_ID to folderId))
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork("scan-folder-$folderId", ExistingWorkPolicy.KEEP, request)
+    }
+
     fun cancel(shareId: Long) {
         WorkManager.getInstance(context).cancelUniqueWork(uniqueName(shareId))
     }

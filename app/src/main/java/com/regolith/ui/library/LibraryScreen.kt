@@ -277,6 +277,16 @@ fun LibraryScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val appSnackbar = LocalAppSnackbar.current
     LaunchedEffect(viewModel) { viewModel.notices.collect { appSnackbar.showMessage(it, MessageKind.DONE) } }
+    // More › Scan this collection, on a collection's wall and its profile alike.
+    val scanItem = if (viewModel.folderId != null) {
+        TopBarMenuItem(
+            com.composables.icons.lucide.R.drawable.lucide_ic_folder_sync,
+            "Scan this collection",
+            "Find what changed in it on the share, without scanning everything",
+            "library_scan_folder",
+            viewModel::scanFolder,
+        )
+    } else null
     // More › Regenerate artwork, on a collection's wall and its profile alike.
     val regenerateItem = if (viewModel.folderId != null) {
         TopBarMenuItem(
@@ -541,7 +551,8 @@ fun LibraryScreen(
                     // where a share is behind it: not the first wall, not the demo.
                     TopBarMenuItem(R.drawable.rg_ic_upload, "Add to this collection", "Videos or a poster from this phone", "library_upload_button") { uploadActions?.openSheet() }
                         .takeIf { uploads.canUpload && tab == LibraryTab.NETWORK },
-                    // A verb for after the share changed. Only a collection has one.
+                    // Verbs for after the share changed. Only a collection has them.
+                    scanItem,
                     regenerateItem,
                 ),
             )
@@ -1093,6 +1104,7 @@ fun LibraryScreen(
                 menu = listOfNotNull(
                     viewModeChoice(state.viewMode, "library_view_mode_button", viewModel::toggleViewMode),
                     sortItem,
+                    scanItem,
                     regenerateItem,
                 ),
             )

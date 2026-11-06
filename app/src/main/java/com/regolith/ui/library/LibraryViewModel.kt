@@ -183,6 +183,25 @@ class LibraryViewModel @AssistedInject constructor(
         }
     }
 
+    /**
+     * More › Scan this collection: list it and every folder under it on the
+     * share, in the background, then make whatever artwork that turned up
+     * missing. Unlike the pull to refresh, it carries on after leaving the
+     * page (a WorkManager job, like the share's own scan).
+     */
+    fun scanFolder() {
+        val id = folderId ?: return
+        viewModelScope.launch {
+            val folder = library.folder(id)
+            if (folder == null) {
+                _notices.tryEmit("This collection isn't in the library any more")
+                return@launch
+            }
+            scans.enqueueFolder(folder.shareId, id)
+            _notices.tryEmit("Scanning this collection")
+        }
+    }
+
     init {
         // The connection dot watches the share of the collection being browsed.
         folderId?.let { id -> viewModelScope.launch { connection.onFolder(id) } }
