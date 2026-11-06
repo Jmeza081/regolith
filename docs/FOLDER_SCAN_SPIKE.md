@@ -87,10 +87,39 @@ macOS File Sharing on the owner's Mac, sharing `/Volumes/Regolith`. Since
 macOS 10.7 that is Apple's own SMB server (`smbd`), not Samba, so Samba's
 `change notify` setting does not apply. Apple's server answers change
 notifications from the file system's own event stream (Finder windows on
-other Macs refresh live because of it). Whether it honours a *recursive*
-watch from jcifs-ng is unverified: the next step is a read-only probe that
-watches one folder on the real share and prints what arrives when a file
-is copied in one and two levels down.
+other Macs refresh live because of it). Measured on 2026-11-06, not on the owner's USB drive: a 200 MB exFAT disk
+image on the same Mac, shared by the same macOS File Sharing as `RGNOTIFY`,
+logged in as a throwaway user, watched with jcifs-ng 2.1.10 from
+`docs/spikes/NotifyProbe.java`. Files were changed on the Mac itself, the way
+the owner copies films onto the drive.
+
+| Change | Watch on the share root (recursive) | Watch on `one/two` itself |
+|---|---|---|
+| New file in the watched folder | wakes, ~instantly | wakes |
+| New file one or two folders down | **nothing** | (n/a) |
+| File renamed / deleted in the watched folder | wakes | — |
+| File appended to in place | nothing | — |
+| Second, third change | wakes again each time (re-arming works) | wakes again |
+
+What that means:
+- **Apple's server ignores the recursive flag.** A watch sees only its own
+  folder's direct children, so watching a collection means one watch per
+  folder in it.
+- **The answer carries no names.** Every wake came back as an empty list,
+  which is the server saying "something changed here, list it yourself".
+  That suits the app: the response is `refreshFolder(thatFolder)`, which
+  already reconciles everything.
+- **Content changes are invisible** (a `poster.jpg` replaced in place under
+  the same name). The listing's size and time stamps, which `refreshFolder`
+  already compares, still catch that once the folder is listed.
+- **Folder modified times on exFAT behave as on other file systems:** adding
+  a file in `one/two` moved `one/two`'s time and not `one`'s; appending to
+  the file moved neither.
+
+So step 3 works on the owner's setup with a per-folder watch, re-listing
+the folder on each wake. The app should cap the number of open watches
+(the open collection and its subfolders, say up to 50) and fall back to a
+`refreshTree` when the cap is hit.
 
 ## Open questions for the owner
 
