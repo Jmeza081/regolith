@@ -76,7 +76,7 @@ runtime or resolution (tap the sort in use again to reverse it), and **Play all*
 on a collection plays it in order or shuffled. The bar at the top of the Library and
 Browse keeps **Search** and a **⋯**; the ⋯ holds the rest, each showing how it is
 set: View (Grid or Rows, switched in place), Sort ("Name, A to Z"), Add to this
-collection and Regenerate artwork. Home keeps its Arrange button beside Search.
+collection, Scan this collection and Regenerate artwork. Home keeps its Arrange button beside Search.
 From any tab, **swipe up off the nav pill** (or across from the rail on the inner
 display) to search the whole library: the pill's tabs fold away and the pill rises
 with your thumb as a search bar, and letting go past the line flies it into
@@ -753,6 +753,12 @@ backdrop and chapter frames, the pictures in its albums, and every collection
 inside it) and makes them again in the background, with the same progress over
 the navigation as the walk. A video's page has the same thing under **Manage
 file**. Nothing on the share is touched: these are the phone's copies.
+
+Added or removed videos in one collection and don't want to wait for the whole
+share to be scanned? **⋯ › Scan this collection** reads just that collection and
+every folder inside it, in the background (it carries on if you leave the page),
+then makes the artwork for whatever it found new. Pulling down on a collection
+reads it too, but only while you stay on the page.
 
 Points of interest are made ahead of time too. After the folders, the walk grabs the
 frame at every *named* mark (the only kind Search shows), before it moves on to the

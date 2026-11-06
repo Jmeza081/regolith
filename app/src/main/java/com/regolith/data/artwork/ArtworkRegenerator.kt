@@ -57,7 +57,7 @@ class ArtworkRegenerator @Inject constructor(
     suspend fun regenerate(scope: ArtworkScope): ArtworkScopeContents? {
         val contents = contentsOf(scope) ?: return null
         artwork.forget(contents)
-        prefetcher.regenerate(contents.shareId, scope)
+        prefetcher.enqueue(contents.shareId, scope)
         return contents
     }
 }

@@ -1,6 +1,6 @@
 # Spike: scan one folder, and notice changes without a full rescan
 
-Branch `spike/folder-scan`, from main 3abec75 (2026-11-06). Findings only, no app code yet.
+Branch `spike/folder-scan`, from main 3abec75 (2026-11-06). Step 1 below ("Scan this collection") is built on this branch; steps 2 and 3 are not.
 
 ## The question
 
