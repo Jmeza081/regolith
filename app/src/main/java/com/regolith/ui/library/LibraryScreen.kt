@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import com.regolith.ui.components.RefreshLine
 import com.regolith.ui.components.sortMenuItem
 import com.regolith.ui.components.viewModeChoice
+import com.regolith.ui.components.ConfirmDialog
 import com.regolith.ui.components.TopBarMenuItem
 import com.regolith.ui.components.showMessage
 import com.regolith.ui.components.MessageKind
@@ -299,6 +300,18 @@ fun LibraryScreen(
     } else null
     val uploadActions = viewModel.uploadActions
     val uploads by (uploadActions?.state ?: NoUploads).collectAsStateWithLifecycle()
+    // More › Remove poster, on a collection's wall and its profile alike: only
+    // where it has a poster file of its own and a share that takes writes
+    // (the same gate as Add to this collection, so not in spoof mode).
+    val removePosterItem = if (viewModel.folderId != null && state.hasPoster && uploads.canUpload) {
+        TopBarMenuItem(
+            com.composables.icons.lucide.R.drawable.lucide_ic_image_off,
+            "Remove poster",
+            "Unlink it from this collection; the picture stays on the share",
+            "library_remove_poster",
+            viewModel::askRemovePoster,
+        )
+    } else null
     val colors = RegolithTheme.colors
     var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
     var playAllOpen by remember { mutableStateOf(false) }
@@ -554,6 +567,7 @@ fun LibraryScreen(
                     // Verbs for after the share changed. Only a collection has them.
                     scanItem,
                     regenerateItem,
+                    removePosterItem,
                 ),
             )
         }
@@ -1106,6 +1120,7 @@ fun LibraryScreen(
                     sortItem,
                     scanItem,
                     regenerateItem,
+                    removePosterItem,
                 ),
             )
         }
@@ -1148,6 +1163,20 @@ fun LibraryScreen(
             },
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "library")
+        // Remove poster's question: it says what the picture will be called,
+        // since it stays on the share rather than being deleted.
+        state.posterRemoval?.let { names ->
+            val kept = names.entries.joinToString("\n") { (from, to) -> "$from → $to" }
+            ConfirmDialog(
+                title = "Remove poster?",
+                body = "The picture isn’t deleted. It’s renamed so it stops being the poster, and stays under Images:\n$kept",
+                confirmLabel = "Remove poster",
+                keepLabel = "Keep it",
+                onConfirm = viewModel::removePoster,
+                onKeep = viewModel::dismissRemovePoster,
+                testTag = "library_remove_poster",
+            )
+        }
         // Pictures, videos and a poster into this collection, the same flows
         // Browse uses for a folder; only the choices differ.
         uploadActions?.let { actions ->

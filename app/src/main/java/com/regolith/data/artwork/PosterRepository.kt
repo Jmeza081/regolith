@@ -38,6 +38,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -268,6 +270,54 @@ class PosterRepository @Inject constructor(
             }
         }
         return result.also { notify(it, place) }
+    }
+
+    // ── removing a poster (More › Remove poster) ───────────────────────
+
+    /**
+     * The poster [folderId] wears and what removing it would rename, from
+     * the library's own rows (no trip to the share): `poster.jpg` to
+     * `poster (9 Nov).jpg`, the one it wears first. Null when the folder has
+     * no poster of its own on the share, or no share to write to — the
+     * phone's videos, the demo.
+     */
+    suspend fun unlinkPreview(folderId: Long): Map<String, String>? {
+        placeOf(folderId) ?: return null
+        val names = shareFileDao.inFolder(folderId).map { it.name }
+        return FolderPoster.unlinking(names, LocalDate.now()).takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * Whether [folderId] has a poster of its own on the share right now, as
+     * the library's rows say: what shows More › Remove poster. Follows the
+     * folder's listing, so it changes as soon as a poster is set or removed.
+     */
+    fun observeHasPoster(folderId: Long): Flow<Boolean> =
+        shareFileDao.observeInFolder(folderId).map { rows -> FolderPoster.worn(rows.map { it.name }) != null }.distinctUntilChanged()
+
+    /**
+     * Unlink [folderId]'s poster: the pictures acting as its artwork are
+     * renamed with the day ([FolderPosterWriter.remove]) and stay on the
+     * share under Images; nothing is deleted. The folder's picture is then
+     * made again from what is left ([ArtworkRepository.forgetFolderPoster]).
+     * [FolderPosterOutcome.SAVED] means it went through.
+     */
+    suspend fun removePoster(folderId: Long): FolderPosterOutcome {
+        val place = placeOf(folderId) ?: return FolderPosterOutcome.FAILED
+        return writing(place) {
+            val done = folderPosters.remove(place.host, place.creds, place.share, place.relPath, LocalDate.now())
+            fun path(name: String) = if (place.relPath.isEmpty()) name else "${place.relPath}/$name"
+            for ((from, to) in done.renamed) {
+                shareFileDao.relocate(place.shareId, path(from), path(to), to, place.folderId)
+            }
+            artwork.forgetFolderPoster(place.folderId)
+            Log.i(TAG, "poster removed from ${place.relPath.ifEmpty { "/" }}: kept ${done.renamed}")
+            try {
+                library.refreshFolder(place.folderId)
+            } catch (e: SmbFailure) {
+                Log.i(TAG, "${place.folderName} not listed again after its poster was removed: $e")
+            }
+        }
     }
 
     // ── the work every path shares ─────────────────────────────────────

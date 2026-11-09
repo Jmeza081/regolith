@@ -157,6 +157,36 @@ class FolderPosterWriterTest {
     }
 
     @Test
+    fun `removing a poster renames it out of the way and deletes nothing`() = runTest {
+        gateway.addFile("media", "$folder/poster.jpg", oldPoster)
+        gateway.addFile("media", "$folder/folder.jpg", oldFolder)
+        val done = writer.remove(host, creds, "media", folder, day)
+        assertEquals(mapOf("poster.jpg" to "poster (8 Oct).jpg", "folder.jpg" to "folder (8 Oct).jpg"), done.renamed)
+        assertArrayEquals(oldPoster, bytesAt("poster (8 Oct).jpg"))
+        assertArrayEquals(oldFolder, bytesAt("folder (8 Oct).jpg"))
+        assertNull(bytesAt("poster.jpg"))
+        assertNull(bytesAt("folder.jpg"))
+        assertArrayEquals(film, bytesAt("Heat.1995.mkv"))
+        assertEquals(3, files.size)
+    }
+
+    @Test
+    fun `a share that drops while removing a poster loses nothing`() = runTest {
+        gateway.addFile("media", "$folder/poster.jpg", oldPoster)
+        gateway.addFile("media", "$folder/folder.jpg", oldFolder)
+        // poster.jpg's rename goes through; the share drops for folder.jpg's.
+        gateway.unreachableAfterRenames = 1
+        try {
+            writer.remove(host, creds, "media", folder, day)
+            fail("expected the share to drop")
+        } catch (e: SmbFailure.Unreachable) {
+            // expected
+        }
+        assertTrue("the poster is still on the share", files.values.any { it.contentEquals(oldPoster) })
+        assertTrue("so is folder.jpg", files.values.any { it.contentEquals(oldFolder) })
+    }
+
+    @Test
     fun `a read-only share refuses before anything changes`() = runTest {
         gateway.addFile("media", "$folder/folder.jpg", oldFolder)
         gateway.readOnly = true

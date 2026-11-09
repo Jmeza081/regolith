@@ -75,6 +75,23 @@ class FolderPosterWriter @Inject constructor(private val gateway: SmbGateway) {
     }
 
     /**
+     * Unlink the folder's poster: every picture acting as its artwork is
+     * renamed with the day ([FolderPoster.unlinking]: `poster.jpg` becomes
+     * `poster (9 Nov).jpg`) and nothing takes its place, so the folder goes
+     * back to the picture Regolith makes for it. Nothing is deleted.
+     *
+     * @throws SmbFailure as [write] does, after putting back anything it
+     *   had already renamed.
+     */
+    suspend fun remove(
+        host: SmbHost,
+        credentials: SmbCredentials,
+        share: String,
+        folderRelPath: String,
+        on: LocalDate,
+    ): Done = keepingOld(host, credentials, share, folderRelPath, on, FolderPoster.NAME, leave = null) { }
+
+    /**
      * Rename the folder's artwork out of [name]'s way, then [put] the new
      * poster in place; undo the renames if [put] fails.
      */
