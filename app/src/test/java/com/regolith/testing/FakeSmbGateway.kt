@@ -147,6 +147,14 @@ class FakeSmbGateway : SmbGateway {
         mtimes[share]?.remove(relPath)
     }
 
+    /** Paths [hide] was asked to hide, per share. */
+    val hidden = mutableMapOf<String, MutableSet<String>>()
+
+    override suspend fun hide(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) {
+        checkWritable(host, credentials, share)
+        hidden.getOrPut(share) { mutableSetOf() } += relPath
+    }
+
     override suspend fun mkdir(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) {
         checkWritable(host, credentials, share)
         if (isDir(share, relPath) || files.getValue(share).containsKey(relPath)) throw SmbFailure.Other("$relPath exists")
@@ -250,7 +258,7 @@ class FakeSmbGateway : SmbGateway {
         return files.keys.sorted().map { SmbShareInfo(it, freeBytes = 1L shl 40, totalBytes = null) }
     }
 
-    override suspend fun list(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): List<SmbEntry> {
+    override suspend fun list(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String, keep: Set<String>): List<SmbEntry> {
         check(host, credentials)
         val all = files[share] ?: throw SmbFailure.NotFound(share)
         // A real server says a folder that is not there is not there; it does
@@ -266,6 +274,8 @@ class FakeSmbGateway : SmbGateway {
             val rest = path.removePrefix(prefix)
             val slash = rest.indexOf('/')
             if (slash < 0) {
+                // As JcifsGateway: dot-files stay out unless asked for.
+                if (rest.startsWith(".") && rest !in keep) continue
                 entries += SmbEntry(rest, isDirectory = false, sizeBytes = bytes.size.toLong(), modifiedAtMs = mtime(share, path))
             } else {
                 childDirs += rest.substring(0, slash)

@@ -77,6 +77,8 @@ import com.regolith.domain.artwork.ArtworkKind
 import com.regolith.domain.artwork.ArtworkOwner
 import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.library.LibraryOrder
+import com.regolith.domain.library.MixFilter
+import com.regolith.domain.library.MixSplit
 import com.regolith.domain.playback.Reel
 import com.regolith.domain.playback.Story
 import com.regolith.domain.playback.ReelClip
@@ -93,6 +95,7 @@ import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.FileActionsHost
 import com.regolith.ui.components.PictureVerbs
+import com.regolith.ui.components.FolderVerb
 import com.regolith.ui.components.UploadActionsHost
 import com.regolith.ui.components.UploadSectionView
 import com.regolith.ui.components.UploadSource
@@ -311,6 +314,28 @@ fun LibraryScreen(
             "library_remove_poster",
             viewModel::askRemovePoster,
         )
+    } else null
+    // More › Mark as mix / Mark as collection, on a collection's wall and its
+    // profile alike, behind the same gate as Remove poster: a share that
+    // takes writes. The label says what tapping it will do.
+    val mixItem = if (viewModel.folderId != null && uploads.canUpload) {
+        if (state.mix) {
+            TopBarMenuItem(
+                com.composables.icons.lucide.R.drawable.lucide_ic_folder_heart,
+                "Mark as collection",
+                "Its videos belong together after all",
+                "library_mark_collection",
+                viewModel::toggleMix,
+            )
+        } else {
+            TopBarMenuItem(
+                com.composables.icons.lucide.R.drawable.lucide_ic_shuffle,
+                "Mark as mix",
+                "A grab bag of videos that don’t belong together",
+                "library_mark_mix",
+                viewModel::toggleMix,
+            )
+        }
     } else null
     val colors = RegolithTheme.colors
     var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
@@ -568,6 +593,7 @@ fun LibraryScreen(
                     scanItem,
                     regenerateItem,
                     removePosterItem,
+                    mixItem,
                 ),
             )
         }
@@ -599,6 +625,16 @@ fun LibraryScreen(
             FilterChips(
                 state.filter, viewModel::setFilter,
                 Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12, top = if (onBack == null) 0.dp else Spacing.s8),
+            )
+        }
+
+        // All · Collections · Mixes: only on a Videos wall that holds both
+        // kinds (LibraryUiState.mixSplit), where there is something to narrow.
+        val mixSplit = state.mixSplit
+        if (tab == LibraryTab.NETWORK && profile == null && state.filter == LibraryFilter.VIDEOS && mixSplit != null) {
+            MixChips(
+                state.mixFilter, mixSplit, viewModel::setMixFilter,
+                Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
             )
         }
 
@@ -734,6 +770,11 @@ fun LibraryScreen(
         // is the same height at any width, so it stays where it was.
         val leadingItems = (if (profile != null) 2 else 0) +
             (if (showUnreachable) 1 else 0) + (if (uploads.section != null) 1 else 0)
+        // A tile's place among the wall's items: after what leads it, and
+        // after the section headings above it when the wall is split into
+        // collections and mixes (two headings from the mixes on, one before).
+        val mixStart = state.mixStart
+        val itemOf = { tile: Int -> leadingItems + tile + (mixStart?.let { if (tile >= it) 2 else 1 } ?: 0) }
         // In the order the wall shows their videos, so sorting one sorts both.
         val moments = remember(profile?.moments, state.tiles, state.momentOrder) { profile?.moments.orEmpty().inOrder(state.momentOrder, state.tiles) }
         val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
@@ -810,7 +851,7 @@ fun LibraryScreen(
                 if (!mosaicState.near(item, mosaicAcross)) mosaicState.requestScrollToItem(item)
             } else {
                 val index = state.tiles.indexOfFirst { it is LibraryTile.Picture && it.picture.pictureId == id }.takeIf { it >= 0 } ?: return@SideEffect
-                val item = leadingItems + index
+                val item = itemOf(index)
                 if (!gridState.near(item)) gridState.requestScrollToItem(item)
             }
         }
@@ -819,7 +860,7 @@ fun LibraryScreen(
             if (state.viewMode != ViewMode.GRID || showMoments) return@LaunchedEffect
             val tile = state.tiles.indexOfFirst { it.isSelected(id) }
             if (tile < 0) return@LaunchedEffect
-            val index = leadingItems + tile
+            val index = itemOf(tile)
             withTimeoutOrNull(REVEAL_WINDOW_MS) {
                 snapshotFlow { gridState.layoutInfo.viewportSize.width }.distinctUntilChanged().collect {
                     if (!gridState.showsWhole(index)) gridState.animateScrollToItem(index)
@@ -841,7 +882,7 @@ fun LibraryScreen(
             val tile = state.tiles.indexOfFirst { it is LibraryTile.Title && it.fileId == id }
             if (tile < 0) return@LaunchedEffect
             toRing = null
-            val index = leadingItems + tile
+            val index = itemOf(tile)
             val grid = state.viewMode == ViewMode.GRID
             // In a scope of its own, not this effect's: the tiles change again
             // as their posters and progress come in, which would cut it short.
@@ -860,7 +901,8 @@ fun LibraryScreen(
         // has scrolled up behind the top bar ([headerCollapsed]): the
         // header's own buttons sit at that edge.
         val railLetters = remember(state.tiles) { AlphabetIndex(state.tiles.map { it.name }) }
-        val railRoom = !showMoments && !showPictures && wallTakesRail(state.order, state.tiles.size, railLetters)
+        // Not on a wall split into collections and mixes: its letters run A to Z twice.
+        val railRoom = !showMoments && !showPictures && mixStart == null && wallTakesRail(state.order, state.tiles.size, railLetters)
         val wallEnd = if (railRoom) AlphabetRailWidth else Spacing.s18
         val reclaim = wallEnd - Spacing.s18
         // The tile a jump landed on, and a count so the same letter twice nudges it again.
@@ -880,7 +922,7 @@ fun LibraryScreen(
                     onJump = { _, position ->
                         // A jump, not a glide, as in the move sheet: a finger
                         // can cross five letters while a smooth scroll does one.
-                        railScope.launch { jump(leadingItems + position) }
+                        railScope.launch { jump(itemOf(position)) }
                         railNudged = state.tiles.getOrNull(position)?.testTag
                         railNudges++
                     },
@@ -1006,20 +1048,24 @@ fun LibraryScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) { emptyBlock() }
                         return@LazyVerticalGrid
                     }
-                    items(state.tiles, key = { it.testTag }) { tile ->
-                        val nudge = nudgeOf(tile)
-                        // No further than the gap: a poster nudged into the next one would slide under it.
-                        Box(Modifier.railNudge(if (nudge > 0) rememberRailNudge(nudge) else null, distance = Spacing.s8 - Spacing.s2)) {
-                            TileView(
-                                tile, dimmed = unreachable.isNotEmpty(),
-                                selected = !selecting && tile.isSelected(selectedFileId),
-                                selection = selection,
-                                onOpenCollection = openCollection, onOpenTitle = onOpenTitle,
-                                onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
-                                filter = state.filter,
-                                onOpenPicture = { openPicture(it, true) },
-                                ring = ring,
-                            )
+                    // Split into collections and mixes, each run under its heading.
+                    for ((run, heading) in wallRuns(state.tiles, mixStart)) {
+                        heading?.let { h -> item(key = h.testTag, span = { GridItemSpan(maxLineSpan) }) { SectionHeading(h) } }
+                        items(run, key = { it.testTag }) { tile ->
+                            val nudge = nudgeOf(tile)
+                            // No further than the gap: a poster nudged into the next one would slide under it.
+                            Box(Modifier.railNudge(if (nudge > 0) rememberRailNudge(nudge) else null, distance = Spacing.s8 - Spacing.s2)) {
+                                TileView(
+                                    tile, dimmed = unreachable.isNotEmpty(),
+                                    selected = !selecting && tile.isSelected(selectedFileId),
+                                    selection = selection,
+                                    onOpenCollection = openCollection, onOpenTitle = onOpenTitle,
+                                    onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                                    filter = state.filter,
+                                    onOpenPicture = { openPicture(it, true) },
+                                    ring = ring,
+                                )
+                            }
                         }
                     }
                 }
@@ -1063,20 +1109,23 @@ fun LibraryScreen(
                         item { emptyBlock() }
                         return@LazyColumn
                     }
-                    itemsIndexed(state.tiles, key = { _, tile -> tile.testTag }) { index, tile ->
-                        if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                        val nudge = nudgeOf(tile)
-                        Box(Modifier.railNudge(if (nudge > 0) rememberRailNudge(nudge) else null)) {
-                            TileRow(
-                                tile, dimmed = unreachable.isNotEmpty(),
-                                selected = !selecting && tile.isSelected(selectedFileId),
-                                selection = selection,
-                                onOpenCollection = openCollection, onOpenTitle = onOpenTitle,
-                                onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
-                                filter = state.filter,
-                                onOpenPicture = { openPicture(it, true) },
-                                ring = ring,
-                            )
+                    for ((run, heading) in wallRuns(state.tiles, mixStart)) {
+                        heading?.let { h -> item(key = h.testTag) { SectionHeading(h) } }
+                        itemsIndexed(run, key = { _, tile -> tile.testTag }) { index, tile ->
+                            if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
+                            val nudge = nudgeOf(tile)
+                            Box(Modifier.railNudge(if (nudge > 0) rememberRailNudge(nudge) else null)) {
+                                TileRow(
+                                    tile, dimmed = unreachable.isNotEmpty(),
+                                    selected = !selecting && tile.isSelected(selectedFileId),
+                                    selection = selection,
+                                    onOpenCollection = openCollection, onOpenTitle = onOpenTitle,
+                                    onToggle = viewModel::toggleSelection, onLongPress = viewModel::beginSelection,
+                                    filter = state.filter,
+                                    onOpenPicture = { openPicture(it, true) },
+                                    ring = ring,
+                                )
+                            }
                         }
                     }
                 }
@@ -1121,6 +1170,7 @@ fun LibraryScreen(
                     scanItem,
                     regenerateItem,
                     removePosterItem,
+                    mixItem,
                 ),
             )
         }
@@ -1160,6 +1210,21 @@ fun LibraryScreen(
                     onSave = viewModel::savePictures,
                     onPoster = { viewModel.posterFromSelection { folderId, pictureId -> onSetPoster(folderId, pictureId, null) } },
                 )
+            },
+            // Nothing but folders picked: Mix, or Unmix when every one of them is a mix already.
+            folderVerb = run {
+                val unmix = remember(selection?.pickedFolders, state.tiles) {
+                    val picked = selection?.pickedFolders.orEmpty()
+                    val mixes = state.tiles.filterIsInstance<LibraryTile.Collection>().filter { it.mix }.map { it.folderId }.toSet()
+                    picked.isNotEmpty() && mixes.containsAll(picked)
+                }
+                remember(unmix, viewModel) {
+                    if (unmix) {
+                        FolderVerb("Unmix", LucideR.drawable.lucide_ic_folder_heart, { viewModel.markPickedMix(false) }, "unmix")
+                    } else {
+                        FolderVerb("Mix", LucideR.drawable.lucide_ic_shuffle, { viewModel.markPickedMix(true) }, "mix")
+                    }
+                }
             },
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "library")
@@ -1442,6 +1507,57 @@ private fun LibraryFilter.profileTab(): ProfileTab = when (this) {
     LibraryFilter.VIDEOS -> ProfileTab.VIDEOS
     LibraryFilter.MOMENTS -> ProfileTab.MOMENTS
     LibraryFilter.IMAGES -> ProfileTab.IMAGES
+}
+
+/** A heading over one section of a wall split into collections and mixes. */
+internal enum class WallSection(val label: String, val testTag: String) {
+    COLLECTIONS("Collections", "library_section_collections"),
+    MIXES("Mixes", "library_section_mixes"),
+}
+
+/**
+ * The wall's tiles as the runs it is drawn in, each with the heading above
+ * it: the whole wall under no heading, or, when [mixStart] splits it, the
+ * collections under one and the mixes under the other.
+ */
+internal fun wallRuns(tiles: List<LibraryTile>, mixStart: Int?): List<Pair<List<LibraryTile>, WallSection?>> =
+    if (mixStart == null) {
+        listOf(tiles to null)
+    } else {
+        listOf(tiles.subList(0, mixStart) to WallSection.COLLECTIONS, tiles.subList(mixStart, tiles.size) to WallSection.MIXES)
+    }
+
+@Composable
+private fun SectionHeading(section: WallSection) {
+    // Large: the label is all that says one run has ended and the next begun.
+    Eyebrow(section.label, Modifier.padding(top = Spacing.s12, bottom = Spacing.s8).testTag(section.testTag), large = true)
+}
+
+/**
+ * All · Collections · Mixes, under the Videos chip on a wall holding both
+ * kinds, each with how many it holds. The same [FilterChip] as the chips
+ * above, lit white like them: the Library's one red is Play all.
+ */
+@Composable
+private fun MixChips(filter: MixFilter, split: MixSplit, onFilter: (MixFilter) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("library_mix_chips"), horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
+        for (f in MixFilter.entries) {
+            val count = when (f) {
+                MixFilter.ALL -> null
+                MixFilter.COLLECTIONS -> split.collections
+                MixFilter.MIXES -> split.mixes
+            }
+            FilterChip(
+                text = f.label,
+                selected = f == filter,
+                onClick = { onFilter(f) },
+                testTag = "library_mix_filter_${f.name.lowercase()}",
+                trailing = count?.toString(),
+                // White, as the chips above: the Library's one red is Play all.
+                ink = true,
+            )
+        }
+    }
 }
 
 /**

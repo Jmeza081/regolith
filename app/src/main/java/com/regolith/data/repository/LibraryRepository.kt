@@ -15,6 +15,7 @@ import com.regolith.data.db.ShareFileEntity
 import com.regolith.data.db.ShareRootDao
 import com.regolith.domain.library.FolderClassifier
 import com.regolith.domain.library.FolderKind
+import com.regolith.domain.library.MixMarker
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.Companions
 import com.regolith.domain.media.MediaFileTypes
@@ -215,7 +216,11 @@ class LibraryRepository @Inject constructor(
         val host = sources.hostFor(server.id)
         val credentials = sources.credentialsFor(server.id)
 
-        val entries = listWithRetry(host, credentials, share.name, folder.relPath, server.id)
+        val listed = listWithRetry(host, credentials, share.name, folder.relPath, server.id)
+        // The mix marker is the app's bookkeeping, not one of the folder's
+        // files: noted here, and kept out of everything below.
+        val mix = MixMarker.foundIn(listed.map { it.name })
+        val entries = listed.filterNot { it.name == MixMarker.NAME }
         sources.markReachable(server.id)
         val now = System.currentTimeMillis()
         val prefix = if (folder.relPath.isEmpty()) "" else "${folder.relPath}/"
@@ -289,7 +294,7 @@ class LibraryRepository @Inject constructor(
         folderDao.update(
             folder.copy(
                 fileCount = fileCount, byteCount = byteCount, lastListedAtMs = now,
-                kind = kind.name, titleParsed = parsed.title, year = parsed.year,
+                kind = kind.name, titleParsed = parsed.title, year = parsed.year, mix = mix,
             ),
         )
         return FolderOutcome(subfolders, fileCount)
@@ -318,7 +323,7 @@ class LibraryRepository @Inject constructor(
         var attempt = 1
         while (true) {
             try {
-                return gateway.list(host, credentials, share, relPath)
+                return gateway.list(host, credentials, share, relPath, keep = setOf(MixMarker.NAME))
             } catch (e: SmbFailure) {
                 val pause = listingRetryDelayMs(attempt, e)
                 if (pause == null) {

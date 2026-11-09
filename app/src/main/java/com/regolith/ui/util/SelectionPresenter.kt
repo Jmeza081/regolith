@@ -126,6 +126,9 @@ data class SelectionUiState(
     /** Nothing but pictures is picked: the pill offers Save and Poster instead of Download ([com.regolith.ui.components.PictureVerbs]). */
     val onlyPictures: Boolean get() = itemCount > 0 && pickedPictures.size == itemCount
 
+    /** Nothing but folders picked: the Library's Mix verb works on these alone. */
+    val onlyFolders: Boolean get() = itemCount > 0 && pickedFolders.size == itemCount
+
     /**
      * How many picks sit strictly below [relPath].
      *

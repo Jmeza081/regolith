@@ -22,6 +22,7 @@ import com.regolith.domain.playback.AmbientLight
 import com.regolith.domain.playback.PlayerOrientation
 import com.regolith.domain.playback.RepeatMode
 import com.regolith.domain.library.ViewMode
+import com.regolith.domain.library.MixFilter
 import androidx.datastore.preferences.core.edit
 import com.regolith.domain.media.ShortsLength
 import com.regolith.domain.playback.StoryPace
@@ -58,6 +59,7 @@ class AppPreferences @Inject constructor(
         val picturesAcrossWide = intPreferencesKey("pictures_across_wide")
         val gesturesSeen = booleanPreferencesKey("player_gestures_seen")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
+        val libraryMixFilter = stringPreferencesKey("library_mix_filter")
         val browseViewMode = stringPreferencesKey("browse_view_mode")
         val deviceViewMode = stringPreferencesKey("device_view_mode")
         val searchViewMode = stringPreferencesKey("search_view_mode")
@@ -483,6 +485,18 @@ class AppPreferences @Inject constructor(
 
     suspend fun setLibraryViewMode(mode: ViewMode) {
         store.edit { it[Keys.libraryViewMode] = mode.name }
+    }
+
+    /**
+     * The Library's All · Collections · Mixes chips ([MixFilter]): one choice
+     * for every wall, like the view mode. All, the split view, to start.
+     */
+    val libraryMixFilter: Flow<MixFilter> = store.data.map { prefs ->
+        prefs[Keys.libraryMixFilter]?.let { runCatching { MixFilter.valueOf(it) }.getOrNull() } ?: MixFilter.ALL
+    }
+
+    suspend fun setLibraryMixFilter(filter: MixFilter) {
+        store.edit { it[Keys.libraryMixFilter] = filter.name }
     }
 
     /** Browse's grid/rows switch. Rows are the design's default here: a folder listing reads as a list. */

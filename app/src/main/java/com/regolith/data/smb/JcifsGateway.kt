@@ -64,6 +64,9 @@ class JcifsGateway @Inject constructor(
     private companion object {
         const val TAG = "Regolith/SMB"
 
+        /** FILE_ATTRIBUTE_NORMAL: "no other attribute set". jcifs-ng names the others but not this one. */
+        const val ATTR_NORMAL = 0x80
+
         /**
          * Over this login's quota: the same "no room" as a full disk, from
          * the user's side of the share. jcifs-ng names DISK_FULL but not
@@ -316,12 +319,14 @@ class JcifsGateway @Inject constructor(
         credentials: SmbCredentials,
         share: String,
         relPath: String,
+        keep: Set<String>,
     ): List<SmbEntry> = withContext(Dispatchers.IO) {
         withDialect(host, credentials, "$share/$relPath") { ctx ->
             val dir = SmbFile(urlFor(host, share, relPath), ctx)
             dir.listFiles().mapNotNull { f ->
                 val name = f.name.trimEnd('/')
-                if (name.startsWith(".")) return@mapNotNull null // .DS_Store, @eaDir-style junk
+                // .DS_Store, @eaDir-style junk; but not what the caller asked to see.
+                if (name.startsWith(".") && name !in keep) return@mapNotNull null
                 val isDir = f.isDirectory
                 SmbEntry(
                     name = name,
@@ -378,6 +383,19 @@ class JcifsGateway @Inject constructor(
             SmbFile(fileUrl(host, share, fromRelPath), ctx).renameTo(SmbFile(fileUrl(host, share, toRelPath), ctx), replace)
         }
     }
+
+    override suspend fun hide(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) =
+        withContext(Dispatchers.IO) {
+            withDialect(host, credentials, "$share/$relPath") { ctx ->
+                val file = SmbFile(fileUrl(host, share, relPath), ctx)
+                // NORMAL (0x80) means "no other attribute" and must go when
+                // one is added. Samba maps hidden onto a mode bit or an
+                // xattr, or refuses; either way the dot still hides it there.
+                runCatching { file.setAttributes((file.getAttributes() and ATTR_NORMAL.inv()) or SmbConstants.ATTR_HIDDEN) }
+                    .onFailure { Log.i(TAG, "could not hide $share/$relPath: ${it.message}") }
+                Unit
+            }
+        }
 
     override suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String) =
         withContext(Dispatchers.IO) {

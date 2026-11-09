@@ -6,6 +6,8 @@ import com.regolith.domain.artwork.ArtworkRequest
 import com.regolith.domain.artwork.DeckShape
 import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
+import com.regolith.domain.library.MixFilter
+import com.regolith.domain.library.MixSplit
 import com.regolith.domain.library.MomentOrder
 import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.PictureOrder
@@ -75,6 +77,8 @@ sealed interface LibraryTile : SortKeys {
          * before piles were, which is boxed as before.
          */
         val pile: DeckShape? = null,
+        /** The owner marked it a mix ([com.regolith.domain.library.MixMarker]): it goes in the wall's Mixes section. */
+        val mix: Boolean = false,
     ) : LibraryTile {
         override val testTag get() = "library_collection_$folderId"
     }
@@ -145,6 +149,16 @@ data class LibraryUiState(
      */
     val profile: CollectionProfile? = null,
     val order: LibraryOrder = LibraryOrder(),
+    /** The All · Collections · Mixes chips' choice ([MixFilter]); remembered across launches. */
+    val mixFilter: MixFilter = MixFilter.ALL,
+    /**
+     * Where the Mixes heading goes in [tiles], when the wall shows both
+     * sections; a Collections heading then sits above the first tile. Null
+     * on a wall shown whole or filtered to one kind.
+     */
+    val mixStart: Int? = null,
+    /** How many of each the wall holds, when it holds both: the chips show only then. */
+    val mixSplit: MixSplit? = null,
     /** A collection profile's Moments tab; its own list, so its own order. */
     val momentOrder: MomentOrder = MomentOrder(),
     /** A profile's Images tab, and the lightbox over it: newest taken first to start. */
@@ -158,6 +172,11 @@ data class LibraryUiState(
     val sortSheetOpen: Boolean = false,
     /** This collection has a poster of its own on the share, so More › Remove poster shows. */
     val hasPoster: Boolean = false,
+    /**
+     * The owner marked this folder a mix (unrelated videos, not one story),
+     * so More offers Mark as collection instead of Mark as mix.
+     */
+    val mix: Boolean = false,
     /**
      * Remove poster's question, while it is open: each picture that acts as
      * the poster, and the name it will be kept under (`poster.jpg` to

@@ -44,6 +44,9 @@ import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.comparator
+import com.regolith.domain.library.MixFilter
+import com.regolith.domain.library.MixOutcome
+import com.regolith.domain.library.byMix
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.library.ParsedName
@@ -117,6 +120,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val connection: com.regolith.data.connection.ConnectionFocus,
     private val regenerator: com.regolith.data.artwork.ArtworkRegenerator,
     private val posters: com.regolith.data.artwork.PosterRepository,
+    private val mixes: com.regolith.data.repository.MixRepository,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -225,6 +229,45 @@ class LibraryViewModel @AssistedInject constructor(
     }
 
     /**
+     * More › Mark as mix / Mark as collection: say whether this folder is a
+     * grab bag of unrelated videos or one story (docs/MIX_PLAN.md). Kept on
+     * the share as a hidden marker file, so the menu flips as soon as the
+     * write lands.
+     */
+    fun toggleMix() {
+        val id = folderId ?: return
+        markMix(listOf(id), !_uiState.value.mix)
+    }
+
+    /**
+     * The selection's Mix / Unmix: every picked folder marked a mix ([mix]
+     * true) or a collection again, then the selection ends. Only offered
+     * while nothing but folders is picked.
+     */
+    fun markPickedMix(mix: Boolean) {
+        val ids = _uiState.value.selection?.pickedFolders?.toList().orEmpty()
+        if (ids.isEmpty()) return
+        selection.cancel()
+        markMix(ids, mix)
+    }
+
+    /** Mark [ids] one by one, stopping at a server that is out of reach or read-only, and say how it went. */
+    private fun markMix(ids: List<Long>, mix: Boolean) {
+        if (spoof.current != null) return
+        viewModelScope.launch {
+            val outcomes = mutableListOf<MixOutcome>()
+            for (id in ids) {
+                val outcome = mixes.setMix(id, mix)
+                outcomes += outcome
+                // Every folder after these would fail the same way.
+                if (outcome == MixOutcome.UNREACHABLE || outcome == MixOutcome.READ_ONLY) break
+            }
+            val (text, failed) = mixMessage(mix, ids.size, outcomes)
+            fileActions.say(text, failed = failed)
+        }
+    }
+
+    /**
      * More › Scan this collection: list it and every folder under it on the
      * share, in the background, then make whatever artwork that turned up
      * missing. Unlike the pull to refresh, it carries on after leaving the
@@ -248,7 +291,10 @@ class LibraryViewModel @AssistedInject constructor(
         folderId?.let { id -> viewModelScope.launch { connection.onFolder(id) } }
         // Whether More › Remove poster shows: the folder has a poster file of its own.
         folderId?.let { id -> viewModelScope.launch { posters.observeHasPoster(id).collect { has -> _uiState.update { it.copy(hasPoster = has) } } } }
-        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
+        // Which way More › Mark as mix / Mark as collection reads.
+        folderId?.let { id -> viewModelScope.launch { mixes.observeIsMix(id).collect { mix -> _uiState.update { it.copy(mix = mix) } } } }
+        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order).arranged() } } }
+        viewModelScope.launch { prefs.libraryMixFilter.collect { mixFilter -> _uiState.update { it.copy(mixFilter = mixFilter).arranged() } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }
         viewModelScope.launch { prefs.picturesAcross(PicturesAcross.PHONE).collect { n -> _uiState.update { it.copy(picturesAcrossPhone = n) } } }
@@ -344,7 +390,7 @@ class LibraryViewModel @AssistedInject constructor(
             }.collect { built ->
                 unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
-                _uiState.update { it.withWall(built.state, sorted(built.walls[wallFilter(built.state, it.filter)].orEmpty(), it.order)) }
+                _uiState.update { it.withWall(built.state, emptyList()).arranged() }
                 measureIfNeeded(built.state.profile)
             }
         }
@@ -554,6 +600,7 @@ class LibraryViewModel @AssistedInject constructor(
                     pictureCount = pictures,
                     albumCount = byParent[folder.id].orEmpty().count { child -> subtree(child).any { picturesByFolder.containsKey(it) } },
                     pile = piles[folder.id]?.let { if (spoofing) DeckShape.TALL else it },
+                    mix = folder.mix,
                 )
                 if (onVideos) walls.getValue(LibraryFilter.VIDEOS) += tile
                 if (moments > 0) walls.getValue(LibraryFilter.MOMENTS) += tile
@@ -743,6 +790,21 @@ class LibraryViewModel @AssistedInject constructor(
     private fun sorted(tiles: List<LibraryTile>, order: LibraryOrder): List<LibraryTile> =
         tiles.sortedWith(order.comparator(addedByDay = true))
 
+    /**
+     * This state with its wall put back from [unsorted]: the chip's wall,
+     * in its order, then split into collections and mixes by the mix chips
+     * ([byMix]). Under Videos only: Moments and Images are not split, and a
+     * profile holds no collections to split. Every change to what the wall
+     * shows goes through here, so the sections can never fall out of step.
+     */
+    private fun LibraryUiState.arranged(): LibraryUiState {
+        val wallOf = wallFilter(this, filter)
+        val tiles = sorted(unsorted[wallOf].orEmpty(), order)
+        if (wallOf != LibraryFilter.VIDEOS || profile != null) return copy(tiles = tiles, mixStart = null, mixSplit = null)
+        val sections = tiles.byMix(mixFilter) { it is LibraryTile.Collection && it.mix }
+        return copy(tiles = sections.items, mixStart = sections.mixStart, mixSplit = sections.split)
+    }
+
     fun openSortSheet(open: Boolean) = _uiState.update { it.copy(sortSheetOpen = open) }
 
     /*
@@ -755,7 +817,7 @@ class LibraryViewModel @AssistedInject constructor(
     /** The wall, and a profile's Videos tab: one order for every wall in the Library. */
     fun pickSort(sort: LibrarySort) {
         val next = _uiState.value.order.pick(sort)
-        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), next)) }
+        _uiState.update { it.copy(order = next, sortSheetOpen = false).arranged() }
         viewModelScope.launch { prefs.setLibraryOrder(next) }
     }
 
@@ -793,7 +855,13 @@ class LibraryViewModel @AssistedInject constructor(
 
     /** A chip under the tabs: the same wall, showing another kind of thing. */
     fun setFilter(filter: LibraryFilter) {
-        _uiState.update { it.copy(filter = filter, tiles = sorted(unsorted[wallFilter(it, filter)].orEmpty(), it.order)) }
+        _uiState.update { it.copy(filter = filter).arranged() }
+    }
+
+    /** The All · Collections · Mixes chips. Written to preferences; the collector above puts it on the state. */
+    fun setMixFilter(filter: MixFilter) {
+        _uiState.update { it.copy(mixFilter = filter).arranged() }
+        viewModelScope.launch { prefs.setLibraryMixFilter(filter) }
     }
 
     /**
@@ -954,4 +1022,23 @@ class LibraryViewModel @AssistedInject constructor(
             updateDevice { d -> d.copy(picked = null, confirmRemove = null) }
         }
     }
+}
+
+/**
+ * The line after marking [asked] folders a mix ([mix] true) or a collection:
+ * what [outcomes] came of it (one per folder tried, possibly fewer than
+ * [asked] when a dead server stopped the run), and whether it failed.
+ */
+internal fun mixMessage(mix: Boolean, asked: Int, outcomes: List<MixOutcome>): Pair<String, Boolean> {
+    val done = outcomes.count { it == MixOutcome.DONE }
+    val what = if (mix) "a mix" else "a collection"
+    val whats = if (mix) "mixes" else "collections"
+    if (done == asked) return (if (asked == 1) "Marked as $what" else "Marked $asked folders as $whats") to false
+    val why = when (outcomes.firstOrNull { it != MixOutcome.DONE }) {
+        MixOutcome.READ_ONLY -> "the share is read-only"
+        MixOutcome.UNREACHABLE -> "couldn’t reach the server"
+        else -> "try again"
+    }
+    val lead = if (asked == 1) "Couldn’t mark this folder" else "Marked $done of $asked folders"
+    return "$lead: $why" to true
 }

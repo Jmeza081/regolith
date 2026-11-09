@@ -271,6 +271,10 @@ interface FolderDao {
         return merged
     }
 
+    /** Marking a folder a mix: the row follows the share at once, without waiting for a listing. */
+    @Query("UPDATE folders SET mix = :mix WHERE id = :id")
+    suspend fun setMix(id: Long, mix: Boolean)
+
     @Query("UPDATE folders SET kind = :kind, titleParsed = :titleParsed, year = :year WHERE id = :id")
     suspend fun setKind(id: Long, kind: String, titleParsed: String?, year: Int?)
 
