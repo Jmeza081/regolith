@@ -26,4 +26,10 @@ class WallRunsTest {
             wallRuns(tiles, mixStart = 2),
         )
     }
+
+    @Test fun `a section start past the end of the wall draws it whole instead of crashing`() {
+        // New tiles (Moments, two of them) beside the old Videos split point.
+        val tiles = listOf(folder(1), folder(2))
+        assertEquals(listOf(tiles to null), wallRuns(tiles, mixStart = 5))
+    }
 }

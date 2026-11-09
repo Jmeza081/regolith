@@ -775,6 +775,14 @@ fun LibraryScreen(
         // collections and mixes (two headings from the mixes on, one before).
         val mixStart = state.mixStart
         val itemOf = { tile: Int -> leadingItems + tile + (mixStart?.let { if (tile >= it) 2 else 1 } ?: 0) }
+        // The wall's runs, worked out HERE from one reading of the state, not
+        // inside the grid's item block. That block is re-run by the lazy grid
+        // itself whenever the state it reads changes, which can be before this
+        // function has recomposed: it read the NEW tiles beside the OLD
+        // mixStart it had captured, and cutting two tiles at five crashed
+        // (Videos split into sections, then Moments tapped). One snapshot, one
+        // answer.
+        val runs = remember(state.tiles, mixStart) { wallRuns(state.tiles, mixStart) }
         // In the order the wall shows their videos, so sorting one sorts both.
         val moments = remember(profile?.moments, state.tiles, state.momentOrder) { profile?.moments.orEmpty().inOrder(state.momentOrder, state.tiles) }
         val showMoments = profile != null && profileTab == ProfileTab.MOMENTS
@@ -1049,7 +1057,7 @@ fun LibraryScreen(
                         return@LazyVerticalGrid
                     }
                     // Split into collections and mixes, each run under its heading.
-                    for ((run, heading) in wallRuns(state.tiles, mixStart)) {
+                    for ((run, heading) in runs) {
                         heading?.let { h -> item(key = h.testTag, span = { GridItemSpan(maxLineSpan) }) { SectionHeading(h) } }
                         items(run, key = { it.testTag }) { tile ->
                             val nudge = nudgeOf(tile)
@@ -1109,7 +1117,7 @@ fun LibraryScreen(
                         item { emptyBlock() }
                         return@LazyColumn
                     }
-                    for ((run, heading) in wallRuns(state.tiles, mixStart)) {
+                    for ((run, heading) in runs) {
                         heading?.let { h -> item(key = h.testTag) { SectionHeading(h) } }
                         itemsIndexed(run, key = { _, tile -> tile.testTag }) { index, tile ->
                             if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
@@ -1521,7 +1529,9 @@ internal enum class WallSection(val label: String, val testTag: String) {
  * collections under one and the mixes under the other.
  */
 internal fun wallRuns(tiles: List<LibraryTile>, mixStart: Int?): List<Pair<List<LibraryTile>, WallSection?>> =
-    if (mixStart == null) {
+    // Out of range means the two came from different moments: draw the wall
+    // whole rather than cut it somewhere that is not there.
+    if (mixStart == null || mixStart !in 0..tiles.size) {
         listOf(tiles to null)
     } else {
         listOf(tiles.subList(0, mixStart) to WallSection.COLLECTIONS, tiles.subList(mixStart, tiles.size) to WallSection.MIXES)
@@ -1535,8 +1545,9 @@ private fun SectionHeading(section: WallSection) {
 
 /**
  * All · Collections · Mixes, under the Videos chip on a wall holding both
- * kinds, each with how many it holds. The same [FilterChip] as the chips
- * above, lit white like them: the Library's one red is Play all.
+ * kinds, each named with how many it holds in a small badge. The same
+ * [FilterChip] as the chips above, lit white like them: the Library's one
+ * red is Play all.
  */
 @Composable
 private fun MixChips(filter: MixFilter, split: MixSplit, onFilter: (MixFilter) -> Unit, modifier: Modifier = Modifier) {
@@ -1552,7 +1563,9 @@ private fun MixChips(filter: MixFilter, split: MixSplit, onFilter: (MixFilter) -
                 selected = f == filter,
                 onClick = { onFilter(f) },
                 testTag = "library_mix_filter_${f.name.lowercase()}",
-                trailing = count?.toString(),
+                // Its own pill: a trailing count would squeeze the label to
+                // nothing in this sideways-scrolling row.
+                badge = count,
                 // White, as the chips above: the Library's one red is Play all.
                 ink = true,
             )

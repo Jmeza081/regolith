@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -98,6 +99,12 @@ fun FilterChip(
      * pages whose one red is Play all.
      */
     ink: Boolean = false,
+    /**
+     * A count in its own small pill after the label: the Library's
+     * Collections and Mixes chips. Unlike [trailing] it never squeezes the
+     * label, so it is the one to use in a row that scrolls sideways.
+     */
+    badge: Int? = null,
 ) {
     val colors = RegolithTheme.colors
     val textStyle = if (selected) TextStyles.chipSelected.copy(fontSize = 12.designSp()) else TextStyles.buttonSmall.copy(fontSize = 12.designSp())
@@ -141,6 +148,24 @@ fun FilterChip(
                     color = if (selected) onColor.copy(alpha = 0.72f) else colors.navIdle,
                     maxLines = 1,
                 )
+            }
+            if (badge != null) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = 18.scaledDp(), minHeight = 18.scaledDp())
+                        // A tint of the chip's own ink, so it reads lit or unlit alike.
+                        .background((if (selected) onColor else colors.inkSoft).copy(alpha = 0.16f), PillShape)
+                        .padding(horizontal = 5.dp),
+                ) {
+                    Text(
+                        badge.toString(),
+                        style = TextStyles.badge,
+                        color = if (selected) onColor else colors.inkSoft,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
