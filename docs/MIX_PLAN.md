@@ -80,10 +80,18 @@ Test tags: `library_mark_mix`, `library_mark_collection`,
   screen, so Select all and Play all act on what you can see.
 - **Sections and chips only when there's a choice.** A wall needs at least
   one mix *and* at least one other tile. Otherwise it looks as it always did.
-- **The chips** reuse `FilterChip` with its `trailing` count, lit white like
+- **The chips** reuse `FilterChip` with a `badge` count (its own small pill;
+  the older `trailing` count squeezed the label to nothing in a row that
+  scrolls sideways, so only the number showed), lit white like
   Videos · Moments · Images above them (the Library keeps red for Play all).
   **The headings** reuse `Eyebrow(large = true)`, the style the codebase
   uses where a label is what says one run has ended.
+- **The runs are worked out once per recomposition** (`runs` in
+  `LibraryScreen`), never inside the grid's item block: the lazy grid re-runs
+  that block on its own when the state changes, and it once read the new
+  tiles beside the old `mixStart`, cutting a short list past its end (a
+  crash, seen going from a split Videos wall to Moments). `wallRuns` also
+  draws a wall whole if the start is out of range.
 - **No A–Z rail on a split wall:** its letters would run A to Z twice. With a
   chip narrowing it to one kind, the rail comes back.
 
