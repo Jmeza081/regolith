@@ -116,6 +116,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val pictures: PictureRepository,
     private val connection: com.regolith.data.connection.ConnectionFocus,
     private val regenerator: com.regolith.data.artwork.ArtworkRegenerator,
+    private val posters: com.regolith.data.artwork.PosterRepository,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -184,6 +185,46 @@ class LibraryViewModel @AssistedInject constructor(
     }
 
     /**
+     * More › Remove poster: ask first, showing what each poster picture will
+     * be renamed to. Names come from the library's rows; the share is listed
+     * again when the answer is yes.
+     */
+    fun askRemovePoster() {
+        val id = folderId ?: return
+        if (spoof.current != null) return
+        viewModelScope.launch {
+            val names = posters.unlinkPreview(id)
+            if (names == null) {
+                fileActions.say("This collection has no poster of its own", failed = true)
+                return@launch
+            }
+            _uiState.update { it.copy(posterRemoval = names) }
+        }
+    }
+
+    /** Remove poster's Keep it: nothing changes. */
+    fun dismissRemovePoster() = _uiState.update { it.copy(posterRemoval = null) }
+
+    /**
+     * Remove poster's Remove: the poster is unlinked, not deleted — renamed
+     * with the day so it stays on the share under Images, and the collection
+     * goes back to the picture Regolith makes for it.
+     */
+    fun removePoster() {
+        val id = folderId ?: return
+        if (_uiState.value.posterRemoval == null) return
+        _uiState.update { it.copy(posterRemoval = null) }
+        viewModelScope.launch {
+            when (posters.removePoster(id)) {
+                com.regolith.domain.artwork.FolderPosterOutcome.SAVED -> fileActions.say("Poster removed · the picture is still under Images")
+                com.regolith.domain.artwork.FolderPosterOutcome.READ_ONLY -> fileActions.say("This share is read-only, so the poster can’t be removed", failed = true)
+                com.regolith.domain.artwork.FolderPosterOutcome.UNREACHABLE -> fileActions.say("Couldn’t reach the server. Check the connection and try again.", failed = true)
+                else -> fileActions.say("The poster couldn’t be removed. Try again.", failed = true)
+            }
+        }
+    }
+
+    /**
      * More › Scan this collection: list it and every folder under it on the
      * share, in the background, then make whatever artwork that turned up
      * missing. Unlike the pull to refresh, it carries on after leaving the
@@ -205,6 +246,8 @@ class LibraryViewModel @AssistedInject constructor(
     init {
         // The connection dot watches the share of the collection being browsed.
         folderId?.let { id -> viewModelScope.launch { connection.onFolder(id) } }
+        // Whether More › Remove poster shows: the folder has a poster file of its own.
+        folderId?.let { id -> viewModelScope.launch { posters.observeHasPoster(id).collect { has -> _uiState.update { it.copy(hasPoster = has) } } } }
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }

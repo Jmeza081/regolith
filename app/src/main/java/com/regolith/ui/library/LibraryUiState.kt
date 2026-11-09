@@ -156,6 +156,14 @@ data class LibraryUiState(
     val storyPace: StoryPace = StoryPace.DEFAULT,
     /** Open over whichever list is on screen: it shows that list's choices ([LibraryScreen]). */
     val sortSheetOpen: Boolean = false,
+    /** This collection has a poster of its own on the share, so More › Remove poster shows. */
+    val hasPoster: Boolean = false,
+    /**
+     * Remove poster's question, while it is open: each picture that acts as
+     * the poster, and the name it will be kept under (`poster.jpg` to
+     * `poster (9 Nov).jpg`). Null when closed.
+     */
+    val posterRemoval: Map<String, String>? = null,
     /** Poster wall or rows. Remembered across launches. */
     val viewMode: ViewMode = ViewMode.GRID,
     /** Settings › Display › Posters per row: how many across a wall on the inner display. */

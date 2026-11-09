@@ -635,6 +635,24 @@ class ArtworkRepository @Inject constructor(
     }
 
     /**
+     * [folderId]'s poster was just unlinked on the share (More › Remove
+     * poster): its picture goes from the table, the directory and the image
+     * loader's memory, with the folder's cached listing, and the screens are
+     * told. The next tile to ask makes the folder's picture again from the
+     * share, which no longer has a poster in it: a deck of its videos, or
+     * whatever Regolith would make for a folder that never had one.
+     */
+    suspend fun forgetFolderPoster(folderId: Long) {
+        val folder = folderDao.byId(folderId) ?: return
+        listingsLock.withLock { listings.remove(folder.shareId to folder.relPath) }
+        val owner = ArtworkOwner.Folder(folderId)
+        artworkDao.deleteOwner(owner.typeName, owner.id)
+        store.delete(owner)
+        announceReplaced(listOf(owner))
+        Log.i(TAG, "poster of folder $folderId unlinked; its picture will be made again")
+    }
+
+    /**
      * A poster.jpg was just written into the folder at [folderRelPath]. Use
      * [bytes] for every owner it now belongs to, right away.
      *

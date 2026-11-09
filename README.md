@@ -76,7 +76,8 @@ runtime or resolution (tap the sort in use again to reverse it), and **Play all*
 on a collection plays it in order or shuffled. The bar at the top of the Library and
 Browse keeps **Search** and a **⋯**; the ⋯ holds the rest, each showing how it is
 set: View (Grid or Rows, switched in place), Sort ("Name, A to Z"), Add to this
-collection, Scan this collection and Regenerate artwork. Home keeps its Arrange button beside Search.
+collection, Scan this collection, Regenerate artwork and (when it has one) Remove
+poster. Home keeps its Arrange button beside Search.
 From any tab, **swipe up off the nav pill** (or across from the rail on the inner
 display) to search the whole library: the pill's tabs fold away and the pill rises
 with your thumb as a search bar, and letting go past the line flies it into
@@ -338,6 +339,13 @@ with the day it stopped being the poster (`poster.jpg` becomes
 `poster (8 Oct).jpg`), and stays in the folder as an ordinary picture under
 Images. A sheet shows both before anything changes: the old poster and the name
 it will keep, beside the new one.
+
+To take a collection's poster away without putting a new one in its place, use
+**⋯ › Remove poster** on its wall or its page (it shows only when the folder has
+a poster file of its own, and not in spoof mode). It is an unlink, not a delete:
+the poster is renamed with the day the same way (`poster.jpg` becomes
+`poster (9 Nov).jpg`) and stays under Images, and the collection goes back to the
+picture Regolith makes for it. A dialog names the new file name first.
 
 Pictures changed on the share are noticed too. Replace a folder's `folder.jpg` or
 `poster.jpg` with a different picture — even under the same name — or put an

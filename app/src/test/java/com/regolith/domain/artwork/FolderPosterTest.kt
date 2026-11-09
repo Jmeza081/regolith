@@ -69,6 +69,20 @@ class FolderPosterTest {
     }
 
     @Test
+    fun `removing a poster renames every picture acting as one, and leaves the rest alone`() {
+        val names = listOf("poster.jpg", "folder.png", "IMG_4821.jpg", "Heat.1995.mkv", "poster (8 Oct).jpg")
+        assertEquals(
+            mapOf("poster.jpg" to "poster (8 Oct) (1).jpg", "folder.png" to "folder (8 Oct).png"),
+            FolderPoster.unlinking(names, day),
+        )
+    }
+
+    @Test
+    fun `a folder with no poster of its own has nothing to remove`() {
+        assertTrue(FolderPoster.unlinking(listOf("IMG_4821.jpg", "Heat.1995.mkv"), day).isEmpty())
+    }
+
+    @Test
     fun `the day is spelled in English on every phone`() {
         val default = Locale.getDefault()
         try {

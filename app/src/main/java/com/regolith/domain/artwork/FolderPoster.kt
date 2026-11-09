@@ -94,6 +94,16 @@ object FolderPoster {
     }
 
     /**
+     * New names for the folder's artwork when its poster is removed with no
+     * new one in its place (More › Remove poster): every picture among
+     * [names] (the folder's listing) that acts as its artwork, given the
+     * day's name as [keptNames] gives it. `poster.jpg` becomes
+     * `poster (9 Nov).jpg`, an ordinary picture under Images that no player
+     * takes for artwork: the picture is unlinked, never deleted.
+     */
+    fun unlinking(names: Collection<String>, on: LocalDate): Map<String, String> = keptNames(ranked(names), names, on)
+
+    /**
      * "8 Oct", the day in a kept poster's name. English month names on every
      * phone, so the names on a share read the same whoever made them, and
      * hold nothing a share might refuse (some languages' short months end
