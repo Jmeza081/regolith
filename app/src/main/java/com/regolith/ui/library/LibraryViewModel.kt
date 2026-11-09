@@ -45,6 +45,7 @@ import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.comparator
 import com.regolith.domain.library.MixFilter
+import com.regolith.domain.library.MixOutcome
 import com.regolith.domain.library.byMix
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.display.PostersPerRow
@@ -235,15 +236,34 @@ class LibraryViewModel @AssistedInject constructor(
      */
     fun toggleMix() {
         val id = folderId ?: return
+        markMix(listOf(id), !_uiState.value.mix)
+    }
+
+    /**
+     * The selection's Mix / Unmix: every picked folder marked a mix ([mix]
+     * true) or a collection again, then the selection ends. Only offered
+     * while nothing but folders is picked.
+     */
+    fun markPickedMix(mix: Boolean) {
+        val ids = _uiState.value.selection?.pickedFolders?.toList().orEmpty()
+        if (ids.isEmpty()) return
+        selection.cancel()
+        markMix(ids, mix)
+    }
+
+    /** Mark [ids] one by one, stopping at a server that is out of reach or read-only, and say how it went. */
+    private fun markMix(ids: List<Long>, mix: Boolean) {
         if (spoof.current != null) return
-        val mix = !_uiState.value.mix
         viewModelScope.launch {
-            when (mixes.setMix(id, mix)) {
-                com.regolith.domain.library.MixOutcome.DONE -> fileActions.say(if (mix) "Marked as a mix" else "Marked as a collection")
-                com.regolith.domain.library.MixOutcome.READ_ONLY -> fileActions.say("This share is read-only, so this folder can’t be marked", failed = true)
-                com.regolith.domain.library.MixOutcome.UNREACHABLE -> fileActions.say("Couldn’t reach the server. Check the connection and try again.", failed = true)
-                com.regolith.domain.library.MixOutcome.FAILED -> fileActions.say("This folder couldn’t be marked. Try again.", failed = true)
+            val outcomes = mutableListOf<MixOutcome>()
+            for (id in ids) {
+                val outcome = mixes.setMix(id, mix)
+                outcomes += outcome
+                // Every folder after these would fail the same way.
+                if (outcome == MixOutcome.UNREACHABLE || outcome == MixOutcome.READ_ONLY) break
             }
+            val (text, failed) = mixMessage(mix, ids.size, outcomes)
+            fileActions.say(text, failed = failed)
         }
     }
 
@@ -1002,4 +1022,23 @@ class LibraryViewModel @AssistedInject constructor(
             updateDevice { d -> d.copy(picked = null, confirmRemove = null) }
         }
     }
+}
+
+/**
+ * The line after marking [asked] folders a mix ([mix] true) or a collection:
+ * what [outcomes] came of it (one per folder tried, possibly fewer than
+ * [asked] when a dead server stopped the run), and whether it failed.
+ */
+internal fun mixMessage(mix: Boolean, asked: Int, outcomes: List<MixOutcome>): Pair<String, Boolean> {
+    val done = outcomes.count { it == MixOutcome.DONE }
+    val what = if (mix) "a mix" else "a collection"
+    val whats = if (mix) "mixes" else "collections"
+    if (done == asked) return (if (asked == 1) "Marked as $what" else "Marked $asked folders as $whats") to false
+    val why = when (outcomes.firstOrNull { it != MixOutcome.DONE }) {
+        MixOutcome.READ_ONLY -> "the share is read-only"
+        MixOutcome.UNREACHABLE -> "couldn’t reach the server"
+        else -> "try again"
+    }
+    val lead = if (asked == 1) "Couldn’t mark this folder" else "Marked $done of $asked folders"
+    return "$lead: $why" to true
 }

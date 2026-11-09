@@ -95,6 +95,7 @@ import com.regolith.ui.components.SelectionChromeState
 import com.regolith.ui.components.SelectionVerb
 import com.regolith.ui.components.FileActionsHost
 import com.regolith.ui.components.PictureVerbs
+import com.regolith.ui.components.FolderVerb
 import com.regolith.ui.components.UploadActionsHost
 import com.regolith.ui.components.UploadSectionView
 import com.regolith.ui.components.UploadSource
@@ -1209,6 +1210,21 @@ fun LibraryScreen(
                     onSave = viewModel::savePictures,
                     onPoster = { viewModel.posterFromSelection { folderId, pictureId -> onSetPoster(folderId, pictureId, null) } },
                 )
+            },
+            // Nothing but folders picked: Mix, or Unmix when every one of them is a mix already.
+            folderVerb = run {
+                val unmix = remember(selection?.pickedFolders, state.tiles) {
+                    val picked = selection?.pickedFolders.orEmpty()
+                    val mixes = state.tiles.filterIsInstance<LibraryTile.Collection>().filter { it.mix }.map { it.folderId }.toSet()
+                    picked.isNotEmpty() && mixes.containsAll(picked)
+                }
+                remember(unmix, viewModel) {
+                    if (unmix) {
+                        FolderVerb("Unmix", LucideR.drawable.lucide_ic_folder_heart, { viewModel.markPickedMix(false) }, "unmix")
+                    } else {
+                        FolderVerb("Mix", LucideR.drawable.lucide_ic_shuffle, { viewModel.markPickedMix(true) }, "mix")
+                    }
+                }
             },
         )
         FileActionsHost(viewModel.fileActions, tagPrefix = "library")

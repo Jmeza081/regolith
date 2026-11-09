@@ -119,10 +119,22 @@ fun FileActionsHost(actions: FileActions, tagPrefix: String) {
 class PictureVerbs(val onSave: () -> Unit, val onPoster: () -> Unit)
 
 /**
+ * One more verb for a selection of nothing but folders, on a screen that
+ * passes it: the Library's Mix / Unmix ([com.regolith.domain.library.MixMarker]).
+ * It sits before Delete, which stays last, and is greyed where Delete is:
+ * on a source that cannot be changed. Its test tag is
+ * `<tagPrefix>_select_<testTag>`.
+ */
+data class FolderVerb(val label: String, val icon: Int, val onClick: () -> Unit, val testTag: String)
+
+/**
  * Turn the nav pill into [selection]'s toolbar while one is running:
  * Download, Move, Rename and Delete, the same four in the same order on every
  * screen that picks things, each greyed when [FileActions] says it cannot
  * work. Cancel is drawn by the pill itself, in the cell where Home sits.
+ *
+ * A selection of nothing but folders, on a screen that passes [folderVerb],
+ * gets that verb as a fifth, before Delete.
  *
  * A selection of nothing but pictures, on a screen that passes
  * [pictureVerbs], has Move, Rename, Save, Poster and Delete instead: a
@@ -142,10 +154,11 @@ fun FileSelectionChrome(
     onDownload: () -> Unit,
     onCancel: () -> Unit,
     pictureVerbs: PictureVerbs? = null,
+    folderVerb: FolderVerb? = null,
 ) {
     val verbs by actions.state.collectAsStateWithLifecycle()
     val chrome = LocalSelectionChrome.current
-    DisposableEffect(selection, verbs.verbs, here, pictureVerbs) {
+    DisposableEffect(selection, verbs.verbs, here, pictureVerbs, folderVerb) {
         val live = selection
         if (live == null) {
             chrome.clear()
@@ -167,10 +180,14 @@ fun FileSelectionChrome(
                             delete,
                         )
                     } else {
-                        listOf(
+                        listOfNotNull(
                             SelectionVerb("Download", R.drawable.rg_ic_download, onDownload, "${tagPrefix}_select_download", enabled = live.canDownload),
                             move,
                             rename,
+                            // The fifth cell, for folders alone: the pill holds five.
+                            folderVerb?.takeIf { live.onlyFolders }?.let {
+                                SelectionVerb(it.label, it.icon, it.onClick, "${tagPrefix}_select_${it.testTag}", enabled = can.canDelete)
+                            },
                             delete,
                         )
                     },

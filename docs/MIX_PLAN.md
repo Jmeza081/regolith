@@ -1,9 +1,10 @@
 # Mixes — plan
 
-Status: steps 1–6 built 2026-11-09 (a folder can be marked and unmarked,
-the scan reads the mark, and a Videos wall holding both kinds is split into
-sections with All · Collections · Mixes chips). Step 7 not started. Not yet
-seen on a device. Decisions below are the owner's.
+Status: steps 1–7 built 2026-11-09: a folder can be marked and unmarked
+(one at a time from ⋯ More, or several from the selection bar), the scan
+reads the mark, and a Videos wall holding both kinds is split into sections
+with All · Collections · Mixes chips. Not yet seen on a device. Decisions
+below are the owner's.
 
 ## The problem
 
@@ -67,7 +68,8 @@ poster.
 
 Test tags: `library_mark_mix`, `library_mark_collection`,
 `library_section_collections`, `library_section_mixes`, `library_mix_chips`,
-`library_mix_filter_<all|collections|mixes>`.
+`library_mix_filter_<all|collections|mixes>`, `library_select_mix`,
+`library_select_unmix`.
 
 ## How steps 5–6 came out
 
@@ -85,6 +87,19 @@ Test tags: `library_mark_mix`, `library_mark_collection`,
 - **No A–Z rail on a split wall:** its letters would run A to Z twice. With a
   chip narrowing it to one kind, the rail comes back.
 
+## How step 7 came out
+
+- **A fifth verb in the selection pill**, between Rename and Delete, only
+  while nothing but folders is picked (the pill holds five; picture
+  selections already use five). It reads **Mix**, or **Unmix** when every
+  picked folder is a mix already. "Collection" is too long for a pill cell.
+- `FileSelectionChrome(folderVerb = …)` is the slot, so Browse could offer
+  it later without a second toolbar. Greyed where Delete is (demo, phone,
+  spoof mode).
+- Folders are marked one by one; a read-only or unreachable server stops
+  the run, since every folder after would fail the same way. The message
+  says how many got done (`mixMessage`, unit-tested).
+
 ## Build order
 
 1. ✅ Domain type and marker name, with unit tests.
@@ -94,7 +109,7 @@ Test tags: `library_mark_mix`, `library_mark_collection`,
 4. ✅ **Mark as mix / Mark as collection** on a folder's page (⋯ More).
 5. ✅ Wall sections.
 6. ✅ Filter chips, remembered.
-7. Multi-select **Mark as mix**.
+7. ✅ Multi-select **Mix** / **Unmix**.
 8. Docs: `ARCHITECTURE.md` (scan diagram + a decision entry), `README.md`.
 
 Each step ships on its own; steps 1–4 alone already let a folder be marked.
