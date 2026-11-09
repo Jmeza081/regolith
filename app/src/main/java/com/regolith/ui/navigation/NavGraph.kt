@@ -1,6 +1,7 @@
 package com.regolith.ui.navigation
 
 import androidx.compose.material3.SnackbarResult
+import com.regolith.ui.components.rememberScrollAway
 import com.regolith.ui.components.MessageKind
 import com.regolith.ui.components.showMessage
 import kotlinx.coroutines.launch
@@ -375,7 +376,7 @@ fun RegolithNavGraph(appViewModel: AppViewModel) {
     // scrolling DOWN puts it out of the way and keeps it there, which is
     // 112dp of a small screen handed back to the thing being read. The two
     // reasons never argue, because absent always beats present.
-    val pillScroll = rememberNavPillScroll()
+    val pillScroll = rememberScrollAway()
     // A new tab is a new thing to look at, and it starts at the top of its
     // own scroll. Arriving on it with the nav still scrolled away would
     // punish you for where you had got to on the LAST screen.

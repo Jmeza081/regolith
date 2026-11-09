@@ -1,5 +1,12 @@
 package com.regolith.ui.library
 
+import com.regolith.ui.components.rememberScrollAway
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
@@ -392,6 +399,16 @@ fun LibraryScreen(
     // has scrolled up behind it, which it reads from these.
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
+    // The chip row's "scrolled out of the way" (ScrollAway), fed by the wall's
+    // scrolling through a nested-scroll connection on the page's column.
+    val chipsAway = rememberScrollAway()
+    // Back at the very top, or on another chip or tab: the row comes back.
+    val wallAtTop by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0 &&
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
     val mosaicState = rememberLazyStaggeredGridState()
     // Switching between the Videos grid and the Images mosaic swaps the lazy
     // container under the header: the new one starts where the old one was,
@@ -541,7 +558,9 @@ fun LibraryScreen(
             .graphicsLayer { translationY = pull.offset + (lineRoom - lineSpan).toPx() },
         testTag = "library_refresh_line",
     )
-    Column(Modifier.fillMaxSize().padding(top = lineRoom).graphicsLayer { translationY = pull.offset }.testTag("library_screen")) {
+    LaunchedEffect(wallAtTop) { if (wallAtTop) chipsAway.reveal() }
+    LaunchedEffect(state.filter, state.mixFilter, tab, state.viewMode) { chipsAway.reveal() }
+    Column(Modifier.fillMaxSize().padding(top = lineRoom).graphicsLayer { translationY = pull.offset }.nestedScroll(chipsAway.connection).testTag("library_screen")) {
         val subtitle = when {
             tab == LibraryTab.ON_DEVICE && state.device.phoneCount > 0 -> listOfNotNull(
                 when (readyCount) { 0 -> null; 1 -> "1 download"; else -> "$readyCount downloads" },
@@ -618,23 +637,37 @@ fun LibraryScreen(
             )
         }
 
-        // What the wall is OF (LibraryFilter): videos, the moments in them, or
-        // pictures. Only where there is a choice to make, and never on a
-        // profile, whose own tabs say the same thing.
-        if (tab == LibraryTab.NETWORK && profile == null && (state.filtersWithTiles.size > 1 || state.filter != LibraryFilter.VIDEOS)) {
-            FilterChips(
-                state.filter, viewModel::setFilter,
-                Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12, top = if (onBack == null) 0.dp else Spacing.s8),
-            )
+        // One row of chips (the layout study's option B; ARCHITECTURE.md's
+        // decision log): what the wall is
+        // OF (LibraryFilter: videos, the moments in them, or pictures), then,
+        // past a divider, All · Collections · Mixes on a Videos wall holding
+        // both kinds (LibraryUiState.mixSplit). Each group only where there is
+        // a choice to make, and never on a profile, whose own tabs say the same.
+        val showKinds = tab == LibraryTab.NETWORK && profile == null && (state.filtersWithTiles.size > 1 || state.filter != LibraryFilter.VIDEOS)
+        val mixSplit = state.mixSplit.takeIf { tab == LibraryTab.NETWORK && profile == null && state.filter == LibraryFilter.VIDEOS }
+        // Option D: the row tucks away while the wall scrolls down and comes
+        // back on the way up, by the nav pill's own rule (ScrollAway). Never on
+        // a wall too short to scroll, and always at the very top. "Too short"
+        // is asked only as the row starts to go, never while it is away: the
+        // wall grows when the row goes, and a wall that only just scrolled
+        // would stop, bring the row back, scroll again, and flicker for ever.
+        LaunchedEffect(chipsAway.hidden) {
+            val wallScrolls = if (state.viewMode == ViewMode.GRID) {
+                gridState.canScrollForward || gridState.canScrollBackward
+            } else {
+                listState.canScrollForward || listState.canScrollBackward
+            }
+            if (chipsAway.hidden && !wallScrolls) chipsAway.reveal()
         }
-
-        // All · Collections · Mixes: only on a Videos wall that holds both
-        // kinds (LibraryUiState.mixSplit), where there is something to narrow.
-        val mixSplit = state.mixSplit
-        if (tab == LibraryTab.NETWORK && profile == null && state.filter == LibraryFilter.VIDEOS && mixSplit != null) {
-            MixChips(
-                state.mixFilter, mixSplit, viewModel::setMixFilter,
-                Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12),
+        AnimatedVisibility(
+            visible = (showKinds || mixSplit != null) && !chipsAway.hidden,
+            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+        ) {
+            WallChips(
+                filter = state.filter, onFilter = viewModel::setFilter, showKinds = showKinds,
+                mixFilter = state.mixFilter, mixSplit = mixSplit, onMixFilter = viewModel::setMixFilter,
+                modifier = Modifier.padding(start = Spacing.s18, end = Spacing.s18, bottom = Spacing.s12, top = if (onBack == null) 0.dp else Spacing.s8),
             )
         }
 
@@ -1544,56 +1577,67 @@ private fun SectionHeading(section: WallSection) {
 }
 
 /**
- * All · Collections · Mixes, under the Videos chip on a wall holding both
- * kinds, each named with how many it holds in a small badge. The same
- * [FilterChip] as the chips above, lit white like them: the Library's one
- * red is Play all.
+ * The Library's one row of chips: Videos · Moments · Images when there is a
+ * choice of what the wall is of ([showKinds]), then, past a thin divider,
+ * All · Collections · Mixes when the wall holds both kinds ([mixSplit]),
+ * each with how many it holds in a small badge. Both groups are the same
+ * [FilterChip] Search uses, lit white rather than red: the Library's one
+ * red is Play all. The row scrolls sideways where it does not fit (the
+ * cover screen).
  */
 @Composable
-private fun MixChips(filter: MixFilter, split: MixSplit, onFilter: (MixFilter) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("library_mix_chips"), horizontalArrangement = Arrangement.spacedBy(Spacing.s8)) {
-        for (f in MixFilter.entries) {
-            val count = when (f) {
-                MixFilter.ALL -> null
-                MixFilter.COLLECTIONS -> split.collections
-                MixFilter.MIXES -> split.mixes
+private fun WallChips(
+    filter: LibraryFilter,
+    onFilter: (LibraryFilter) -> Unit,
+    showKinds: Boolean,
+    mixFilter: MixFilter,
+    mixSplit: MixSplit?,
+    onMixFilter: (MixFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RegolithTheme.colors
+    Row(
+        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("library_filter_chips"),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showKinds) {
+            for (f in LibraryFilter.entries) {
+                FilterChip(
+                    text = f.label,
+                    selected = f == filter,
+                    onClick = { onFilter(f) },
+                    testTag = "library_filter_${f.name.lowercase()}",
+                    icon = when (f) {
+                        LibraryFilter.VIDEOS -> LucideR.drawable.lucide_ic_square_play
+                        LibraryFilter.MOMENTS -> LucideR.drawable.lucide_ic_bookmark
+                        LibraryFilter.IMAGES -> LucideR.drawable.lucide_ic_image
+                    },
+                    ink = true,
+                )
             }
-            FilterChip(
-                text = f.label,
-                selected = f == filter,
-                onClick = { onFilter(f) },
-                testTag = "library_mix_filter_${f.name.lowercase()}",
-                // Its own pill: a trailing count would squeeze the label to
-                // nothing in this sideways-scrolling row.
-                badge = count,
-                // White, as the chips above: the Library's one red is Play all.
-                ink = true,
-            )
         }
-    }
-}
-
-/**
- * The chips under the Library's tabs (design: Lib-Filter): Videos, Moments,
- * Images, the lit one white. The same [FilterChip] Search uses, in its
- * quieter white, since these choose what a wall is of rather than narrow it.
- */
-@Composable
-private fun FilterChips(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("library_filter_chips"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (f in LibraryFilter.entries) {
-            FilterChip(
-                text = f.label,
-                selected = f == filter,
-                onClick = { onFilter(f) },
-                testTag = "library_filter_${f.name.lowercase()}",
-                icon = when (f) {
-                    LibraryFilter.VIDEOS -> LucideR.drawable.lucide_ic_square_play
-                    LibraryFilter.MOMENTS -> LucideR.drawable.lucide_ic_bookmark
-                    LibraryFilter.IMAGES -> LucideR.drawable.lucide_ic_image
-                },
-                ink = true,
-            )
+        if (mixSplit != null) {
+            // Two groups, two lit chips: the divider says which goes with which.
+            if (showKinds) {
+                Box(Modifier.padding(horizontal = Spacing.s4).width(1.dp).height(22.dp).background(colors.frostBorder).testTag("library_chips_divider"))
+            }
+            for (f in MixFilter.entries) {
+                FilterChip(
+                    text = f.label,
+                    selected = f == mixFilter,
+                    onClick = { onMixFilter(f) },
+                    testTag = "library_mix_filter_${f.name.lowercase()}",
+                    // Its own pill: a trailing count would squeeze the label
+                    // to nothing in this sideways-scrolling row.
+                    badge = when (f) {
+                        MixFilter.ALL -> null
+                        MixFilter.COLLECTIONS -> mixSplit.collections
+                        MixFilter.MIXES -> mixSplit.mixes
+                    },
+                    ink = true,
+                )
+            }
         }
     }
 }

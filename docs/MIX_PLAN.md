@@ -35,7 +35,8 @@ poster.
 2. **The wall splits.** Once a wall holds at least one mix, it gets two
    headed sections: **Collections** (everything as today) and then **Mixes**.
    A wall with no mixes looks exactly as it does now.
-3. **Filter.** A row of chips under **Videos**: **All · Collections · Mixes**.
+3. **Filter.** Chips for **All · Collections · Mixes** (since 0.37, in the
+   same row as Videos · Moments · Images, past a divider).
    *All* is the split view. Remembered across launches, like the view mode.
 
 ## The marker file
