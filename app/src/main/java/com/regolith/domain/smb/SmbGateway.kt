@@ -18,8 +18,21 @@ interface SmbGateway {
      */
     suspend fun listShares(host: SmbHost, credentials: SmbCredentials): List<SmbShareInfo>
 
-    /** List one directory. [relPath] is `""` for the share root. */
-    suspend fun list(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): List<SmbEntry>
+    /**
+     * List one directory. [relPath] is `""` for the share root.
+     *
+     * Dot-files (`.DS_Store`, a Mac's `._beach.mp4`) are left out, as a file
+     * manager leaves them out, except the names in [keep]: the scan passes
+     * the mix marker ([com.regolith.domain.library.MixMarker]) so it can see
+     * it without anything else having to step around it.
+     */
+    suspend fun list(
+        host: SmbHost,
+        credentials: SmbCredentials,
+        share: String,
+        relPath: String,
+        keep: Set<String> = emptySet(),
+    ): List<SmbEntry>
 
     /** Open one file for random-access reads. Caller closes it. */
     fun open(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String): SeekableByteSource
@@ -28,7 +41,9 @@ interface SmbGateway {
     // sidecars. Files are created on a share for two reasons only:
     //  - Regolith's own small files, whole, through [write] — and [write] is
     //    only ever reached through `data/smb/ReplacingWrite.kt`, for a film's
-    //    `<basename>.chapters.txt` and a `poster.jpg` from the poster editor.
+    //    `<basename>.chapters.txt` and a `poster.jpg` from the poster editor;
+    //    and the empty mix marker (`domain/library/Mix.kt`), written here
+    //    directly because it has no contents to lose.
     //  - Files the user chose on the phone and asked to upload (P16),
     //    streamed through [openForAppend] into a `.part` and renamed once
     //    complete, by the upload queue and nothing else.
@@ -89,6 +104,14 @@ interface SmbGateway {
 
     /** Delete one file. Deleting a file that is not there is not an error. */
     suspend fun delete(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String)
+
+    /**
+     * Set the SMB *hidden* attribute on one file, so Windows Explorer leaves
+     * it out (a Mac or Linux box already hides a dot-file). Best effort: a
+     * server that will not take attributes is not an error, the file is
+     * there either way.
+     */
+    suspend fun hide(host: SmbHost, credentials: SmbCredentials, share: String, relPath: String)
 
     // --- Folders (P13). [rename] already moves a directory — the server
     // does the whole subtree in one metadata operation — but a folder

@@ -312,6 +312,28 @@ fun LibraryScreen(
             viewModel::askRemovePoster,
         )
     } else null
+    // More › Mark as mix / Mark as collection, on a collection's wall and its
+    // profile alike, behind the same gate as Remove poster: a share that
+    // takes writes. The label says what tapping it will do.
+    val mixItem = if (viewModel.folderId != null && uploads.canUpload) {
+        if (state.mix) {
+            TopBarMenuItem(
+                com.composables.icons.lucide.R.drawable.lucide_ic_folder_heart,
+                "Mark as collection",
+                "Its videos belong together after all",
+                "library_mark_collection",
+                viewModel::toggleMix,
+            )
+        } else {
+            TopBarMenuItem(
+                com.composables.icons.lucide.R.drawable.lucide_ic_shuffle,
+                "Mark as mix",
+                "A grab bag of videos that don’t belong together",
+                "library_mark_mix",
+                viewModel::toggleMix,
+            )
+        }
+    } else null
     val colors = RegolithTheme.colors
     var tab by remember { mutableStateOf(if (startOnDevice) LibraryTab.ON_DEVICE else LibraryTab.NETWORK) }
     var playAllOpen by remember { mutableStateOf(false) }
@@ -568,6 +590,7 @@ fun LibraryScreen(
                     scanItem,
                     regenerateItem,
                     removePosterItem,
+                    mixItem,
                 ),
             )
         }
@@ -1121,6 +1144,7 @@ fun LibraryScreen(
                     scanItem,
                     regenerateItem,
                     removePosterItem,
+                    mixItem,
                 ),
             )
         }

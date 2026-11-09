@@ -117,6 +117,7 @@ class LibraryViewModel @AssistedInject constructor(
     private val connection: com.regolith.data.connection.ConnectionFocus,
     private val regenerator: com.regolith.data.artwork.ArtworkRegenerator,
     private val posters: com.regolith.data.artwork.PosterRepository,
+    private val mixes: com.regolith.data.repository.MixRepository,
     fileActionsFactory: FileActions.Factory,
     uploadActionsFactory: UploadActions.Factory,
 ) : ViewModel() {
@@ -225,6 +226,26 @@ class LibraryViewModel @AssistedInject constructor(
     }
 
     /**
+     * More › Mark as mix / Mark as collection: say whether this folder is a
+     * grab bag of unrelated videos or one story (docs/MIX_PLAN.md). Kept on
+     * the share as a hidden marker file, so the menu flips as soon as the
+     * write lands.
+     */
+    fun toggleMix() {
+        val id = folderId ?: return
+        if (spoof.current != null) return
+        val mix = !_uiState.value.mix
+        viewModelScope.launch {
+            when (mixes.setMix(id, mix)) {
+                com.regolith.domain.library.MixOutcome.DONE -> fileActions.say(if (mix) "Marked as a mix" else "Marked as a collection")
+                com.regolith.domain.library.MixOutcome.READ_ONLY -> fileActions.say("This share is read-only, so this folder can’t be marked", failed = true)
+                com.regolith.domain.library.MixOutcome.UNREACHABLE -> fileActions.say("Couldn’t reach the server. Check the connection and try again.", failed = true)
+                com.regolith.domain.library.MixOutcome.FAILED -> fileActions.say("This folder couldn’t be marked. Try again.", failed = true)
+            }
+        }
+    }
+
+    /**
      * More › Scan this collection: list it and every folder under it on the
      * share, in the background, then make whatever artwork that turned up
      * missing. Unlike the pull to refresh, it carries on after leaving the
@@ -248,6 +269,8 @@ class LibraryViewModel @AssistedInject constructor(
         folderId?.let { id -> viewModelScope.launch { connection.onFolder(id) } }
         // Whether More › Remove poster shows: the folder has a poster file of its own.
         folderId?.let { id -> viewModelScope.launch { posters.observeHasPoster(id).collect { has -> _uiState.update { it.copy(hasPoster = has) } } } }
+        // Which way More › Mark as mix / Mark as collection reads.
+        folderId?.let { id -> viewModelScope.launch { mixes.observeIsMix(id).collect { mix -> _uiState.update { it.copy(mix = mix) } } } }
         viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }

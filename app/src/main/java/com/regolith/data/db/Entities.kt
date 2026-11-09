@@ -170,6 +170,13 @@ data class FolderEntity(
     /** "Arrival" for `Arrival (2016)`; the name itself when nothing parsed. */
     val titleParsed: String? = null,
     val year: Int? = null,
+    // --- Schema v19.
+    /**
+     * The owner marked this folder a mix: unrelated videos, not one story
+     * ([com.regolith.domain.library.MixMarker]). Read from the marker file
+     * on the share by the folder's own listing; false until then.
+     */
+    @ColumnInfo(defaultValue = "0") val mix: Boolean = false,
 )
 
 /**

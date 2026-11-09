@@ -1,6 +1,8 @@
 # Mixes — plan
 
-Status: planned 2026-11-09, not built. Decisions below are the owner's.
+Status: steps 1–4 built 2026-11-09 (a folder can be marked and unmarked;
+the scan reads the mark). Steps 5–8 not started. Decisions below are the
+owner's.
 
 ## The problem
 
@@ -54,24 +56,25 @@ poster.
 
 | Layer | Change |
 |---|---|
-| `domain/library` | `FolderStyle { COLLECTION, MIX }` and `MixMarker.NAME = ".regolith-mix"`. Kept apart from `FolderKind`, which the scan *guesses* from names; a style is *chosen*. |
-| `data/smb` | `list()` still drops dot-files but reports whether the marker was among them (`SmbListing.mix`, or a flag on the result). A `setHidden()` call after writing the marker. |
+| `domain/library` | `MixMarker` (`NAME = ".regolith-mix"`, `foundIn`, `pathIn`) and `MixOutcome`, in `Mix.kt`. A plain `mix: Boolean` on the folder rather than a new enum. Kept apart from `FolderKind`, which the scan *guesses* from names; a mix is *chosen*. |
+| `data/smb` | `list(keep = …)`: dot-files are still dropped, except the names the caller asks for; only the scan asks for the marker. `hide()` sets the SMB hidden attribute after the marker is written. |
 | `data/db` | `FolderEntity.mix: Boolean` (schema v19, migration adds the column, default false). |
-| `data/repository` | The folder listing (`LibraryRepository`, where `FolderClassifier` runs) stores the flag, at no extra trip to the share. `markMix(folderId, mix)` writes or deletes the marker, then updates the row straight away without waiting for a rescan, as `FolderPosterWriter` does for posters. |
+| `data/repository` | The folder listing (`LibraryRepository.refreshFolder`, where `FolderClassifier` runs) stores the flag, at no extra trip to the share. `MixRepository.setMix(folderId, mix)` writes or deletes the marker, then updates the row straight away without waiting for a rescan, as the poster tools do. |
 | `ui/library` | `LibraryTile.Collection.mix`. The ViewModel splits the sorted tiles into sections. `LibraryUiState.mixFilter`. Section headers use `GridItemSpan(maxLineSpan)`, as the profile header already does. The filter row reuses `FilterChip` from `ui/components/Chip.kt`. |
 | `ui/util` | The **Mark as mix** action joins `FileActions` / the selection bar, so Library and Browse share it. |
 | prefs | The remembered filter, next to the remembered view mode. |
 
-Test tags: `library_section_collections`, `library_section_mixes`,
-`library_mix_filter_<all|collections|mixes>`, `collection_mark_mix`.
+Test tags: `library_mark_mix`, `library_mark_collection` (built);
+`library_section_collections`, `library_section_mixes`,
+`library_mix_filter_<all|collections|mixes>` (to come).
 
 ## Build order
 
-1. Domain type and marker name, with unit tests.
-2. Gateway: report the marker; write it hidden; delete it.
-3. Schema v19 and the scan storing the flag. Test with a marker made by
+1. ✅ Domain type and marker name, with unit tests.
+2. ✅ Gateway: report the marker; write it hidden; delete it.
+3. ✅ Schema v19 and the scan storing the flag. Test with a marker made by
    hand on the share.
-4. **Mark as mix / Mark as collection** on a folder's page.
+4. ✅ **Mark as mix / Mark as collection** on a folder's page (⋯ More).
 5. Wall sections.
 6. Filter chips, remembered.
 7. Multi-select **Mark as mix**.

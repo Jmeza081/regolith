@@ -59,7 +59,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UploadEntity::class,
         ShareFileEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
@@ -111,6 +111,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // card. Nullable and additive: every row reads as "no pile", and the
         // decks are dealt again (artwork generation 8), piles and all.
         AutoMigration(from = 17, to = 18),
+        // v19: `folders.mix`, the owner's "this folder is a grab bag" mark
+        // (docs/MIX_PLAN.md). Additive with a default of false, which is what
+        // every folder was; the next listing reads the marker off the share.
+        AutoMigration(from = 18, to = 19),
     ],
 )
 abstract class RegolithDatabase : RoomDatabase() {

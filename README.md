@@ -76,8 +76,12 @@ runtime or resolution (tap the sort in use again to reverse it), and **Play all*
 on a collection plays it in order or shuffled. The bar at the top of the Library and
 Browse keeps **Search** and a **⋯**; the ⋯ holds the rest, each showing how it is
 set: View (Grid or Rows, switched in place), Sort ("Name, A to Z"), Add to this
-collection, Scan this collection, Regenerate artwork and (when it has one) Remove
-poster. Home keeps its Arrange button beside Search.
+collection, Scan this collection, Regenerate artwork, (when it has one) Remove
+poster, and **Mark as mix**. A mix is a folder of videos that don't belong
+together (an `Assorted/`), as against a collection that tells one story; the
+mark is an empty hidden file, `.regolith-mix`, in the folder on the share, so
+it travels with the folder and every phone sees it. **Mark as collection**
+takes it off. Home keeps its Arrange button beside Search.
 From any tab, **swipe up off the nav pill** (or across from the rail on the inner
 display) to search the whole library: the pill's tabs fold away and the pill rises
 with your thumb as a search bar, and letting go past the line flies it into

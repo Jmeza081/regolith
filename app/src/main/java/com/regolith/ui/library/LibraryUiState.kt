@@ -159,6 +159,11 @@ data class LibraryUiState(
     /** This collection has a poster of its own on the share, so More › Remove poster shows. */
     val hasPoster: Boolean = false,
     /**
+     * The owner marked this folder a mix (unrelated videos, not one story),
+     * so More offers Mark as collection instead of Mark as mix.
+     */
+    val mix: Boolean = false,
+    /**
      * Remove poster's question, while it is open: each picture that acts as
      * the poster, and the name it will be kept under (`poster.jpg` to
      * `poster (9 Nov).jpg`). Null when closed.
