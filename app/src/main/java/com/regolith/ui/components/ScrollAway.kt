@@ -1,4 +1,4 @@
-package com.regolith.ui.navigation
+package com.regolith.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -14,17 +14,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Whether the nav pill has been scrolled out of the way (phones only).
+ * Whether something has been scrolled out of the way: the nav pill on a
+ * phone, and the Library's chip row.
  *
- * Reading a wall of films is a downward motion, and on a phone the pill
- * eats 112dp of a screen that has little to spare. So: scrolling DOWN puts
- * the pill away and KEEPS it away for as long as you keep going, and
- * scrolling back up — or tapping anything at all — brings it straight back.
+ * Reading a wall of films is a downward motion, and on a phone the chrome
+ * eats space a screen has little to spare (112dp for the pill, 46dp for the
+ * chips). So: scrolling DOWN puts it away and KEEPS it away for as long as
+ * you keep going, and scrolling back up brings it straight back. The pill
+ * also comes back on a tap ([onPress], [onRelease]); the chips, which sit
+ * above the wall, do not need that.
  *
- * This is a second, independent reason the pill can be absent. The first is
- * the three-second idle timer, which the nav graph already owns; the pill
- * shows only when neither reason applies. They do not fight, because
- * "hidden" always wins over "visible".
+ * For the pill this is a second, independent reason it can be absent. The
+ * first is the three-second idle timer, which the nav graph already owns;
+ * the pill shows only when neither reason applies. They do not fight,
+ * because "hidden" always wins over "visible".
  *
  * ## Why a nested-scroll connection
  *
@@ -42,13 +45,13 @@ import androidx.compose.ui.unit.dp
  *
  * A finger is never still. Flipping on the first pixel of movement makes
  * the pill flicker on and off through a slow drag, so direction only counts
- * once it has been held for [NAV_PILL_SCROLL_THRESHOLD]; reversing the drag
+ * once it has been held for [SCROLL_AWAY_THRESHOLD]; reversing the drag
  * starts that tally again.
  */
 @Stable
-class NavPillScroll(private val thresholdPx: Float) {
+class ScrollAway(private val thresholdPx: Float) {
 
-    /** True when a downward scroll has put the pill away. */
+    /** True when a downward scroll has put it away. */
     var hidden by mutableStateOf(false)
         private set
 
@@ -62,7 +65,7 @@ class NavPillScroll(private val thresholdPx: Float) {
     /** Whether the gesture in progress has scrolled. Resets on each press. */
     private var scrolled = false
 
-    /** Bring the pill back: a new screen, or the setting being switched off. */
+    /** Bring it back: a new screen, the top of a list, or the setting being switched off. */
     fun reveal() {
         hidden = false
         travel = 0f
@@ -124,11 +127,12 @@ class NavPillScroll(private val thresholdPx: Float) {
     }
 }
 
-/** How far one direction must be held before the pill moves. Roughly a thumb's twitch. */
-private val NAV_PILL_SCROLL_THRESHOLD: Dp = 24.dp
+/** How far one direction must be held before anything moves. Roughly a thumb's twitch. */
+private val SCROLL_AWAY_THRESHOLD: Dp = 24.dp
 
+/** A [ScrollAway] for this composition, with the shared threshold. */
 @Composable
-fun rememberNavPillScroll(): NavPillScroll {
+fun rememberScrollAway(): ScrollAway {
     val density = LocalDensity.current
-    return remember(density) { NavPillScroll(with(density) { NAV_PILL_SCROLL_THRESHOLD.toPx() }) }
+    return remember(density) { ScrollAway(with(density) { SCROLL_AWAY_THRESHOLD.toPx() }) }
 }

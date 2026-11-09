@@ -1,6 +1,6 @@
 package com.regolith.ui
 
-import com.regolith.ui.navigation.NavPillScroll
+import com.regolith.ui.components.ScrollAway
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,10 +14,10 @@ import org.junit.Test
  * scrolling containers it sits above are all irrelevant to whether the
  * direction logic is right.
  */
-class NavPillScrollTest {
+class ScrollAwayTest {
 
     /** 24dp at a 2x density, the same number the real screen supplies. */
-    private fun scroll() = NavPillScroll(thresholdPx = 48f)
+    private fun scroll() = ScrollAway(thresholdPx = 48f)
 
     @Test
     fun `reading down the page puts the pill away`() {

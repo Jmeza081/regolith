@@ -82,8 +82,10 @@ together (an `Assorted/`), as against a collection that tells one story; the
 mark is an empty hidden file, `.regolith-mix`, in the folder on the share, so
 it travels with the folder and every phone sees it. **Mark as collection**
 takes it off. A wall holding both splits into **Collections** and then
-**Mixes**, and chips under Videos (**All · Collections · Mixes**, with how
-many of each) show just one; the choice is remembered. To mark several at
+**Mixes**, and chips beside Videos · Moments · Images, past a thin divider
+(**All · Collections · Mixes**, with how many of each), show just one; the
+choice is remembered. The chip row slides away while you scroll down the
+wall and comes back as soon as you scroll up, as the nav pill does. To mark several at
 once, hold to select folders and tap **Mix** (or **Unmix**) in the pill. Home keeps its Arrange button beside Search.
 From any tab, **swipe up off the nav pill** (or across from the rail on the inner
 display) to search the whole library: the pill's tabs fold away and the pill rises
