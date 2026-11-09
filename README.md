@@ -81,7 +81,9 @@ poster, and **Mark as mix**. A mix is a folder of videos that don't belong
 together (an `Assorted/`), as against a collection that tells one story; the
 mark is an empty hidden file, `.regolith-mix`, in the folder on the share, so
 it travels with the folder and every phone sees it. **Mark as collection**
-takes it off. Home keeps its Arrange button beside Search.
+takes it off. A wall holding both splits into **Collections** and then
+**Mixes**, and chips under Videos (**All · Collections · Mixes**, with how
+many of each) show just one; the choice is remembered. Home keeps its Arrange button beside Search.
 From any tab, **swipe up off the nav pill** (or across from the rail on the inner
 display) to search the whole library: the pill's tabs fold away and the pill rises
 with your thumb as a search bar, and letting go past the line flies it into

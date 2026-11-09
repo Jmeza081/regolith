@@ -44,6 +44,8 @@ import com.regolith.domain.library.LibraryOrder
 import com.regolith.domain.library.LibrarySort
 import com.regolith.domain.library.MomentSort
 import com.regolith.domain.library.comparator
+import com.regolith.domain.library.MixFilter
+import com.regolith.domain.library.byMix
 import com.regolith.domain.library.ViewMode
 import com.regolith.domain.display.PostersPerRow
 import com.regolith.domain.library.ParsedName
@@ -271,7 +273,8 @@ class LibraryViewModel @AssistedInject constructor(
         folderId?.let { id -> viewModelScope.launch { posters.observeHasPoster(id).collect { has -> _uiState.update { it.copy(hasPoster = has) } } } }
         // Which way More › Mark as mix / Mark as collection reads.
         folderId?.let { id -> viewModelScope.launch { mixes.observeIsMix(id).collect { mix -> _uiState.update { it.copy(mix = mix) } } } }
-        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), order)) } } }
+        viewModelScope.launch { prefs.libraryOrder.collect { order -> _uiState.update { it.copy(order = order).arranged() } } }
+        viewModelScope.launch { prefs.libraryMixFilter.collect { mixFilter -> _uiState.update { it.copy(mixFilter = mixFilter).arranged() } } }
         viewModelScope.launch { prefs.momentOrder.collect { order -> _uiState.update { it.copy(momentOrder = order) } } }
         viewModelScope.launch { prefs.pictureOrder.collect { order -> _uiState.update { it.copy(pictureOrder = order) } } }
         viewModelScope.launch { prefs.picturesAcross(PicturesAcross.PHONE).collect { n -> _uiState.update { it.copy(picturesAcrossPhone = n) } } }
@@ -367,7 +370,7 @@ class LibraryViewModel @AssistedInject constructor(
             }.collect { built ->
                 unsorted = built.walls
                 // Onto the live state, never the other way: see withWall.
-                _uiState.update { it.withWall(built.state, sorted(built.walls[wallFilter(built.state, it.filter)].orEmpty(), it.order)) }
+                _uiState.update { it.withWall(built.state, emptyList()).arranged() }
                 measureIfNeeded(built.state.profile)
             }
         }
@@ -577,6 +580,7 @@ class LibraryViewModel @AssistedInject constructor(
                     pictureCount = pictures,
                     albumCount = byParent[folder.id].orEmpty().count { child -> subtree(child).any { picturesByFolder.containsKey(it) } },
                     pile = piles[folder.id]?.let { if (spoofing) DeckShape.TALL else it },
+                    mix = folder.mix,
                 )
                 if (onVideos) walls.getValue(LibraryFilter.VIDEOS) += tile
                 if (moments > 0) walls.getValue(LibraryFilter.MOMENTS) += tile
@@ -766,6 +770,21 @@ class LibraryViewModel @AssistedInject constructor(
     private fun sorted(tiles: List<LibraryTile>, order: LibraryOrder): List<LibraryTile> =
         tiles.sortedWith(order.comparator(addedByDay = true))
 
+    /**
+     * This state with its wall put back from [unsorted]: the chip's wall,
+     * in its order, then split into collections and mixes by the mix chips
+     * ([byMix]). Under Videos only: Moments and Images are not split, and a
+     * profile holds no collections to split. Every change to what the wall
+     * shows goes through here, so the sections can never fall out of step.
+     */
+    private fun LibraryUiState.arranged(): LibraryUiState {
+        val wallOf = wallFilter(this, filter)
+        val tiles = sorted(unsorted[wallOf].orEmpty(), order)
+        if (wallOf != LibraryFilter.VIDEOS || profile != null) return copy(tiles = tiles, mixStart = null, mixSplit = null)
+        val sections = tiles.byMix(mixFilter) { it is LibraryTile.Collection && it.mix }
+        return copy(tiles = sections.items, mixStart = sections.mixStart, mixSplit = sections.split)
+    }
+
     fun openSortSheet(open: Boolean) = _uiState.update { it.copy(sortSheetOpen = open) }
 
     /*
@@ -778,7 +797,7 @@ class LibraryViewModel @AssistedInject constructor(
     /** The wall, and a profile's Videos tab: one order for every wall in the Library. */
     fun pickSort(sort: LibrarySort) {
         val next = _uiState.value.order.pick(sort)
-        _uiState.update { it.copy(order = next, sortSheetOpen = false, tiles = sorted(unsorted[wallFilter(it, it.filter)].orEmpty(), next)) }
+        _uiState.update { it.copy(order = next, sortSheetOpen = false).arranged() }
         viewModelScope.launch { prefs.setLibraryOrder(next) }
     }
 
@@ -816,7 +835,13 @@ class LibraryViewModel @AssistedInject constructor(
 
     /** A chip under the tabs: the same wall, showing another kind of thing. */
     fun setFilter(filter: LibraryFilter) {
-        _uiState.update { it.copy(filter = filter, tiles = sorted(unsorted[wallFilter(it, filter)].orEmpty(), it.order)) }
+        _uiState.update { it.copy(filter = filter).arranged() }
+    }
+
+    /** The All · Collections · Mixes chips. Written to preferences; the collector above puts it on the state. */
+    fun setMixFilter(filter: MixFilter) {
+        _uiState.update { it.copy(mixFilter = filter).arranged() }
+        viewModelScope.launch { prefs.setLibraryMixFilter(filter) }
     }
 
     /**

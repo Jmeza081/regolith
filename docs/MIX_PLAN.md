@@ -1,8 +1,9 @@
 # Mixes — plan
 
-Status: steps 1–4 built 2026-11-09 (a folder can be marked and unmarked;
-the scan reads the mark). Steps 5–8 not started. Decisions below are the
-owner's.
+Status: steps 1–6 built 2026-11-09 (a folder can be marked and unmarked,
+the scan reads the mark, and a Videos wall holding both kinds is split into
+sections with All · Collections · Mixes chips). Step 7 not started. Not yet
+seen on a device. Decisions below are the owner's.
 
 ## The problem
 
@@ -64,9 +65,25 @@ poster.
 | `ui/util` | The **Mark as mix** action joins `FileActions` / the selection bar, so Library and Browse share it. |
 | prefs | The remembered filter, next to the remembered view mode. |
 
-Test tags: `library_mark_mix`, `library_mark_collection` (built);
-`library_section_collections`, `library_section_mixes`,
-`library_mix_filter_<all|collections|mixes>` (to come).
+Test tags: `library_mark_mix`, `library_mark_collection`,
+`library_section_collections`, `library_section_mixes`, `library_mix_chips`,
+`library_mix_filter_<all|collections|mixes>`.
+
+## How steps 5–6 came out
+
+- **One place arranges the wall.** `LibraryViewModel.arranged()` sorts the
+  chip's wall, then splits it with `byMix` (`domain/library/Mix.kt`, pure and
+  unit-tested). Every change (new data, a sort, a chip) goes through it, so
+  the sections never fall out of step. `LibraryUiState.tiles` is what's on
+  screen, so Select all and Play all act on what you can see.
+- **Sections and chips only when there's a choice.** A wall needs at least
+  one mix *and* at least one other tile. Otherwise it looks as it always did.
+- **The chips** reuse `FilterChip` with its `trailing` count, lit white like
+  Videos · Moments · Images above them (the Library keeps red for Play all).
+  **The headings** reuse `Eyebrow(large = true)`, the style the codebase
+  uses where a label is what says one run has ended.
+- **No A–Z rail on a split wall:** its letters would run A to Z twice. With a
+  chip narrowing it to one kind, the rail comes back.
 
 ## Build order
 
@@ -75,8 +92,8 @@ Test tags: `library_mark_mix`, `library_mark_collection` (built);
 3. ✅ Schema v19 and the scan storing the flag. Test with a marker made by
    hand on the share.
 4. ✅ **Mark as mix / Mark as collection** on a folder's page (⋯ More).
-5. Wall sections.
-6. Filter chips, remembered.
+5. ✅ Wall sections.
+6. ✅ Filter chips, remembered.
 7. Multi-select **Mark as mix**.
 8. Docs: `ARCHITECTURE.md` (scan diagram + a decision entry), `README.md`.
 
