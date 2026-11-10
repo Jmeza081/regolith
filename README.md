@@ -118,11 +118,13 @@ to date in seconds rather than after the whole share.
 
 Search finds titles, filenames and folders as you type, and the moments you
 have named, each shown with the frame at its time: tap one and the film opens
-there. Chips narrow the results to **Unwatched**, **4K** (8K included) or **On device** (downloaded,
+there. Folders whose names match come first, as a row of collection posters
+(a **Mix** chip on mixes) that is the same in the list and the grid; tap one
+to open it. Chips narrow the results to **Unwatched**, **4K** (8K included) or **On device** (downloaded,
 or on the phone to begin with), and **Moment** picks one name from all of the
 library's: then the results are every video that carries it, with its marks of
 that name listed above them, and the other chips narrow both together. Typing
-lists up to 40 files and 40 folders, and says "40+" when it found more, so you can
+lists up to 40 videos and 40 collections, and says "40+" when it found more, so you can
 type more to narrow them down. Results come as rows or a grid, and your last
 eight searches wait under **Recent**.
 
