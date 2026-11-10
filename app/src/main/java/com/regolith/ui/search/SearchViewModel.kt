@@ -68,7 +68,8 @@ private data class Found(
     val files: List<MediaFileEntity>,
     val folders: List<FolderEntity>,
     val searched: Boolean,
-    val more: Boolean = false,
+    val moreFiles: Boolean = false,
+    val moreFolders: Boolean = false,
 )
 
 /**
@@ -93,7 +94,10 @@ internal fun SearchFilter.keeps(unwatched: Boolean, uhd: Boolean, onDevice: Bool
     SearchFilter.ON_DEVICE -> onDevice
 }
 
-/** One row of results. Titles, raw filenames and folders share the list. */
+/**
+ * One result. Titles and raw filenames share the videos list; folders are
+ * [SearchUiState.collections], a row of posters of their own above it.
+ */
 sealed interface SearchHit {
     val testTag: String
     val primary: String
@@ -161,6 +165,8 @@ sealed interface SearchHit {
         val fileCount: Int = 0,
         val byteCount: Long = 0,
         val listed: Boolean = true,
+        /** The owner marked it a mix: its poster wears a "Mix" chip, as on the Library wall. */
+        val mix: Boolean = false,
     ) : SearchHit {
         override val testTag get() = "search_folder_$folderId"
     }
@@ -173,9 +179,20 @@ data class SearchUiState(
     val facets: List<ChapterFacet> = emptyList(),
     /** The chip currently on, if any. Narrows everything to films carrying it. */
     val poi: String? = null,
+    /** The videos found: titles and raw filenames. */
     val hits: List<SearchHit> = emptyList(),
-    /** A typed search found more files or folders than it lists: the count reads "40+". */
+    /** A typed search found more videos than it lists: the count reads "40+". */
     val moreMatches: Boolean = false,
+    /**
+     * Folders whose names match, shown first as a row of collection posters
+     * (the "Collections in Search" study's option A). They used to be listed
+     * after every video, under the keyboard, looking like one more video.
+     * Under the All chip only, and never with a moment picked: a folder has
+     * no chapters, and Unwatched, 4K and On device are about videos.
+     */
+    val collections: List<SearchHit.Folder> = emptyList(),
+    /** A typed search found more folders than it lists. */
+    val moreCollections: Boolean = false,
     /**
      * Points of interest, shown above [hits]: with a chip, every mark of its
      * name in the films listed; otherwise chapters whose names match.
@@ -195,8 +212,8 @@ data class SearchUiState(
 )
 
 /**
- * Search (design section 06): filenames, parsed titles and folders in one
- * list, matched as you type. Everything comes from Room's full-text
+ * Search (design section 06): folders as a row of collections, then
+ * filenames and parsed titles in one list, matched as you type. Everything comes from Room's full-text
  * indexes, so results keep arriving while a scan is still walking.
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
@@ -255,7 +272,7 @@ class SearchViewModel @AssistedInject constructor(
             // Typed: capped, with one more asked for than is shown, so the
             // screen can say there are more rather than stop at 40 silently.
             else -> combine(library.searchFiles(q, LIMIT + 1), library.searchFolders(q, LIMIT + 1)) { files, folders ->
-                Found(files.take(LIMIT), folders.take(LIMIT), searched = true, more = files.size > LIMIT || folders.size > LIMIT)
+                Found(files.take(LIMIT), folders.take(LIMIT), searched = true, moreFiles = files.size > LIMIT, moreFolders = folders.size > LIMIT)
             }
         }
     }.spoofed(spoof) { found -> found.copy(files = files(found.files), folders = folders(found.folders)) }
@@ -343,20 +360,23 @@ class SearchViewModel @AssistedInject constructor(
                 )
             }
         }
-        if (f == SearchFilter.ALL) {
-            for (folder in folders) {
-                hits += SearchHit.Folder(
+        val collections = if (f == SearchFilter.ALL) {
+            folders.map { folder ->
+                SearchHit.Folder(
                     folderId = folder.id,
                     browsable = true,
                     primary = folder.name,
-                    meta = listOfNotNull("folder", formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 }).joinToString(" · "),
+                    meta = formatFileCount(folder.fileCount).takeIf { folder.fileCount > 0 } ?: "Collection",
                     shareId = folder.shareId,
                     relPath = folder.relPath,
                     fileCount = folder.fileCount,
                     byteCount = folder.byteCount,
                     listed = folder.lastListedAtMs != null,
+                    mix = folder.mix,
                 )
             }
+        } else {
+            emptyList()
         }
         val moments = pointsOfInterest(matches, chip, f, kept).map { m ->
             SearchHit.Moment(
@@ -374,7 +394,9 @@ class SearchViewModel @AssistedInject constructor(
             facets = facetList,
             poi = chip.takeIf { spoofed == null },
             hits = hits,
-            moreMatches = result.more,
+            moreMatches = result.moreFiles,
+            collections = collections,
+            moreCollections = result.moreFolders && collections.isNotEmpty(),
             moments = moments,
             // Only where the names a query finds are shown: under All, with no chip.
             moreMoments = moreMoments && chip == null && f == SearchFilter.ALL,
@@ -455,7 +477,8 @@ class SearchViewModel @AssistedInject constructor(
         val hits = uiState.value.hits
         selection.begin()
         selection.addAll(
-            folders = hits.filterIsInstance<SearchHit.Folder>().map {
+            // The collections row is on screen too.
+            folders = uiState.value.collections.map {
                 FolderPick(it.folderId, it.shareId, it.relPath, it.fileCount, it.byteCount, it.listed)
             },
             files = hits.mapNotNull { hit ->

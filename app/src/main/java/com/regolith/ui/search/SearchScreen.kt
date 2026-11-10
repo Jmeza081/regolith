@@ -1,5 +1,7 @@
 package com.regolith.ui.search
 
+import com.regolith.ui.components.bleedHorizontally
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -221,7 +223,7 @@ fun SearchScreen(
                 // The filter chips leave with the results: with no matches the empty state sits under the field (design frame 24).
                 // A filter or a point of interest that narrowed to nothing is the
                 // exception — the chips have to stay or there is no way to turn one off.
-                if (!(state.searched && state.hits.isEmpty()) || state.poi != null || state.filter != SearchFilter.ALL) spaced {
+                if (!(state.searched && state.hits.isEmpty() && state.collections.isEmpty()) || state.poi != null || state.filter != SearchFilter.ALL) spaced {
                     // One row, the moment chip in it like any other: five chips
                     // do not fit a 411dp portrait, so the row scrolls. It opens a
                     // sheet rather than toggling, because the names are the
@@ -251,11 +253,30 @@ fun SearchScreen(
                         }
                     }
                 }
-                // Points of interest first, under their own eyebrow, so a red
+                // Collections first: the folders whose names match, as a row of
+                // posters the Library would show. Their own row, the same in the
+                // list and the grid, so a folder is never mistaken for a video,
+                // and above the videos, so the keyboard does not hide them.
+                if (state.searched && state.collections.isNotEmpty()) {
+                    spaced {
+                        val count = "${state.collections.size}" + (if (state.moreCollections) "+" else "")
+                        ResultsLabel("Collections · $count", "search_collections", showToggle = false, state.viewMode, viewModel::toggleViewMode)
+                    }
+                    spaced(above = Spacing.s8) {
+                        CollectionsRow(
+                            state.collections, onOpenFolder, viewModel::remember,
+                            selection = selection,
+                            onToggle = viewModel::toggleSelection,
+                            onLongPress = viewModel::beginSelection,
+                        )
+                    }
+                    if (state.moreCollections) more("collections", "search_more_collections")
+                }
+                // Points of interest next, under their own eyebrow, so a red
                 // match in a chapter's name is never mistaken for one in a
                 // file's. They are places, not files: no selection, no download.
                 if (state.searched && state.moments.isNotEmpty()) {
-                    spaced {
+                    spaced(above = if (state.collections.isEmpty()) gap else gap + Spacing.s12) {
                         ResultsLabel("Points of interest", "search_moments", showToggle = true, state.viewMode, viewModel::toggleViewMode)
                     }
                     results(
@@ -272,12 +293,13 @@ fun SearchScreen(
                     // thing that tells you the wall has ended and another has
                     // started. Alone, the matches are just the results and sit
                     // under the chips like anything else.
-                    spaced(above = if (state.moments.isEmpty()) gap else gap + Spacing.s12) {
+                    spaced(above = if (state.moments.isEmpty() && state.collections.isEmpty()) gap else gap + Spacing.s12) {
                         // One toggle for both groups: it sits on whichever label comes first.
+                        // (Collections never carry it: their row is the same in both views.)
                         // "40+" when a typed search found more than it lists.
                         val count = "${state.hits.size}" + (if (state.moreMatches) "+" else "")
                         ResultsLabel(
-                            "$count match" + (if (state.hits.size == 1 && !state.moreMatches) "" else "es"), "search_count",
+                            "$count video" + (if (state.hits.size == 1 && !state.moreMatches) "" else "s"), "search_count",
                             showToggle = state.moments.isEmpty(), state.viewMode, viewModel::toggleViewMode,
                         )
                     }
@@ -301,9 +323,9 @@ fun SearchScreen(
                             )
                         },
                     )
-                    if (state.moreMatches) more("matches", "search_more_matches")
+                    if (state.moreMatches) more("videos", "search_more_matches")
                 }
-                if (state.searched && state.hits.isEmpty() && state.moments.isEmpty()) {
+                if (state.searched && state.hits.isEmpty() && state.moments.isEmpty() && state.collections.isEmpty()) {
                     spaced {
                         // Narrowed to nothing: the way out is the filter, not the words.
                         val narrowed = state.filter != SearchFilter.ALL || state.poi != null
@@ -411,27 +433,18 @@ private fun HitRow(
     val coming = selection.isComing(hit)
     val picked = coming
     val covered = false
-    // A folder result is a way into Browse, so while selecting it keeps two
-    // targets: the thumb picks it, the rest opens it. A file has nowhere to
-    // walk into, so the whole row picks.
-    val folderHit = hit is SearchHit.Folder
-    val splitTargets = selecting && folderHit
+    // Videos and moments only: folders are the collections row's
+    // (CollectionsRow), so a whole row is one target.
     Row(
         Modifier
             .fillMaxWidth()
-            .then(
-                if (splitTargets) {
-                    Modifier
-                } else {
-                    Modifier.combinedClickable(
-                        interactionSource = null,
-                        indication = null,
-                        onLongClick = { if (hit !is SearchHit.Moment) onLongPress(hit) },
-                    ) {
-                        activate(hit, selecting, remember, onToggle, onOpenTitle, onOpenFolder, onPlayAt)
-                    }
-                },
-            )
+            .combinedClickable(
+                interactionSource = null,
+                indication = null,
+                onLongClick = { if (hit !is SearchHit.Moment) onLongPress(hit) },
+            ) {
+                activate(hit, selecting, remember, onToggle, onOpenTitle, onOpenFolder, onPlayAt)
+            }
             .testTag(hit.testTag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -439,21 +452,11 @@ private fun HitRow(
             Modifier
                 .width(82.scaledDp())
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(10.dp))
-                .then(
-                    if (splitTargets) {
-                        Modifier
-                            .clickable(interactionSource = null, indication = null) { onToggle(hit) }
-                            .testTag("${hit.testTag}_pick")
-                    } else {
-                        Modifier
-                    },
-                ),
+                .clip(RoundedCornerShape(10.dp)),
         ) {
             when (hit) {
-                is SearchHit.Folder -> Box(Modifier.fillMaxSize().background(colors.surface).border(1.dp, colors.hairline, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.rg_ic_folder_small), contentDescription = null, tint = colors.ink, modifier = Modifier.size(17.dp))
-                }
+                // Never here: a folder is a poster in CollectionsRow.
+                is SearchHit.Folder -> ArtworkImage(ArtworkRequest(ArtworkOwner.Folder(hit.folderId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
                 is SearchHit.Title -> ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
                 is SearchHit.File -> ArtworkImage(ArtworkRequest(ArtworkOwner.File(hit.fileId), ArtworkKind.THUMB), Modifier.fillMaxSize(), fallbackLabel = hit.primary)
                 // The frame at the mark itself, with the time over it. Two marks
@@ -472,21 +475,7 @@ private fun HitRow(
         }
         Spacer(Modifier.width(Spacing.s12))
         Column(
-            Modifier
-                .weight(1f)
-                .then(
-                    if (splitTargets) {
-                        Modifier
-                            .combinedClickable(
-                                interactionSource = null,
-                                indication = null,
-                                onLongClick = { onLongPress(hit) },
-                            ) { (hit as SearchHit.Folder).let { onOpenFolder(it.folderId) } }
-                            .testTag("${hit.testTag}_open")
-                    } else {
-                        Modifier
-                    },
-                ),
+            Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
             Text(highlightMatches(hit.primary, query, colors.accent), style = TextStyles.rowLabelMedium, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -550,7 +539,43 @@ private fun activate(
 }
 
 /**
- * A results group's label ("Points of interest", "3 matches"), with the
+ * The folders a search found, as a sideways row of collection posters
+ * (2:3, the Library wall's tile) above everything else: the "Collections in
+ * Search" study's option A. The same in the list and the grid, so the
+ * grid/rows toggle leaves it alone. Tap opens the collection; hold starts a
+ * selection, and while selecting the marker picks and the poster still
+ * opens, as a collection tile does everywhere.
+ */
+@Composable
+private fun CollectionsRow(
+    collections: List<SearchHit.Folder>,
+    onOpenFolder: (Long) -> Unit,
+    remember: () -> Unit,
+    selection: SelectionUiState?,
+    onToggle: (SearchHit) -> Unit,
+    onLongPress: (SearchHit) -> Unit,
+) {
+    // Run edge to edge, so a poster cut by the screen's edge says "scroll me".
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().bleedHorizontally(Spacing.s18).testTag("search_collections_row"),
+        contentPadding = PaddingValues(horizontal = Spacing.s18),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s8),
+    ) {
+        items(collections, key = { it.testTag }) { folder ->
+            HitTile(
+                folder, onOpenTitle = {}, onOpenFolder = onOpenFolder, remember = remember,
+                selection = selection, onToggle = onToggle, onLongPress = onLongPress,
+                modifier = Modifier.width(CollectionPosterWidth),
+            )
+        }
+    }
+}
+
+/** A poster in Search's collections row: about four and a half across a phone, so the row says it scrolls. */
+private val CollectionPosterWidth = 92.dp
+
+/**
+ * A results group's label ("Points of interest", "3 videos"), with the
  * grid/rows toggle at its end when [showToggle]. Search has no top bar to
  * carry the toggle, so it rides on the first label of the results, and one
  * toggle switches both groups: a grid above a list would read as two
@@ -613,11 +638,14 @@ private fun HitTile(
     val coming = selection.isComing(hit)
     val open = { activate(hit, selecting, remember, onToggle, onOpenTitle, onOpenFolder, onPlayAt) }
     when (hit) {
+        // A collection: its 2:3 poster, as on the Library wall, wearing "Mix"
+        // when it is one. Only ever drawn in CollectionsRow.
         is SearchHit.Folder -> MediaTile(
-            artwork = ArtworkRequest(ArtworkOwner.Folder(hit.folderId), ArtworkKind.THUMB),
-            kind = ArtworkKind.THUMB,
+            artwork = ArtworkRequest(ArtworkOwner.Folder(hit.folderId), ArtworkKind.POSTER),
+            kind = ArtworkKind.POSTER,
             title = hit.primary,
             meta = hit.meta,
+            chip = "Mix".takeIf { hit.mix },
             count = hit.fileCount.takeIf { it > 0 },
             onClick = { remember(); onOpenFolder(hit.folderId) },
             onLongClick = { onLongPress(hit) },
