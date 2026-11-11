@@ -297,6 +297,11 @@ fun MediaTile(
      * fallback picture. Not with [titleOnArt].
      */
     titleSlot: (@Composable () -> Unit)? = null,
+    /**
+     * Drawn under [meta]: one more line, with a tap of its own that wins over
+     * the tile's. Search's "in Collection ›" link on a video's tile.
+     */
+    footer: (@Composable () -> Unit)? = null,
 ) {
     val colors = RegolithTheme.colors
     val picked = checked == true
@@ -379,6 +384,7 @@ fun MediaTile(
             if (titleOnArt) Spacer(Modifier.height(Spacing.s4))
             Text(meta, style = TextStyles.tileMeta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        footer?.invoke()
     }
 }
 

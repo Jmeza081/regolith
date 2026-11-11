@@ -1,5 +1,11 @@
 package com.regolith.ui.search
 
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import com.regolith.ui.components.bleedHorizontally
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.background
@@ -485,6 +491,14 @@ private fun HitRow(
             // -- and a result with nothing marked on it reads as a mistake.
             Text(highlightMatches(hit.meta, query, colors.accent), style = TextStyles.meta, color = colors.metadata, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (hit is SearchHit.Moment) Tag("Point of interest", Modifier.padding(top = Spacing.s2))
+            parentOf(hit)?.let { parent ->
+                CollectionLink(
+                    parent, query, enabled = !selecting,
+                    onOpen = { remember(); onOpenFolder(parent.folderId) },
+                    testTag = "${hit.testTag}_collection",
+                    modifier = Modifier.padding(top = Spacing.s4),
+                )
+            }
         }
         if (picked) {
             Spacer(Modifier.width(Spacing.s12))
@@ -535,6 +549,59 @@ private fun activate(
                 is SearchHit.Moment -> Unit
             }
         }
+    }
+}
+
+/** The collection [hit] lives in, for its link; null for a folder, a moment, or a video at a share's root. */
+private fun parentOf(hit: SearchHit): ParentCollection? = when (hit) {
+    is SearchHit.Title -> hit.parent
+    is SearchHit.File -> hit.parent
+    is SearchHit.Folder, is SearchHit.Moment -> null
+}
+
+/**
+ * "in Live at The Echo ›" under a video in Search (the "Collections in
+ * Search" study's option B): one tap from a video found to the collection
+ * it lives in, without opening the video for its breadcrumb. It also says
+ * WHY a video matched when only its folder's name did, since the match is
+ * marked red here as in the row's other lines ([query]; tiles mark nothing).
+ *
+ * A pill under a row, and a plain line of its own under a tile ([onTile]),
+ * which has no room for a pill. A mix wears its tag. Its own tap opens the
+ * collection; while selecting it is off ([enabled]) and the tap picks the
+ * video, like the rest of the row.
+ */
+@Composable
+private fun CollectionLink(
+    parent: ParentCollection,
+    query: String?,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    onTile: Boolean = false,
+) {
+    val colors = RegolithTheme.colors
+    val name = if (query != null) highlightMatches(parent.name, query, colors.accent) else AnnotatedString(parent.name)
+    Row(
+        modifier
+            .then(
+                if (onTile) {
+                    Modifier.fillMaxWidth().heightIn(min = 28.dp)
+                } else {
+                    Modifier.height(30.dp).clip(PillShape).background(colors.frostBg).border(1.dp, colors.frostBorder, PillShape).padding(horizontal = Spacing.s8 + Spacing.s2)
+                },
+            )
+            .clickable(enabled = enabled, interactionSource = null, indication = null, role = Role.Button, onClick = onOpen)
+            .semantics { contentDescription = "Open the collection ${parent.name}" }
+            .testTag(testTag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(painterResource(R.drawable.rg_ic_folder_small), contentDescription = null, tint = colors.body, modifier = Modifier.size(13.dp))
+        Text(name, style = TextStyles.meta12, color = colors.inkSoft, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (parent.mix) Tag("Mix")
+        Text("›", style = TextStyles.meta12, color = colors.body)
     }
 }
 
@@ -671,6 +738,7 @@ private fun HitTile(
         )
         is SearchHit.Title, is SearchHit.File -> {
             val fileId = if (hit is SearchHit.Title) hit.fileId else (hit as SearchHit.File).fileId
+            val parent = parentOf(hit)
             MediaTile(
                 artwork = ArtworkRequest(ArtworkOwner.File(fileId), ArtworkKind.THUMB),
                 kind = ArtworkKind.THUMB,
@@ -682,6 +750,18 @@ private fun HitTile(
                 checked = if (selecting) coming else null,
                 testTag = hit.testTag,
                 modifier = modifier,
+                // A tile a quarter of the screen wide has no room for the pill:
+                // the link is a line of its own under the name and details.
+                footer = parent?.let {
+                    {
+                        CollectionLink(
+                            it, query = null, enabled = !selecting,
+                            onOpen = { remember(); onOpenFolder(it.folderId) },
+                            testTag = "${hit.testTag}_collection",
+                            onTile = true,
+                        )
+                    }
+                },
             )
         }
     }

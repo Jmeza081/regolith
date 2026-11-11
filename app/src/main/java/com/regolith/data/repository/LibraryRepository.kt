@@ -16,6 +16,7 @@ import com.regolith.data.db.ShareRootDao
 import com.regolith.domain.library.FolderClassifier
 import com.regolith.domain.library.FolderKind
 import com.regolith.domain.library.MixMarker
+import com.regolith.domain.library.SearchRank
 import com.regolith.domain.library.TitleParser
 import com.regolith.domain.media.Companions
 import com.regolith.domain.media.MediaFileTypes
@@ -530,15 +531,33 @@ class LibraryRepository @Inject constructor(
      * turned into an FTS MATCH expression: every word must match as a
      * prefix, so "samou" finds "Le.Samourai.1967" and "Samouraï cuts".
      */
+    /**
+     * Videos matching [query], at most [limit], those whose own name or title
+     * holds every word first ([SearchRank]): a video found only through its
+     * folder's path comes after, so a big collection cannot push it out.
+     */
     fun searchFiles(query: String, limit: Int): Flow<List<MediaFileEntity>> {
         val match = ftsMatch(query) ?: return flowOf(emptyList())
-        return mediaFileDao.search(match, limit)
+        val byName = ftsMatchIn("name", query) ?: return flowOf(emptyList())
+        val byTitle = ftsMatchIn("titleParsed", query) ?: return flowOf(emptyList())
+        return combine(mediaFileDao.search(byName, limit), mediaFileDao.search(byTitle, limit), mediaFileDao.search(match, limit)) { name, title, any ->
+            SearchRank.ownFirst(name + title, any, limit) { it.id }
+        }
     }
 
+    /** Folders matching [query], at most [limit], those named that way before those found through a parent's name. */
     fun searchFolders(query: String, limit: Int): Flow<List<FolderEntity>> {
         val match = ftsMatch(query) ?: return flowOf(emptyList())
-        return folderDao.searchFolders(match, limit)
+        val byName = ftsMatchIn("name", query) ?: return flowOf(emptyList())
+        val byTitle = ftsMatchIn("titleParsed", query) ?: return flowOf(emptyList())
+        return combine(folderDao.searchFolders(byName, limit), folderDao.searchFolders(byTitle, limit), folderDao.searchFolders(match, limit)) { name, title, any ->
+            SearchRank.ownFirst(name + title, any, limit) { it.id }
+        }
     }
+
+    /** The folders with these ids, live: Search's "in Collection" links. */
+    fun observeFoldersByIds(ids: List<Long>): Flow<List<FolderEntity>> =
+        if (ids.isEmpty()) flowOf(emptyList()) else folderDao.observeByIds(ids)
 
     fun observeRecentSearches(limit: Int): Flow<List<RecentSearchEntity>> = recentSearchDao.observeRecent(limit)
     suspend fun rememberSearch(query: String) = recentSearchDao.upsert(RecentSearchEntity(query.trim(), System.currentTimeMillis()))
@@ -563,6 +582,23 @@ class LibraryRepository @Inject constructor(
             val words = query.split(Regex("""[\s.\-_/]+""")).map { it.trim().replace("\"", "").replace("*", "").lowercase() }.filter { it.isNotEmpty() }
             if (words.isEmpty()) return null
             return words.joinToString(" ") { "\"$it*\"" }
+        }
+
+        /**
+         * [ftsMatch] held to one [column]: `echo park` -> `name:echo* name:park*`,
+         * every word a prefix of a word in that column.
+         *
+         * UNQUOTED, unlike [ftsMatch]: `name:"echo*"` is a phrase FTS4 never
+         * matches (measured, SQLite 3.53), so the column form is only good
+         * bare. Bare is also safe here: a word behind `column:` is a term,
+         * never the operator `or` or `not`, and anything that is not a
+         * letter or a digit is cut out, which is where the tokenizer splits
+         * words anyway (`re:zero` is `re` and `zero` either way).
+         */
+        fun ftsMatchIn(column: String, query: String): String? {
+            val words = query.lowercase().split(Regex("""[^\p{L}\p{N}]+""")).filter { it.isNotEmpty() }
+            if (words.isEmpty()) return null
+            return words.joinToString(" ") { "$column:$it*" }
         }
     }
 
