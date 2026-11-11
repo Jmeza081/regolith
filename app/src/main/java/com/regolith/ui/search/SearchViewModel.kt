@@ -95,6 +95,13 @@ internal fun SearchFilter.keeps(unwatched: Boolean, uhd: Boolean, onDevice: Bool
 }
 
 /**
+ * The collection a video lives in, for its "in Collection ›" link: the
+ * folder holding the file, named as its tile would be. Null for a video at
+ * a share's root, which is in no collection.
+ */
+data class ParentCollection(val folderId: Long, val name: String, val mix: Boolean = false)
+
+/**
  * One result. Titles and raw filenames share the videos list; folders are
  * [SearchUiState.collections], a row of posters of their own above it.
  */
@@ -121,6 +128,8 @@ sealed interface SearchHit {
         /** The folder holding the file. */
         override val relPath: String = "",
         val sizeBytes: Long = 0,
+        /** Where it lives: the link under the row that opens that collection. */
+        val parent: ParentCollection? = null,
     ) : SearchHit {
         override val testTag get() = "search_title_$fileId"
     }
@@ -133,6 +142,8 @@ sealed interface SearchHit {
         override val shareId: Long = 0,
         override val relPath: String = "",
         val sizeBytes: Long = 0,
+        /** Where it lives, as for [Title]. */
+        val parent: ParentCollection? = null,
     ) : SearchHit {
         override val testTag get() = "search_file_$fileId"
     }
@@ -277,6 +288,10 @@ class SearchViewModel @AssistedInject constructor(
         }
     }.spoofed(spoof) { found -> found.copy(files = files(found.files), folders = folders(found.folders)) }
     private val progress = results.flatMapLatest { found -> library.observeProgress(found.files.map { it.id }) }
+    // The folder each video lives in, for its "in Collection ›" link, named
+    // as spoof mode names any folder.
+    private val parents = results.flatMapLatest { found -> library.observeFoldersByIds(found.files.map { it.folderId }.distinct()) }
+        .spoofed(spoof) { folders(it) }
     // Chapter names. With a chip, every mark of its name in the films listed
     // below: the same question of the same rows, so the two groups always
     // hold the same films. Otherwise whatever the query matches, through the
@@ -294,7 +309,7 @@ class SearchViewModel @AssistedInject constructor(
     }
 
     val uiState: StateFlow<SearchUiState> = combine(
-        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode, spoof.state, onDevice,
+        query, filter, results, progress, running, library.observeRecentSearches(8), selection.observe(), moments, facets, poi, prefs.searchViewMode, spoof.state, onDevice, parents,
     ) { values ->
         val q = values[0] as String
         val f = values[1] as SearchFilter
@@ -319,6 +334,11 @@ class SearchViewModel @AssistedInject constructor(
         // Paths shown as text are made up part by part; the real ones stay on the hits for picking.
         val spoofed = values[11] as Spoof?
         val here = values[12] as OnDevice
+        @Suppress("UNCHECKED_CAST")
+        val parentById = (values[13] as List<FolderEntity>).associateBy { it.id }
+        // A share's root is no collection: a video lying there gets no link.
+        fun parentOf(file: MediaFileEntity): ParentCollection? =
+            parentById[file.folderId]?.takeIf { it.parentId != null }?.let { ParentCollection(it.id, it.name, it.mix) }
         fun shownDir(relPath: String): String = relPath.substringBeforeLast('/', "").let { spoofed?.path(it) ?: it }
 
         val hits = mutableListOf<SearchHit>()
@@ -340,6 +360,7 @@ class SearchViewModel @AssistedInject constructor(
             // mean six. The filename stays visible because it is often where
             // the match actually is, and the meta line is highlighted too so
             // a row can always say why it is here.
+            val parent = parentOf(file)
             if (parsed.matched) {
                 hits += SearchHit.Title(
                     fileId = file.id,
@@ -348,15 +369,18 @@ class SearchViewModel @AssistedInject constructor(
                     shareId = file.shareId,
                     relPath = file.relPath.substringBeforeLast('/', ""),
                     sizeBytes = file.sizeBytes,
+                    parent = parent,
                 )
             } else {
                 hits += SearchHit.File(
                     fileId = file.id,
                     primary = file.name,
-                    meta = listOfNotNull(res, formatBytes(file.sizeBytes), "/" + shownDir(file.relPath)).joinToString(" · "),
+                    // The folder's path goes when the link names the folder: said once.
+                    meta = listOfNotNull(res, formatBytes(file.sizeBytes), ("/" + shownDir(file.relPath)).takeIf { parent == null }).joinToString(" · "),
                     shareId = file.shareId,
                     relPath = file.relPath.substringBeforeLast('/', ""),
                     sizeBytes = file.sizeBytes,
+                    parent = parent,
                 )
             }
         }

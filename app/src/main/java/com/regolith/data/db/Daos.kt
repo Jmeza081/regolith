@@ -284,6 +284,9 @@ interface FolderDao {
     @Query("SELECT * FROM folders WHERE shareId IN (:shareIds) ORDER BY name COLLATE NOCASE")
     fun observeInShares(shareIds: List<Long>): Flow<List<FolderEntity>>
 
+    @Query("SELECT * FROM folders WHERE id IN (:ids)")
+    fun observeByIds(ids: List<Long>): Flow<List<FolderEntity>>
+
     @Query("SELECT * FROM folders WHERE parentId = :parentId")
     suspend fun children(parentId: Long): List<FolderEntity>
 

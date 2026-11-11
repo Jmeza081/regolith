@@ -120,7 +120,10 @@ Search finds titles, filenames and folders as you type, and the moments you
 have named, each shown with the frame at its time: tap one and the film opens
 there. Folders whose names match come first, as a row of collection posters
 (a **Mix** chip on mixes) that is the same in the list and the grid; tap one
-to open it. Chips narrow the results to **Unwatched**, **4K** (8K included) or **On device** (downloaded,
+to open it. Every video carries a link to the collection it lives in
+(**in Live at The Echo ›**), so you can go there without opening the video.
+A video is found by its folders' names too, so searching a collection
+lists its videos; those whose own name matches come first. Chips narrow the results to **Unwatched**, **4K** (8K included) or **On device** (downloaded,
 or on the phone to begin with), and **Moment** picks one name from all of the
 library's: then the results are every video that carries it, with its marks of
 that name listed above them, and the other chips narrow both together. Typing
