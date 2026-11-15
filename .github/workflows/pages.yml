@@ -1,6 +1,6 @@
 # The product page (site/) on GitHub Pages, as murmur-keyboard publishes its
 # own: a push to main that touches site/ deploys the folder as it is. No build
-# step; the page is one HTML file with its images beside it. The release
+# step here; site/index.html is committed as built by site-src/build.py. The release
 # workflow ignores site/, so a page change never publishes an APK.
 #
 # Needs Settings › Pages › Build and deployment › Source set to
