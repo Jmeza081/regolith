@@ -775,6 +775,11 @@ footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(
       for (c = 0; c < COLS; c++) {
         beam(top[c], c * cw, y0, y0 * 0.08);
         beam(bot[c], c * cw, y1, y1 + (H - y1) * 0.92);
+        // Fill behind the picture too. Left empty, the blur mixes that hole into the light at
+        // the picture's edges and draws a dark rim, which reads as a drop shadow.
+        var mid = gc.createLinearGradient(0, y0, 0, y1);
+        mid.addColorStop(0, 'rgb(' + top[c].map(Math.round) + ')'); mid.addColorStop(1, 'rgb(' + bot[c].map(Math.round) + ')');
+        gc.fillStyle = mid; gc.fillRect(c * cw, y0, cw + 1, y1 - y0);
       }
       if (bar) {
         var p = t / LOOP, sec = Math.floor(3724 + p * 16);

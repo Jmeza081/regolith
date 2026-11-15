@@ -15,12 +15,15 @@ import re
 OUT = "site/index.html"
 PHOTOS = dict((l.split(" | ")[0], l.split(" | ")[1]) for l in open("site-src/photos.txt").read().splitlines() if l.strip())
 
-# The top-level collections wear posters (site-src/posters.html, rendered to images/posters by
-# render_posters.mjs); everything else is a photo. Each poster is built over one of the photos,
-# which is how its photographer still gets credited: name -> photo id.
+# Every poster tile wears a film poster (site-src/posters.html, rendered to images/posters by
+# render_posters.mjs). The 16:9 video frames (Continue watching, search hits) and the player's
+# film stay photos, as they stand for frames of a video. Each poster is built over one of the
+# photos, which is how its photographer still gets credited: name -> photo id.
 POSTERS = {"concerts": 274, "films": 43, "home-videos": 129, "series": 238, "travel": 177,
            "greece-2024": 49, "bikes": 76, "hikes": 17, "film-club": 250, "cooking": 225,
-           "road-trip": 184, "snow-trip": 260, "amsterdam": 164, "scotland": 200}
+           "road-trip": 184, "snow-trip": 260, "amsterdam": 164, "scotland": 200,
+           "live-at-the-echo": 274, "spring-tour": 257, "band-practice": 39, "fall-showcase": 167,
+           "soundcheck": 137, "acoustic-set": 129, "echo-park-rehearsals": 249}
 
 def ph(i):
     if i in POSTERS: return f"background-image:url(images/posters/{i}.jpg)"
@@ -62,19 +65,20 @@ TOP = [
     ("Scotland", "38 videos", "scotland", None, "4K"),
 ]
 CONCERTS = [
-    ("Live at The Echo", "14 videos", 274, "14", "4K"),
-    ("Spring Tour", "22 videos", 257, "22", "1080p"),
-    ("Band Practice", "31 videos", 39, "31", "1080p"),
-    ("Fall Showcase", "9 videos", 167, "9", "1080p"),
-    ("Soundcheck", "6 videos", 137, "6", "4K"),
-    ("Acoustic Set", "8 videos", 129, "8", "1080p"),
+    ("Live at The Echo", "14 videos", "live-at-the-echo", "14", "4K"),
+    ("Spring Tour", "22 videos", "spring-tour", "22", "1080p"),
+    ("Band Practice", "31 videos", "band-practice", "31", "1080p"),
+    ("Fall Showcase", "9 videos", "fall-showcase", "9", "1080p"),
+    ("Soundcheck", "6 videos", "soundcheck", "6", "4K"),
+    ("Acoustic Set", "8 videos", "acoustic-set", "8", "1080p"),
 ]
 MIXES = [
-    ("Assorted", "27 videos", None, "27", None, (65, 225)),
-    ("Phone Dumps", "63 videos", None, "63", None, (100, 76)),
-    ("Misc 2024", "19 videos", None, "19", None, (204, 152)),
+    ("Assorted", "27 videos", None, "27", None, ("road-trip", "cooking")),
+    ("Phone Dumps", "63 videos", None, "63", None, ("home-videos", "bikes")),
+    ("Misc 2024", "19 videos", None, "19", None, ("snow-trip", "amsterdam")),
 ]
-NEWLY = [16, 10, 11, 15, 28, 29, 37, 110, 116, 122, 128, 142, 155, 214]
+# Newly added on the inner screen's Home: the latest collections to arrive.
+NEWLY = ["spring-tour", "fall-showcase", "hikes", "snow-trip", "acoustic-set", "scotland", "soundcheck"]
 
 def bar(title, sub, back=False, pad=""):
     b = '<span class="d-act"><svg><use href="#i-back"/></svg></span>' if back else ""
@@ -118,8 +122,8 @@ search_gesture = f'''
       <div class="d-wall">
         <div class="d-head">Collections · 2</div>
         <div class="d-shelf">
-          {poster("Live at The <mark>Echo</mark>", "14 videos", 274, "14")}
-          {poster("<mark>Echo</mark> Park Rehearsals", "8 videos", 249, "8")}
+          {poster("Live at The <mark>Echo</mark>", "14 videos", "live-at-the-echo", "14")}
+          {poster("<mark>Echo</mark> Park Rehearsals", "8 videos", "echo-park-rehearsals", "8")}
         </div>
         <div class="d-head" style="padding-top:12px">7 videos</div>
         {hit("<mark>Echo</mark> Park Rehearsal 03", "1080p · 52m 18s", 249, "<mark>Echo</mark> Park Rehearsals")}
@@ -206,6 +210,7 @@ html = (html.replace("{{CHIP_SCROLL}}", chip_scroll)
             )
 used = set(re.findall(r"images/photos/(\d+)\.jpg", html))
 used |= {str(POSTERS[n]) for n in re.findall(r"images/posters/([a-z0-9-]+)\.jpg", html)}
+used |= {str(f[0]) for f in FILM}  # the player's film, loaded by the script
 used = sorted(used, key=int)
 missing = [i for i in used if i not in PHOTOS]
 assert not missing, f"no photographer listed in photos.txt for {missing}"
