@@ -14,7 +14,9 @@ on:
       - 'docs/**'
       - 'design/**'
       - 'site/**'
-      - '.github/workflows/pages.yml'
+      # Workflows and their scripts never ship in the APK: changing them is
+      # not a release. workflow_dispatch below is there to publish anyway.
+      - '.github/**'
       - '.gitignore'
   # The escape hatch: publish on demand, and force a bump the trailers did not
   # ask for. Useful when a release is worth calling a minor after the fact.
