@@ -18,6 +18,11 @@
   Nothing is copied off the share, and nothing leaves your network.
 </p>
 
+<p align="center">
+  <a href="https://jmeza081.github.io/regolith/"><strong>Product page</strong></a> ·
+  <a href="https://github.com/Jmeza081/regolith/releases/latest"><strong>Download the latest APK</strong></a>
+</p>
+
 ---
 
 Regolith points at the NAS you already have and treats it like a media library:
