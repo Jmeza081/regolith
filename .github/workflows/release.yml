@@ -13,6 +13,8 @@ on:
       - '**.md'
       - 'docs/**'
       - 'design/**'
+      - 'site/**'
+      - '.github/workflows/pages.yml'
       - '.gitignore'
   # The escape hatch: publish on demand, and force a bump the trailers did not
   # ask for. Useful when a release is worth calling a minor after the fact.

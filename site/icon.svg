@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <!-- The Strata Wedge on Regolith's ground, as the launcher icon draws it. -->
+  <rect width="108" height="108" rx="24" fill="#0A0A0A"/>
+  <defs><clipPath id="w"><path d="M36,30 L80,54 L36,78 Q46,54 36,30 Z"/></clipPath></defs>
+  <g clip-path="url(#w)" fill="#FFFFFF">
+    <rect x="0" y="28" width="108" height="9"/>
+    <rect x="0" y="40.5" width="108" height="7" fill-opacity="0.62"/>
+    <rect x="0" y="50.5" width="108" height="9"/>
+    <rect x="0" y="63" width="108" height="6.5" fill-opacity="0.62"/>
+    <rect x="0" y="72.5" width="108" height="7.5"/>
+  </g>
+</svg>
