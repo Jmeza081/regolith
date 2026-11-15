@@ -2,8 +2,10 @@
 
 Run from the repo root: python3 site-src/build.py
 
-The drawn screens (Collections and Mixes, the Search gesture, the inner screen's
-Home and pinch) are generated here so every poster gets the same markup. Their
+The drawn screens (Collections and Mixes, the Search gesture, the player's Color
+bleed, the main screen that opens out into the inner screen's pinch, and the inner
+screen's Home) are generated here so every poster gets the same markup. Color bleed
+and the opening fold are driven by the script at the bottom of the template. Their
 photos are in site/images/photos, from Unsplash via Lorem Picsum; photos.txt
 lists each one's id, photographer and Unsplash page, and the footer credits
 whoever's photos the page actually uses.
@@ -13,7 +15,15 @@ import re
 OUT = "site/index.html"
 PHOTOS = dict((l.split(" | ")[0], l.split(" | ")[1]) for l in open("site-src/photos.txt").read().splitlines() if l.strip())
 
+# The top-level collections wear posters (site-src/posters.html, rendered to images/posters by
+# render_posters.mjs); everything else is a photo. Each poster is built over one of the photos,
+# which is how its photographer still gets credited: name -> photo id.
+POSTERS = {"concerts": 274, "films": 43, "home-videos": 129, "series": 238, "travel": 177,
+           "greece-2024": 49, "bikes": 76, "hikes": 17, "film-club": 250, "cooking": 225,
+           "road-trip": 184, "snow-trip": 260, "amsterdam": 164, "scotland": 200}
+
 def ph(i):
+    if i in POSTERS: return f"background-image:url(images/posters/{i}.jpg)"
     return f"background-image:url(images/photos/{i}.jpg)"
 
 def poster(name, meta, photo, badge=None, res=None, mix=None):
@@ -36,20 +46,20 @@ RAIL = '''<div class="d-rail"><span{h}><svg><use href="#i-home"/></svg>Home</spa
 
 # The share's top level, as photos: (name, meta, photo, badge, res)
 TOP = [
-    ("Concerts", "18 titles", 274, "6", "4K"),
-    ("Films", "96 videos", 43, None, "4K"),
-    ("Home Videos", "212 videos", 129, None, "1080p"),
-    ("Series", "140 videos", 238, "12", "1080p"),
-    ("Travel", "58 videos", 177, "4", "4K"),
-    ("Greece 2024", "33 videos", 49, None, "4K"),
-    ("Kids", "75 videos", 76, None, "1080p"),
-    ("Hikes", "24 videos", 17, None, "1080p"),
-    ("Film Club", "17 videos", 250, None, "1080p"),
-    ("Cooking", "41 videos", 225, None, "1080p"),
-    ("Road Trip", "62 videos", 184, None, "4K"),
-    ("Snow Trip", "19 videos", 260, None, "1080p"),
-    ("Amsterdam", "27 videos", 164, None, "1080p"),
-    ("Scotland", "38 videos", 200, None, "4K"),
+    ("Concerts", "18 titles", "concerts", "6", "4K"),
+    ("Films", "96 videos", "films", None, "4K"),
+    ("Home Videos", "212 videos", "home-videos", None, "1080p"),
+    ("Series", "140 videos", "series", "12", "1080p"),
+    ("Travel", "58 videos", "travel", "4", "4K"),
+    ("Greece 2024", "33 videos", "greece-2024", None, "4K"),
+    ("Bikes", "75 videos", "bikes", None, "1080p"),
+    ("Hikes", "24 videos", "hikes", None, "1080p"),
+    ("Film Club", "17 videos", "film-club", None, "1080p"),
+    ("Cooking", "41 videos", "cooking", None, "1080p"),
+    ("Road Trip", "62 videos", "road-trip", None, "4K"),
+    ("Snow Trip", "19 videos", "snow-trip", None, "1080p"),
+    ("Amsterdam", "27 videos", "amsterdam", None, "1080p"),
+    ("Scotland", "38 videos", "scotland", None, "4K"),
 ]
 CONCERTS = [
     ("Live at The Echo", "14 videos", 274, "14", "4K"),
@@ -160,13 +170,43 @@ inner_pinch = f'''
   {RAIL.format(h="", l=' class="on"')}
 </div>'''
 
+# ── Main screen, on the back of the Fold's left half before it opens: the same wall as the
+#    inner screen it opens into, three across. Shorter than the others: it is drawn at the shape of
+#    half the open phone. ──
+cover_closed = f'''
+<div class="dp cover short" aria-hidden="true">
+  {bar("MEDIA", "Tower · media · 1,284 files")}
+  <div class="d-chips"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span></div>
+  <div class="d-wall"><div class="d-head">Collections</div>{grid("c3", [t[:5] for t in TOP[:6]])}</div>
+  {PILL.format(cls="")}
+  {HANDLE}
+</div>'''
+
+# ── Main screen · the player, with Color bleed. The film is a run of slow pans over photos, drawn
+#    by the page's script: (photo, [x, y, zoom] at the start, [x, y, zoom] at the end). ──
+FILM = [(65, [.5, .55, 1.0], [.6, .5, 1.25]), (249, [.35, .6, 1.2], [.6, .55, 1.0]),
+        (184, [.5, .7, 1.05], [.45, .65, 1.3]), (164, [.4, .55, 1.25], [.6, .5, 1.05]),
+        (274, [.5, .45, 1.0], [.5, .5, 1.2])]
+color_bleed = f'''
+<div class="dp cover cb off" aria-hidden="true" data-shots='{[list(f) for f in FILM]}'>
+  <canvas class="cb-glow" width="103" height="224"></canvas>
+  <canvas class="cb-pic" width="640" height="360"></canvas>
+  <div class="cb-top"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b>Golden Hour</b><span>Films · 4K</span></div><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="cb-state"><i></i><span class="t-off">Color bleed off</span><span class="t-on">Color bleed on</span></div>
+  <div class="cb-bottom"><div class="cb-track"><i></i></div><div class="cb-times"><span class="cb-now">1:02:04</span><span>1:48:20</span></div></div>
+</div>'''
+
 html = open("site-src/template.html").read()
 html = (html.replace("{{CHIP_SCROLL}}", chip_scroll)
             .replace("{{SEARCH_GESTURE}}", search_gesture)
             .replace("{{INNER_HOME}}", inner_home)
             .replace("{{INNER_PINCH}}", inner_pinch)
+            .replace("{{COVER_CLOSED}}", cover_closed)
+            .replace("{{COLOR_BLEED}}", color_bleed)
             )
-used = sorted(set(re.findall(r"images/photos/(\d+)\.jpg", html)), key=int)
+used = set(re.findall(r"images/photos/(\d+)\.jpg", html))
+used |= {str(POSTERS[n]) for n in re.findall(r"images/posters/([a-z0-9-]+)\.jpg", html)}
+used = sorted(used, key=int)
 missing = [i for i in used if i not in PHOTOS]
 assert not missing, f"no photographer listed in photos.txt for {missing}"
 html = html.replace("{{AUTHORS}}", ", ".join(sorted({PHOTOS[i] for i in used}, key=str.lower)))

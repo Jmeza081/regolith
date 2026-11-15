@@ -86,6 +86,9 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; color: var(
 .phone::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
 .phone::after { content: ""; position: absolute; right: -4px; top: 22%; width: 3px; height: 16%; border-radius: 0 2px 2px 0; background: #2a2a2a; }
 .phone img, .phone .screen-wrap { width: 100%; height: 100%; border-radius: 11px; object-fit: cover; object-position: top; }
+/* The screenshots were captured without the status bar, so their first row sat under the camera.
+   A ground-coloured band the height of the status bar puts it back (padding % is of the width). */
+.phone img { padding-top: 10%; background: var(--ground); }
 .phone.sm { width: 200px; }
 .fold { width: 560px; max-width: 100%; aspect-ratio: 2448 / 1828; border-radius: 12px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 6px; flex: none; position: relative; }
 .fold::after { content: ""; position: absolute; z-index: 3; top: 6px; bottom: 6px; left: 50%; width: 10px; margin-left: -5px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.035) 45%, rgba(0,0,0,.25) 50%, rgba(255,255,255,.035) 55%, transparent); pointer-events: none; }
@@ -94,11 +97,12 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; color: var(
 .screen-wrap { overflow: hidden; position: relative; background: var(--ground); }
 .caption { font-size: 13px; color: var(--metadata); text-align: center; margin-top: 12px; max-width: 30ch; }
 .caption b { color: var(--body); font-weight: 600; }
-figure { margin: 0; display: flex; flex-direction: column; align-items: center; }
+figure { margin: 0; display: flex; flex-direction: column; align-items: center; max-width: 100%; }
 
 /* Sections */
 section.feature { padding: 88px 0; border-top: 1px solid var(--hairline); }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 56px; align-items: center; }
+.split.flip { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
 .split.flip > .copy { order: 2; }
 .copy { display: flex; flex-direction: column; gap: 18px; }
 .points { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 14px; }
@@ -108,16 +112,18 @@ section.feature { padding: 88px 0; border-top: 1px solid var(--hairline); }
 .shots { display: flex; gap: 18px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
 .shots.col { flex-direction: column; align-items: center; gap: 36px; }
 @media (max-width: 900px) {
-  .split { grid-template-columns: 1fr; gap: 40px; }
+  .split, .split.flip { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   .split.flip > .copy { order: 0; }
 }
 @media (max-width: 520px) { .phone { width: 46%; min-width: 150px; } }
 
 /* Drawn screens: laid out at the screen's real size in dp (1dp = 1px), scaled into their frames.
-   No status bar: the page shows the app, not the phone's clock. */
+   No status bar is drawn (the page shows the app, not the phone's clock), but its height is kept
+   empty as --sb, as the app leaves it, so nothing starts under the camera. */
 .dp { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--ground); color: var(--ink); font-family: var(--text); overflow: hidden; }
-.dp.cover { width: 412px; height: 896px; }
-.dp.inner { width: 979px; height: 731px; }
+.dp.cover { --sb: 40px; width: 412px; height: 896px; padding-top: var(--sb); }
+.dp.cover.short { height: 624px; }
+.dp.inner { --sb: 32px; width: 979px; height: 731px; padding-top: var(--sb); }
 .d-bar { display: flex; align-items: center; gap: 4px; padding: 10px 8px 6px 18px; height: 66px; }
 .d-title { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .d-title b { font-family: var(--display); font-weight: 400; font-size: 15px; letter-spacing: .02em; }
@@ -186,7 +192,7 @@ mark { background: none; color: var(--red); }
 
 /* ── Animation 1: the chip row tucks away as the wall scrolls down, and the pill with it ── */
 .cs-chips { overflow: hidden; max-height: 54px; }
-.cs-clip { position: absolute; top: 120px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.cs-clip { position: absolute; top: 160px; left: 0; right: 0; bottom: 0; overflow: hidden; }
 .cs .cs-wall { padding-top: 0; }
 .cs-finger { left: 210px; top: 640px; }
 .cs .cs-chips { animation: cs-chips 8s infinite; }
@@ -195,14 +201,14 @@ mark { background: none; color: var(--red); }
 .cs .cs-pill { animation: cs-pill 8s infinite; }
 .cs .cs-finger { animation: cs-finger 8s infinite; }
 @keyframes cs-chips { 0%, 18% { max-height: 54px; opacity: 1; } 28%, 60% { max-height: 0; opacity: 0; } 70%, 100% { max-height: 54px; opacity: 1; } }
-@keyframes cs-clip { 0%, 18% { top: 120px; } 28%, 60% { top: 66px; } 70%, 100% { top: 120px; } }
+@keyframes cs-clip { 0%, 18% { top: 160px; } 28%, 60% { top: 106px; } 70%, 100% { top: 160px; } }
 @keyframes cs-wall { 0%, 16% { transform: translateY(0); } 40%, 56% { transform: translateY(-330px); } 72%, 100% { transform: translateY(0); } }
 @keyframes cs-pill { 0%, 20% { transform: translateY(0); opacity: 1; } 28%, 60% { transform: translateY(120px); opacity: 0; } 68%, 100% { transform: translateY(0); opacity: 1; } }
 @keyframes cs-finger { 0%, 12% { opacity: 0; transform: translateY(0); } 15% { opacity: 1; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-330px); } 44%, 52% { opacity: 0; transform: translateY(-330px); }
   54% { opacity: 0; transform: translateY(-280px); } 57% { opacity: 1; transform: translateY(-280px); } 72% { opacity: 1; transform: translateY(40px); } 76%, 100% { opacity: 0; transform: translateY(40px); } }
 
 /* ── Animation 2: swipe up off the nav pill, and it becomes Search ── */
-.sg-lib, .sg-search { position: absolute; inset: 0; }
+.sg-lib, .sg-search { position: absolute; inset: var(--sb) 0 0; }
 .sg-search .sg-ph { color: var(--metadata); position: absolute; left: 44px; }
 .sg-search .sg-q { position: relative; }
 .sg-kb { position: absolute; left: 0; right: 0; bottom: 0; height: 270px; background: #1b1b1b; border-top: 1px solid var(--raised); display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 22px; }
@@ -241,27 +247,53 @@ mark { background: none; color: var(--red); }
   40% { opacity: 1; top: 676px; left: 26px; width: 360px; height: 56px; transform: scale(1); }
   43% { transform: scale(1.04); }
   46% { opacity: 1; top: 676px; left: 26px; width: 360px; height: 56px; transform: scale(1); }
-  54% { opacity: 1; top: 12px; left: 18px; width: 300px; height: 44px; }
-  57%, 100% { opacity: 0; top: 12px; left: 18px; width: 300px; height: 44px; } }
+  54% { opacity: 1; top: 52px; left: 18px; width: 300px; height: 44px; }
+  57%, 100% { opacity: 0; top: 52px; left: 18px; width: 300px; height: 44px; } }
 @keyframes sg-ring { 0%, 16% { stroke-dashoffset: 100; } 40%, 54% { stroke-dashoffset: 0; } 57%, 100% { stroke-dashoffset: 100; } }
 @keyframes sg-l1 { 0%, 12% { opacity: 0; } 16%, 39% { opacity: 1; } 41%, 100% { opacity: 0; } }
 @keyframes sg-l2 { 0%, 40% { opacity: 0; } 42%, 50% { opacity: 1; } 54%, 100% { opacity: 0; } }
 @keyframes sg-finger { 0%, 9% { opacity: 0; transform: translateY(0); } 13% { opacity: 1; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-120px); } 46% { opacity: 1; transform: translateY(-120px); } 50%, 100% { opacity: 0; transform: translateY(-120px); } }
 
-/* ── Animation 3: pinch the inner screen's wall from five posters across to seven, and back ── */
-.pz-clip { position: absolute; left: 96px; right: 18px; top: 120px; bottom: 0; overflow: hidden; }
+/* ── Animation 3: the main screen opens out into the inner screen, which is then pinched from five
+   posters across to seven and back. Opening is a book: the left half (the flap) carries the main
+   screen on its back, folded over the right half; it swings 180° about the hinge toward the viewer.
+   Both halves draw the same inner screen, each clipped to its own half, so the picture is whole when
+   open. A script steps .unfold through closed → .open → .open.pinch → closed (see the bottom). ── */
+.unfold { width: 560px; max-width: 100%; aspect-ratio: 2448 / 1828; perspective: 1800px; position: relative; }
+.uf-dev { position: absolute; inset: 0; transform-style: preserve-3d; transform: translateX(-25%); transition: transform 1.3s cubic-bezier(.65,0,.25,1); }
+.uf-r, .uf-face { position: absolute; background: #050505; border: 1px solid #3a3a3a; padding: 6px; }
+.uf-r { top: 0; bottom: 0; right: 0; width: 50%; border-left: 0; padding-left: 0; border-radius: 0 12px 12px 0; box-shadow: 0 30px 60px rgba(0,0,0,.55); transform: translateZ(-1px); }
+.uf-r::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 52%; width: 8px; height: 8px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
+.uf-r::after { content: ""; position: absolute; z-index: 3; top: 6px; bottom: 6px; left: -5px; width: 10px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.035) 45%, rgba(0,0,0,.25) 50%, rgba(255,255,255,.035) 55%, transparent); pointer-events: none; }
+.uf-l { position: absolute; top: 0; bottom: 0; left: 0; width: 50%; transform-origin: 100% 50%; transform: rotateY(180deg); transform-style: preserve-3d; transition: transform 1.3s cubic-bezier(.65,0,.25,1); }
+.uf-face { inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.uf-front { border-right: 0; padding-right: 0; border-radius: 12px 0 0 12px; }
+.uf-back { transform: rotateY(180deg); border-radius: 12px; box-shadow: 0 30px 60px rgba(0,0,0,.55); }
+.uf-back::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
+.uf-clip { width: 100%; height: 100%; overflow: hidden; position: relative; }
+.uf-r .uf-clip { border-radius: 0 7px 7px 0; }
+.uf-front .uf-clip { border-radius: 7px 0 0 7px; }
+.uf-clip .screen-wrap { position: absolute; top: 0; left: 0; width: 200%; height: 100%; }
+.uf-r .uf-clip .screen-wrap { left: -100%; }
+.uf-back .screen-wrap { width: 100%; height: 100%; border-radius: 7px; }
+.unfold.open .uf-dev { transform: none; }
+.unfold.open .uf-l { transform: rotateY(0); }
+
+/* The pinch itself. Resting frame (and the one shown with reduced motion): five across. */
+.pz-clip { position: absolute; left: 96px; right: 18px; top: 152px; bottom: 0; overflow: hidden; }
 .pz-zoom { transform-origin: 0 0; display: flex; flex-direction: column; gap: 10px; }
-.pz-pill { position: absolute; z-index: 5; left: 50%; margin-left: -60px; top: 132px; width: 120px; height: 36px; border-radius: 999px; background: rgba(0,0,0,.72); border: 1px solid rgba(255,255,255,.16); display: grid; place-items: center; font-size: 14px; font-weight: 600; opacity: 0; }
+.pz-pill { position: absolute; z-index: 5; left: 50%; margin-left: -60px; top: 164px; width: 120px; height: 36px; border-radius: 999px; background: rgba(0,0,0,.72); border: 1px solid rgba(255,255,255,.16); display: grid; place-items: center; font-size: 14px; font-weight: 600; opacity: 0; }
 .pz-pill span { grid-area: 1 / 1; }
-.pz-a { left: 380px; top: 330px; }
-.pz-b { left: 660px; top: 520px; }
-.pz .pz-zoom { transform: scale(1.4); animation: pz-zoom 8s infinite; }
+.pz-a { left: 380px; top: 362px; }
+.pz-b { left: 660px; top: 552px; }
+.pz .pz-zoom { transform: scale(1.4); }
 .pz .n7 { opacity: 0; }
-.pz .pz-pill { animation: pz-pill 8s infinite; }
-.pz .n5 { animation: pz-n5 8s infinite; }
-.pz .n7 { animation: pz-n7 8s infinite; }
-.pz .pz-a { animation: pz-a 8s infinite; }
-.pz .pz-b { animation: pz-b 8s infinite; }
+.pinch .pz .pz-zoom { animation: pz-zoom 8s; }
+.pinch .pz .pz-pill { animation: pz-pill 8s; }
+.pinch .pz .n5 { animation: pz-n5 8s; }
+.pinch .pz .n7 { animation: pz-n7 8s; }
+.pinch .pz .pz-a { animation: pz-a 8s; }
+.pinch .pz .pz-b { animation: pz-b 8s; }
 @keyframes pz-zoom { 0%, 18% { transform: scale(1.4); } 42%, 62% { transform: scale(1); } 86%, 100% { transform: scale(1.4); } }
 @keyframes pz-pill { 0%, 18% { opacity: 0; } 22%, 46% { opacity: 1; } 52%, 62% { opacity: 0; } 66%, 90% { opacity: 1; } 96%, 100% { opacity: 0; } }
 @keyframes pz-n5 { 0%, 30% { opacity: 1; } 34%, 74% { opacity: 0; } 78%, 100% { opacity: 1; } }
@@ -271,8 +303,33 @@ mark { background: none; color: var(--red); }
 @keyframes pz-b { 0%, 16% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; transform: translate(0, 0); } 42% { opacity: 1; transform: translate(-110px, -80px); } 46%, 62% { opacity: 0; transform: translate(-110px, -80px); }
   66% { opacity: 1; transform: translate(-110px, -80px); } 86% { opacity: 1; transform: translate(0, 0); } 90%, 100% { opacity: 0; transform: translate(0, 0); } }
 
+/* ── Animation 4: Color bleed, on a film that plays. The picture and the light around it are both
+   canvases a script draws each frame: it samples the colour along the picture's top and bottom
+   edges and shines each one up or down into the black, which is what the app does. ── */
+.cb { padding-top: 0; background: #000; }
+.cb canvas { position: absolute; display: block; }
+.cb-glow { inset: 0; width: 100%; height: 100%; filter: blur(10px) saturate(1.5) brightness(1.15); transition: opacity .9s ease; }
+.cb.off .cb-glow { opacity: 0; }
+.cb-pic { left: 0; top: 332px; width: 412px; height: 232px; }
+.cb-top { position: absolute; z-index: 2; left: 0; right: 0; top: var(--sb); display: flex; align-items: center; gap: 6px; padding: 10px 8px 6px 8px; transition: opacity .6s ease; }
+.cb-top .d-title b { font-family: var(--text); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.cb-state { position: absolute; z-index: 3; left: 50%; top: 150px; transform: translateX(-50%); height: 34px; padding: 0 14px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; white-space: nowrap; background: rgba(0,0,0,.72); border: 1px solid rgba(255,255,255,.16); transition: opacity .5s ease; }
+.cb-state i { width: 30px; height: 18px; border-radius: 999px; background: var(--raised); position: relative; transition: background .4s ease; }
+.cb-state i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .4s ease; }
+.cb.on .cb-state i { background: var(--red); }
+.cb.on .cb-state i::after { transform: translateX(12px); }
+.cb-state .t-on, .cb.on .cb-state .t-off { display: none; }
+.cb.on .cb-state .t-on { display: inline; }
+.cb.quiet .cb-state, .cb.quiet .cb-top { opacity: 0; }
+.cb-bottom { position: absolute; z-index: 2; left: 18px; right: 18px; bottom: 40px; display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: var(--ink-soft); transition: opacity .6s ease; }
+.cb.quiet .cb-bottom { opacity: 0; }
+.cb-track { height: 3px; border-radius: 3px; background: rgba(255,255,255,.25); position: relative; }
+.cb-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--red); }
+.cb-times { display: flex; justify-content: space-between; }
+
 @media (prefers-reduced-motion: reduce) {
   .cs *, .sg *, .pz * { animation: none !important; }
+  .uf-dev, .uf-l { transition: none !important; }
   .pz .n7 { opacity: 0; } .pz .pz-pill { opacity: 0; }
 }
 
@@ -457,7 +514,7 @@ footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(
   <div class="sg-lib">
     <div class="d-bar"><div class="d-title"><b>MEDIA</b><span>Tower · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
     <div class="d-chips"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span></div>
-    <div class="d-wall"><div class="d-grid c3"><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/274.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/43.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/129.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/238.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/177.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/49.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/76.jpg)"><span class="res">1080p</span></div><div class="d-name">Kids</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/17.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/250.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div></div></div>
+    <div class="d-wall"><div class="d-grid c3"><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/concerts.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/films.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/home-videos.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/series.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/travel.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/greece-2024.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/bikes.jpg)"><span class="res">1080p</span></div><div class="d-name">Bikes</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/hikes.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/film-club.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div></div></div>
     <div class="d-pill sg-pill"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
   </div>
   <div class="sg-search">
@@ -506,8 +563,15 @@ footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(
     </div>
     <div class="shots">
       <figure>
-        <div class="phone"><img src="images/player.jpg" alt="The player with Color bleed lighting the screen around the film"></div>
-        <figcaption class="caption">Main screen · Color bleed</figcaption>
+        <div class="phone"><div class="screen-wrap" data-scale>
+<div class="dp cover cb off" aria-hidden="true" data-shots='[[65, [0.5, 0.55, 1.0], [0.6, 0.5, 1.25]], [249, [0.35, 0.6, 1.2], [0.6, 0.55, 1.0]], [184, [0.5, 0.7, 1.05], [0.45, 0.65, 1.3]], [164, [0.4, 0.55, 1.25], [0.6, 0.5, 1.05]], [274, [0.5, 0.45, 1.0], [0.5, 0.5, 1.2]]]'>
+  <canvas class="cb-glow" width="103" height="224"></canvas>
+  <canvas class="cb-pic" width="640" height="360"></canvas>
+  <div class="cb-top"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b>Golden Hour</b><span>Films · 4K</span></div><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="cb-state"><i></i><span class="t-off">Color bleed off</span><span class="t-on">Color bleed on</span></div>
+  <div class="cb-bottom"><div class="cb-track"><i></i></div><div class="cb-times"><span class="cb-now">1:02:04</span><span>1:48:20</span></div></div>
+</div></div></div>
+        <figcaption class="caption"><b>Animated</b> · Color bleed, off and then on, as the film plays</figcaption>
       </figure>
       <figure>
         <div class="phone"><img src="images/collection.jpg" alt="A collection's page, its poster lighting the top"></div>
@@ -575,19 +639,45 @@ footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(
     </div>
     <div class="shots col">
       <figure>
-        <div class="fold"><div class="screen-wrap" data-scale>
+        <div class="unfold" data-unfold>
+          <div class="uf-dev">
+            <div class="uf-r"><div class="uf-clip"><div class="screen-wrap" data-scale>
 <div class="dp inner pz" aria-hidden="true">
   <div class="d-bar" style="padding-left:96px"><div class="d-title"><b>MEDIA</b><span>Tower · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
   <div class="d-chips" style="padding-left:96px"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span><span class="d-sep"></span><span class="d-chip on">All</span><span class="d-chip">Collections <i>14</i></span><span class="d-chip">Mixes <i>3</i></span></div>
   <div class="pz-clip"><div class="pz-zoom">
     <div class="d-head">Collections</div>
-    <div class="d-grid c7"><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/274.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/43.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/129.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/238.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/177.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/49.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/76.jpg)"><span class="res">1080p</span></div><div class="d-name">Kids</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/17.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/250.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/225.jpg)"><span class="res">1080p</span></div><div class="d-name">Cooking</div><div class="d-meta">41 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/184.jpg)"><span class="res">4K</span></div><div class="d-name">Road Trip</div><div class="d-meta">62 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/260.jpg)"><span class="res">1080p</span></div><div class="d-name">Snow Trip</div><div class="d-meta">19 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/164.jpg)"><span class="res">1080p</span></div><div class="d-name">Amsterdam</div><div class="d-meta">27 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/200.jpg)"><span class="res">4K</span></div><div class="d-name">Scotland</div><div class="d-meta">38 videos</div></div></div>
+    <div class="d-grid c7"><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/concerts.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/films.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/home-videos.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/series.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/travel.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/greece-2024.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/bikes.jpg)"><span class="res">1080p</span></div><div class="d-name">Bikes</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/hikes.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/film-club.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/cooking.jpg)"><span class="res">1080p</span></div><div class="d-name">Cooking</div><div class="d-meta">41 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/road-trip.jpg)"><span class="res">4K</span></div><div class="d-name">Road Trip</div><div class="d-meta">62 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/snow-trip.jpg)"><span class="res">1080p</span></div><div class="d-name">Snow Trip</div><div class="d-meta">19 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/amsterdam.jpg)"><span class="res">1080p</span></div><div class="d-name">Amsterdam</div><div class="d-meta">27 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/scotland.jpg)"><span class="res">4K</span></div><div class="d-name">Scotland</div><div class="d-meta">38 videos</div></div></div>
   </div></div>
   <div class="pz-pill"><span class="n5">5 across</span><span class="n7">7 across</span></div>
   <div class="finger pz-a"></div><div class="finger pz-b"></div>
   <div class="d-rail"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+</div></div></div></div>
+            <div class="uf-l">
+              <div class="uf-face uf-front"><div class="uf-clip"><div class="screen-wrap" data-scale>
+<div class="dp inner pz" aria-hidden="true">
+  <div class="d-bar" style="padding-left:96px"><div class="d-title"><b>MEDIA</b><span>Tower · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="d-chips" style="padding-left:96px"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span><span class="d-sep"></span><span class="d-chip on">All</span><span class="d-chip">Collections <i>14</i></span><span class="d-chip">Mixes <i>3</i></span></div>
+  <div class="pz-clip"><div class="pz-zoom">
+    <div class="d-head">Collections</div>
+    <div class="d-grid c7"><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/concerts.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/films.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/home-videos.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/series.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/travel.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/greece-2024.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/bikes.jpg)"><span class="res">1080p</span></div><div class="d-name">Bikes</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/hikes.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/film-club.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/cooking.jpg)"><span class="res">1080p</span></div><div class="d-name">Cooking</div><div class="d-meta">41 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/road-trip.jpg)"><span class="res">4K</span></div><div class="d-name">Road Trip</div><div class="d-meta">62 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/snow-trip.jpg)"><span class="res">1080p</span></div><div class="d-name">Snow Trip</div><div class="d-meta">19 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/amsterdam.jpg)"><span class="res">1080p</span></div><div class="d-name">Amsterdam</div><div class="d-meta">27 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/scotland.jpg)"><span class="res">4K</span></div><div class="d-name">Scotland</div><div class="d-meta">38 videos</div></div></div>
+  </div></div>
+  <div class="pz-pill"><span class="n5">5 across</span><span class="n7">7 across</span></div>
+  <div class="finger pz-a"></div><div class="finger pz-b"></div>
+  <div class="d-rail"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+</div></div></div></div>
+              <div class="uf-face uf-back"><div class="screen-wrap" data-scale>
+<div class="dp cover short" aria-hidden="true">
+  <div class="d-bar"><div class="d-title"><b>MEDIA</b><span>Tower · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="d-chips"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span></div>
+  <div class="d-wall"><div class="d-head">Collections</div><div class="d-grid c3"><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/concerts.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/films.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/home-videos.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/series.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/travel.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/posters/greece-2024.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div></div></div>
+  <div class="d-pill"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+  <div class="d-handle"></div>
 </div></div></div>
-        <figcaption class="caption"><b>Animated</b> · Inner screen: pinch from five across to seven</figcaption>
+            </div>
+          </div>
+        </div>
+        <figcaption class="caption"><b>Animated</b> · The main screen opens out to the inner screen; pinch from five across to seven</figcaption>
       </figure>
       <figure>
         <div class="fold"><div class="screen-wrap" data-scale>
@@ -686,7 +776,7 @@ footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(
       <span>Regolith · a native Android player for your SMB share</span>
       <span><a href="https://github.com/Jmeza081/regolith">Source on GitHub</a></span>
     </div>
-    <p class="credit">Photos in the drawn screens are from <a href="https://unsplash.com">Unsplash</a>, served by <a href="https://picsum.photos">Lorem Picsum</a>, by Alexander Shustov, Anders Jildén, Austin Neill, Charlie Foster, Danka & Peter, Elias Carlsson, Emanuele Pinna, Go Wild, Jerry Adney, Linh Nguyen, Luke Chesser, Margaret Barley, Nicola Perantoni, Oleg Chursin, Paul Jarvis, petradr, Steven Spassov, Sylwia Bartyzel, Tiago Gerken, Tim de Groot, Tina Rataj, Vee O, Vladimir Kramer, Wojtek Witkowski. Collection names are examples.</p>
+    <p class="credit">Photos in the drawn screens, and under their posters, are from <a href="https://unsplash.com">Unsplash</a>, served by <a href="https://picsum.photos">Lorem Picsum</a>, by Alexander Shustov, Anders Jildén, Austin Neill, Charlie Foster, Danka & Peter, Elias Carlsson, Emanuele Pinna, Go Wild, Jerry Adney, Linh Nguyen, Luke Chesser, Margaret Barley, Nicola Perantoni, Oleg Chursin, Paul Jarvis, petradr, Steven Spassov, Sylwia Bartyzel, Tiago Gerken, Tim de Groot, Tina Rataj, Vee O, Vladimir Kramer, Wojtek Witkowski. Collection names are examples.</p>
   </div>
 </footer>
 
@@ -704,6 +794,109 @@ footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
     fit();
   })();
+
+  var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Runs `start` the first time `el` scrolls into view, so an animation begins from its first
+  // frame when someone reaches it rather than somewhere in the middle.
+  function whenSeen(el, start) {
+    if (!('IntersectionObserver' in window)) return start();
+    var io = new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) { io.disconnect(); start(); }
+    }, { threshold: 0.35 });
+    io.observe(el);
+  }
+
+  // The fold: closed on the main screen, opens, pinches in and out, closes again, and repeats.
+  document.querySelectorAll('[data-unfold]').forEach(function (el) {
+    if (still) { el.classList.add('open'); return; }
+    function step() {
+      el.classList.remove('open', 'pinch');
+      setTimeout(function () { el.classList.add('open'); }, 2200);         // the main screen, a beat
+      setTimeout(function () { el.classList.add('pinch'); }, 2200 + 1700); // opened, then the pinch (8s)
+      setTimeout(function () { el.classList.remove('pinch'); }, 3900 + 8200);
+      setTimeout(step, 3900 + 8200 + 900 + 1400);                         // hold, close, and again
+    }
+    whenSeen(el, step);
+  });
+
+  // Color bleed: a short "film" of slow pans over a few photos, drawn into the picture canvas.
+  // Each frame the picture's top and bottom rows are read off a 32-pixel-wide copy, eased toward
+  // (so a cut glows over rather than snaps), and drawn as columns of light fading away from the
+  // picture into the glow canvas, which CSS blurs.
+  document.querySelectorAll('.cb').forEach(function (root) {
+    var pic = root.querySelector('.cb-pic'), glow = root.querySelector('.cb-glow');
+    var pc = pic.getContext('2d'), gc = glow.getContext('2d');
+    var probe = document.createElement('canvas'); probe.width = 32; probe.height = 18;
+    var xc = probe.getContext('2d', { willReadFrequently: true });
+    var bar = root.querySelector('.cb-track i'), now = root.querySelector('.cb-now');
+    var COLS = 32, SHOT = 3600, FADE = 500, LOOP;
+    var shots = JSON.parse(root.getAttribute('data-shots')).map(function (s) {
+      var img = new Image(); img.src = 'images/photos/' + s[0] + '.jpg';
+      return { img: img, a: s[1], b: s[2] };
+    });
+    LOOP = shots.length * SHOT;
+    var top = [], bot = [];
+    for (var i = 0; i < COLS; i++) { top.push([0, 0, 0]); bot.push([0, 0, 0]); }
+
+    // One shot at time t (0..1): a crop of the square photo at 16:9, panned and zoomed from a to b.
+    function draw(ctx, w, h, shot, t, alpha) {
+      var im = shot.img; if (!im.complete || !im.naturalWidth) return;
+      var e = t * t * (3 - 2 * t), z = shot.a[2] + (shot.b[2] - shot.a[2]) * e;
+      var sw = im.naturalWidth / z, sh = sw * 9 / 16;
+      var cx = shot.a[0] + (shot.b[0] - shot.a[0]) * e, cy = shot.a[1] + (shot.b[1] - shot.a[1]) * e;
+      var sx = Math.min(Math.max(cx * im.naturalWidth - sw / 2, 0), im.naturalWidth - sw);
+      var sy = Math.min(Math.max(cy * im.naturalHeight - sh / 2, 0), im.naturalHeight - sh);
+      ctx.globalAlpha = alpha; ctx.drawImage(im, sx, sy, sw, sh, 0, 0, w, h); ctx.globalAlpha = 1;
+    }
+    function frame(ms) {
+      var t = ms % LOOP, k = Math.floor(t / SHOT), u = (t % SHOT) / SHOT;
+      draw(pc, pic.width, pic.height, shots[k], u, 1);
+      var into = (t % SHOT) - (SHOT - FADE);
+      if (into > 0) draw(pc, pic.width, pic.height, shots[(k + 1) % shots.length], 0, into / FADE);
+      xc.drawImage(pic, 0, 0, 32, 18);
+      var d = xc.getImageData(0, 0, 32, 18).data;
+      for (var c = 0; c < COLS; c++) for (var ch = 0; ch < 3; ch++) {
+        var tv = (d[c * 4 + ch] + d[(32 + c) * 4 + ch]) / 2;
+        var bv = (d[(17 * 32 + c) * 4 + ch] + d[(16 * 32 + c) * 4 + ch]) / 2;
+        top[c][ch] += (tv - top[c][ch]) * 0.12; bot[c][ch] += (bv - bot[c][ch]) * 0.12;
+      }
+      var W = glow.width, H = glow.height, y0 = H * 332 / 896, y1 = H * 564 / 896, cw = W / COLS;
+      gc.clearRect(0, 0, W, H);
+      // One column of light: full strength at the picture's edge, fading out toward `far`.
+      function beam(col, x, edge, far) {
+        var rgb = col.map(Math.round).join(','), g = gc.createLinearGradient(0, edge, 0, far);
+        g.addColorStop(0, 'rgba(' + rgb + ',1)'); g.addColorStop(.55, 'rgba(' + rgb + ',.45)'); g.addColorStop(1, 'rgba(' + rgb + ',0)');
+        gc.fillStyle = g; gc.fillRect(x, Math.min(edge, far), cw + 1, Math.abs(far - edge));
+      }
+      for (c = 0; c < COLS; c++) {
+        beam(top[c], c * cw, y0, y0 * 0.08);
+        beam(bot[c], c * cw, y1, y1 + (H - y1) * 0.92);
+      }
+      if (bar) {
+        var p = t / LOOP, sec = Math.floor(3724 + p * 16);
+        bar.style.width = (36 + p * 4) + '%';
+        now.textContent = Math.floor(sec / 3600) + ':' + ('0' + Math.floor(sec / 60) % 60).slice(-2) + ':' + ('0' + sec % 60).slice(-2);
+      }
+      return t;
+    }
+    if (still) {
+      root.classList.add('on', 'quiet');
+      shots[0].img.onload = function () { for (var n = 0; n < 60; n++) frame(SHOT * 0.4); };
+      return;
+    }
+    // Off for the first moments of each loop, then switched on, then the controls fade away.
+    whenSeen(root, function () {
+      var t0 = performance.now();
+      (function tick(ms) {
+        var t = frame(ms - t0);
+        root.classList.toggle('on', t > 2600);
+        root.classList.toggle('off', t <= 2600);
+        root.classList.toggle('quiet', t > 5200 && t < LOOP - 900);
+        requestAnimationFrame(tick);
+      })(t0);
+    });
+  });
 </script>
 </body>
 </html>
