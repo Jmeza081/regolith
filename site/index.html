@@ -16,8 +16,8 @@
 <style>
 /* Regolith's own tokens (app/src/main/java/com/regolith/ui/theme/Color.kt and Type.kt).
    One visual world, dark only, as the app is. One red, as the app allows one red per screen.
-   Layout: a hero with the phones, then one section per thing the app does, copy beside its screens,
-   then the design system, then the download. */
+   Layout: a hero with the phones, then one section per thing the app does, copy beside its
+   screens, then the design system, then the download. */
 :root {
   --ground: #0A0A0A;
   --surface: #0F0F0F;
@@ -30,7 +30,6 @@
   --ink-soft: #EDEDED;
   --ink: #FFFFFF;
   --red: #E11B17;
-  --live: #3DDC84;
   --frost: rgba(255,255,255,.06);
   --frost-line: rgba(255,255,255,.18);
   --display: "Michroma", "Space Grotesk", system-ui, sans-serif;
@@ -50,6 +49,7 @@ h1, h2, h3 { margin: 0; font-weight: 400; text-wrap: balance; }
 h2 { font-family: var(--display); font-size: clamp(24px, 3vw, 34px); line-height: 1.3; letter-spacing: .02em; }
 h3 { font-family: var(--text); font-size: 19px; font-weight: 600; }
 p { margin: 0; color: var(--body); max-width: 62ch; }
+code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; color: var(--ink-soft); }
 .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--nav-idle); }
 .rule { width: 56px; height: 3px; background: var(--red); border-radius: 2px; }
 
@@ -62,6 +62,7 @@ p { margin: 0; color: var(--body); max-width: 62ch; }
 .nav ul a { text-decoration: none; color: var(--body); }
 .nav ul a:hover { color: var(--ink); }
 .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 20px; border-radius: 999px; font-weight: 600; font-size: 15px; text-decoration: none; white-space: nowrap; }
+.btn svg { width: 18px; height: 18px; }
 .btn.red { background: var(--red); color: #fff; }
 .btn.ghost { border: 1px solid var(--frost-line); background: var(--frost); color: var(--ink); }
 .nav .btn { height: 36px; padding: 0 16px; font-size: 14px; }
@@ -74,34 +75,30 @@ p { margin: 0; color: var(--body); max-width: 62ch; }
 .wordmark { font-family: var(--display); font-size: clamp(40px, 8vw, 92px); letter-spacing: .14em; line-height: 1; margin-right: -.14em; }
 .hero .tag { font-size: clamp(19px, 2.4vw, 26px); color: var(--ink-soft); max-width: none; }
 .hero .sub { max-width: 54ch; }
-.hero .ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
 .stack { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--metadata); }
 .lineup { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin-top: 40px; flex-wrap: wrap; }
 
-/* Devices */
-/* Galaxy Z Fold frames, not an iPhone's: a tall slab with tight corners and a
-   punch-hole camera for the main (cover) screen, and a near-square tablet with a
-   crease down the middle for the inner screen. Thin, even bezels; buttons on the right. */
-.phone { width: 230px; aspect-ratio: 620 / 1392; border-radius: 16px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 5px; flex: none; position: relative; }
-.phone::before { content: ""; position: absolute; z-index: 2; top: 13px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
-.phone::after { content: ""; position: absolute; right: -4px; top: 22%; width: 3px; height: 16%; border-radius: 0 2px 2px 0; background: #2a2a2a; box-shadow: 0 calc(230px * .5) 0 #2a2a2a; }
-.phone img, .phone .screen-wrap { width: 100%; height: 100%; border-radius: 11px; object-fit: cover; }
+/* Galaxy Z Fold frames. The main screen: a tall slab, tight corners, a punch-hole camera,
+   its buttons on the right edge. The inner screen: the Fold 8's 2448 x 1828 panel, wider than
+   tall when opened, with small corners, a crease down the middle and its camera on the right half. */
+.phone { width: 230px; aspect-ratio: 620 / 1348; border-radius: 16px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 5px; flex: none; position: relative; }
+.phone::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
+.phone::after { content: ""; position: absolute; right: -4px; top: 22%; width: 3px; height: 16%; border-radius: 0 2px 2px 0; background: #2a2a2a; }
+.phone img, .phone .screen-wrap { width: 100%; height: 100%; border-radius: 11px; object-fit: cover; object-position: top; }
 .phone.sm { width: 200px; }
-.phone.sm::after { box-shadow: 0 calc(200px * .5) 0 #2a2a2a; }
-.fold { width: 420px; aspect-ratio: 924 / 1224; border-radius: 12px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 6px; flex: none; position: relative; }
-/* The crease: a faint seam with a soft shadow either side, as the hinge reads under light. */
-.fold::after { content: ""; position: absolute; z-index: 2; top: 6px; bottom: 6px; left: 50%; width: 10px; margin-left: -5px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.035) 45%, rgba(0,0,0,.25) 50%, rgba(255,255,255,.035) 55%, transparent); pointer-events: none; }
-/* The inner screen's camera sits on the right half, near the top. */
-.fold::before { content: ""; position: absolute; z-index: 2; top: 14px; left: 76%; width: 8px; height: 8px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
-.fold img, .fold .screen-wrap { width: 100%; height: 100%; border-radius: 7px; object-fit: cover; }
+.fold { width: 560px; max-width: 100%; aspect-ratio: 2448 / 1828; border-radius: 12px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 6px; flex: none; position: relative; }
+.fold::after { content: ""; position: absolute; z-index: 3; top: 6px; bottom: 6px; left: 50%; width: 10px; margin-left: -5px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.035) 45%, rgba(0,0,0,.25) 50%, rgba(255,255,255,.035) 55%, transparent); pointer-events: none; }
+.fold::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 76%; width: 8px; height: 8px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
+.fold .screen-wrap { width: 100%; height: 100%; border-radius: 7px; }
 .screen-wrap { overflow: hidden; position: relative; background: var(--ground); }
-.caption { font-size: 13px; color: var(--metadata); text-align: center; margin-top: 12px; }
+.caption { font-size: 13px; color: var(--metadata); text-align: center; margin-top: 12px; max-width: 30ch; }
+.caption b { color: var(--body); font-weight: 600; }
 figure { margin: 0; display: flex; flex-direction: column; align-items: center; }
-.tagline { display: inline-flex; gap: 6px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--body); border: 1px solid var(--frost-line); border-radius: 999px; padding: 4px 10px; margin-top: 8px; }
 
 /* Sections */
 section.feature { padding: 88px 0; border-top: 1px solid var(--hairline); }
-.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 56px; align-items: center; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 56px; align-items: center; }
 .split.flip > .copy { order: 2; }
 .copy { display: flex; flex-direction: column; gap: 18px; }
 .points { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 14px; }
@@ -109,19 +106,19 @@ section.feature { padding: 88px 0; border-top: 1px solid var(--hairline); }
 .points li strong { color: var(--ink); font-weight: 600; }
 .points svg { width: 20px; height: 20px; margin-top: 3px; color: var(--ink-soft); }
 .shots { display: flex; gap: 18px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
+.shots.col { flex-direction: column; align-items: center; gap: 36px; }
 @media (max-width: 900px) {
   .split { grid-template-columns: 1fr; gap: 40px; }
   .split.flip > .copy { order: 0; }
-  .fold { width: min(420px, 100%); }
 }
 @media (max-width: 520px) { .phone { width: 46%; min-width: 150px; } }
 
-/* Drawn screens: at real dp (1dp = 1px), scaled into their frames. */
-.dp { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--ground); color: var(--ink); font-family: var(--text); }
-.dp.cover { width: 412px; height: 925px; }
-.dp.inner { width: 739px; height: 979px; }
-.d-status { height: 30px; }
-.d-bar { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 18px; height: 60px; }
+/* Drawn screens: laid out at the screen's real size in dp (1dp = 1px), scaled into their frames.
+   No status bar: the page shows the app, not the phone's clock. */
+.dp { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--ground); color: var(--ink); font-family: var(--text); overflow: hidden; }
+.dp.cover { width: 412px; height: 896px; }
+.dp.inner { width: 979px; height: 731px; }
+.d-bar { display: flex; align-items: center; gap: 4px; padding: 10px 8px 6px 18px; height: 66px; }
 .d-title { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .d-title b { font-family: var(--display); font-weight: 400; font-size: 15px; letter-spacing: .02em; }
 .d-title span { font-size: 12px; color: var(--metadata); }
@@ -129,45 +126,155 @@ section.feature { padding: 88px 0; border-top: 1px solid var(--hairline); }
 .d-act svg { width: 19px; height: 19px; }
 .d-chips { display: flex; gap: 6px; padding: 8px 18px 12px; align-items: center; white-space: nowrap; overflow: hidden; }
 .d-chip { height: 34px; padding: 0 12px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft); background: var(--frost); border: 1px solid var(--frost-line); flex: none; }
+.d-chip svg { width: 14px; height: 14px; }
 .d-chip.on { background: #fff; border-color: #fff; color: var(--ground); font-weight: 700; }
 .d-chip.red { background: var(--red); border-color: var(--red); color: #fff; }
 .d-chip i { font-style: normal; min-width: 18px; height: 18px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 10px; background: rgba(237,237,237,.16); padding: 0 5px; }
+.d-chip.on i { background: rgba(10,10,10,.16); }
 .d-sep { width: 1px; height: 22px; background: var(--frost-line); margin: 0 4px; flex: none; }
 .d-wall { padding: 0 18px; display: flex; flex-direction: column; gap: 10px; }
 .d-head { font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--body); padding-top: 8px; }
 .d-grid { display: grid; gap: 12px 8px; }
 .d-grid.c3 { grid-template-columns: repeat(3, 1fr); }
 .d-grid.c5 { grid-template-columns: repeat(5, 1fr); }
+.d-grid.c7 { grid-template-columns: repeat(7, 1fr); }
 .d-poster { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.d-art { aspect-ratio: 2 / 3; border-radius: 12px; border: 1px solid var(--hairline); position: relative; overflow: hidden; }
-.d-art .badge { position: absolute; left: 6px; top: 6px; font-size: 10px; font-weight: 600; background: rgba(0,0,0,.72); border-radius: 999px; padding: 2px 6px; }
-.d-art .res { position: absolute; left: 6px; bottom: 8px; font-size: 10px; font-weight: 600; background: rgba(0,0,0,.72); border-radius: 999px; padding: 2px 6px; }
-.d-art.deck { background: #111; }
-.d-art.deck::before, .d-art.deck::after { content: ""; position: absolute; inset: 16% 18% 22% 10%; border-radius: 6px; transform: rotate(-7deg); border: 1px solid #333; background: linear-gradient(160deg, #3b3f46, #1a1c20); }
-.d-art.deck::after { inset: 20% 10% 16% 20%; transform: rotate(6deg); background: linear-gradient(160deg, #4a3d33, #1f1914); }
+.d-art { aspect-ratio: 2 / 3; border-radius: 12px; position: relative; overflow: hidden; background: #1a1a1a center / cover no-repeat; }
+.d-art .badge, .d-art .res { position: absolute; z-index: 2; font-size: 10px; font-weight: 600; background: rgba(0,0,0,.72); border-radius: 999px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; }
+.d-art .badge { left: 6px; top: 6px; }
+.d-art .badge svg { width: 10px; height: 10px; }
+.d-art .res { left: 6px; bottom: 8px; }
+.d-art.deck { background: transparent; overflow: visible; }
+.d-art.deck i { position: absolute; border-radius: 8px; background: center / cover no-repeat; border: 2px solid #0A0A0A; box-shadow: 0 6px 14px rgba(0,0,0,.5); }
+.d-art.deck i:nth-of-type(1) { inset: 8% 22% 18% 4%; transform: rotate(-8deg); }
+.d-art.deck i:nth-of-type(2) { inset: 14% 4% 10% 22%; transform: rotate(6deg); }
 .d-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .d-meta { font-size: 11px; color: var(--metadata); }
-.d-pill { position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px; width: 360px; height: 62px; border-radius: 999px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.16); display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; justify-items: center; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--nav-idle); }
+/* The nav pill and the gesture handle, where the app draws them on the main screen. */
+.d-pill { position: absolute; z-index: 4; left: 50%; margin-left: -187px; bottom: 33px; width: 375px; height: 61px; border-radius: 999px; background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.16); display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; justify-items: center; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--nav-idle); }
 .d-pill span { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.d-pill span i { width: 18px; height: 18px; border-radius: 5px; border: 2px solid currentColor; display: block; }
+.d-pill svg { width: 19px; height: 19px; }
 .d-pill span.on { color: #fff; }
-.d-rail { position: absolute; left: 10px; top: 150px; width: 64px; padding: 12px 0; border-radius: 999px; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.16); display: flex; flex-direction: column; gap: 18px; align-items: center; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; color: var(--nav-idle); }
+.d-handle { position: absolute; z-index: 4; left: 50%; margin-left: -53px; bottom: 12px; width: 106px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.8); }
+/* The rail on the inner screen: centred down the left edge, as the app draws it. */
+.d-rail { position: absolute; z-index: 4; left: 12px; top: 50%; transform: translateY(-50%); width: 64px; padding: 14px 0; border-radius: 999px; background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.16); display: flex; flex-direction: column; gap: 16px; align-items: center; font-size: 8px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--nav-idle); }
 .d-rail span { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.d-rail span i { width: 16px; height: 16px; border-radius: 5px; border: 2px solid currentColor; display: block; }
+.d-rail svg { width: 17px; height: 17px; }
 .d-rail span.on { color: #fff; }
-.d-field { margin: 8px 18px 12px; height: 44px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hairline); display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 15px; }
-.d-field .caret { width: 2px; height: 18px; background: var(--red); }
+.d-field { margin: 12px 18px; height: 44px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hairline); display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 15px; position: relative; }
+.d-field svg { width: 18px; height: 18px; color: var(--body); flex: none; }
+.d-field .caret { width: 2px; height: 18px; background: var(--red); margin-left: -8px; }
+.d-field .cancel { margin-left: auto; font-size: 14px; font-weight: 600; }
 .d-hit { display: flex; gap: 12px; align-items: flex-start; }
-.d-thumb { width: 82px; aspect-ratio: 16 / 9; border-radius: 10px; flex: none; border: 1px solid var(--hairline); }
+.d-thumb { width: 82px; aspect-ratio: 16 / 9; border-radius: 10px; flex: none; background: center / cover no-repeat; }
 .d-lines { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .d-p { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.d-m { font-size: 11px; color: var(--metadata); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-m { font-size: 11px; color: var(--metadata); }
 .d-link { align-self: flex-start; margin-top: 4px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--frost); border: 1px solid var(--frost-line); display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-soft); }
 .d-link svg { width: 12px; height: 12px; }
 .d-tag { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--body); background: var(--lifted); border-radius: 999px; padding: 1px 6px; }
 mark { background: none; color: var(--red); }
 .d-shelf { display: flex; gap: 8px; }
 .d-shelf .d-poster { width: 92px; flex: none; }
+.cw { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cw-card { display: flex; flex-direction: column; gap: 4px; }
+.cw-art { aspect-ratio: 16 / 9; border-radius: 12px; background: center / cover no-repeat; position: relative; overflow: hidden; }
+.cw-left { position: absolute; left: 8px; top: 8px; font-size: 10px; font-weight: 600; background: rgba(0,0,0,.72); border-radius: 999px; padding: 2px 8px; }
+.cw-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.25); }
+.cw-bar i { display: block; height: 100%; background: var(--red); }
+.finger { position: absolute; z-index: 6; width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.28); border: 2px solid rgba(255,255,255,.75); box-shadow: 0 0 0 8px rgba(255,255,255,.08); opacity: 0; pointer-events: none; }
+
+/* ── Animation 1: the chip row tucks away as the wall scrolls down, and the pill with it ── */
+.cs-chips { overflow: hidden; max-height: 54px; }
+.cs-clip { position: absolute; top: 120px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.cs .cs-wall { padding-top: 0; }
+.cs-finger { left: 210px; top: 640px; }
+.cs .cs-chips { animation: cs-chips 8s infinite; }
+.cs .cs-clip { animation: cs-clip 8s infinite; }
+.cs .cs-wall { animation: cs-wall 8s infinite; }
+.cs .cs-pill { animation: cs-pill 8s infinite; }
+.cs .cs-finger { animation: cs-finger 8s infinite; }
+@keyframes cs-chips { 0%, 18% { max-height: 54px; opacity: 1; } 28%, 60% { max-height: 0; opacity: 0; } 70%, 100% { max-height: 54px; opacity: 1; } }
+@keyframes cs-clip { 0%, 18% { top: 120px; } 28%, 60% { top: 66px; } 70%, 100% { top: 120px; } }
+@keyframes cs-wall { 0%, 16% { transform: translateY(0); } 40%, 56% { transform: translateY(-330px); } 72%, 100% { transform: translateY(0); } }
+@keyframes cs-pill { 0%, 20% { transform: translateY(0); opacity: 1; } 28%, 60% { transform: translateY(120px); opacity: 0; } 68%, 100% { transform: translateY(0); opacity: 1; } }
+@keyframes cs-finger { 0%, 12% { opacity: 0; transform: translateY(0); } 15% { opacity: 1; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-330px); } 44%, 52% { opacity: 0; transform: translateY(-330px); }
+  54% { opacity: 0; transform: translateY(-280px); } 57% { opacity: 1; transform: translateY(-280px); } 72% { opacity: 1; transform: translateY(40px); } 76%, 100% { opacity: 0; transform: translateY(40px); } }
+
+/* ── Animation 2: swipe up off the nav pill, and it becomes Search ── */
+.sg-lib, .sg-search { position: absolute; inset: 0; }
+.sg-search .sg-ph { color: var(--metadata); position: absolute; left: 44px; }
+.sg-search .sg-q { position: relative; }
+.sg-kb { position: absolute; left: 0; right: 0; bottom: 0; height: 270px; background: #1b1b1b; border-top: 1px solid var(--raised); display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 22px; }
+.kb-row { display: flex; gap: 6px; }
+.kb-row span { width: 34px; height: 44px; border-radius: 6px; background: #2c2c2c; display: grid; place-items: center; font-size: 17px; color: #e6e6e6; }
+.kb-row span.space { width: 200px; font-size: 13px; color: var(--body); }
+.sg-capsule { position: absolute; z-index: 5; left: 56px; top: 790px; width: 300px; height: 56px; border-radius: 999px; background: #151515; border: 1px solid var(--frost-line); display: flex; align-items: center; gap: 10px; padding: 0 18px; font-size: 14px; font-weight: 500; color: var(--body); opacity: 0; }
+.sg-capsule .sg-glass { width: 18px; height: 18px; flex: none; }
+.sg-capsule span { position: absolute; left: 46px; white-space: nowrap; }
+.sg-ring { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); overflow: visible; }
+.sg-ring rect { width: calc(100% - 2px); height: calc(100% - 2px); fill: none; stroke: #fff; stroke-width: 2; stroke-dasharray: 100; stroke-dashoffset: 100; vector-effect: non-scaling-stroke; }
+.sg-finger { left: 183px; top: 800px; }
+/* Resting frame (and the frame shown with reduced motion): the results. */
+.sg .sg-lib { opacity: 0; }
+.sg .sg-l1, .sg .sg-ph { opacity: 0; }
+.sg .sg-lib { animation: sg-lib 9s infinite; }
+.sg .sg-pill { animation: sg-pill 9s infinite; }
+.sg .sg-search { animation: sg-search 9s infinite; }
+.sg .sg-kb { animation: sg-kb 9s infinite; }
+.sg .sg-ph { animation: sg-ph 9s infinite; }
+.sg .sg-q, .sg .sg-results { animation: sg-q 9s infinite; }
+.sg .sg-capsule { animation: sg-capsule 9s infinite; }
+.sg .sg-ring rect { animation: sg-ring 9s infinite; }
+.sg .sg-l1 { animation: sg-l1 9s infinite; }
+.sg .sg-l2 { animation: sg-l2 9s infinite; }
+.sg .sg-finger { animation: sg-finger 9s infinite; }
+@keyframes sg-lib { 0%, 50% { opacity: 1; } 56%, 94% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes sg-pill { 0%, 12% { opacity: 1; transform: scale(1); } 18%, 96% { opacity: 0; transform: scale(.94); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes sg-search { 0%, 50% { opacity: 0; } 56%, 94% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sg-kb { 0%, 52% { transform: translateY(280px); } 60%, 94% { transform: translateY(0); } 100% { transform: translateY(280px); } }
+@keyframes sg-ph { 0%, 54% { opacity: 1; } 62%, 100% { opacity: 0; } }
+@keyframes sg-q { 0%, 62% { opacity: 0; } 66%, 94% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sg-capsule {
+  0%, 12% { opacity: 0; top: 806px; left: 56px; width: 300px; height: 52px; }
+  16% { opacity: 1; top: 790px; left: 56px; width: 300px; height: 52px; }
+  40% { opacity: 1; top: 676px; left: 26px; width: 360px; height: 56px; transform: scale(1); }
+  43% { transform: scale(1.04); }
+  46% { opacity: 1; top: 676px; left: 26px; width: 360px; height: 56px; transform: scale(1); }
+  54% { opacity: 1; top: 12px; left: 18px; width: 300px; height: 44px; }
+  57%, 100% { opacity: 0; top: 12px; left: 18px; width: 300px; height: 44px; } }
+@keyframes sg-ring { 0%, 16% { stroke-dashoffset: 100; } 40%, 54% { stroke-dashoffset: 0; } 57%, 100% { stroke-dashoffset: 100; } }
+@keyframes sg-l1 { 0%, 12% { opacity: 0; } 16%, 39% { opacity: 1; } 41%, 100% { opacity: 0; } }
+@keyframes sg-l2 { 0%, 40% { opacity: 0; } 42%, 50% { opacity: 1; } 54%, 100% { opacity: 0; } }
+@keyframes sg-finger { 0%, 9% { opacity: 0; transform: translateY(0); } 13% { opacity: 1; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-120px); } 46% { opacity: 1; transform: translateY(-120px); } 50%, 100% { opacity: 0; transform: translateY(-120px); } }
+
+/* ── Animation 3: pinch the inner screen's wall from five posters across to seven, and back ── */
+.pz-clip { position: absolute; left: 96px; right: 18px; top: 120px; bottom: 0; overflow: hidden; }
+.pz-zoom { transform-origin: 0 0; display: flex; flex-direction: column; gap: 10px; }
+.pz-pill { position: absolute; z-index: 5; left: 50%; margin-left: -60px; top: 132px; width: 120px; height: 36px; border-radius: 999px; background: rgba(0,0,0,.72); border: 1px solid rgba(255,255,255,.16); display: grid; place-items: center; font-size: 14px; font-weight: 600; opacity: 0; }
+.pz-pill span { grid-area: 1 / 1; }
+.pz-a { left: 380px; top: 330px; }
+.pz-b { left: 660px; top: 520px; }
+.pz .pz-zoom { transform: scale(1.4); animation: pz-zoom 8s infinite; }
+.pz .n7 { opacity: 0; }
+.pz .pz-pill { animation: pz-pill 8s infinite; }
+.pz .n5 { animation: pz-n5 8s infinite; }
+.pz .n7 { animation: pz-n7 8s infinite; }
+.pz .pz-a { animation: pz-a 8s infinite; }
+.pz .pz-b { animation: pz-b 8s infinite; }
+@keyframes pz-zoom { 0%, 18% { transform: scale(1.4); } 42%, 62% { transform: scale(1); } 86%, 100% { transform: scale(1.4); } }
+@keyframes pz-pill { 0%, 18% { opacity: 0; } 22%, 46% { opacity: 1; } 52%, 62% { opacity: 0; } 66%, 90% { opacity: 1; } 96%, 100% { opacity: 0; } }
+@keyframes pz-n5 { 0%, 30% { opacity: 1; } 34%, 74% { opacity: 0; } 78%, 100% { opacity: 1; } }
+@keyframes pz-n7 { 0%, 30% { opacity: 0; } 34%, 74% { opacity: 1; } 78%, 100% { opacity: 0; } }
+@keyframes pz-a { 0%, 16% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; transform: translate(0, 0); } 42% { opacity: 1; transform: translate(110px, 80px); } 46%, 62% { opacity: 0; transform: translate(110px, 80px); }
+  66% { opacity: 1; transform: translate(110px, 80px); } 86% { opacity: 1; transform: translate(0, 0); } 90%, 100% { opacity: 0; transform: translate(0, 0); } }
+@keyframes pz-b { 0%, 16% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; transform: translate(0, 0); } 42% { opacity: 1; transform: translate(-110px, -80px); } 46%, 62% { opacity: 0; transform: translate(-110px, -80px); }
+  66% { opacity: 1; transform: translate(-110px, -80px); } 86% { opacity: 1; transform: translate(0, 0); } 90%, 100% { opacity: 0; transform: translate(0, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cs *, .sg *, .pz * { animation: none !important; }
+  .pz .n7 { opacity: 0; } .pz .pz-pill { opacity: 0; }
+}
 
 /* Feature cards */
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
@@ -183,7 +290,7 @@ mark { background: none; color: var(--red); }
 .sw .chipc { height: 76px; border-bottom: 1px solid var(--hairline); }
 .sw div.t { padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
 .sw b { font-size: 14px; font-weight: 600; }
-.sw code { font-size: 12px; color: var(--body); font-family: ui-monospace, Menlo, monospace; }
+.sw code { font-size: 12px; color: var(--body); }
 .sw span { font-size: 12px; color: var(--metadata); line-height: 1.4; }
 @media (max-width: 900px) { .swatches { grid-template-columns: repeat(2, 1fr); } }
 .type { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
@@ -202,13 +309,15 @@ mark { background: none; color: var(--red); }
 .cta { padding: 96px 0; border-top: 1px solid var(--hairline); text-align: center; }
 .cta .wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; }
 footer { border-top: 1px solid var(--hairline); padding: 28px 0 40px; font-size: 14px; color: var(--metadata); }
-footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; }
+footer .wrap { display: flex; flex-direction: column; gap: 10px; }
+footer .row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; }
 footer a { color: var(--body); }
+footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(--metadata); }
 </style>
 </head>
 <body>
 
-<!-- Inline icon set: Lucide-style strokes, as the app uses (com.composables:icons-lucide-android). -->
+<!-- Inline icons: Lucide strokes, the set the app uses (com.composables:icons-lucide-android). -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
@@ -227,7 +336,10 @@ footer a { color: var(--body); }
     <symbol id="i-bookmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4z"/></symbol>
     <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></symbol>
     <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4M3 12h18"/></symbol>
-    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.5 20.2 7.2v9.6L12 21.5 3.8 16.8V7.2z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+    <symbol id="i-pinch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l6 6M20 20l-6-6M4 4h5M4 4v5M20 20h-5M20 20v-5"/></symbol>
   </defs>
 </svg>
 
@@ -261,7 +373,7 @@ footer a { color: var(--body); }
     <h1 class="tag">Your SMB share, as a video library.</h1>
     <p class="sub">A native Android video player for the files on your own network share. Posters, chapters, resume points and thumbnail scrubbing, streamed in place. Nothing is copied off the share, and nothing leaves your network.</p>
     <div class="ctas">
-      <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest"><svg width="18" height="18"><use href="#i-down"/></svg>Download the APK</a>
+      <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest"><svg><use href="#i-down"/></svg>Download the APK</a>
       <a class="btn ghost" href="https://github.com/Jmeza081/regolith">View on GitHub</a>
     </div>
     <div class="stack">Android 14+ · Kotlin · Jetpack Compose · Media3</div>
@@ -296,7 +408,7 @@ footer a { color: var(--body); }
       <p>Each folder is a poster on the wall: its own <code>poster.jpg</code>, or a fanned deck of frames from the videos inside. Open one and it becomes a page of its own, lit by its poster, with its figures and Play all.</p>
       <ul class="points">
         <li><svg><use href="#i-shuffle"/></svg><span><strong>Mixes.</strong> Mark a grab-bag folder like <em>Assorted</em> as a mix, and the wall splits into Collections and Mixes. The mark is a hidden file on the share, so it travels with the folder.</span></li>
-        <li><svg><use href="#i-play"/></svg><span><strong>One row of chips.</strong> Videos · Moments · Images, then All · Collections · Mixes, and the row slides away as you scroll down the wall.</span></li>
+        <li><svg><use href="#i-play"/></svg><span><strong>One row of chips that gets out of the way.</strong> Scroll down the wall and the chips and the nav pill slide away; scroll up a little and they're back.</span></li>
         <li><svg><use href="#i-sort"/></svg><span><strong>Sort and view.</strong> Name, date added, size, runtime or resolution, as posters or rows, with an A to Z rail on long walls.</span></li>
       </ul>
     </div>
@@ -306,32 +418,21 @@ footer a { color: var(--body); }
         <figcaption class="caption">Main screen · the Library</figcaption>
       </figure>
       <figure>
-        <div class="phone"><div class="screen-wrap" data-scale="cover">
-          <div class="dp cover" aria-hidden="true">
-            <div class="d-status"></div>
-            <div class="d-bar"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b>CONCERTS</b><span>18 titles</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
-            <div class="d-chips"><span class="d-chip on">All</span><span class="d-chip">Collections <i>6</i></span><span class="d-chip">Mixes <i>3</i></span></div>
-            <div class="d-wall">
-              <div class="d-head">Collections</div>
-              <div class="d-grid c3">
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#5a3a2b,#1a110c)"><span class="badge">14</span><span class="res">4K</span></div><div class="d-name">Live at The Echo</div><div class="d-meta">14 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b4a5a,#0c151a)"><span class="badge">22</span><span class="res">1080p</span></div><div class="d-name">Spring Tour</div><div class="d-meta">22 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#4a4a2b,#15150c)"><span class="badge">31</span><span class="res">1080p</span></div><div class="d-name">Band Practice</div><div class="d-meta">31 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#3a2b5a,#100c1a)"><span class="badge">9</span><span class="res">1080p</span></div><div class="d-name">Fall Showcase</div><div class="d-meta">9 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#5a2b3e,#1a0c11)"><span class="badge">6</span><span class="res">4K</span></div><div class="d-name">Soundcheck</div><div class="d-meta">6 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b5a44,#0c1a14)"><span class="badge">8</span><span class="res">1080p</span></div><div class="d-name">Acoustic Set</div><div class="d-meta">8 videos</div></div>
-              </div>
-              <div class="d-head">Mixes</div>
-              <div class="d-grid c3">
-                <div class="d-poster"><div class="d-art deck"><span class="badge">27</span></div><div class="d-name">Assorted</div><div class="d-meta">27 videos</div></div>
-                <div class="d-poster"><div class="d-art deck"><span class="badge">63</span></div><div class="d-name">Phone Dumps</div><div class="d-meta">63 videos</div></div>
-                <div class="d-poster"><div class="d-art deck"><span class="badge">19</span></div><div class="d-name">Misc 2024</div><div class="d-meta">19 videos</div></div>
-              </div>
-            </div>
-            <div class="d-pill"><span><i></i>Home</span><span class="on"><i></i>Library</span><span><i></i>Browse</span><span><i></i>Shorts</span><span><i></i>Settings</span></div>
-          </div>
-        </div></div>
-        <figcaption class="caption">Main screen · Collections and Mixes</figcaption>
+        <div class="phone"><div class="screen-wrap" data-scale>
+<div class="dp cover cs" aria-hidden="true">
+  <div class="d-bar"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b>CONCERTS</b><span>18 titles</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="cs-chips"><div class="d-chips"><span class="d-chip on">All</span><span class="d-chip">Collections <i>6</i></span><span class="d-chip">Mixes <i>3</i></span></div></div>
+  <div class="cs-clip"><div class="d-wall cs-wall">
+    <div class="d-head">Collections</div>
+    <div class="d-grid c3"><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/274.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>14</span><span class="res">4K</span></div><div class="d-name">Live at The Echo</div><div class="d-meta">14 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/257.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>22</span><span class="res">1080p</span></div><div class="d-name">Spring Tour</div><div class="d-meta">22 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/39.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>31</span><span class="res">1080p</span></div><div class="d-name">Band Practice</div><div class="d-meta">31 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/167.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>9</span><span class="res">1080p</span></div><div class="d-name">Fall Showcase</div><div class="d-meta">9 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/137.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Soundcheck</div><div class="d-meta">6 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/129.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>8</span><span class="res">1080p</span></div><div class="d-name">Acoustic Set</div><div class="d-meta">8 videos</div></div></div>
+    <div class="d-head">Mixes</div>
+    <div class="d-grid c3"><div class="d-poster"><div class="d-art deck"><i style="background-image:url(images/photos/65.jpg)"></i><i style="background-image:url(images/photos/225.jpg)"></i><span class="badge"><svg><use href="#i-folder"/></svg>27</span></div><div class="d-name">Assorted</div><div class="d-meta">27 videos</div></div><div class="d-poster"><div class="d-art deck"><i style="background-image:url(images/photos/100.jpg)"></i><i style="background-image:url(images/photos/76.jpg)"></i><span class="badge"><svg><use href="#i-folder"/></svg>63</span></div><div class="d-name">Phone Dumps</div><div class="d-meta">63 videos</div></div><div class="d-poster"><div class="d-art deck"><i style="background-image:url(images/photos/204.jpg)"></i><i style="background-image:url(images/photos/152.jpg)"></i><span class="badge"><svg><use href="#i-folder"/></svg>19</span></div><div class="d-name">Misc 2024</div><div class="d-meta">19 videos</div></div></div>
+  </div></div>
+  <div class="finger cs-finger"></div>
+  <div class="d-pill cs-pill"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+  <div class="d-handle"></div>
+</div></div></div>
+        <figcaption class="caption"><b>Animated</b> · Collections and Mixes; the chips tuck away as you scroll</figcaption>
       </figure>
     </div>
   </div>
@@ -341,35 +442,50 @@ footer a { color: var(--body); }
   <div class="wrap split flip">
     <div class="copy">
       <div class="eyebrow">Home and Search</div>
-      <h2>Pick up where you were. Find anything as you type.</h2>
-      <p>Home keeps Continue watching, Newly added, what's on this device and every moment you have named. Search reads titles, filenames, folders and those moments, all from an index on the phone, so results arrive even while a scan is still walking the share.</p>
+      <h2>Swipe up off the nav, and you're searching.</h2>
+      <p>From any tab, push up off the nav pill. Its tabs fold away and it rises with your thumb as a search bar, its rim filling as you go; let go past the line and it flies into Search's field with the keyboard up. Search reads titles, filenames, folders and named moments from an index on the phone, so results arrive even while a scan is still walking the share.</p>
       <ul class="points">
         <li><svg><use href="#i-folder"/></svg><span><strong>Collections first.</strong> Folders that match sit at the top as posters, above the keyboard where you can see them.</span></li>
         <li><svg><use href="#i-folder"/></svg><span><strong>"In Collection ›" on every video.</strong> One tap from a video to the collection it lives in, with the match marked in red.</span></li>
-        <li><svg><use href="#i-bookmark"/></svg><span><strong>Moments.</strong> Every chapter you have named is searchable and opens the film right there.</span></li>
+        <li><svg><use href="#i-bookmark"/></svg><span><strong>Home picks up where you were.</strong> Continue watching, Newly added, what's on this device, and every moment you have named.</span></li>
       </ul>
     </div>
     <div class="shots">
       <figure>
-        <div class="phone"><div class="screen-wrap" data-scale="cover">
-          <div class="dp cover" aria-hidden="true">
-            <div class="d-status"></div>
-            <div class="d-field"><svg width="18" height="18" style="color:var(--body)"><use href="#i-search"/></svg>echo<span class="caret"></span><span style="margin-left:auto;font-size:14px;font-weight:600">Cancel</span></div>
-            <div class="d-chips"><span class="d-chip red">All</span><span class="d-chip">Unwatched</span><span class="d-chip">4K</span><span class="d-chip">On device</span></div>
-            <div class="d-wall">
-              <div class="d-head">Collections · 2</div>
-              <div class="d-shelf">
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#5a3a2b,#1a110c)"><span class="badge">14</span></div><div class="d-name">Live at The <mark>Echo</mark></div><div class="d-meta">14 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b4a5a,#0c151a)"><span class="badge">8</span></div><div class="d-name"><mark>Echo</mark> Park Rehearsals</div><div class="d-meta">8 videos</div></div>
-              </div>
-              <div class="d-head" style="padding-top:14px">7 videos</div>
-              <div class="d-hit"><div class="d-thumb" style="background:linear-gradient(150deg,#4d3a2f,#17110d)"></div><div class="d-lines"><div class="d-p"><mark>Echo</mark> Park Rehearsal 03</div><div class="d-m">1080p · 52m 18s</div><span class="d-link"><svg><use href="#i-folder"/></svg><mark>Echo</mark> Park Rehearsals ›</span></div></div>
-              <div class="d-hit"><div class="d-thumb" style="background:linear-gradient(150deg,#2f3d4d,#0d1217)"></div><div class="d-lines"><div class="d-p">Opening Set</div><div class="d-m">1080p · 41m 03s</div><span class="d-link"><svg><use href="#i-folder"/></svg>Live at The <mark>Echo</mark> ›</span></div></div>
-              <div class="d-hit"><div class="d-thumb" style="background:linear-gradient(150deg,#3d4d2f,#12170d)"></div><div class="d-lines"><div class="d-p"><mark>echo</mark>_soundcheck.mov</div><div class="d-m">720p · 84 MB</div><span class="d-link"><svg><use href="#i-folder"/></svg>Assorted <span class="d-tag">MIX</span> ›</span></div></div>
-            </div>
-          </div>
-        </div></div>
-        <figcaption class="caption">Main screen · Search</figcaption>
+        <div class="phone"><div class="screen-wrap" data-scale>
+<div class="dp cover sg" aria-hidden="true">
+  <div class="sg-lib">
+    <div class="d-bar"><div class="d-title"><b>MEDIA</b><span>Tower · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+    <div class="d-chips"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span></div>
+    <div class="d-wall"><div class="d-grid c3"><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/274.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/43.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/129.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/238.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/177.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/49.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/76.jpg)"><span class="res">1080p</span></div><div class="d-name">Kids</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/17.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/250.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div></div></div>
+    <div class="d-pill sg-pill"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+  </div>
+  <div class="sg-search">
+    <div class="d-field"><svg><use href="#i-search"/></svg><span class="sg-ph">Titles, filenames, folders</span><span class="sg-q">echo</span><span class="caret"></span><span class="cancel">Cancel</span></div>
+    <div class="sg-results">
+      <div class="d-chips"><span class="d-chip red">All</span><span class="d-chip">Unwatched</span><span class="d-chip">4K</span><span class="d-chip">On device</span></div>
+      <div class="d-wall">
+        <div class="d-head">Collections · 2</div>
+        <div class="d-shelf">
+          <div class="d-poster"><div class="d-art" style="background-image:url(images/photos/274.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>14</span></div><div class="d-name">Live at The <mark>Echo</mark></div><div class="d-meta">14 videos</div></div>
+          <div class="d-poster"><div class="d-art" style="background-image:url(images/photos/249.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>8</span></div><div class="d-name"><mark>Echo</mark> Park Rehearsals</div><div class="d-meta">8 videos</div></div>
+        </div>
+        <div class="d-head" style="padding-top:12px">7 videos</div>
+        <div class="d-hit"><div class="d-thumb" style="background-image:url(images/photos/249.jpg)"></div><div class="d-lines"><div class="d-p"><mark>Echo</mark> Park Rehearsal 03</div><div class="d-m">1080p · 52m 18s</div><span class="d-link"><svg><use href="#i-folder"/></svg><mark>Echo</mark> Park Rehearsals ›</span></div></div>
+        <div class="d-hit"><div class="d-thumb" style="background-image:url(images/photos/274.jpg)"></div><div class="d-lines"><div class="d-p">Opening Set</div><div class="d-m">4K · 41m 03s</div><span class="d-link"><svg><use href="#i-folder"/></svg>Live at The <mark>Echo</mark> ›</span></div></div>
+      </div>
+    </div>
+    <div class="sg-kb"><div class="kb-row"><span>q</span><span>w</span><span>e</span><span>r</span><span>t</span><span>y</span><span>u</span><span>i</span><span>o</span><span>p</span></div><div class="kb-row"><span>a</span><span>s</span><span>d</span><span>f</span><span>g</span><span>h</span><span>j</span><span>k</span><span>l</span></div><div class="kb-row"><span>z</span><span>x</span><span>c</span><span>v</span><span>b</span><span>n</span><span>m</span></div><div class="kb-row"><span class="space">space</span></div></div>
+  </div>
+  <div class="sg-capsule">
+    <svg class="sg-ring" preserveAspectRatio="none"><rect x="1" y="1" rx="29" pathLength="100"/></svg>
+    <svg class="sg-glass"><use href="#i-search"/></svg>
+    <span class="sg-l1">Swipe up to search</span><span class="sg-l2">Let go to search</span>
+  </div>
+  <div class="finger sg-finger"></div>
+  <div class="d-handle"></div>
+</div></div></div>
+        <figcaption class="caption"><b>Animated</b> · swipe up off the nav pill to search</figcaption>
       </figure>
     </div>
   </div>
@@ -449,50 +565,49 @@ footer a { color: var(--body); }
 <section class="feature" id="fold">
   <div class="wrap split flip">
     <div class="copy">
-      <div class="eyebrow">Built for a foldable</div>
+      <div class="eyebrow">Built for the Galaxy Z Fold</div>
       <h2>Opens out on the inner screen.</h2>
-      <p>Unfolded, Regolith gets layouts of its own: a nav rail that retracts to a thin spine when you leave it alone, five posters across, and a page that opens beside the wall instead of over it. The main screen keeps the floating nav pill, which tucks away while you scroll.</p>
+      <p>Unfolded, Regolith gets layouts of its own: a nav rail down the side that retracts to a thin spine when you leave it alone, more posters across, and a page that opens beside the wall instead of over it.</p>
       <ul class="points">
-        <li><svg><use href="#i-check"/></svg><span><strong>Posters per row</strong> on the inner screen are yours to set, four to seven, or pinch the wall.</span></li>
-        <li><svg><use href="#i-check"/></svg><span><strong>The mini player</strong> becomes a card in the corner, and the film keeps playing as you browse.</span></li>
+        <li><svg><use href="#i-pinch"/></svg><span><strong>Pinch the wall.</strong> Four to seven posters across, pinched in place; an "N across" pill says where you are.</span></li>
+        <li><svg><use href="#i-phone"/></svg><span><strong>The mini player</strong> becomes a card in the corner, and the film keeps playing as you browse.</span></li>
       </ul>
     </div>
-    <div class="shots" style="flex-direction:column;align-items:center">
+    <div class="shots col">
       <figure>
-        <div class="fold"><img src="images/foldable.jpg" alt="Home on the Fold's inner screen: the nav rail, Continue watching, Newly added and Moments"></div>
-        <figcaption class="caption">Inner screen · Home with the nav rail</figcaption>
+        <div class="fold"><div class="screen-wrap" data-scale>
+<div class="dp inner pz" aria-hidden="true">
+  <div class="d-bar" style="padding-left:96px"><div class="d-title"><b>MEDIA</b><span>Tower · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="d-chips" style="padding-left:96px"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span><span class="d-sep"></span><span class="d-chip on">All</span><span class="d-chip">Collections <i>14</i></span><span class="d-chip">Mixes <i>3</i></span></div>
+  <div class="pz-clip"><div class="pz-zoom">
+    <div class="d-head">Collections</div>
+    <div class="d-grid c7"><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/274.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>6</span><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/43.jpg)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/129.jpg)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/238.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>12</span><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/177.jpg)"><span class="badge"><svg><use href="#i-folder"/></svg>4</span><span class="res">4K</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/49.jpg)"><span class="res">4K</span></div><div class="d-name">Greece 2024</div><div class="d-meta">33 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/76.jpg)"><span class="res">1080p</span></div><div class="d-name">Kids</div><div class="d-meta">75 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/17.jpg)"><span class="res">1080p</span></div><div class="d-name">Hikes</div><div class="d-meta">24 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/250.jpg)"><span class="res">1080p</span></div><div class="d-name">Film Club</div><div class="d-meta">17 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/225.jpg)"><span class="res">1080p</span></div><div class="d-name">Cooking</div><div class="d-meta">41 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/184.jpg)"><span class="res">4K</span></div><div class="d-name">Road Trip</div><div class="d-meta">62 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/260.jpg)"><span class="res">1080p</span></div><div class="d-name">Snow Trip</div><div class="d-meta">19 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/164.jpg)"><span class="res">1080p</span></div><div class="d-name">Amsterdam</div><div class="d-meta">27 videos</div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/200.jpg)"><span class="res">4K</span></div><div class="d-name">Scotland</div><div class="d-meta">38 videos</div></div></div>
+  </div></div>
+  <div class="pz-pill"><span class="n5">5 across</span><span class="n7">7 across</span></div>
+  <div class="finger pz-a"></div><div class="finger pz-b"></div>
+  <div class="d-rail"><span><svg><use href="#i-home"/></svg>Home</span><span class="on"><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+</div></div></div>
+        <figcaption class="caption"><b>Animated</b> · Inner screen: pinch from five across to seven</figcaption>
       </figure>
       <figure>
-        <div class="fold"><div class="screen-wrap" data-scale="inner">
-          <div class="dp inner" aria-hidden="true">
-            <div class="d-status"></div>
-            <div class="d-bar" style="padding-left:96px"><div class="d-title"><b>MEDIA</b><span>TOWER · media · 1,284 files</span></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
-            <div class="d-chips" style="padding-left:96px"><span class="d-chip on">Videos</span><span class="d-chip">Moments</span><span class="d-chip">Images</span><span class="d-sep"></span><span class="d-chip on">All</span><span class="d-chip">Collections <i>10</i></span><span class="d-chip">Mixes <i>3</i></span></div>
-            <div class="d-wall" style="padding-left:96px">
-              <div class="d-head">Collections</div>
-              <div class="d-grid c5">
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#5a3a2b,#1a110c)"><span class="res">4K</span></div><div class="d-name">Concerts</div><div class="d-meta">18 titles</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b4a5a,#0c151a)"><span class="res">4K</span></div><div class="d-name">Films</div><div class="d-meta">96 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#4a4a2b,#15150c)"><span class="res">1080p</span></div><div class="d-name">Home Videos</div><div class="d-meta">212 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#3a2b5a,#100c1a)"><span class="res">1080p</span></div><div class="d-name">Series</div><div class="d-meta">140 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b5a44,#0c1a14)"><span class="res">1080p</span></div><div class="d-name">Travel</div><div class="d-meta">58 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#5a2b3e,#1a0c11)"><span class="res">1080p</span></div><div class="d-name">Weddings</div><div class="d-meta">33 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#5a4f2b,#1a170c)"><span class="res">1080p</span></div><div class="d-name">Kids</div><div class="d-meta">75 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b3a5a,#0c101a)"><span class="res">720p</span></div><div class="d-name">Workouts</div><div class="d-meta">24 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#4a2b2b,#150c0c)"><span class="res">1080p</span></div><div class="d-name">Talks</div><div class="d-meta">17 videos</div></div>
-                <div class="d-poster"><div class="d-art" style="background:linear-gradient(160deg,#2b4a4a,#0c1515)"><span class="res">1080p</span></div><div class="d-name">Courses</div><div class="d-meta">88 videos</div></div>
-              </div>
-              <div class="d-head">Mixes</div>
-              <div class="d-grid c5">
-                <div class="d-poster"><div class="d-art deck"></div><div class="d-name">Assorted</div><div class="d-meta">27 videos</div></div>
-                <div class="d-poster"><div class="d-art deck"></div><div class="d-name">Phone Dumps</div><div class="d-meta">63 videos</div></div>
-                <div class="d-poster"><div class="d-art deck"></div><div class="d-name">Misc 2024</div><div class="d-meta">19 videos</div></div>
-              </div>
-            </div>
-            <div class="d-rail"><span><i></i>Home</span><span class="on"><i></i>Library</span><span><i></i>Browse</span><span><i></i>Shorts</span><span><i></i>Settings</span></div>
-          </div>
-        </div></div>
-        <figcaption class="caption">Inner screen · the Library, five across</figcaption>
+        <div class="fold"><div class="screen-wrap" data-scale>
+<div class="dp inner" aria-hidden="true">
+  <div class="d-bar" style="padding-left:96px"><div class="d-title"><b>HOME</b></div><span class="d-act"><svg><use href="#i-search"/></svg></span></div>
+  <div class="d-wall" style="padding-left:96px">
+    <div class="d-head">Continue watching</div>
+    <div class="cw">
+      <div class="cw-card"><div class="cw-art" style="background-image:url(images/photos/100.jpg)"><span class="cw-left">Under a minute left</span><span class="cw-bar"><i style="width:92%"></i></span></div><div class="d-name">Beach day</div><div class="d-meta">1080p · today</div></div>
+      <div class="cw-card"><div class="cw-art" style="background-image:url(images/photos/184.jpg)"><span class="cw-left">24m left</span><span class="cw-bar"><i style="width:40%"></i></span></div><div class="d-name">Road Trip, Day 3</div><div class="d-meta">4K · yesterday</div></div>
+      <div class="cw-card"><div class="cw-art" style="background-image:url(images/photos/29.jpg)"><span class="cw-left">8m left</span><span class="cw-bar"><i style="width:70%"></i></span></div><div class="d-name">Above the Glacier</div><div class="d-meta">4K · Sunday</div></div>
+    </div>
+    <div class="d-head">Newly added</div>
+    <div class="d-grid c7"><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/16.jpg)"></div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/10.jpg)"></div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/11.jpg)"></div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/15.jpg)"></div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/28.jpg)"></div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/29.jpg)"></div></div><div class="d-poster"><div class="d-art" style="background-image:url(images/photos/37.jpg)"></div></div></div>
+    <div class="d-head">Moments</div>
+    <div class="d-chips" style="padding:0"><span class="d-chip">Arrival <i>1</i></span><span class="d-chip">Cannonball <i>2</i></span><span class="d-chip">Rope swing <i>1</i></span><span class="d-chip">Sunset <i>2</i></span><span class="d-chip">The view <i>1</i></span><span class="d-chip">Encore <i>3</i></span></div>
+  </div>
+  <div class="d-rail"><span class="on"><svg><use href="#i-home"/></svg>Home</span><span><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>
+</div></div></div>
+        <figcaption class="caption">Inner screen · Home beside the nav rail</figcaption>
       </figure>
     </div>
   </div>
@@ -556,8 +671,8 @@ footer a { color: var(--body); }
     <div class="rule" aria-hidden="true"></div>
     <h2 style="font-family:var(--text);font-weight:500;font-size:22px">Your share, as a library, in your pocket.</h2>
     <p>Android 14 or newer. Each release installs over the last and keeps your library, chapters and resume points.</p>
-    <div class="ctas" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
-      <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest"><svg width="18" height="18"><use href="#i-down"/></svg>Download the latest APK</a>
+    <div class="ctas">
+      <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest"><svg><use href="#i-down"/></svg>Download the latest APK</a>
       <a class="btn ghost" href="https://github.com/Jmeza081/regolith/releases">All releases</a>
     </div>
   </div>
@@ -567,20 +682,22 @@ footer a { color: var(--body); }
 
 <footer>
   <div class="wrap">
-    <span>Regolith · a native Android player for your SMB share</span>
-    <span><a href="https://github.com/Jmeza081/regolith">Source on GitHub</a></span>
+    <div class="row">
+      <span>Regolith · a native Android player for your SMB share</span>
+      <span><a href="https://github.com/Jmeza081/regolith">Source on GitHub</a></span>
+    </div>
+    <p class="credit">Photos in the drawn screens are from <a href="https://unsplash.com">Unsplash</a>, served by <a href="https://picsum.photos">Lorem Picsum</a>, by Alexander Shustov, Anders Jildén, Austin Neill, Charlie Foster, Danka & Peter, Elias Carlsson, Emanuele Pinna, Go Wild, Jerry Adney, Linh Nguyen, Luke Chesser, Margaret Barley, Nicola Perantoni, Oleg Chursin, Paul Jarvis, petradr, Steven Spassov, Sylwia Bartyzel, Tiago Gerken, Tim de Groot, Tina Rataj, Vee O, Vladimir Kramer, Wojtek Witkowski. Collection names are examples.</p>
   </div>
 </footer>
 
 <script>
-  // The drawn screens are laid out at the device's real size in dp and scaled to their frames.
+  // The drawn screens are laid out at the screen's real size in dp and scaled to their frames.
   (function () {
     function fit() {
       document.querySelectorAll('.screen-wrap[data-scale]').forEach(function (wrap) {
         var dp = wrap.querySelector('.dp');
         if (!dp) return;
-        var s = wrap.clientWidth / dp.offsetWidth;
-        dp.style.transform = 'scale(' + s + ')';
+        dp.style.transform = 'scale(' + (wrap.clientWidth / dp.offsetWidth) + ')';
       });
     }
     window.addEventListener('resize', fit);

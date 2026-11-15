@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regolith: your SMB share, as a video library</title>
+<meta name="description" content="Regolith is a native Android video player for the files on your own SMB share. Posters, chapters, resume points and thumbnail scrubbing, streamed in place. Nothing is copied off the share, and nothing leaves your network.">
+<meta name="theme-color" content="#0A0A0A">
+<meta property="og:title" content="Regolith: your SMB share, as a video library">
+<meta property="og:description" content="A native Android video player for the files on your own SMB share. No account, no server, nothing leaves your network.">
+<meta property="og:image" content="https://jmeza081.github.io/regolith/images/banner.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Regolith's own tokens (app/src/main/java/com/regolith/ui/theme/Color.kt and Type.kt).
+   One visual world, dark only, as the app is. One red, as the app allows one red per screen.
+   Layout: a hero with the phones, then one section per thing the app does, copy beside its
+   screens, then the design system, then the download. */
+:root {
+  --ground: #0A0A0A;
+  --surface: #0F0F0F;
+  --lifted: #1C1C1C;
+  --hairline: #1F1F1F;
+  --raised: #2E2E2E;
+  --metadata: #6E6E6E;
+  --nav-idle: #8A8A8A;
+  --body: #A0A0A0;
+  --ink-soft: #EDEDED;
+  --ink: #FFFFFF;
+  --red: #E11B17;
+  --frost: rgba(255,255,255,.06);
+  --frost-line: rgba(255,255,255,.18);
+  --display: "Michroma", "Space Grotesk", system-ui, sans-serif;
+  --text: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+html, body { margin: 0; }
+body { background: var(--ground); color: var(--ink); font-family: var(--text); font-size: 17px; line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: inherit; }
+a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
+img { max-width: 100%; display: block; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+h1, h2, h3 { margin: 0; font-weight: 400; text-wrap: balance; }
+h2 { font-family: var(--display); font-size: clamp(24px, 3vw, 34px); line-height: 1.3; letter-spacing: .02em; }
+h3 { font-family: var(--text); font-size: 19px; font-weight: 600; }
+p { margin: 0; color: var(--body); max-width: 62ch; }
+code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; color: var(--ink-soft); }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--nav-idle); }
+.rule { width: 56px; height: 3px; background: var(--red); border-radius: 2px; }
+
+/* Nav */
+.nav { position: sticky; top: 0; z-index: 20; background: rgba(10,10,10,.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--hairline); }
+.nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--display); letter-spacing: .18em; font-size: 14px; }
+.brand svg { width: 22px; height: 24px; }
+.nav ul { display: flex; gap: 20px; list-style: none; margin: 0 0 0 auto; padding: 0; font-size: 14px; }
+.nav ul a { text-decoration: none; color: var(--body); }
+.nav ul a:hover { color: var(--ink); }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 20px; border-radius: 999px; font-weight: 600; font-size: 15px; text-decoration: none; white-space: nowrap; }
+.btn svg { width: 18px; height: 18px; }
+.btn.red { background: var(--red); color: #fff; }
+.btn.ghost { border: 1px solid var(--frost-line); background: var(--frost); color: var(--ink); }
+.nav .btn { height: 36px; padding: 0 16px; font-size: 14px; }
+@media (max-width: 860px) { .nav ul { display: none; } .nav .btn { margin-left: auto; } }
+
+/* Hero */
+.hero { padding: 72px 0 40px; position: relative; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: auto -20% -30% -20%; height: 70%; background: radial-gradient(ellipse at 50% 100%, rgba(225,27,23,.16), transparent 62%); pointer-events: none; }
+.hero .wrap { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px; position: relative; }
+.wordmark { font-family: var(--display); font-size: clamp(40px, 8vw, 92px); letter-spacing: .14em; line-height: 1; margin-right: -.14em; }
+.hero .tag { font-size: clamp(19px, 2.4vw, 26px); color: var(--ink-soft); max-width: none; }
+.hero .sub { max-width: 54ch; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.stack { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--metadata); }
+.lineup { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin-top: 40px; flex-wrap: wrap; }
+
+/* Galaxy Z Fold frames. The main screen: a tall slab, tight corners, a punch-hole camera,
+   its buttons on the right edge. The inner screen: the Fold 8's 2448 x 1828 panel, wider than
+   tall when opened, with small corners, a crease down the middle and its camera on the right half. */
+.phone { width: 230px; aspect-ratio: 620 / 1348; border-radius: 16px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 5px; flex: none; position: relative; }
+.phone::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
+.phone::after { content: ""; position: absolute; right: -4px; top: 22%; width: 3px; height: 16%; border-radius: 0 2px 2px 0; background: #2a2a2a; }
+.phone img, .phone .screen-wrap { width: 100%; height: 100%; border-radius: 11px; object-fit: cover; object-position: top; }
+.phone.sm { width: 200px; }
+.fold { width: 560px; max-width: 100%; aspect-ratio: 2448 / 1828; border-radius: 12px; background: #050505; border: 1px solid #3a3a3a; box-shadow: inset 0 0 0 1px #111, 0 30px 60px rgba(0,0,0,.55); padding: 6px; flex: none; position: relative; }
+.fold::after { content: ""; position: absolute; z-index: 3; top: 6px; bottom: 6px; left: 50%; width: 10px; margin-left: -5px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.035) 45%, rgba(0,0,0,.25) 50%, rgba(255,255,255,.035) 55%, transparent); pointer-events: none; }
+.fold::before { content: ""; position: absolute; z-index: 3; top: 12px; left: 76%; width: 8px; height: 8px; border-radius: 50%; background: #000; box-shadow: 0 0 0 1.5px #1a1a1a; }
+.fold .screen-wrap { width: 100%; height: 100%; border-radius: 7px; }
+.screen-wrap { overflow: hidden; position: relative; background: var(--ground); }
+.caption { font-size: 13px; color: var(--metadata); text-align: center; margin-top: 12px; max-width: 30ch; }
+.caption b { color: var(--body); font-weight: 600; }
+figure { margin: 0; display: flex; flex-direction: column; align-items: center; }
+
+/* Sections */
+section.feature { padding: 88px 0; border-top: 1px solid var(--hairline); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 56px; align-items: center; }
+.split.flip > .copy { order: 2; }
+.copy { display: flex; flex-direction: column; gap: 18px; }
+.points { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 14px; }
+.points li { display: grid; grid-template-columns: 22px 1fr; gap: 12px; color: var(--body); }
+.points li strong { color: var(--ink); font-weight: 600; }
+.points svg { width: 20px; height: 20px; margin-top: 3px; color: var(--ink-soft); }
+.shots { display: flex; gap: 18px; justify-content: center; align-items: flex-end; flex-wrap: wrap; }
+.shots.col { flex-direction: column; align-items: center; gap: 36px; }
+@media (max-width: 900px) {
+  .split { grid-template-columns: 1fr; gap: 40px; }
+  .split.flip > .copy { order: 0; }
+}
+@media (max-width: 520px) { .phone { width: 46%; min-width: 150px; } }
+
+/* Drawn screens: laid out at the screen's real size in dp (1dp = 1px), scaled into their frames.
+   No status bar: the page shows the app, not the phone's clock. */
+.dp { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: var(--ground); color: var(--ink); font-family: var(--text); overflow: hidden; }
+.dp.cover { width: 412px; height: 896px; }
+.dp.inner { width: 979px; height: 731px; }
+.d-bar { display: flex; align-items: center; gap: 4px; padding: 10px 8px 6px 18px; height: 66px; }
+.d-title { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.d-title b { font-family: var(--display); font-weight: 400; font-size: 15px; letter-spacing: .02em; }
+.d-title span { font-size: 12px; color: var(--metadata); }
+.d-act { width: 40px; height: 40px; display: grid; place-items: center; color: var(--body); }
+.d-act svg { width: 19px; height: 19px; }
+.d-chips { display: flex; gap: 6px; padding: 8px 18px 12px; align-items: center; white-space: nowrap; overflow: hidden; }
+.d-chip { height: 34px; padding: 0 12px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-soft); background: var(--frost); border: 1px solid var(--frost-line); flex: none; }
+.d-chip svg { width: 14px; height: 14px; }
+.d-chip.on { background: #fff; border-color: #fff; color: var(--ground); font-weight: 700; }
+.d-chip.red { background: var(--red); border-color: var(--red); color: #fff; }
+.d-chip i { font-style: normal; min-width: 18px; height: 18px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 10px; background: rgba(237,237,237,.16); padding: 0 5px; }
+.d-chip.on i { background: rgba(10,10,10,.16); }
+.d-sep { width: 1px; height: 22px; background: var(--frost-line); margin: 0 4px; flex: none; }
+.d-wall { padding: 0 18px; display: flex; flex-direction: column; gap: 10px; }
+.d-head { font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--body); padding-top: 8px; }
+.d-grid { display: grid; gap: 12px 8px; }
+.d-grid.c3 { grid-template-columns: repeat(3, 1fr); }
+.d-grid.c5 { grid-template-columns: repeat(5, 1fr); }
+.d-grid.c7 { grid-template-columns: repeat(7, 1fr); }
+.d-poster { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.d-art { aspect-ratio: 2 / 3; border-radius: 12px; position: relative; overflow: hidden; background: #1a1a1a center / cover no-repeat; }
+.d-art .badge, .d-art .res { position: absolute; z-index: 2; font-size: 10px; font-weight: 600; background: rgba(0,0,0,.72); border-radius: 999px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px; }
+.d-art .badge { left: 6px; top: 6px; }
+.d-art .badge svg { width: 10px; height: 10px; }
+.d-art .res { left: 6px; bottom: 8px; }
+.d-art.deck { background: transparent; overflow: visible; }
+.d-art.deck i { position: absolute; border-radius: 8px; background: center / cover no-repeat; border: 2px solid #0A0A0A; box-shadow: 0 6px 14px rgba(0,0,0,.5); }
+.d-art.deck i:nth-of-type(1) { inset: 8% 22% 18% 4%; transform: rotate(-8deg); }
+.d-art.deck i:nth-of-type(2) { inset: 14% 4% 10% 22%; transform: rotate(6deg); }
+.d-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-meta { font-size: 11px; color: var(--metadata); }
+/* The nav pill and the gesture handle, where the app draws them on the main screen. */
+.d-pill { position: absolute; z-index: 4; left: 50%; margin-left: -187px; bottom: 33px; width: 375px; height: 61px; border-radius: 999px; background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.16); display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; justify-items: center; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--nav-idle); }
+.d-pill span { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.d-pill svg { width: 19px; height: 19px; }
+.d-pill span.on { color: #fff; }
+.d-handle { position: absolute; z-index: 4; left: 50%; margin-left: -53px; bottom: 12px; width: 106px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.8); }
+/* The rail on the inner screen: centred down the left edge, as the app draws it. */
+.d-rail { position: absolute; z-index: 4; left: 12px; top: 50%; transform: translateY(-50%); width: 64px; padding: 14px 0; border-radius: 999px; background: rgba(0,0,0,.62); border: 1px solid rgba(255,255,255,.16); display: flex; flex-direction: column; gap: 16px; align-items: center; font-size: 8px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--nav-idle); }
+.d-rail span { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.d-rail svg { width: 17px; height: 17px; }
+.d-rail span.on { color: #fff; }
+.d-field { margin: 12px 18px; height: 44px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hairline); display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 15px; position: relative; }
+.d-field svg { width: 18px; height: 18px; color: var(--body); flex: none; }
+.d-field .caret { width: 2px; height: 18px; background: var(--red); margin-left: -8px; }
+.d-field .cancel { margin-left: auto; font-size: 14px; font-weight: 600; }
+.d-hit { display: flex; gap: 12px; align-items: flex-start; }
+.d-thumb { width: 82px; aspect-ratio: 16 / 9; border-radius: 10px; flex: none; background: center / cover no-repeat; }
+.d-lines { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.d-p { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-m { font-size: 11px; color: var(--metadata); }
+.d-link { align-self: flex-start; margin-top: 4px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--frost); border: 1px solid var(--frost-line); display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-soft); }
+.d-link svg { width: 12px; height: 12px; }
+.d-tag { font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--body); background: var(--lifted); border-radius: 999px; padding: 1px 6px; }
+mark { background: none; color: var(--red); }
+.d-shelf { display: flex; gap: 8px; }
+.d-shelf .d-poster { width: 92px; flex: none; }
+.cw { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cw-card { display: flex; flex-direction: column; gap: 4px; }
+.cw-art { aspect-ratio: 16 / 9; border-radius: 12px; background: center / cover no-repeat; position: relative; overflow: hidden; }
+.cw-left { position: absolute; left: 8px; top: 8px; font-size: 10px; font-weight: 600; background: rgba(0,0,0,.72); border-radius: 999px; padding: 2px 8px; }
+.cw-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.25); }
+.cw-bar i { display: block; height: 100%; background: var(--red); }
+.finger { position: absolute; z-index: 6; width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.28); border: 2px solid rgba(255,255,255,.75); box-shadow: 0 0 0 8px rgba(255,255,255,.08); opacity: 0; pointer-events: none; }
+
+/* ── Animation 1: the chip row tucks away as the wall scrolls down, and the pill with it ── */
+.cs-chips { overflow: hidden; max-height: 54px; }
+.cs-clip { position: absolute; top: 120px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.cs .cs-wall { padding-top: 0; }
+.cs-finger { left: 210px; top: 640px; }
+.cs .cs-chips { animation: cs-chips 8s infinite; }
+.cs .cs-clip { animation: cs-clip 8s infinite; }
+.cs .cs-wall { animation: cs-wall 8s infinite; }
+.cs .cs-pill { animation: cs-pill 8s infinite; }
+.cs .cs-finger { animation: cs-finger 8s infinite; }
+@keyframes cs-chips { 0%, 18% { max-height: 54px; opacity: 1; } 28%, 60% { max-height: 0; opacity: 0; } 70%, 100% { max-height: 54px; opacity: 1; } }
+@keyframes cs-clip { 0%, 18% { top: 120px; } 28%, 60% { top: 66px; } 70%, 100% { top: 120px; } }
+@keyframes cs-wall { 0%, 16% { transform: translateY(0); } 40%, 56% { transform: translateY(-330px); } 72%, 100% { transform: translateY(0); } }
+@keyframes cs-pill { 0%, 20% { transform: translateY(0); opacity: 1; } 28%, 60% { transform: translateY(120px); opacity: 0; } 68%, 100% { transform: translateY(0); opacity: 1; } }
+@keyframes cs-finger { 0%, 12% { opacity: 0; transform: translateY(0); } 15% { opacity: 1; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-330px); } 44%, 52% { opacity: 0; transform: translateY(-330px); }
+  54% { opacity: 0; transform: translateY(-280px); } 57% { opacity: 1; transform: translateY(-280px); } 72% { opacity: 1; transform: translateY(40px); } 76%, 100% { opacity: 0; transform: translateY(40px); } }
+
+/* ── Animation 2: swipe up off the nav pill, and it becomes Search ── */
+.sg-lib, .sg-search { position: absolute; inset: 0; }
+.sg-search .sg-ph { color: var(--metadata); position: absolute; left: 44px; }
+.sg-search .sg-q { position: relative; }
+.sg-kb { position: absolute; left: 0; right: 0; bottom: 0; height: 270px; background: #1b1b1b; border-top: 1px solid var(--raised); display: flex; flex-direction: column; gap: 14px; align-items: center; padding-top: 22px; }
+.kb-row { display: flex; gap: 6px; }
+.kb-row span { width: 34px; height: 44px; border-radius: 6px; background: #2c2c2c; display: grid; place-items: center; font-size: 17px; color: #e6e6e6; }
+.kb-row span.space { width: 200px; font-size: 13px; color: var(--body); }
+.sg-capsule { position: absolute; z-index: 5; left: 56px; top: 790px; width: 300px; height: 56px; border-radius: 999px; background: #151515; border: 1px solid var(--frost-line); display: flex; align-items: center; gap: 10px; padding: 0 18px; font-size: 14px; font-weight: 500; color: var(--body); opacity: 0; }
+.sg-capsule .sg-glass { width: 18px; height: 18px; flex: none; }
+.sg-capsule span { position: absolute; left: 46px; white-space: nowrap; }
+.sg-ring { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); overflow: visible; }
+.sg-ring rect { width: calc(100% - 2px); height: calc(100% - 2px); fill: none; stroke: #fff; stroke-width: 2; stroke-dasharray: 100; stroke-dashoffset: 100; vector-effect: non-scaling-stroke; }
+.sg-finger { left: 183px; top: 800px; }
+/* Resting frame (and the frame shown with reduced motion): the results. */
+.sg .sg-lib { opacity: 0; }
+.sg .sg-l1, .sg .sg-ph { opacity: 0; }
+.sg .sg-lib { animation: sg-lib 9s infinite; }
+.sg .sg-pill { animation: sg-pill 9s infinite; }
+.sg .sg-search { animation: sg-search 9s infinite; }
+.sg .sg-kb { animation: sg-kb 9s infinite; }
+.sg .sg-ph { animation: sg-ph 9s infinite; }
+.sg .sg-q, .sg .sg-results { animation: sg-q 9s infinite; }
+.sg .sg-capsule { animation: sg-capsule 9s infinite; }
+.sg .sg-ring rect { animation: sg-ring 9s infinite; }
+.sg .sg-l1 { animation: sg-l1 9s infinite; }
+.sg .sg-l2 { animation: sg-l2 9s infinite; }
+.sg .sg-finger { animation: sg-finger 9s infinite; }
+@keyframes sg-lib { 0%, 50% { opacity: 1; } 56%, 94% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes sg-pill { 0%, 12% { opacity: 1; transform: scale(1); } 18%, 96% { opacity: 0; transform: scale(.94); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes sg-search { 0%, 50% { opacity: 0; } 56%, 94% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sg-kb { 0%, 52% { transform: translateY(280px); } 60%, 94% { transform: translateY(0); } 100% { transform: translateY(280px); } }
+@keyframes sg-ph { 0%, 54% { opacity: 1; } 62%, 100% { opacity: 0; } }
+@keyframes sg-q { 0%, 62% { opacity: 0; } 66%, 94% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sg-capsule {
+  0%, 12% { opacity: 0; top: 806px; left: 56px; width: 300px; height: 52px; }
+  16% { opacity: 1; top: 790px; left: 56px; width: 300px; height: 52px; }
+  40% { opacity: 1; top: 676px; left: 26px; width: 360px; height: 56px; transform: scale(1); }
+  43% { transform: scale(1.04); }
+  46% { opacity: 1; top: 676px; left: 26px; width: 360px; height: 56px; transform: scale(1); }
+  54% { opacity: 1; top: 12px; left: 18px; width: 300px; height: 44px; }
+  57%, 100% { opacity: 0; top: 12px; left: 18px; width: 300px; height: 44px; } }
+@keyframes sg-ring { 0%, 16% { stroke-dashoffset: 100; } 40%, 54% { stroke-dashoffset: 0; } 57%, 100% { stroke-dashoffset: 100; } }
+@keyframes sg-l1 { 0%, 12% { opacity: 0; } 16%, 39% { opacity: 1; } 41%, 100% { opacity: 0; } }
+@keyframes sg-l2 { 0%, 40% { opacity: 0; } 42%, 50% { opacity: 1; } 54%, 100% { opacity: 0; } }
+@keyframes sg-finger { 0%, 9% { opacity: 0; transform: translateY(0); } 13% { opacity: 1; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-120px); } 46% { opacity: 1; transform: translateY(-120px); } 50%, 100% { opacity: 0; transform: translateY(-120px); } }
+
+/* ── Animation 3: pinch the inner screen's wall from five posters across to seven, and back ── */
+.pz-clip { position: absolute; left: 96px; right: 18px; top: 120px; bottom: 0; overflow: hidden; }
+.pz-zoom { transform-origin: 0 0; display: flex; flex-direction: column; gap: 10px; }
+.pz-pill { position: absolute; z-index: 5; left: 50%; margin-left: -60px; top: 132px; width: 120px; height: 36px; border-radius: 999px; background: rgba(0,0,0,.72); border: 1px solid rgba(255,255,255,.16); display: grid; place-items: center; font-size: 14px; font-weight: 600; opacity: 0; }
+.pz-pill span { grid-area: 1 / 1; }
+.pz-a { left: 380px; top: 330px; }
+.pz-b { left: 660px; top: 520px; }
+.pz .pz-zoom { transform: scale(1.4); animation: pz-zoom 8s infinite; }
+.pz .n7 { opacity: 0; }
+.pz .pz-pill { animation: pz-pill 8s infinite; }
+.pz .n5 { animation: pz-n5 8s infinite; }
+.pz .n7 { animation: pz-n7 8s infinite; }
+.pz .pz-a { animation: pz-a 8s infinite; }
+.pz .pz-b { animation: pz-b 8s infinite; }
+@keyframes pz-zoom { 0%, 18% { transform: scale(1.4); } 42%, 62% { transform: scale(1); } 86%, 100% { transform: scale(1.4); } }
+@keyframes pz-pill { 0%, 18% { opacity: 0; } 22%, 46% { opacity: 1; } 52%, 62% { opacity: 0; } 66%, 90% { opacity: 1; } 96%, 100% { opacity: 0; } }
+@keyframes pz-n5 { 0%, 30% { opacity: 1; } 34%, 74% { opacity: 0; } 78%, 100% { opacity: 1; } }
+@keyframes pz-n7 { 0%, 30% { opacity: 0; } 34%, 74% { opacity: 1; } 78%, 100% { opacity: 0; } }
+@keyframes pz-a { 0%, 16% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; transform: translate(0, 0); } 42% { opacity: 1; transform: translate(110px, 80px); } 46%, 62% { opacity: 0; transform: translate(110px, 80px); }
+  66% { opacity: 1; transform: translate(110px, 80px); } 86% { opacity: 1; transform: translate(0, 0); } 90%, 100% { opacity: 0; transform: translate(0, 0); } }
+@keyframes pz-b { 0%, 16% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; transform: translate(0, 0); } 42% { opacity: 1; transform: translate(-110px, -80px); } 46%, 62% { opacity: 0; transform: translate(-110px, -80px); }
+  66% { opacity: 1; transform: translate(-110px, -80px); } 86% { opacity: 1; transform: translate(0, 0); } 90%, 100% { opacity: 0; transform: translate(0, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cs *, .sg *, .pz * { animation: none !important; }
+  .pz .n7 { opacity: 0; } .pz .pz-pill { opacity: 0; }
+}
+
+/* Feature cards */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 40px; }
+.card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+.card p { font-size: 15px; }
+.card svg { width: 22px; height: 22px; color: var(--ink-soft); }
+@media (max-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+
+/* Design system */
+.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 28px; }
+.sw { border: 1px solid var(--hairline); border-radius: 16px; overflow: hidden; background: var(--surface); }
+.sw .chipc { height: 76px; border-bottom: 1px solid var(--hairline); }
+.sw div.t { padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.sw b { font-size: 14px; font-weight: 600; }
+.sw code { font-size: 12px; color: var(--body); }
+.sw span { font-size: 12px; color: var(--metadata); line-height: 1.4; }
+@media (max-width: 900px) { .swatches { grid-template-columns: repeat(2, 1fr); } }
+.type { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.specimen { background: var(--surface); border: 1px solid var(--hairline); border-radius: 20px; padding: 26px; display: flex; flex-direction: column; gap: 12px; }
+.specimen .big { font-size: 44px; line-height: 1.15; }
+.specimen .m { font-family: var(--display); letter-spacing: .06em; }
+.specimen .s { font-family: var(--text); font-weight: 500; }
+.specimen dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
+.specimen dt { color: var(--metadata); }
+.specimen dd { margin: 0; color: var(--ink-soft); }
+@media (max-width: 760px) { .type { grid-template-columns: 1fr; } }
+.rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 860px) { .rules { grid-template-columns: 1fr; } }
+
+/* CTA + footer */
+.cta { padding: 96px 0; border-top: 1px solid var(--hairline); text-align: center; }
+.cta .wrap { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+footer { border-top: 1px solid var(--hairline); padding: 28px 0 40px; font-size: 14px; color: var(--metadata); }
+footer .wrap { display: flex; flex-direction: column; gap: 10px; }
+footer .row { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; }
+footer a { color: var(--body); }
+footer .credit { font-size: 12px; line-height: 1.6; max-width: none; color: var(--metadata); }
+</style>
+</head>
+<body>
+
+<!-- Inline icons: Lucide strokes, the set the app uses (com.composables:icons-lucide-android). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M11 18l-6-6 6-6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m10 8 6 4-6 4z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 10l6 6 6-6M5 20h14"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20V8M6 14l6-6 6 6M5 4h14"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4z"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4M3 12h18"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.5 20.2 7.2v9.6L12 21.5 3.8 16.8V7.2z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+    <symbol id="i-pinch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4l6 6M20 20l-6-6M4 4h5M4 4v5M20 20h-5M20 20v-5"/></symbol>
+  </defs>
+</svg>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Regolith, back to top">
+      <svg viewBox="36 30 44 48" aria-hidden="true"><defs><clipPath id="wedge-nav"><path d="M36,30 L80,54 L36,78 Q46,54 36,30 Z"/></clipPath></defs><g clip-path="url(#wedge-nav)" fill="#FFFFFF"><rect x="0" y="28" width="108" height="9"/><rect x="0" y="40.5" width="108" height="7" fill-opacity="0.62"/><rect x="0" y="50.5" width="108" height="9"/><rect x="0" y="63" width="108" height="6.5" fill-opacity="0.62"/><rect x="0" y="72.5" width="108" height="7.5"/></g></svg>
+      REGOLITH
+    </a>
+    <nav aria-label="Sections">
+      <ul>
+        <li><a href="#library">Library</a></li>
+        <li><a href="#search">Search</a></li>
+        <li><a href="#player">Player</a></li>
+        <li><a href="#pictures">Pictures</a></li>
+        <li><a href="#files">Files</a></li>
+        <li><a href="#fold">Foldable</a></li>
+        <li><a href="#design">Design</a></li>
+      </ul>
+    </nav>
+    <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest">Download</a>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="wrap">
+    <div class="wordmark">REGOLITH</div>
+    <div class="rule" aria-hidden="true"></div>
+    <h1 class="tag">Your SMB share, as a video library.</h1>
+    <p class="sub">A native Android video player for the files on your own network share. Posters, chapters, resume points and thumbnail scrubbing, streamed in place. Nothing is copied off the share, and nothing leaves your network.</p>
+    <div class="ctas">
+      <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest"><svg><use href="#i-down"/></svg>Download the APK</a>
+      <a class="btn ghost" href="https://github.com/Jmeza081/regolith">View on GitHub</a>
+    </div>
+    <div class="stack">Android 14+ · Kotlin · Jetpack Compose · Media3</div>
+    <div class="lineup">
+      <figure><div class="phone sm"><img src="images/collection.jpg" alt="A collection's own page: its poster lighting the top, its figures, Play all and its videos"></div></figure>
+      <figure><div class="phone"><img src="images/library.jpg" alt="The Library: collections as posters under Videos, Moments and Images chips"></div></figure>
+      <figure><div class="phone sm"><img src="images/player.jpg" alt="The player with Color bleed: the film's own colours glowing out around it"></div></figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="share">
+  <div class="wrap">
+    <div class="copy">
+      <div class="eyebrow">Plays straight off the share</div>
+      <h2>Point it at the NAS you already have.</h2>
+      <p>Pick the folders you actually want (Films and Series, not Backups) and Regolith reads the shape of what's there. Every folder of videos becomes a collection with its own poster. A file starts playing without being copied first.</p>
+    </div>
+    <div class="cards">
+      <div class="card"><svg><use href="#i-wifi"/></svg><h3>Streams over SMB</h3><p>A custom Media3 data source reads the share directly, so the library is as big as your share is.</p></div>
+      <div class="card"><svg><use href="#i-lock"/></svg><h3>No account, no server</h3><p>Nothing to run beside it and no service told what your files are. The share stays the source of truth.</p></div>
+      <div class="card"><svg><use href="#i-search"/></svg><h3>Finds the share for you</h3><p>A LAN finder sweeps the Wi-Fi network if you don't know the address, and a server reached by name keeps working as its address moves.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="library">
+  <div class="wrap split">
+    <div class="copy">
+      <div class="eyebrow">The Library</div>
+      <h2>Collections, not folders of files.</h2>
+      <p>Each folder is a poster on the wall: its own <code>poster.jpg</code>, or a fanned deck of frames from the videos inside. Open one and it becomes a page of its own, lit by its poster, with its figures and Play all.</p>
+      <ul class="points">
+        <li><svg><use href="#i-shuffle"/></svg><span><strong>Mixes.</strong> Mark a grab-bag folder like <em>Assorted</em> as a mix, and the wall splits into Collections and Mixes. The mark is a hidden file on the share, so it travels with the folder.</span></li>
+        <li><svg><use href="#i-play"/></svg><span><strong>One row of chips that gets out of the way.</strong> Scroll down the wall and the chips and the nav pill slide away; scroll up a little and they're back.</span></li>
+        <li><svg><use href="#i-sort"/></svg><span><strong>Sort and view.</strong> Name, date added, size, runtime or resolution, as posters or rows, with an A to Z rail on long walls.</span></li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure>
+        <div class="phone"><img src="images/library.jpg" alt="The Library wall on the main screen"></div>
+        <figcaption class="caption">Main screen · the Library</figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><div class="screen-wrap" data-scale>{{CHIP_SCROLL}}</div></div>
+        <figcaption class="caption"><b>Animated</b> · Collections and Mixes; the chips tuck away as you scroll</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="search">
+  <div class="wrap split flip">
+    <div class="copy">
+      <div class="eyebrow">Home and Search</div>
+      <h2>Swipe up off the nav, and you're searching.</h2>
+      <p>From any tab, push up off the nav pill. Its tabs fold away and it rises with your thumb as a search bar, its rim filling as you go; let go past the line and it flies into Search's field with the keyboard up. Search reads titles, filenames, folders and named moments from an index on the phone, so results arrive even while a scan is still walking the share.</p>
+      <ul class="points">
+        <li><svg><use href="#i-folder"/></svg><span><strong>Collections first.</strong> Folders that match sit at the top as posters, above the keyboard where you can see them.</span></li>
+        <li><svg><use href="#i-folder"/></svg><span><strong>"In Collection ›" on every video.</strong> One tap from a video to the collection it lives in, with the match marked in red.</span></li>
+        <li><svg><use href="#i-bookmark"/></svg><span><strong>Home picks up where you were.</strong> Continue watching, Newly added, what's on this device, and every moment you have named.</span></li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure>
+        <div class="phone"><div class="screen-wrap" data-scale>{{SEARCH_GESTURE}}</div></div>
+        <figcaption class="caption"><b>Animated</b> · swipe up off the nav pill to search</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="player">
+  <div class="wrap split">
+    <div class="copy">
+      <div class="eyebrow">The player</div>
+      <h2>Run by your thumb. Lit by the film.</h2>
+      <p>Double-tap a side to jump ten seconds, hold for double speed, drag the edges for brightness and volume, pinch to fill or fit. Color bleed reads the colour along each edge of the picture and shines it into the bars around it, like a light strip behind a TV.</p>
+      <ul class="points">
+        <li><svg><use href="#i-film"/></svg><span><strong>Scrub by thumbnail.</strong> Frames appear above your finger as you drag, pulled off the share ahead of time.</span></li>
+        <li><svg><use href="#i-bookmark"/></svg><span><strong>Chapters you can write.</strong> Mark a place and name it. It's saved beside the film on the share as a small text file other tools can read, so it survives a reinstall.</span></li>
+        <li><svg><use href="#i-phone"/></svg><span><strong>Keeps playing while you look around.</strong> Put the player away and it becomes a bar above the nav, or a card in the corner of the inner screen.</span></li>
+        <li><svg><use href="#i-image"/></svg><span><strong>Posters you choose.</strong> Make one from any frame, crop it to 2:3, and it's saved as the folder's <code>poster.jpg</code>.</span></li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure>
+        <div class="phone"><img src="images/player.jpg" alt="The player with Color bleed lighting the screen around the film"></div>
+        <figcaption class="caption">Main screen · Color bleed</figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="images/collection.jpg" alt="A collection's page, its poster lighting the top"></div>
+        <figcaption class="caption">Main screen · a collection's page</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="pictures">
+  <div class="wrap split flip">
+    <div class="copy">
+      <div class="eyebrow">Pictures and Shorts</div>
+      <h2>The photos on your share belong in the library too.</h2>
+      <p>Every folder of pictures is an album, laid out as a mosaic where each picture keeps its own shape. Open the lightbox to swipe through them, or play an album as a story with a bar of segments along the top.</p>
+      <ul class="points">
+        <li><svg><use href="#i-phone"/></svg><span><strong>Shorts.</strong> Every upright clip on your shares as a feed: swipe up for the next, hold for double speed, with a fresh shuffle each visit.</span></li>
+        <li><svg><use href="#i-image"/></svg><span><strong>Set any picture as a poster.</strong> From the lightbox or a selection, cropped to fit.</span></li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure>
+        <div class="phone"><img src="images/pictures.jpg" alt="An album's pictures as a mosaic, each at its own shape"></div>
+        <figcaption class="caption">Main screen · an album</figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="images/story.jpg" alt="An album playing as a story, segments along the top"></div>
+        <figcaption class="caption">Main screen · a story</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="files">
+  <div class="wrap split">
+    <div class="copy">
+      <div class="eyebrow">Files</div>
+      <h2>Manage the share, not just the library.</h2>
+      <p>Hold any video, collection or folder to start picking, and the nav pill becomes that selection's toolbar: Download, Move, Rename, Delete. The same four, the same way, in the Library, Browse and Search.</p>
+      <ul class="points">
+        <li><svg><use href="#i-down"/></svg><span><strong>Takes a batch offline.</strong> Pick a folder and everything inside it downloads, with progress in one notification.</span></li>
+        <li><svg><use href="#i-up"/></svg><span><strong>Sends files the other way.</strong> Upload photos, videos or any file from the phone into a folder on the share.</span></li>
+        <li><svg><use href="#i-phone"/></svg><span><strong>Plays what the phone already has.</strong> Camera, Movies, Download and the rest sit beside your downloads under On this device.</span></li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure>
+        <div class="phone"><img src="images/selection.jpg" alt="Videos picked on a collection's page; the nav pill has become a toolbar"></div>
+        <figcaption class="caption">Main screen · select, and the nav becomes a toolbar</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="fold">
+  <div class="wrap split flip">
+    <div class="copy">
+      <div class="eyebrow">Built for the Galaxy Z Fold</div>
+      <h2>Opens out on the inner screen.</h2>
+      <p>Unfolded, Regolith gets layouts of its own: a nav rail down the side that retracts to a thin spine when you leave it alone, more posters across, and a page that opens beside the wall instead of over it.</p>
+      <ul class="points">
+        <li><svg><use href="#i-pinch"/></svg><span><strong>Pinch the wall.</strong> Four to seven posters across, pinched in place; an "N across" pill says where you are.</span></li>
+        <li><svg><use href="#i-phone"/></svg><span><strong>The mini player</strong> becomes a card in the corner, and the film keeps playing as you browse.</span></li>
+      </ul>
+    </div>
+    <div class="shots col">
+      <figure>
+        <div class="fold"><div class="screen-wrap" data-scale>{{INNER_PINCH}}</div></div>
+        <figcaption class="caption"><b>Animated</b> · Inner screen: pinch from five across to seven</figcaption>
+      </figure>
+      <figure>
+        <div class="fold"><div class="screen-wrap" data-scale>{{INNER_HOME}}</div></div>
+        <figcaption class="caption">Inner screen · Home beside the nav rail</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="privacy">
+  <div class="wrap">
+    <div class="copy">
+      <div class="eyebrow">Privacy</div>
+      <h2>Locks itself, and keeps quiet.</h2>
+      <p>Ask for a fingerprint, face or the phone's screen lock before the library shows, after as long away as you choose. While locked, the notification says only "Regolith · Playing". Spoof mode swaps every name and picture for made-up ones, so you can show the app without showing your library.</p>
+    </div>
+  </div>
+</section>
+
+<section class="feature" id="design">
+  <div class="wrap">
+    <div class="copy">
+      <div class="eyebrow">Design</div>
+      <h2>Near-black ground, white ink, one red.</h2>
+      <p>The interface stays out of the way of the pictures. Surfaces step up from the ground by a few shades, hairlines separate rather than boxes, and the accent red is spent once per screen, on the action that matters there.</p>
+    </div>
+
+    <div class="swatches">
+      <div class="sw"><div class="chipc" style="background:#0A0A0A"></div><div class="t"><b>Ground</b><code>#0A0A0A</code><span>Every page's background</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#0F0F0F"></div><div class="t"><b>Surface</b><code>#0F0F0F</code><span>Cards and sheets, one step up</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#1F1F1F"></div><div class="t"><b>Hairline</b><code>#1F1F1F</code><span>1 dp borders and dividers</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#2E2E2E"></div><div class="t"><b>Raised</b><code>#2E2E2E</code><span>Pressed states, knobs, outlines</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#FFFFFF"></div><div class="t"><b>Ink</b><code>#FFFFFF</code><span>Titles, labels, lit chips</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#A0A0A0"></div><div class="t"><b>Body</b><code>#A0A0A0</code><span>Body copy</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#6E6E6E"></div><div class="t"><b>Metadata</b><code>#6E6E6E</code><span>Small details under a tile</span></div></div>
+      <div class="sw"><div class="chipc" style="background:#E11B17"></div><div class="t"><b>Red</b><code>#E11B17</code><span>The accent: one filled red per screen</span></div></div>
+    </div>
+
+    <div class="type">
+      <div class="specimen">
+        <div class="eyebrow">Display · Michroma</div>
+        <div class="big m">HOME VIDEOS</div>
+        <p>Wide and machined, for screen titles and the wordmark. Set in capitals with open tracking, never for running text.</p>
+        <dl><dt>Screen title</dt><dd>15 / 19.5</dd><dt>Wordmark</dt><dd>Capitals, 0.14 em tracking</dd></dl>
+      </div>
+      <div class="specimen">
+        <div class="eyebrow">Text · Space Grotesk</div>
+        <div class="big s">Beach day · 1080p</div>
+        <p>Everything else: names, details, buttons and chips, from 400 to 700.</p>
+        <dl><dt>Tile name</dt><dd>600, 12 / 14</dd><dt>Chip</dt><dd>600–700, 12–13</dd><dt>Eyebrow</dt><dd>600, 11, 0.14 em, capitals</dd></dl>
+      </div>
+    </div>
+
+    <div class="rules">
+      <div class="card"><h3>Pictures are the content</h3><p>A picked poster is ringed, never tinted, and chips sit over art on a 72% black so they never read as part of the picture.</p></div>
+      <div class="card"><h3>Pills, not boxes</h3><p>Chips, the nav and the mini player are full pills over a frosted 6% white, edged by an 18% white hairline.</p></div>
+      <div class="card"><h3>Lucide icons</h3><p>One stroke-icon family across the app, at 19 dp in bars and the nav, beside short tracked labels.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="cta" id="download">
+  <div class="wrap">
+    <div class="wordmark" style="font-size:clamp(28px,5vw,48px)">REGOLITH</div>
+    <div class="rule" aria-hidden="true"></div>
+    <h2 style="font-family:var(--text);font-weight:500;font-size:22px">Your share, as a library, in your pocket.</h2>
+    <p>Android 14 or newer. Each release installs over the last and keeps your library, chapters and resume points.</p>
+    <div class="ctas">
+      <a class="btn red" href="https://github.com/Jmeza081/regolith/releases/latest"><svg><use href="#i-down"/></svg>Download the latest APK</a>
+      <a class="btn ghost" href="https://github.com/Jmeza081/regolith/releases">All releases</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <span>Regolith · a native Android player for your SMB share</span>
+      <span><a href="https://github.com/Jmeza081/regolith">Source on GitHub</a></span>
+    </div>
+    <p class="credit">Photos in the drawn screens are from <a href="https://unsplash.com">Unsplash</a>, served by <a href="https://picsum.photos">Lorem Picsum</a>, by {{AUTHORS}}. Collection names are examples.</p>
+  </div>
+</footer>
+
+<script>
+  // The drawn screens are laid out at the screen's real size in dp and scaled to their frames.
+  (function () {
+    function fit() {
+      document.querySelectorAll('.screen-wrap[data-scale]').forEach(function (wrap) {
+        var dp = wrap.querySelector('.dp');
+        if (!dp) return;
+        dp.style.transform = 'scale(' + (wrap.clientWidth / dp.offsetWidth) + ')';
+      });
+    }
+    window.addEventListener('resize', fit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    fit();
+  })();
+</script>
+</body>
+</html>

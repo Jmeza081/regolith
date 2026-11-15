@@ -48,7 +48,7 @@ SECTIONS = [
 # A commit touching only these is documentation, not a build: it earns no
 # bump on its own, and is still listed so the notes account for every commit.
 # site/ is the GitHub Pages product page: it never ships in the APK.
-DOC_PREFIXES = ("docs/", "design/", ".github/", "site/")
+DOC_PREFIXES = ("docs/", "design/", ".github/", "site/", "site-src/")
 DOC_SUFFIXES = (".md",)
 
 

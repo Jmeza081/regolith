@@ -14,6 +14,7 @@ on:
       - 'docs/**'
       - 'design/**'
       - 'site/**'
+      - 'site-src/**'
       # Workflows and their scripts never ship in the APK: changing them is
       # not a release. workflow_dispatch below is there to publish anyway.
       - '.github/**'
