@@ -2,10 +2,12 @@
 
 Run from the repo root: python3 site-src/build.py
 
-The drawn screens (Collections and Mixes, the Search gesture, the player's Color
-bleed, the main screen that opens out into the inner screen's pinch, and the inner
-screen's Home) are generated here so every poster gets the same markup. Color bleed
-and the opening fold are driven by the script at the bottom of the template. Their
+Every phone on the page is drawn here, not screenshotted, so every poster and pile
+gets the same markup: the Library, a collection's page and its selection, Collections
+and Mixes, the Search gesture, the player's Color bleed, an album and its story, the
+main screen that opens out into the inner screen's pinch, and the inner screen's Home.
+Color bleed and the opening fold are driven by the script at the bottom of the
+template. Their
 photos are in site/images/photos, from Unsplash via Lorem Picsum; photos.txt
 lists each one's id, photographer and Unsplash page, and the footer credits
 whoever's photos the page actually uses.
@@ -15,11 +17,12 @@ import re
 OUT = "site/index.html"
 PHOTOS = dict((l.split(" | ")[0], l.split(" | ")[1]) for l in open("site-src/photos.txt").read().splitlines() if l.strip())
 
-# Every poster tile wears a film poster (site-src/posters.html, rendered to images/posters by
-# render_posters.mjs). The 16:9 video frames (Continue watching, search hits) and the player's
-# film stay photos, as they stand for frames of a video. Each poster is built over one of the
-# photos, which is how its photographer still gets credited: name -> photo id.
-POSTERS = {"concerts": 274, "films": 43, "home-videos": 129, "series": 238, "travel": 177,
+# A collection with a poster.jpg wears a film poster (site-src/posters.html, rendered to
+# images/posters by render_posters.mjs). One without, and every mix, wears a pile of its own
+# frames, as the app draws it (PILES, below). The 16:9 video frames (Continue watching, search
+# hits) and the player's film stay photos. Each poster is built over one of the photos, which is
+# how its photographer still gets credited: name -> photo id.
+POSTERS = {"concerts": 274, "films": 43, "series": 238, "travel": 177,
            "greece-2024": 49, "bikes": 76, "hikes": 17, "film-club": 250, "cooking": 225,
            "road-trip": 184, "snow-trip": 260, "amsterdam": 164, "scotland": 200,
            "live-at-the-echo": 274, "spring-tour": 257, "band-practice": 39, "fall-showcase": 167,
@@ -29,16 +32,33 @@ def ph(i):
     if i in POSTERS: return f"background-image:url(images/posters/{i}.jpg)"
     return f"background-image:url(images/photos/{i}.jpg)"
 
-def poster(name, meta, photo, badge=None, res=None, mix=None):
+# Frames of tall phone clips, for the piles: a folder with no poster.jpg, and each mix.
+PILES = {
+    "home-videos": [838, 64, 1012, 660, 1025],
+    "assorted": [431, 63, 835, 1080, 429],
+    "phone-dumps": [837, 1062, 237, 659, 40],
+    "misc-2024": [452, 453, 836, 407, 30],
+}
+
+def pile(frames, over="", cls="pile"):
+    """A deck kept as a pile (DeckLayout.pileCards): up to five frames fanned from below like a
+    hand of cards, the front one upright in the middle, drawn last. CSS places and turns them by
+    rank (.p0 is the front card)."""
+    order = [4, 3, 2, 1, 0][5 - len(frames):]
+    cards = "".join(f'<i class="p{k}" style="{ph(frames[k])}"></i>' for k in order)
+    return f'<div class="d-art {cls}">{cards}{over}</div>'
+
+def poster(name, meta, art, badge=None, res=None):
+    """A tile on a wall. `art` names a poster, a photo id, or a pile in PILES (no res chip there:
+    it would sit on the frames, which the app avoids)."""
     over = ""
     if badge: over += f'<span class="badge"><svg><use href="#i-folder"/></svg>{badge}</span>'
-    if res: over += f'<span class="res">{res}</span>'
-    if mix:
-        a, b = mix
-        art = f'<div class="d-art deck"><i style="{ph(a)}"></i><i style="{ph(b)}"></i>{over}</div>'
+    if art in PILES:
+        tile = pile(PILES[art], over)
     else:
-        art = f'<div class="d-art" style="{ph(photo)}">{over}</div>'
-    return f'<div class="d-poster">{art}<div class="d-name">{name}</div><div class="d-meta">{meta}</div></div>'
+        if res: over += f'<span class="res">{res}</span>'
+        tile = f'<div class="d-art" style="{ph(art)}">{over}</div>'
+    return f'<div class="d-poster">{tile}<div class="d-name">{name}</div><div class="d-meta">{meta}</div></div>'
 
 def grid(cls, items):
     return f'<div class="d-grid {cls}">' + "".join(poster(*it) for it in items) + "</div>"
@@ -47,7 +67,7 @@ PILL = '''<div class="d-pill{cls}"><span><svg><use href="#i-home"/></svg>Home</s
 HANDLE = '<div class="d-handle"></div>'
 RAIL = '''<div class="d-rail"><span{h}><svg><use href="#i-home"/></svg>Home</span><span{l}><svg><use href="#i-grid"/></svg>Library</span><span><svg><use href="#i-folder"/></svg>Browse</span><span><svg><use href="#i-phone"/></svg>Shorts</span><span><svg><use href="#i-gear"/></svg>Settings</span></div>'''
 
-# The share's top level, as photos: (name, meta, photo, badge, res)
+# The share's top level: (name, meta, poster or pile, badge, res)
 TOP = [
     ("Concerts", "18 titles", "concerts", "6", "4K"),
     ("Films", "96 videos", "films", None, "4K"),
@@ -73,12 +93,19 @@ CONCERTS = [
     ("Acoustic Set", "8 videos", "acoustic-set", "8", "1080p"),
 ]
 MIXES = [
-    ("Assorted", "27 videos", None, "27", None, ("road-trip", "cooking")),
-    ("Phone Dumps", "63 videos", None, "63", None, ("home-videos", "bikes")),
-    ("Misc 2024", "19 videos", None, "19", None, ("snow-trip", "amsterdam")),
+    ("Assorted", "27 videos", "assorted", "27"),
+    ("Phone Dumps", "63 videos", "phone-dumps", "63"),
+    ("Misc 2024", "19 videos", "misc-2024", "19"),
 ]
 # Newly added on the inner screen's Home: the latest collections to arrive.
 NEWLY = ["spring-tour", "fall-showcase", "hikes", "snow-trip", "acoustic-set", "scotland", "soundcheck"]
+
+KINDS = '<span class="d-chip on">All</span><span class="d-chip">Collections <i>14</i></span><span class="d-chip">Mixes <i>3</i></span>'
+
+def wall(cls, collections):
+    """The Library's wall split as the app splits it: Collections, then Mixes as piles."""
+    return (f'<div class="d-head">Collections</div>{grid(cls, [t[:5] for t in collections])}'
+            f'<div class="d-head">Mixes</div>{grid(cls, MIXES)}')
 
 def bar(title, sub, back=False, pad=""):
     b = '<span class="d-act"><svg><use href="#i-back"/></svg></span>' if back else ""
@@ -111,8 +138,8 @@ search_gesture = f'''
 <div class="dp cover sg" aria-hidden="true">
   <div class="sg-lib">
     {bar("MEDIA", "Tower · media · 1,284 files")}
-    <div class="d-chips"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span></div>
-    <div class="d-wall">{grid("c3", [t[:5] for t in TOP[:9]])}</div>
+    <div class="d-chips">{KINDS}</div>
+    <div class="d-wall">{wall("c3", TOP[:6])}</div>
     {PILL.format(cls=" sg-pill")}
   </div>
   <div class="sg-search">
@@ -166,36 +193,100 @@ inner_pinch = f'''
   {bar("MEDIA", "Tower · media · 1,284 files", pad=' style="padding-left:96px"')}
   <div class="d-chips" style="padding-left:96px"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span><span class="d-sep"></span><span class="d-chip on">All</span><span class="d-chip">Collections <i>14</i></span><span class="d-chip">Mixes <i>3</i></span></div>
   <div class="pz-clip"><div class="pz-zoom">
-    <div class="d-head">Collections</div>
-    {grid("c7", TOP)}
+    {wall("c7", TOP)}
   </div></div>
   <div class="pz-pill"><span class="n5">5 across</span><span class="n7">7 across</span></div>
   <div class="finger pz-a"></div><div class="finger pz-b"></div>
   {RAIL.format(h="", l=' class="on"')}
 </div>'''
 
-# ── Main screen, on the back of the Fold's left half before it opens: the same wall as the
-#    inner screen it opens into, three across. Shorter than the others: it is drawn at the shape of
-#    half the open phone. ──
-cover_closed = f'''
-<div class="dp cover short" aria-hidden="true">
+# ── Main screen · the Library. Drawn twice: full height in the hero and the Library section,
+#    and short on the back of the Fold's left half before it opens, where it is the shape of half
+#    the open phone. Either way it is the wall the inner screen opens into, three across. ──
+def library(cls, collections):
+    return f'''
+<div class="dp cover{cls}" aria-hidden="true">
   {bar("MEDIA", "Tower · media · 1,284 files")}
-  <div class="d-chips"><span class="d-chip on"><svg><use href="#i-play"/></svg>Videos</span><span class="d-chip"><svg><use href="#i-bookmark"/></svg>Moments</span><span class="d-chip"><svg><use href="#i-image"/></svg>Images</span></div>
-  <div class="d-wall"><div class="d-head">Collections</div>{grid("c3", [t[:5] for t in TOP[:6]])}</div>
+  <div class="d-chips">{KINDS}</div>
+  <div class="d-wall">{wall("c3", collections)}</div>
+  {PILL.format(cls="")}
+  {HANDLE}
+</div>'''
+library_wall = library("", TOP[:6])
+cover_closed = library(" short", TOP[:3])
+
+# ── Main screen · Home Videos, a collection's page. It has no poster.jpg, so its page is lit by
+#    its frames laid loose (DeckLayout.looseCards): the whole hand, every card whole. ──
+HOME_VIDEOS = [(838, "Saturday downtown", "45s"), (64, "Lunch outside", "27s"), (1012, "Dog walk", "24s"),
+               (660, "Sparklers", "42s"), (1025, "Blanket fort", "38s"), (646, "Golden hour", "31s"),
+               (839, "First bike ride", "52s"), (823, "Photo walk", "19s")]
+
+def clip(photo, name, meta, picked=None, watched=False):
+    """A video on a collection's page: its frame, resolution, and an unwatched ring, or, while
+    picking, a check (picked=True) or an empty circle (picked=False)."""
+    corner = '<span class="ring"></span>' if picked is None and not watched else ""
+    if picked is True: corner = '<span class="pick on"><svg><use href="#i-check"/></svg></span>'
+    if picked is False: corner = '<span class="pick"></span>'
+    seen = '<span class="seen"></span>' if watched else ""
+    return (f'<div class="d-poster{" picked" if picked else ""}"><div class="d-art" style="{ph(photo)}"><span class="res">1080p</span>{corner}{seen}</div>'
+            f'<div class="d-name">{name}</div><div class="d-meta">{meta}</div></div>')
+
+collection_page = f'''
+<div class="dp cover cp" aria-hidden="true">
+  <div class="d-bar"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  {pile(PILES["home-videos"], cls="hand")}
+  <div class="cp-head"><span>MEDIA</span><b>HOME VIDEOS</b></div>
+  <div class="cp-stats"><span><b>8</b>Videos</span><span><b>5</b>Pictures</span><span><b>4m 24s</b>Runtime</span><span><b>28 MB</b>Size</span></div>
+  <div class="cp-acts"><span class="cp-play"><svg><use href="#i-play-solid"/></svg>Play all</span><span class="cp-round"><svg><use href="#i-shuffle"/></svg></span><span class="cp-round"><svg><use href="#i-up"/></svg></span></div>
+  <div class="cp-tabs"><span class="on">Videos <i>8</i></span><span>Moments <i>8</i></span><span>Images <i>5</i></span></div>
+  <div class="d-wall"><div class="d-grid c3">{"".join(clip(p, n, m, watched=(k == 0)) for k, (p, n, m) in enumerate(HOME_VIDEOS[:6]))}</div></div>
   {PILL.format(cls="")}
   {HANDLE}
 </div>'''
 
-# ── Main screen · the player, with Color bleed. The film is a run of slow pans over photos, drawn
-#    by the page's script: (photo, [x, y, zoom] at the start, [x, y, zoom] at the end). ──
-FILM = [(65, [.5, .55, 1.0], [.6, .5, 1.25]), (249, [.35, .6, 1.2], [.6, .55, 1.0]),
-        (184, [.5, .7, 1.05], [.45, .65, 1.3]), (164, [.4, .55, 1.25], [.6, .5, 1.05]),
-        (274, [.5, .45, 1.0], [.5, .5, 1.2])]
+# ── Main screen · picking videos on Home Videos: the nav pill has become the selection's toolbar ──
+PICKED = {3, 4, 5}
+selection_page = f'''
+<div class="dp cover sel" aria-hidden="true">
+  <div class="d-bar"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b class="sel-title">3 SELECTED</b></div><span class="d-act"><svg><use href="#i-check"/></svg></span><span class="d-act"><svg><use href="#i-x"/></svg></span></div>
+  <div class="d-wall"><div class="d-grid c3">{"".join(clip(p, n, m, picked=(k in PICKED)) for k, (p, n, m) in enumerate(HOME_VIDEOS))}</div></div>
+  <div class="sel-sum"><b>3 videos · 17 MB</b><span>Rename works on one at a time</span></div>
+  <div class="sel-bar"><span class="sel-x"><svg><use href="#i-x"/></svg></span><div class="sel-tools"><span><svg><use href="#i-down"/></svg>Download</span><span><svg><use href="#i-move"/></svg>Move</span><span class="off"><svg><use href="#i-pencil"/></svg>Rename</span><span class="red"><svg><use href="#i-trash"/></svg>Delete</span></div></div>
+  {HANDLE}
+</div>'''
+
+# ── Main screen · an album, laid out as a mosaic where each picture keeps its own shape, and the
+#    same album playing as a story. One trip, so it reads as one set of pictures. ──
+ALBUM = [[(1015, 230), (469, 160), (1039, 220), (434, 190)],
+         [(1011, 180), (507, 240), (1044, 160), (573, 230)],
+         [(575, 210), (1018, 170), (1036, 220), (574, 200)]]
+album_page = f'''
+<div class="dp cover alb" aria-hidden="true">
+  <div class="d-bar"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b class="alb-title">FJORDS 2024</b></div><span class="d-act"><svg><use href="#i-search"/></svg></span><span class="d-act"><svg><use href="#i-sort"/></svg></span><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="alb-cols">{"".join('<div>' + "".join(f'<i style="{ph(p)};height:{h}px">' + ('<span class="alb-poster"><svg><use href="#i-phone"/></svg>POSTER</span>' if (c, n) == (1, 1) else "") + '</i>' for n, (p, h) in enumerate(col)) + '</div>' for c, col in enumerate(ALBUM))}</div>
+  {PILL.format(cls="")}
+  {HANDLE}
+</div>'''
+story_page = f'''
+<div class="dp cover story" aria-hidden="true">
+  <div class="st-pic" style="{ph(1011)}"></div>
+  <div class="st-shade"></div>
+  <div class="st-segs">{"".join('<i></i>' for _ in range(16))}</div>
+  <div class="st-head"><span class="st-av" style="{ph(1015)}"></span><div class="st-t"><b>Fjords 2024</b><span>1 of 16 · 12 Aug 2024</span></div><span class="st-btn"><svg><use href="#i-pause"/></svg></span><span class="st-btn"><svg><use href="#i-x"/></svg></span></div>
+  {HANDLE}
+</div>'''
+
+# ── Main screen · the player, with Color bleed. The film is a run of slow pans over 16:9 night
+#    skies, whose greens and violets light the bars plainly, drawn by the page's script:
+#    (photo, [x, y, zoom] at the start, [x, y, zoom] at the end). ──
+FILM = [(901, [.45, .5, 1.0], [.55, .5, 1.2]), (1022, [.5, .5, 1.2], [.45, .5, 1.0]),
+        (724, [.4, .5, 1.05], [.55, .5, 1.25]), (903, [.5, .55, 1.25], [.5, .45, 1.05]),
+        (974, [.5, .5, 1.0], [.5, .55, 1.2])]
 color_bleed = f'''
 <div class="dp cover cb off" aria-hidden="true" data-shots='{[list(f) for f in FILM]}'>
   <canvas class="cb-glow" width="103" height="224"></canvas>
   <canvas class="cb-pic" width="640" height="360"></canvas>
-  <div class="cb-top"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b>Golden Hour</b><span>Films · 4K</span></div><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
+  <div class="cb-top"><span class="d-act"><svg><use href="#i-back"/></svg></span><div class="d-title"><b>Northern Lights</b><span>Films · 4K</span></div><span class="d-act"><svg><use href="#i-more"/></svg></span></div>
   <div class="cb-state"><i></i><span class="t-off">Color bleed off</span><span class="t-on">Color bleed on</span></div>
   <div class="cb-bottom"><div class="cb-track"><i></i></div><div class="cb-times"><span class="cb-now">1:02:04</span><span>1:48:20</span></div></div>
 </div>'''
@@ -207,6 +298,11 @@ html = (html.replace("{{CHIP_SCROLL}}", chip_scroll)
             .replace("{{INNER_PINCH}}", inner_pinch)
             .replace("{{COVER_CLOSED}}", cover_closed)
             .replace("{{COLOR_BLEED}}", color_bleed)
+            .replace("{{LIBRARY}}", library_wall)
+            .replace("{{COLLECTION}}", collection_page)
+            .replace("{{SELECTION}}", selection_page)
+            .replace("{{ALBUM}}", album_page)
+            .replace("{{STORY}}", story_page)
             )
 used = set(re.findall(r"images/photos/(\d+)\.jpg", html))
 used |= {str(POSTERS[n]) for n in re.findall(r"images/posters/([a-z0-9-]+)\.jpg", html)}
