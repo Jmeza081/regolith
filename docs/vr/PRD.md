@@ -73,8 +73,8 @@ Extracted from the code (`ui/`, `player/`, `domain/`) and the README.
 
 Shared for free, because it already lives **on the share** rather than in the
 app: chapter sidecars, `poster.jpg`, the `.regolith-mix` marker. Not shared:
-resume points and watch history (each app has its own database). See open
-question Q1.
+resume points and watch history (each app has its own database), until
+requirement S6 lands.
 
 ## 4. What 4XVR offers (the bar to clear)
 
@@ -180,6 +180,11 @@ Priority: **P0** ships in the first usable build, **P1** in v1, **P2** after.
   downloads, privacy.
 - **S4 (P2)** PIN lock; Spoof while casting.
 - **S5 (P0)** Reduced motion follows the Horizon OS setting.
+- **S6 (P1)** Resume points sync between phone and headset through a small
+  hidden file on the share (like `.regolith-mix`): no server, no account.
+  Decided 2026-11-18. To design: the file's format and where it sits, what
+  wins when both devices watched the same film, and a read-only share.
+  Needs a matching change in the Android app.
 
 ## 7. Input
 
@@ -252,7 +257,7 @@ Relief).
 |---|---|---|
 | UI | Compose panels + Horizon OS UI Set, themed with Regolith tokens | Same tokens as `ui/theme/` |
 | Video | Media3 into `VideoSurfacePanelRegistration` | Direct-to-compositor for sharpness |
-| SMB | jcifs-ng behind the same `SmbGateway` interface | `domain/` is pure Kotlin; see Q2 |
+| SMB | jcifs-ng, written fresh | The Android repo is a reference to read, not code to import |
 | Passthrough / walls | `enablePassthrough`, MRUK for wall anchors | |
 | Audio | `SpatialAudioFeature` + Media3 session | Sound comes from the Screen |
 | Relief | Depth model via ExecuTorch or QNN, custom shader on the readable surface path | Decided by the spike |
@@ -323,16 +328,20 @@ Michroma and Space Grotesk, one red.
 4. **Local network access** on Horizon OS is undocumented. Covered by the spike.
 5. **Typing.** Mitigated by voice search, name chips and Bring from phone.
 
-## 13. Open questions
+## 13. Decisions and open questions
 
-- **Q1.** Sync resume points between phone and headset? A small hidden file
-  per share (like `.regolith-mix`) would do it without a server.
-- **Q2.** "Not a port" still allows sharing the pure-Kotlin `domain/` and the
-  SMB layer as a Gradle module. Share them, or start clean?
-- **Q3.** Same repo (a second module) or a new one?
-- **Q4.** Store release or side-load only? A store build must drop the demo
+Decided by the owner, 2026-11-18:
+
+- **Clean start, new repository.** An earlier attempt to port the Android
+  code failed, so nothing is shared as a module. The Regolith repo is a
+  reference: read it for how a problem was solved, then write it again.
+- **Resume points sync** through a hidden file on the share (S6).
+
+Still open:
+
+- **Q1.** Store release or side-load only? A store build must drop the demo
   clips and meet Meta's performance checks.
-- **Q5.** Is "Relief" the name?
+- **Q2.** Is "Relief" the name for 2D→3D?
 
 ## 14. Sources
 
