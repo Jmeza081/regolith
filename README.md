@@ -843,6 +843,8 @@ docs/                             ARCHITECTURE.md · NAVIGATION.md · CHAPTERS.m
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the decision log: every
 architectural choice, what it replaced, and why.
 [`docs/CHAPTERS.md`](docs/CHAPTERS.md) specifies the chapter file format.
+[`docs/vr/PRD.md`](docs/vr/PRD.md) is the plan for a Quest 3 version (a new app, not
+a port); its screens are drawn in [`design/regolith-vr/`](design/regolith-vr/README.md).
 
 ## License
 

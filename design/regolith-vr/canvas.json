@@ -1,0 +1,275 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-18T20:13:30Z"
+ },
+ "title": "Regolith VR — Quest 3 flows & screens",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1600,
+   "h": 900,
+   "title": "Spatial model"
+  },
+  "A2_Input.dc.html": {
+   "x": 1680,
+   "y": 0,
+   "w": 1600,
+   "h": 900,
+   "title": "Input map"
+  },
+  "A3_Kit.dc.html": {
+   "x": 3360,
+   "y": 0,
+   "w": 1600,
+   "h": 900,
+   "title": "Tokens and components"
+  },
+  "B1_Welcome.dc.html": {
+   "x": 0,
+   "y": 1320,
+   "w": 1600,
+   "h": 900,
+   "title": "Welcome",
+   "is_interactive": true
+  },
+  "B2_FindShare.dc.html": {
+   "x": 1680,
+   "y": 1320,
+   "w": 1600,
+   "h": 900,
+   "title": "Find your share",
+   "is_interactive": true
+  },
+  "B3_SignIn.dc.html": {
+   "x": 3360,
+   "y": 1320,
+   "w": 1600,
+   "h": 900,
+   "title": "Sign in, or bring it from your phone",
+   "is_interactive": true
+  },
+  "B4_Folders.dc.html": {
+   "x": 5040,
+   "y": 1320,
+   "w": 1600,
+   "h": 900,
+   "title": "Pick the folders",
+   "is_interactive": true
+  },
+  "B5_Scanning.dc.html": {
+   "x": 6720,
+   "y": 1320,
+   "w": 1600,
+   "h": 900,
+   "title": "Scanning, the Wall fills in",
+   "is_interactive": true
+  },
+  "C1_Home.dc.html": {
+   "x": 0,
+   "y": 2640,
+   "w": 1600,
+   "h": 900,
+   "title": "Home",
+   "is_interactive": true
+  },
+  "C2_Wall.dc.html": {
+   "x": 1680,
+   "y": 2640,
+   "w": 1600,
+   "h": 900,
+   "title": "The Wall (Library)",
+   "is_interactive": true
+  },
+  "C3_Title.dc.html": {
+   "x": 3360,
+   "y": 2640,
+   "w": 1600,
+   "h": 900,
+   "title": "A video's page, beside the Wall",
+   "is_interactive": true
+  },
+  "C4_Collection.dc.html": {
+   "x": 5040,
+   "y": 2640,
+   "w": 1600,
+   "h": 900,
+   "title": "A collection's page",
+   "is_interactive": true
+  },
+  "C5_Search.dc.html": {
+   "x": 6720,
+   "y": 2640,
+   "w": 1600,
+   "h": 900,
+   "title": "Search, voice first",
+   "is_interactive": true
+  },
+  "C6_Select.dc.html": {
+   "x": 8400,
+   "y": 2640,
+   "w": 1600,
+   "h": 900,
+   "title": "Selecting: the Dock becomes a toolbar",
+   "is_interactive": true
+  },
+  "D1_Watching.dc.html": {
+   "x": 0,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "Watching: just the picture",
+   "is_interactive": true
+  },
+  "D2_Bar.dc.html": {
+   "x": 1680,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "The Bar, scrubbing by thumbnail",
+   "is_interactive": true
+  },
+  "D3_Relief.dc.html": {
+   "x": 3360,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "Relief: 2D into 3D",
+   "is_interactive": true
+  },
+  "D4_Space.dc.html": {
+   "x": 5040,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "Screen and space",
+   "is_interactive": true
+  },
+  "D5_Chapters.dc.html": {
+   "x": 6720,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "Chapters, and marking a moment",
+   "is_interactive": true
+  },
+  "D6_Docked.dc.html": {
+   "x": 8400,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "The Screen docked while you browse",
+   "is_interactive": true
+  },
+  "D7_Passthrough.dc.html": {
+   "x": 10080,
+   "y": 3960,
+   "w": 1600,
+   "h": 900,
+   "title": "Your room: the Screen pinned to a wall",
+   "is_interactive": true
+  },
+  "E1_Shorts.dc.html": {
+   "x": 0,
+   "y": 5280,
+   "w": 1600,
+   "h": 900,
+   "title": "Shorts",
+   "is_interactive": true
+  },
+  "E2_Pictures.dc.html": {
+   "x": 1680,
+   "y": 5280,
+   "w": 1600,
+   "h": 900,
+   "title": "Pictures: mosaic and lightbox",
+   "is_interactive": true
+  },
+  "E3_Settings.dc.html": {
+   "x": 3360,
+   "y": 5280,
+   "w": 1600,
+   "h": 900,
+   "title": "Settings",
+   "is_interactive": true
+  },
+  "E4_States.dc.html": {
+   "x": 5040,
+   "y": 5280,
+   "w": 1600,
+   "h": 900,
+   "title": "Empty, loading and failed states"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "A2_Input.dc.html",
+  "A3_Kit.dc.html",
+  "B1_Welcome.dc.html",
+  "B2_FindShare.dc.html",
+  "B3_SignIn.dc.html",
+  "B4_Folders.dc.html",
+  "B5_Scanning.dc.html",
+  "C1_Home.dc.html",
+  "C2_Wall.dc.html",
+  "C3_Title.dc.html",
+  "C4_Collection.dc.html",
+  "C5_Search.dc.html",
+  "C6_Select.dc.html",
+  "D1_Watching.dc.html",
+  "D2_Bar.dc.html",
+  "D3_Relief.dc.html",
+  "D4_Space.dc.html",
+  "D5_Chapters.dc.html",
+  "D6_Docked.dc.html",
+  "D7_Passthrough.dc.html",
+  "E1_Shorts.dc.html",
+  "E2_Pictures.dc.html",
+  "E3_Settings.dc.html",
+  "E4_States.dc.html"
+ ],
+ "notes": {
+  "row0": {
+   "x": 0,
+   "y": -270,
+   "text": "Foundations",
+   "kind": "title1",
+   "maxW": 4960
+  },
+  "row1": {
+   "x": 0,
+   "y": 1050,
+   "text": "First run: connect a share",
+   "kind": "title1",
+   "maxW": 8320
+  },
+  "row2": {
+   "x": 0,
+   "y": 2370,
+   "text": "Library: the Wall",
+   "kind": "title1",
+   "maxW": 10000
+  },
+  "row3": {
+   "x": 0,
+   "y": 3690,
+   "text": "Watch: Screen, Bar and Relief",
+   "kind": "title1",
+   "maxW": 11680
+  },
+  "row4": {
+   "x": 0,
+   "y": 5010,
+   "text": "More: Shorts, pictures, settings, states",
+   "kind": "title1",
+   "maxW": 6640
+  }
+ },
+ "designSystems": []
+}
