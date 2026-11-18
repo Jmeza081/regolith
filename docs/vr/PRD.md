@@ -1,8 +1,8 @@
-# Regolith VR — product requirements (Meta Quest 3)
+# Regolith-VR — product requirements (Meta Quest 3)
 
 Status: draft 1, 2026-11-18. Design canvas: <https://claude.ai/artifact/1cfHmNJ7p4jn9vVPeVTh78>
 
-Regolith VR is a **new app**, not a port. It takes what Regolith does on a
+Regolith-VR is a **new app**, not a port. It takes what Regolith does on a
 phone (your SMB share as a video library: posters, chapters, resume points,
 thumbnail scrubbing) and re-expresses it for a headset, then adds what only
 a headset can do: a screen of any size, a room lit by the film, and **Relief**,
@@ -82,7 +82,7 @@ Researched 2026-11-18 from store listings and third-party guides. The
 research session could not open the pages themselves (network allowlist), so
 these are from search extracts: **re-check wording before quoting**.
 
-| Area | 4XVR | Regolith VR v1 |
+| Area | 4XVR | Regolith-VR v1 |
 |---|---|---|
 | Price | Free trial (time-capped); Premium **$29.99** one-time | Free, side-loaded |
 | 2D→3D | "Instant 2D-to-3D" / "AI 3D" toggle, real time on the headset, adjustable strength, can be default for all flat video (since v2.1.4) | **Relief** — match, plus a per-title memory and a comfort ramp |
@@ -95,7 +95,7 @@ these are from search extracts: **re-check wording before quoting**.
 | Audio / subs | Multi-track, sync offset, 5.1/7.1; subtitles with sync | Track picker and subtitle picker (P0); sync offset (P1) |
 | Library | Thumbnails; no poster wall or metadata found | Poster wall, collections, chapters, moments, search |
 
-Where reviewers say 4XVR is weak, and Regolith VR should be strong:
+Where reviewers say 4XVR is weak, and Regolith-VR should be strong:
 unreliable SMB reconnects, no playlists, no resume-or-restart choice, a
 button that exits instead of showing controls, subtitles too low, no image
 viewer. Regolith already solves the first three on the phone.

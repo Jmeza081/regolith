@@ -1,4 +1,4 @@
-# Regolith VR — design canvas sources
+# Regolith-VR — design canvas sources
 
 The canvas lives at <https://claude.ai/artifact/1cfHmNJ7p4jn9vVPeVTh78>
 (25 boards: foundations, first run, library, watch, more). The PRD it

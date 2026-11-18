@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble Regolith VR artboards: shared head + CSS + one body fragment each.
+"""Assemble Regolith-VR artboards: shared head + CSS + one body fragment each.
 
 Usage: build.py <fragments_dir> <out_project_dir>
 A fragment is `<stem>.html`; its first line is `<!-- title: ... | w,h -->`.
